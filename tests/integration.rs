@@ -431,22 +431,18 @@ fn test_string_edge() {
 }
 
 // ---- Edge-case tests: stream, coroutine, task ----
-// These features use pthreads and are Linux-only for now.
 
 #[test]
-#[cfg(not(target_os = "windows"))]
 fn test_stream_ops() {
     assert_eq!(run_example("test_stream.at"), "4299done");
 }
 
 #[test]
-#[cfg(not(target_os = "windows"))]
 fn test_coroutine() {
     assert_eq!(run_example("test_coroutine.at"), "322");
 }
 
 #[test]
-#[cfg(not(target_os = "windows"))]
 fn test_task_stream() {
     assert_eq!(
         run_example("test_task_stream.at"),
