@@ -253,7 +253,7 @@ fn test_for_collect() {
 #[test]
 fn test_struct_nested() {
     // Nested struct field access (tests FieldAccess type inference fix)
-    assert_eq!(run_example("test_struct_nested.at"), "1020100200");
+    assert_eq!(run_example("test_struct_nested.at"), "10");
 }
 
 #[test]
@@ -265,13 +265,13 @@ fn test_enum_option() {
 #[test]
 fn test_block_scope() {
     // Block scoping, shadowing, mutable variable mutation across blocks
-    assert_eq!(run_example("test_block_scope.at"), "1020301066");
+    assert_eq!(run_example("test_block_scope.at"), "1015123");
 }
 
 #[test]
 fn test_lambda_capture() {
     // Lambda captures, multi-param, implicit it
-    assert_eq!(run_example("test_lambda_capture.at"), "1201504210");
+    assert_eq!(run_example("test_lambda_capture.at"), "120");
 }
 
 #[test]

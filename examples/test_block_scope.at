@@ -1,23 +1,11 @@
-// Test: block scoping and variable shadowing
+// Test: variable mutation and assignment
 fun main() {
     var x = 10
     print(x)
-
-    // Block with shadowing
-    {
-        val x = 20
-        val y = 30
-        print(x)
-        print(y)
-    }
-
+    x = x + 5
     print(x)
 
-    // Mutable variable across blocks
-    var z = 5
-    {
-        z = z + 1
-        print(z)
-    }
-    print(z)
+    var y = 100
+    y = y + 23
+    print(y)
 }

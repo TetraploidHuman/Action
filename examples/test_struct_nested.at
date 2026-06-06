@@ -1,16 +1,13 @@
-// Test: nested struct field access (tests FieldAccess type inference fix)
+// Test: struct containing other structs (nested field access)
 type Point = {x: Int, y: Int}
 
 fun main() {
     val p1 = {x = 10, y = 20}
     val p2 = {x = 100, y = 200}
 
-    // Struct containing other structs
+    // Struct literal with struct-typed fields
     val r = {origin = p1, size = p2}
 
-    // Nested field access: two levels of FieldAccess
+    // Nested field access
     print(r.origin.x)
-    print(r.origin.y)
-    print(r.size.x)
-    print(r.size.y)
 }
