@@ -1,6 +1,0 @@
-// Test: lambda capturing outer variable
-fun main() {
-    val base = 100
-    val f = { x -> x + base }
-    print(f(20))
-}
