@@ -273,9 +273,422 @@ impl<'ctx> CodeGen<'ctx> {
                 i32.fn_type(&[i32.into(), ptr.into()], false),
                 None,
             );
+
+            // ---- action_* wrappers that call pthread_* (Linux) ----
+            // These are the JIT-visible symbols; builtins.rs calls action_* names.
+            // On Linux the real work delegates to the pthread functions declared above.
+
+            // action_mutex_init(mutex_ptr, attr) -> i32
+            let action_mtx_init_fn = self.module.add_function(
+                "action_mutex_init",
+                i32.fn_type(&[ptr.into(), ptr.into()], false),
+                None,
+            );
+            let ami_entry = self.context.append_basic_block(action_mtx_init_fn, "entry");
+            self.builder.position_at_end(ami_entry);
+            let ami_mutex = action_mtx_init_fn
+                .get_first_param()
+                .unwrap()
+                .into_pointer_value();
+            let ami_result = self
+                .builder
+                .build_call(
+                    self.module.get_function("pthread_mutex_init").unwrap(),
+                    &[ami_mutex.into(), ptr.const_null().into()],
+                    "ret",
+                )
+                .map_err(llvm_err)?
+                .try_as_basic_value()
+                .unwrap_basic()
+                .into_int_value();
+            let _ = self.builder.build_return(Some(&ami_result));
+
+            // action_mutex_lock(mutex_ptr) -> i32
+            let action_mtx_lock_fn = self.module.add_function(
+                "action_mutex_lock",
+                i32.fn_type(&[ptr.into()], false),
+                None,
+            );
+            let aml_entry = self.context.append_basic_block(action_mtx_lock_fn, "entry");
+            self.builder.position_at_end(aml_entry);
+            let aml_mutex = action_mtx_lock_fn
+                .get_first_param()
+                .unwrap()
+                .into_pointer_value();
+            let aml_result = self
+                .builder
+                .build_call(
+                    self.module.get_function("pthread_mutex_lock").unwrap(),
+                    &[aml_mutex.into()],
+                    "ret",
+                )
+                .map_err(llvm_err)?
+                .try_as_basic_value()
+                .unwrap_basic()
+                .into_int_value();
+            let _ = self.builder.build_return(Some(&aml_result));
+
+            // action_mutex_unlock(mutex_ptr) -> i32
+            let action_mtx_unlock_fn = self.module.add_function(
+                "action_mutex_unlock",
+                i32.fn_type(&[ptr.into()], false),
+                None,
+            );
+            let amu_entry = self
+                .context
+                .append_basic_block(action_mtx_unlock_fn, "entry");
+            self.builder.position_at_end(amu_entry);
+            let amu_mutex = action_mtx_unlock_fn
+                .get_first_param()
+                .unwrap()
+                .into_pointer_value();
+            let amu_result = self
+                .builder
+                .build_call(
+                    self.module.get_function("pthread_mutex_unlock").unwrap(),
+                    &[amu_mutex.into()],
+                    "ret",
+                )
+                .map_err(llvm_err)?
+                .try_as_basic_value()
+                .unwrap_basic()
+                .into_int_value();
+            let _ = self.builder.build_return(Some(&amu_result));
+
+            // action_mutex_destroy(mutex_ptr) -> i32
+            let action_mtx_destroy_fn = self.module.add_function(
+                "action_mutex_destroy",
+                i32.fn_type(&[ptr.into()], false),
+                None,
+            );
+            let amd_entry = self
+                .context
+                .append_basic_block(action_mtx_destroy_fn, "entry");
+            self.builder.position_at_end(amd_entry);
+            let amd_mutex = action_mtx_destroy_fn
+                .get_first_param()
+                .unwrap()
+                .into_pointer_value();
+            let amd_result = self
+                .builder
+                .build_call(
+                    self.module.get_function("pthread_mutex_destroy").unwrap(),
+                    &[amd_mutex.into()],
+                    "ret",
+                )
+                .map_err(llvm_err)?
+                .try_as_basic_value()
+                .unwrap_basic()
+                .into_int_value();
+            let _ = self.builder.build_return(Some(&amd_result));
+
+            // action_cond_init(cond_ptr, attr) -> i32
+            let action_cond_init_fn = self.module.add_function(
+                "action_cond_init",
+                i32.fn_type(&[ptr.into(), ptr.into()], false),
+                None,
+            );
+            let aci_entry = self
+                .context
+                .append_basic_block(action_cond_init_fn, "entry");
+            self.builder.position_at_end(aci_entry);
+            let aci_cond = action_cond_init_fn
+                .get_first_param()
+                .unwrap()
+                .into_pointer_value();
+            let aci_result = self
+                .builder
+                .build_call(
+                    self.module.get_function("pthread_cond_init").unwrap(),
+                    &[aci_cond.into(), ptr.const_null().into()],
+                    "ret",
+                )
+                .map_err(llvm_err)?
+                .try_as_basic_value()
+                .unwrap_basic()
+                .into_int_value();
+            let _ = self.builder.build_return(Some(&aci_result));
+
+            // action_cond_wait(cond_ptr, mutex_ptr) -> i32
+            let action_cond_wait_fn = self.module.add_function(
+                "action_cond_wait",
+                i32.fn_type(&[ptr.into(), ptr.into()], false),
+                None,
+            );
+            let acw_entry = self
+                .context
+                .append_basic_block(action_cond_wait_fn, "entry");
+            self.builder.position_at_end(acw_entry);
+            let acw_cond = action_cond_wait_fn
+                .get_first_param()
+                .unwrap()
+                .into_pointer_value();
+            let acw_mutex = action_cond_wait_fn
+                .get_nth_param(1)
+                .unwrap()
+                .into_pointer_value();
+            let acw_result = self
+                .builder
+                .build_call(
+                    self.module.get_function("pthread_cond_wait").unwrap(),
+                    &[acw_cond.into(), acw_mutex.into()],
+                    "ret",
+                )
+                .map_err(llvm_err)?
+                .try_as_basic_value()
+                .unwrap_basic()
+                .into_int_value();
+            let _ = self.builder.build_return(Some(&acw_result));
+
+            // action_cond_signal(cond_ptr) -> i32
+            let action_cond_sig_fn = self.module.add_function(
+                "action_cond_signal",
+                i32.fn_type(&[ptr.into()], false),
+                None,
+            );
+            let acs_entry = self.context.append_basic_block(action_cond_sig_fn, "entry");
+            self.builder.position_at_end(acs_entry);
+            let acs_cond = action_cond_sig_fn
+                .get_first_param()
+                .unwrap()
+                .into_pointer_value();
+            let acs_result = self
+                .builder
+                .build_call(
+                    self.module.get_function("pthread_cond_signal").unwrap(),
+                    &[acs_cond.into()],
+                    "ret",
+                )
+                .map_err(llvm_err)?
+                .try_as_basic_value()
+                .unwrap_basic()
+                .into_int_value();
+            let _ = self.builder.build_return(Some(&acs_result));
+
+            // action_cond_broadcast(cond_ptr) -> i32
+            let action_cond_bc_fn = self.module.add_function(
+                "action_cond_broadcast",
+                i32.fn_type(&[ptr.into()], false),
+                None,
+            );
+            let acb_entry = self.context.append_basic_block(action_cond_bc_fn, "entry");
+            self.builder.position_at_end(acb_entry);
+            let acb_cond = action_cond_bc_fn
+                .get_first_param()
+                .unwrap()
+                .into_pointer_value();
+            let acb_result = self
+                .builder
+                .build_call(
+                    self.module.get_function("pthread_cond_broadcast").unwrap(),
+                    &[acb_cond.into()],
+                    "ret",
+                )
+                .map_err(llvm_err)?
+                .try_as_basic_value()
+                .unwrap_basic()
+                .into_int_value();
+            let _ = self.builder.build_return(Some(&acb_result));
+
+            // action_cond_destroy(cond_ptr) -> i32
+            let action_cond_destroy_fn = self.module.add_function(
+                "action_cond_destroy",
+                i32.fn_type(&[ptr.into()], false),
+                None,
+            );
+            let acd_entry = self
+                .context
+                .append_basic_block(action_cond_destroy_fn, "entry");
+            self.builder.position_at_end(acd_entry);
+            let acd_cond = action_cond_destroy_fn
+                .get_first_param()
+                .unwrap()
+                .into_pointer_value();
+            let acd_result = self
+                .builder
+                .build_call(
+                    self.module.get_function("pthread_cond_destroy").unwrap(),
+                    &[acd_cond.into()],
+                    "ret",
+                )
+                .map_err(llvm_err)?
+                .try_as_basic_value()
+                .unwrap_basic()
+                .into_int_value();
+            let _ = self.builder.build_return(Some(&acd_result));
+
+            // action_thread_create(tid_ptr, attr, func, arg) -> i32
+            let action_thread_create_fn = self.module.add_function(
+                "action_thread_create",
+                i32.fn_type(&[ptr.into(), ptr.into(), ptr.into(), ptr.into()], false),
+                None,
+            );
+            let atc_entry = self
+                .context
+                .append_basic_block(action_thread_create_fn, "entry");
+            self.builder.position_at_end(atc_entry);
+            let atc_tid = action_thread_create_fn
+                .get_first_param()
+                .unwrap()
+                .into_pointer_value();
+            let atc_func = action_thread_create_fn
+                .get_nth_param(2)
+                .unwrap()
+                .into_pointer_value();
+            let atc_arg = action_thread_create_fn
+                .get_nth_param(3)
+                .unwrap()
+                .into_pointer_value();
+            let atc_result = self
+                .builder
+                .build_call(
+                    self.module.get_function("pthread_create").unwrap(),
+                    &[
+                        atc_tid.into(),
+                        ptr.const_null().into(),
+                        atc_func.into(),
+                        atc_arg.into(),
+                    ],
+                    "ret",
+                )
+                .map_err(llvm_err)?
+                .try_as_basic_value()
+                .unwrap_basic()
+                .into_int_value();
+            let _ = self.builder.build_return(Some(&atc_result));
+
+            // action_thread_join(thread_handle, retval) -> i32
+            let action_thread_join_fn = self.module.add_function(
+                "action_thread_join",
+                i32.fn_type(&[i64.into(), ptr.into()], false),
+                None,
+            );
+            let atj_entry = self
+                .context
+                .append_basic_block(action_thread_join_fn, "entry");
+            self.builder.position_at_end(atj_entry);
+            let atj_thread = action_thread_join_fn
+                .get_first_param()
+                .unwrap()
+                .into_int_value();
+            let atj_ret = action_thread_join_fn
+                .get_nth_param(1)
+                .unwrap()
+                .into_pointer_value();
+            let atj_result = self
+                .builder
+                .build_call(
+                    self.module.get_function("pthread_join").unwrap(),
+                    &[atj_thread.into(), atj_ret.into()],
+                    "ret",
+                )
+                .map_err(llvm_err)?
+                .try_as_basic_value()
+                .unwrap_basic()
+                .into_int_value();
+            let _ = self.builder.build_return(Some(&atj_result));
+
+            // action_thread_detach(thread_handle) -> i32
+            let action_thread_detach_fn = self.module.add_function(
+                "action_thread_detach",
+                i32.fn_type(&[i64.into()], false),
+                None,
+            );
+            let atd_entry = self
+                .context
+                .append_basic_block(action_thread_detach_fn, "entry");
+            self.builder.position_at_end(atd_entry);
+            let atd_thread = action_thread_detach_fn
+                .get_first_param()
+                .unwrap()
+                .into_int_value();
+            let atd_result = self
+                .builder
+                .build_call(
+                    self.module.get_function("pthread_detach").unwrap(),
+                    &[atd_thread.into()],
+                    "ret",
+                )
+                .map_err(llvm_err)?
+                .try_as_basic_value()
+                .unwrap_basic()
+                .into_int_value();
+            let _ = self.builder.build_return(Some(&atd_result));
+
+            // action_thread_cancel(thread_handle) -> i32
+            let action_thread_cancel_fn = self.module.add_function(
+                "action_thread_cancel",
+                i32.fn_type(&[i64.into()], false),
+                None,
+            );
+            let atcan_entry = self
+                .context
+                .append_basic_block(action_thread_cancel_fn, "entry");
+            self.builder.position_at_end(atcan_entry);
+            let atcan_thread = action_thread_cancel_fn
+                .get_first_param()
+                .unwrap()
+                .into_int_value();
+            let atcan_result = self
+                .builder
+                .build_call(
+                    self.module.get_function("pthread_cancel").unwrap(),
+                    &[atcan_thread.into()],
+                    "ret",
+                )
+                .map_err(llvm_err)?
+                .try_as_basic_value()
+                .unwrap_basic()
+                .into_int_value();
+            let _ = self.builder.build_return(Some(&atcan_result));
+
+            // action_sleep_us(microseconds) -> i32
+            let action_sleep_fn = self.module.add_function(
+                "action_sleep_us",
+                i32.fn_type(&[i32.into()], false),
+                None,
+            );
+            let asu_entry = self.context.append_basic_block(action_sleep_fn, "entry");
+            self.builder.position_at_end(asu_entry);
+            let asu_usec = action_sleep_fn.get_first_param().unwrap().into_int_value();
+            let asu_result = self
+                .builder
+                .build_call(
+                    self.module.get_function("usleep").unwrap(),
+                    &[asu_usec.into()],
+                    "ret",
+                )
+                .map_err(llvm_err)?
+                .try_as_basic_value()
+                .unwrap_basic()
+                .into_int_value();
+            let _ = self.builder.build_return(Some(&asu_result));
+
+            // action_clock_gettime(clockid, timespec*) -> i32
+            let action_cgt_fn = self.module.add_function(
+                "action_clock_gettime",
+                i32.fn_type(&[i32.into(), ptr.into()], false),
+                None,
+            );
+            let acgt_entry = self.context.append_basic_block(action_cgt_fn, "entry");
+            self.builder.position_at_end(acgt_entry);
+            let acgt_clk = action_cgt_fn.get_first_param().unwrap().into_int_value();
+            let acgt_ts = action_cgt_fn.get_nth_param(1).unwrap().into_pointer_value();
+            let acgt_result = self
+                .builder
+                .build_call(
+                    self.module.get_function("clock_gettime").unwrap(),
+                    &[acgt_clk.into(), acgt_ts.into()],
+                    "ret",
+                )
+                .map_err(llvm_err)?
+                .try_as_basic_value()
+                .unwrap_basic()
+                .into_int_value();
+            let _ = self.builder.build_return(Some(&acgt_result));
         }
 
-        // ---- Windows: pthread-compatible wrappers over Win32 API ----
+        // ---- Windows: action_* wrappers over Win32 API ----
         #[cfg(target_os = "windows")]
         {
             // Win32 API extern declarations (from kernel32.dll)
@@ -371,9 +784,9 @@ impl<'ctx> CodeGen<'ctx> {
                 None,
             );
 
-            // ---- Wrapper: pthread_mutex_init(mutex_ptr, attr) -> i32 ----
+            // ---- Wrapper: action_mutex_init(mutex_ptr, attr) -> i32 ----
             let mtx_init_fn = self.module.add_function(
-                "pthread_mutex_init",
+                "action_mutex_init",
                 i32.fn_type(&[ptr.into(), ptr.into()], false),
                 None,
             );
@@ -389,9 +802,9 @@ impl<'ctx> CodeGen<'ctx> {
             );
             let _ = self.builder.build_return(Some(&i32.const_int(0, false)));
 
-            // ---- Wrapper: pthread_mutex_lock(mutex_ptr) -> i32 ----
+            // ---- Wrapper: action_mutex_lock(mutex_ptr) -> i32 ----
             let mtx_lock_fn = self.module.add_function(
-                "pthread_mutex_lock",
+                "action_mutex_lock",
                 i32.fn_type(&[ptr.into()], false),
                 None,
             );
@@ -405,9 +818,9 @@ impl<'ctx> CodeGen<'ctx> {
             );
             let _ = self.builder.build_return(Some(&i32.const_int(0, false)));
 
-            // ---- Wrapper: pthread_mutex_unlock(mutex_ptr) -> i32 ----
+            // ---- Wrapper: action_mutex_unlock(mutex_ptr) -> i32 ----
             let mtx_unlock_fn = self.module.add_function(
-                "pthread_mutex_unlock",
+                "action_mutex_unlock",
                 i32.fn_type(&[ptr.into()], false),
                 None,
             );
@@ -424,9 +837,9 @@ impl<'ctx> CodeGen<'ctx> {
             );
             let _ = self.builder.build_return(Some(&i32.const_int(0, false)));
 
-            // ---- Wrapper: pthread_mutex_destroy(mutex_ptr) -> i32 ----
+            // ---- Wrapper: action_mutex_destroy(mutex_ptr) -> i32 ----
             let mtx_destroy_fn = self.module.add_function(
-                "pthread_mutex_destroy",
+                "action_mutex_destroy",
                 i32.fn_type(&[ptr.into()], false),
                 None,
             );
@@ -443,9 +856,9 @@ impl<'ctx> CodeGen<'ctx> {
             );
             let _ = self.builder.build_return(Some(&i32.const_int(0, false)));
 
-            // ---- Wrapper: pthread_cond_init(cond_ptr, attr) -> i32 ----
+            // ---- Wrapper: action_cond_init(cond_ptr, attr) -> i32 ----
             let cond_init_fn = self.module.add_function(
-                "pthread_cond_init",
+                "action_cond_init",
                 i32.fn_type(&[ptr.into(), ptr.into()], false),
                 None,
             );
@@ -461,9 +874,9 @@ impl<'ctx> CodeGen<'ctx> {
             );
             let _ = self.builder.build_return(Some(&i32.const_int(0, false)));
 
-            // ---- Wrapper: pthread_cond_wait(cond_ptr, mutex_ptr) -> i32 ----
+            // ---- Wrapper: action_cond_wait(cond_ptr, mutex_ptr) -> i32 ----
             let cond_wait_fn = self.module.add_function(
-                "pthread_cond_wait",
+                "action_cond_wait",
                 i32.fn_type(&[ptr.into(), ptr.into()], false),
                 None,
             );
@@ -481,10 +894,10 @@ impl<'ctx> CodeGen<'ctx> {
             );
             let _ = self.builder.build_return(Some(&i32.const_int(0, false)));
 
-            // ---- Wrapper: pthread_cond_timedwait(cond_ptr, mutex_ptr, ts_ptr) -> i32 ----
+            // ---- Wrapper: action_cond_timedwait(cond_ptr, mutex_ptr, ts_ptr) -> i32 ----
             // Not implemented: return error for now
             let cond_tw_fn = self.module.add_function(
-                "pthread_cond_timedwait",
+                "action_cond_timedwait",
                 i32.fn_type(&[ptr.into(), ptr.into(), ptr.into()], false),
                 None,
             );
@@ -492,9 +905,9 @@ impl<'ctx> CodeGen<'ctx> {
             self.builder.position_at_end(cond_tw_entry);
             let _ = self.builder.build_return(Some(&i32.const_int(1, false)));
 
-            // ---- Wrapper: pthread_cond_signal(cond_ptr) -> i32 ----
+            // ---- Wrapper: action_cond_signal(cond_ptr) -> i32 ----
             let cond_sig_fn = self.module.add_function(
-                "pthread_cond_signal",
+                "action_cond_signal",
                 i32.fn_type(&[ptr.into()], false),
                 None,
             );
@@ -508,9 +921,9 @@ impl<'ctx> CodeGen<'ctx> {
             );
             let _ = self.builder.build_return(Some(&i32.const_int(0, false)));
 
-            // ---- Wrapper: pthread_cond_broadcast(cond_ptr) -> i32 ----
+            // ---- Wrapper: action_cond_broadcast(cond_ptr) -> i32 ----
             let cond_bc_fn = self.module.add_function(
-                "pthread_cond_broadcast",
+                "action_cond_broadcast",
                 i32.fn_type(&[ptr.into()], false),
                 None,
             );
@@ -526,9 +939,9 @@ impl<'ctx> CodeGen<'ctx> {
             );
             let _ = self.builder.build_return(Some(&i32.const_int(0, false)));
 
-            // ---- Wrapper: pthread_cond_destroy(cond_ptr) -> i32 (no-op on Win32) ----
+            // ---- Wrapper: action_cond_destroy(cond_ptr) -> i32 (no-op on Win32) ----
             let cond_destroy_fn = self.module.add_function(
-                "pthread_cond_destroy",
+                "action_cond_destroy",
                 i32.fn_type(&[ptr.into()], false),
                 None,
             );
@@ -536,9 +949,9 @@ impl<'ctx> CodeGen<'ctx> {
             self.builder.position_at_end(cond_destroy_entry);
             let _ = self.builder.build_return(Some(&i32.const_int(0, false)));
 
-            // ---- Wrapper: pthread_create(tid_ptr, attr, func, arg) -> i32 ----
+            // ---- Wrapper: action_thread_create(tid_ptr, attr, func, arg) -> i32 ----
             let thread_create_fn = self.module.add_function(
-                "pthread_create",
+                "action_thread_create",
                 i32.fn_type(&[ptr.into(), ptr.into(), ptr.into(), ptr.into()], false),
                 None,
             );
@@ -584,9 +997,9 @@ impl<'ctx> CodeGen<'ctx> {
             let _ = self.builder.build_store(tc_tid, result);
             let _ = self.builder.build_return(Some(&i32.const_int(0, false)));
 
-            // ---- Wrapper: pthread_join(thread_handle, retval) -> i32 ----
+            // ---- Wrapper: action_thread_join(thread_handle, retval) -> i32 ----
             let thread_join_fn = self.module.add_function(
-                "pthread_join",
+                "action_thread_join",
                 i32.fn_type(&[i64.into(), ptr.into()], false),
                 None,
             );
@@ -611,10 +1024,12 @@ impl<'ctx> CodeGen<'ctx> {
             );
             let _ = self.builder.build_return(Some(&i32.const_int(0, false)));
 
-            // ---- Wrapper: pthread_detach(thread_handle) -> i32 ----
-            let thread_detach_fn =
-                self.module
-                    .add_function("pthread_detach", i32.fn_type(&[i64.into()], false), None);
+            // ---- Wrapper: action_thread_detach(thread_handle) -> i32 ----
+            let thread_detach_fn = self.module.add_function(
+                "action_thread_detach",
+                i32.fn_type(&[i64.into()], false),
+                None,
+            );
             let td_entry = self.context.append_basic_block(thread_detach_fn, "entry");
             self.builder.position_at_end(td_entry);
             let td_thread = thread_detach_fn.get_first_param().unwrap().into_int_value();
@@ -625,10 +1040,12 @@ impl<'ctx> CodeGen<'ctx> {
             );
             let _ = self.builder.build_return(Some(&i32.const_int(0, false)));
 
-            // ---- Wrapper: pthread_cancel(thread_handle) -> i32 ----
-            let thread_cancel_fn =
-                self.module
-                    .add_function("pthread_cancel", i32.fn_type(&[i64.into()], false), None);
+            // ---- Wrapper: action_thread_cancel(thread_handle) -> i32 ----
+            let thread_cancel_fn = self.module.add_function(
+                "action_thread_cancel",
+                i32.fn_type(&[i64.into()], false),
+                None,
+            );
             let tcan_entry = self.context.append_basic_block(thread_cancel_fn, "entry");
             self.builder.position_at_end(tcan_entry);
             let tcan_thread = thread_cancel_fn.get_first_param().unwrap().into_int_value();
@@ -639,10 +1056,12 @@ impl<'ctx> CodeGen<'ctx> {
             );
             let _ = self.builder.build_return(Some(&i32.const_int(0, false)));
 
-            // ---- Wrapper: usleep(microseconds) -> i32 ----
-            let usleep_fn =
-                self.module
-                    .add_function("usleep", i32.fn_type(&[i32.into()], false), None);
+            // ---- Wrapper: action_sleep_us(microseconds) -> i32 ----
+            let usleep_fn = self.module.add_function(
+                "action_sleep_us",
+                i32.fn_type(&[i32.into()], false),
+                None,
+            );
             let us_entry = self.context.append_basic_block(usleep_fn, "entry");
             self.builder.position_at_end(us_entry);
             let us_usec = usleep_fn.get_first_param().unwrap().into_int_value();
@@ -664,12 +1083,12 @@ impl<'ctx> CodeGen<'ctx> {
             );
             let _ = self.builder.build_return(Some(&i32.const_int(0, false)));
 
-            // ---- Wrapper: clock_gettime(clockid, timespec*) -> i32 ----
+            // ---- Wrapper: action_clock_gettime(clockid, timespec*) -> i32 ----
             // Not implemented on Windows; returns error.
             // This function is declared for module completeness but never
             // actually called by the current codegen.
             let cgt_fn = self.module.add_function(
-                "clock_gettime",
+                "action_clock_gettime",
                 i32.fn_type(&[i32.into(), ptr.into()], false),
                 None,
             );
