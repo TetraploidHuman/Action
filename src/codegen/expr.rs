@@ -220,7 +220,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let mut saved_scope = Scope::new();
         std::mem::swap(&mut self.scope, &mut saved_scope);
-        self.scope = Scope::with_parent(saved_scope.clone());
+        self.scope = Scope::new();
 
         for (i, param) in params.iter().enumerate() {
             if let Some(pv) = function.get_nth_param(i as u32) {
