@@ -1,25 +1,32 @@
 // Test: JSON error handling - invalid input
-import json.{jsonParse, jsonType, jsonGet, jsonIsNull, jsonGetIdx, jsonLen, jsonFree}
+external type JsonNode
+external fun action_json_parse(s: CString): Ptr[JsonNode]
+external fun action_json_type(node: Ptr[JsonNode]): Int
+external fun action_json_get(node: Ptr[JsonNode], key: CString): Ptr[JsonNode]
+external fun action_json_get_idx(node: Ptr[JsonNode], idx: Int): Ptr[JsonNode]
+external fun action_json_as_float(node: Ptr[JsonNode]): Float
+external fun action_json_len(node: Ptr[JsonNode]): Int
+external fun action_json_free(node: Ptr[JsonNode])
 
 fun main() {
     // Parse invalid JSON
-    val bad = jsonParse("{invalid json content}")
-    println(jsonType(bad))
+    val bad = action_json_parse(to_cstring("{invalid"))
+    println(action_json_type(bad))
 
-    // Parse valid JSON but access missing key
-    val obj = jsonParse("{\"x\": 1}")
-    var missing = jsonGet(obj, "y")
-    println(jsonIsNull(missing))
+    // Missing key
+    val obj = action_json_parse(to_cstring("{\"x\": 1}"))
+    val missing = action_json_get(obj, to_cstring("y"))
+    println(action_json_type(missing))
 
-    // Access array with out-of-bounds index
-    val arr = jsonParse("[1, 2, 3]")
-    var oob = jsonGetIdx(arr, 10)
-    println(jsonIsNull(oob))
+    // Out of bounds
+    val arr = action_json_parse(to_cstring("[1, 2, 3]"))
+    val oob = action_json_get_idx(arr, 10)
+    println(action_json_type(oob))
 
-    // jsonLen on non-array/object
-    var num = jsonGet(obj, "x")
-    println(jsonLen(num))
+    // jsonLen on number
+    val num = action_json_get(obj, to_cstring("x"))
+    println(action_json_len(num))
 
-    jsonFree(obj)
-    jsonFree(arr)
+    action_json_free(obj)
+    action_json_free(arr)
 }

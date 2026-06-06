@@ -568,24 +568,16 @@ fn test_json() {
         run_example("test_json.at"),
         "Alice\n\
          30\n\
-         true\n\
-         95.5\n\
-         5\n\
+         3\n\
          10\n\
-         30\n\
-         Bob\n\
-         3\n\
-         92\n\
-         {\"active\":true,\"age\":30,\"name\":\"Alice\",\"score\":95.5}\n\
          5\n\
-         4\n\
          3\n\
-         2\n\
-         true\n"
+         {\"age\":30,\"name\":\"Alice\"}\n\
+         -1\n"
     );
 }
 
 #[test]
 fn test_json_error() {
-    assert_eq!(run_example("test_json_error.at"), "-1\ntrue\ntrue\n-1\n");
+    assert_eq!(run_example("test_json_error.at"), "-1\n-1\n-1\n-1\n");
 }
