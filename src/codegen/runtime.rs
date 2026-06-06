@@ -11397,30 +11397,37 @@ impl<'ctx> CodeGen<'ctx> {
             .try_as_basic_value()
             .unwrap_basic()
             .into_pointer_value();
-        // Get stdin via fdopen(0, "r") — portable across Linux (libc) and Windows (UCRT).
-        // MSVC does not export "stdin" as a global symbol; fdopen avoids that issue.
-        let fdopen_fn = self.module.add_function(
-            "fdopen",
-            ptr.fn_type(&[i32.into(), ptr.into()], false),
-            None,
-        );
-        let r_mode = unsafe {
-            self.builder
-                .build_global_string_ptr("r\0", "r_mode")
-                .map_err(llvm_err)?
-                .as_pointer_value()
+        // Get stdin FILE* — platform-specific:
+        //   Linux/glibc:   stdin is a global symbol exported by libc
+        //   Windows/MSVC:  stdin is not a symbol; use __acrt_iob_func(0) instead
+        let stdin_ptr = {
+            #[cfg(target_os = "windows")]
+            {
+                let acrt_fn = self.module.add_function(
+                    "__acrt_iob_func",
+                    ptr.fn_type(&[i32.into()], false),
+                    None,
+                );
+                self.builder
+                    .build_call(
+                        acrt_fn,
+                        &[i32.const_int(0, false).into()],
+                        "stdin",
+                    )
+                    .map_err(llvm_err)?
+                    .try_as_basic_value()
+                    .unwrap_basic()
+                    .into_pointer_value()
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                let stdin_g = self.module.add_global(ptr, None, "stdin");
+                self.builder
+                    .build_load(ptr, stdin_g.as_pointer_value(), "stdin_ptr")
+                    .map_err(llvm_err)?
+                    .into_pointer_value()
+            }
         };
-        let stdin_ptr = self
-            .builder
-            .build_call(
-                fdopen_fn,
-                &[i32.const_int(0, false).into(), r_mode.into()],
-                "stdin",
-            )
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .unwrap_basic()
-            .into_pointer_value();
         let fgets_ret = self
             .builder
             .build_call(
