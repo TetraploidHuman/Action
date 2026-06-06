@@ -63,6 +63,7 @@ pub(super) enum ValKind {
     Unit,
 }
 
+#[derive(Clone)]
 struct ScopeVar<'ctx> {
     ptr: PointerValue<'ctx>,
     ty: inkwell::types::BasicTypeEnum<'ctx>,
@@ -81,6 +82,7 @@ struct ScopeVar<'ctx> {
     enum_data_rc_managed: bool,
 }
 
+#[derive(Clone)]
 pub(super) struct Scope<'ctx> {
     variables: HashMap<String, ScopeVar<'ctx>>,
     parent: Option<Box<Scope<'ctx>>>,
