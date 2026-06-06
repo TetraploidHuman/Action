@@ -1,0 +1,8 @@
+// Test read_line with no stdin (should return None / EOF)
+fun main() {
+    val line = read_line()
+    when line {
+        Some(s) -> print(s)
+        None -> print("EOF")
+    }
+}

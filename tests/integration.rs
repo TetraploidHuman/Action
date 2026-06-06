@@ -303,3 +303,15 @@ fn test_lambda_capture() {
 fn test_map_option() {
     assert_eq!(run_example("test_map_option.at"), "42");
 }
+
+#[test]
+fn test_read_line() {
+    // No stdin input: read_line returns None, prints "EOF"
+    assert_eq!(run_example("test_read_line.at"), "EOF");
+}
+
+#[test]
+fn test_io() {
+    // read_line with EOF -> unwrap_or default "World"
+    assert_eq!(run_example("io.at"), "Hello, World\n");
+}
