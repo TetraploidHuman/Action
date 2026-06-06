@@ -3,7 +3,8 @@
 use crate::ast::*;
 use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
 use inkwell::values::{
-    BasicMetadataValueEnum, BasicValue, FloatValue, IntValue, PointerValue, StructValue,
+    BasicMetadataValueEnum, BasicValue, BasicValueEnum, FloatValue, IntValue, PointerValue,
+    StructValue,
 };
 use inkwell::{FloatPredicate, IntPredicate};
 
@@ -2094,8 +2095,8 @@ impl<'ctx> CodeGen<'ctx> {
         handler_expr: &Expr,
     ) -> Result<TypedValue<'ctx>, String> {
         let val = self.compile_expr(enum_expr)?;
-        let (enum_ptr, enum_ty) = match val {
-            TypedValue::Enum(p, t, ..) => (p, t),
+        let (enum_ptr, enum_ty, inner_type) = match val {
+            TypedValue::Enum(p, t, inner_type, ..) => (p, t, inner_type),
             _ => {
                 return Err("or_else: first argument must be an enum (Option or Result)".to_string())
             }
@@ -2142,28 +2143,106 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_pointer_cast(data_ptr, self.ptr_ty(), "oe_inner")
             .map_err(llvm_err)?;
-        let inner_val = self
-            .builder
-            .build_load(i64, inner_ptr, "oe_v")
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(merge_block);
-
-        // None/Err branch: evaluate handler/default
-        self.builder.position_at_end(none_block);
-        let handler_val = self.compile_expr(handler_expr)?;
-        let handler_bv = handler_val
-            .to_bv()
-            .unwrap_or_else(|| i64.const_int(0, false).as_basic_value_enum());
-        let _ = self.builder.build_unconditional_branch(merge_block);
-
-        // Merge
-        self.builder.position_at_end(merge_block);
-        let phi = self.builder.build_phi(i64, "oe_phi").map_err(llvm_err)?;
-        phi.add_incoming(&[
-            (&inner_val, some_block),
-            (&handler_bv.into_int_value(), none_block),
-        ]);
-        Ok(TypedValue::Int(phi.as_basic_value().into_int_value()))
+        match inner_type {
+            InnerType::Int => {
+                let inner_val = self
+                    .builder
+                    .build_load(i64, inner_ptr, "oe_v")
+                    .map_err(llvm_err)?;
+                let _ = self.builder.build_unconditional_branch(merge_block);
+                self.builder.position_at_end(none_block);
+                let handler_val = self.compile_expr(handler_expr)?;
+                let handler_bv = handler_val
+                    .to_bv()
+                    .unwrap_or_else(|| i64.const_int(0, false).as_basic_value_enum());
+                let _ = self.builder.build_unconditional_branch(merge_block);
+                self.builder.position_at_end(merge_block);
+                let phi = self.builder.build_phi(i64, "oe_phi").map_err(llvm_err)?;
+                phi.add_incoming(&[
+                    (&inner_val, some_block),
+                    (&handler_bv.into_int_value(), none_block),
+                ]);
+                Ok(TypedValue::Int(phi.as_basic_value().into_int_value()))
+            }
+            InnerType::Float => {
+                let f64_ty = self.f64_ty();
+                let inner_val = self
+                    .builder
+                    .build_load(f64_ty, inner_ptr, "oe_fv")
+                    .map_err(llvm_err)?;
+                let _ = self.builder.build_unconditional_branch(merge_block);
+                self.builder.position_at_end(none_block);
+                let handler_val = self.compile_expr(handler_expr)?;
+                let handler_fv = match handler_val {
+                    TypedValue::Float(f) => f,
+                    TypedValue::Int(i) => self
+                        .builder
+                        .build_signed_int_to_float(i, f64_ty, "oe_i2f")
+                        .map_err(llvm_err)?,
+                    _ => {
+                        return Err(
+                            "or_else: default must be numeric for Option<Float>".to_string()
+                        )
+                    }
+                };
+                let _ = self.builder.build_unconditional_branch(merge_block);
+                self.builder.position_at_end(merge_block);
+                let phi = self
+                    .builder
+                    .build_phi(f64_ty, "oe_fphi")
+                    .map_err(llvm_err)?;
+                phi.add_incoming(&[
+                    (&inner_val, some_block),
+                    (&handler_fv, none_block),
+                ]);
+                Ok(TypedValue::Float(
+                    phi.as_basic_value().into_float_value(),
+                ))
+            }
+            InnerType::Str => {
+                let str_ptr_ty = self
+                    .string_type
+                    .ptr_type(inkwell::AddressSpace::default());
+                let str_ptr = self
+                    .builder
+                    .build_pointer_cast(inner_ptr, str_ptr_ty, "oe_str_ptr")
+                    .map_err(llvm_err)?;
+                let str_val = self
+                    .builder
+                    .build_load(self.string_type, str_ptr, "oe_str")
+                    .map_err(llvm_err)?;
+                let _ = self.builder.build_unconditional_branch(merge_block);
+                self.builder.position_at_end(none_block);
+                let handler_val = self.compile_expr(handler_expr)?;
+                let handler_ptr = match handler_val {
+                    TypedValue::Str(p) => p,
+                    _ => {
+                        return Err(
+                            "or_else: default must be a string for Option<String>".to_string()
+                        )
+                    }
+                };
+                let hv = self
+                    .builder
+                    .build_load(self.string_type, handler_ptr, "oe_hv")
+                    .map_err(llvm_err)?;
+                let _ = self.builder.build_unconditional_branch(merge_block);
+                self.builder.position_at_end(merge_block);
+                let phi = self
+                    .builder
+                    .build_phi(self.string_type, "oe_sphi")
+                    .map_err(llvm_err)?;
+                phi.add_incoming(&[(&str_val, some_block), (&hv, none_block)]);
+                let result_alloca = self
+                    .builder
+                    .build_alloca(self.string_type, "oe_str_res")
+                    .map_err(llvm_err)?;
+                self.builder
+                    .build_store(result_alloca, phi.as_basic_value())
+                    .map_err(llvm_err)?;
+                Ok(TypedValue::Str(result_alloca))
+            }
+        }
     }
 
     /// ok(option, err_val) - convert Option<T> to Result<T, E>
@@ -2174,8 +2253,8 @@ impl<'ctx> CodeGen<'ctx> {
         err_expr: &Expr,
     ) -> Result<TypedValue<'ctx>, String> {
         let val = self.compile_expr(opt_expr)?;
-        let (opt_ptr, opt_ty) = match val {
-            TypedValue::Enum(p, t, ..) => (p, t),
+        let (opt_ptr, opt_ty, opt_inner_type) = match val {
+            TypedValue::Enum(p, t, inner_type, ..) => (p, t, inner_type),
             _ => return Err("ok: first argument must be an Option enum".to_string()),
         };
         let i64 = self.i64_ty();
@@ -2237,7 +2316,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_conditional_branch(is_some, some_block, none_block);
 
-        // Some branch: extract value, create Ok(result)
+        // Some branch: extract value with correct type, create Ok(result)
         self.builder.position_at_end(some_block);
         let data_ptr = self
             .builder
@@ -2248,20 +2327,60 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_pointer_cast(data_ptr, self.ptr_ty(), "ok_inner")
             .map_err(llvm_err)?;
-        let inner_val = self
-            .builder
-            .build_load(i64, inner_ptr, "ok_v")
-            .map_err(llvm_err)?;
-
-        // Allocate heap memory and store the inner value
         let buf = self.malloc_rc(i64.const_int(8, false))?;
-        let buf_i64 = self
-            .builder
-            .build_pointer_cast(buf, self.ptr_ty(), "ok_buf_p")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(buf_i64, inner_val)
-            .map_err(llvm_err)?;
+        match opt_inner_type {
+            InnerType::Int => {
+                let inner_val = self
+                    .builder
+                    .build_load(i64, inner_ptr, "ok_v")
+                    .map_err(llvm_err)?;
+                let buf_i64 = self
+                    .builder
+                    .build_pointer_cast(buf, self.ptr_ty(), "ok_buf_p")
+                    .map_err(llvm_err)?;
+                self.builder
+                    .build_store(buf_i64, inner_val)
+                    .map_err(llvm_err)?;
+            }
+            InnerType::Float => {
+                let f64_ty = self.f64_ty();
+                let inner_val = self
+                    .builder
+                    .build_load(f64_ty, inner_ptr, "ok_fv")
+                    .map_err(llvm_err)?;
+                let buf_f64 = self
+                    .builder
+                    .build_pointer_cast(
+                        buf,
+                        f64_ty.ptr_type(inkwell::AddressSpace::default()),
+                        "ok_buf_f",
+                    )
+                    .map_err(llvm_err)?;
+                self.builder
+                    .build_store(buf_f64, inner_val)
+                    .map_err(llvm_err)?;
+            }
+            InnerType::Str => {
+                let str_ptr_ty = self
+                    .string_type
+                    .ptr_type(inkwell::AddressSpace::default());
+                let str_ptr = self
+                    .builder
+                    .build_pointer_cast(inner_ptr, str_ptr_ty, "ok_str_ptr")
+                    .map_err(llvm_err)?;
+                let str_val = self
+                    .builder
+                    .build_load(self.string_type, str_ptr, "ok_str")
+                    .map_err(llvm_err)?;
+                let buf_str = self
+                    .builder
+                    .build_pointer_cast(buf, str_ptr_ty, "ok_buf_s")
+                    .map_err(llvm_err)?;
+                self.builder
+                    .build_store(buf_str, str_val)
+                    .map_err(llvm_err)?;
+            }
+        }
         self.rc_inc(buf)?;
 
         let undef = result_ty.get_undef();
@@ -2314,7 +2433,7 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::Enum(
             result_alloca,
             result_ty,
-            InnerType::Int,
+            opt_inner_type,
             true,
         ))
     }
@@ -9055,8 +9174,8 @@ impl<'ctx> CodeGen<'ctx> {
         };
 
         // Get the enum value (as an alloca pointer to {i64, ptr})
-        let (enum_ptr, enum_ty) = match enum_val {
-            TypedValue::Enum(p, t, ..) => (p, t),
+        let (enum_ptr, enum_ty, inner_type) = match enum_val {
+            TypedValue::Enum(p, t, inner_type, ..) => (p, t, inner_type),
             _ => {
                 return Err(format!(
                     "{}: first argument must be an {}",
@@ -9130,15 +9249,36 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_pointer_cast(data_ptr, self.ptr_ty(), "fm_inner")
             .map_err(llvm_err)?;
-        let inner_val = self
-            .builder
-            .build_load(i64, inner_ptr, "fm_v")
-            .map_err(llvm_err)?;
+        let inner_bv: BasicValueEnum = match inner_type {
+            InnerType::Int => self
+                .builder
+                .build_load(i64, inner_ptr, "fm_v")
+                .map_err(llvm_err)?
+                .as_basic_value_enum(),
+            InnerType::Float => self
+                .builder
+                .build_load(self.f64_ty(), inner_ptr, "fm_fv")
+                .map_err(llvm_err)?
+                .as_basic_value_enum(),
+            InnerType::Str => {
+                let str_ptr_ty = self
+                    .string_type
+                    .ptr_type(inkwell::AddressSpace::default());
+                let str_ptr = self
+                    .builder
+                    .build_pointer_cast(inner_ptr, str_ptr_ty, "fm_str_ptr")
+                    .map_err(llvm_err)?;
+                self.builder
+                    .build_load(self.string_type, str_ptr, "fm_str")
+                    .map_err(llvm_err)?
+                    .as_basic_value_enum()
+            }
+        };
 
         // Call the callback with its actual function type (not i64->i64!)
         let cc = self
             .builder
-            .build_indirect_call(fn_type, fn_ptr, &[inner_val.into()], "fm_call")
+            .build_indirect_call(fn_type, fn_ptr, &[inner_bv.into()], "fm_call")
             .map_err(llvm_err)?;
         match cc.try_as_basic_value().basic() {
             Some(bv) => {
@@ -9194,8 +9334,8 @@ impl<'ctx> CodeGen<'ctx> {
             _ => return Err("map: second argument must be a function".to_string()),
         };
 
-        let (enum_ptr, enum_ty) = match enum_val {
-            TypedValue::Enum(p, t, ..) => (p, t),
+        let (enum_ptr, enum_ty, inner_type) = match enum_val {
+            TypedValue::Enum(p, t, inner_type, ..) => (p, t, inner_type),
             _ => return Err("map: first argument must be an Option or Result".to_string()),
         };
 
@@ -9271,15 +9411,36 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_pointer_cast(data_ptr, ptr, "em_inner")
             .map_err(llvm_err)?;
-        let inner_val = self
-            .builder
-            .build_load(i64, inner_ptr, "em_v")
-            .map_err(llvm_err)?;
+        let inner_bv: BasicValueEnum = match inner_type {
+            InnerType::Int => self
+                .builder
+                .build_load(i64, inner_ptr, "em_v")
+                .map_err(llvm_err)?
+                .as_basic_value_enum(),
+            InnerType::Float => self
+                .builder
+                .build_load(self.f64_ty(), inner_ptr, "em_fv")
+                .map_err(llvm_err)?
+                .as_basic_value_enum(),
+            InnerType::Str => {
+                let str_ptr_ty = self
+                    .string_type
+                    .ptr_type(inkwell::AddressSpace::default());
+                let str_ptr = self
+                    .builder
+                    .build_pointer_cast(inner_ptr, str_ptr_ty, "em_str_ptr")
+                    .map_err(llvm_err)?;
+                self.builder
+                    .build_load(self.string_type, str_ptr, "em_str")
+                    .map_err(llvm_err)?
+                    .as_basic_value_enum()
+            }
+        };
 
         // Call the callback with the inner value
         let cc = self
             .builder
-            .build_indirect_call(fn_type, fn_ptr, &[inner_val.into()], "em_call")
+            .build_indirect_call(fn_type, fn_ptr, &[inner_bv.into()], "em_call")
             .map_err(llvm_err)?;
         let cb_result = cc.try_as_basic_value().basic().ok_or("em call failed")?;
 
