@@ -305,14 +305,12 @@ fn test_map_option() {
 }
 
 #[test]
-#[cfg(not(target_os = "windows"))]
 fn test_read_line() {
     // No stdin input: read_line returns None, prints "EOF"
     assert_eq!(run_example("test_read_line.at"), "EOF");
 }
 
 #[test]
-#[cfg(not(target_os = "windows"))]
 fn test_io() {
     // read_line with EOF -> unwrap_or default "World"
     assert_eq!(run_example("io.at"), "Hello, World\n");
