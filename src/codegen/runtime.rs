@@ -278,7 +278,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Create format string globals (all null-terminated)
         let fmt_int_ptr = make_global_str(".fmt_int", b"%ld\0");
-        let fmt_float_ptr = make_global_str(".fmt_float", b"%g \0");
+        let fmt_float_ptr = make_global_str(".fmt_float", b"%g\0");
         let fmt_str_ptr = make_global_str(".fmt_str", b"%s\0");
         let fmt_nl_ptr = make_global_str(".fmt_nl", b"\n\0");
         let str_true_ptr = make_global_str(".str_true", b"true\0");
@@ -290,9 +290,10 @@ impl<'ctx> CodeGen<'ctx> {
         let fmt_task_mid_ptr = make_global_str(".fmt_task_mid", b", cancelled=\0");
         let fmt_task_suf_ptr = make_global_str(".fmt_task_suf", b")\0");
         let fmt_struct_ptr = make_global_str(".fmt_struct", b"<struct>\0");
-        let str_none_ptr = make_global_str(".str_none", b"None\0");
-        let str_some_pre_ptr = make_global_str(".str_some_pre", b"Some(\0");
-        let str_some_suf_ptr = make_global_str(".str_some_suf", b")\0");
+        let fmt_ev_pre = make_global_str(".fmt_ev_pre", b"EnumVariant<\0");
+        let fmt_ev_gt = make_global_str(".fmt_ev_gt", b">\0");
+        let fmt_ev_lp = make_global_str(".fmt_ev_lp", b">(\0");
+        let fmt_ev_rp = make_global_str(".fmt_ev_rp", b")\0");
 
         // Save builder position (might be None since no function has been positioned yet)
         let saved_pos = self.builder.get_insert_block();
@@ -535,6 +536,7 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self.builder.build_return(None);
 
         // ---- action_print_enum({i64, ptr}) ----
+        // Prints EnumVariant<tag> for nullary variants or EnumVariant<tag>(val) for data-carrying ones.
         let enum_ty = self.context.struct_type(&[i64.into(), ptr.into()], false);
         let enum_print_fn = self.module.add_function(
             "action_print_enum",
@@ -552,46 +554,58 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_extract_value(ep_enum, 1, "data")
             .map_err(llvm_err)?;
-        let is_some = self
-            .builder
-            .build_int_compare(
-                IntPredicate::EQ,
-                ep_tag.into_int_value(),
-                i64.const_int(0, false),
-                "is_some",
-            )
-            .map_err(llvm_err)?;
-        let ep_some_bb = self.context.append_basic_block(enum_print_fn, "some");
-        let ep_none_bb = self.context.append_basic_block(enum_print_fn, "none");
-        let ep_merge_bb = self.context.append_basic_block(enum_print_fn, "merge");
-        let _ = self
-            .builder
-            .build_conditional_branch(is_some, ep_some_bb, ep_none_bb);
-        // Some: print "Some(val)"
-        self.builder.position_at_end(ep_some_bb);
-        let _ = self
-            .builder
-            .build_call(printf_fn, &[str_some_pre_ptr.into()], "");
-        let ep_val_ptr = self
+        let ep_data_ptr = self
             .builder
             .build_pointer_cast(ep_data.into_pointer_value(), ptr, "vp")
             .map_err(llvm_err)?;
+        let is_null = self
+            .builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                ep_data_ptr,
+                ptr.const_zero(),
+                "is_null",
+            )
+            .map_err(llvm_err)?;
+        let ep_data_bb = self.context.append_basic_block(enum_print_fn, "has_data");
+        let ep_no_data_bb = self.context.append_basic_block(enum_print_fn, "no_data");
+        let ep_merge_bb = self.context.append_basic_block(enum_print_fn, "merge");
+        let _ = self
+            .builder
+            .build_conditional_branch(is_null, ep_no_data_bb, ep_data_bb);
+        // Has data: print EnumVariant<tag>(val)
+        self.builder.position_at_end(ep_data_bb);
+        let _ = self
+            .builder
+            .build_call(printf_fn, &[fmt_ev_pre.into()], "");
+        let _ = self
+            .builder
+            .build_call(printf_fn, &[fmt_int_ptr.into(), ep_tag.into()], "");
+        let _ = self
+            .builder
+            .build_call(printf_fn, &[fmt_ev_lp.into()], "");
         let ep_val = self
             .builder
-            .build_load(i64, ep_val_ptr, "val")
+            .build_load(i64, ep_data_ptr, "val")
             .map_err(llvm_err)?;
         let _ = self
             .builder
             .build_call(printf_fn, &[fmt_int_ptr.into(), ep_val.into()], "");
         let _ = self
             .builder
-            .build_call(printf_fn, &[str_some_suf_ptr.into()], "");
+            .build_call(printf_fn, &[fmt_ev_rp.into()], "");
         let _ = self.builder.build_unconditional_branch(ep_merge_bb);
-        // None: print "None"
-        self.builder.position_at_end(ep_none_bb);
+        // No data: print EnumVariant<tag>
+        self.builder.position_at_end(ep_no_data_bb);
         let _ = self
             .builder
-            .build_call(printf_fn, &[str_none_ptr.into()], "");
+            .build_call(printf_fn, &[fmt_ev_pre.into()], "");
+        let _ = self
+            .builder
+            .build_call(printf_fn, &[fmt_int_ptr.into(), ep_tag.into()], "");
+        let _ = self
+            .builder
+            .build_call(printf_fn, &[fmt_ev_gt.into()], "");
         let _ = self.builder.build_unconditional_branch(ep_merge_bb);
         self.builder.position_at_end(ep_merge_bb);
         let _ = self.builder.build_return(None);
@@ -614,46 +628,58 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_extract_value(epf_enum, 1, "data")
             .map_err(llvm_err)?;
-        let epf_is_some = self
-            .builder
-            .build_int_compare(
-                IntPredicate::EQ,
-                epf_tag.into_int_value(),
-                i64.const_int(0, false),
-                "is_some_f",
-            )
-            .map_err(llvm_err)?;
-        let epf_some_bb = self.context.append_basic_block(epf_fn, "some");
-        let epf_none_bb = self.context.append_basic_block(epf_fn, "none");
-        let epf_merge_bb = self.context.append_basic_block(epf_fn, "merge");
-        let _ = self
-            .builder
-            .build_conditional_branch(epf_is_some, epf_some_bb, epf_none_bb);
-        // Some: print "Some(val)" with float
-        self.builder.position_at_end(epf_some_bb);
-        let _ = self
-            .builder
-            .build_call(printf_fn, &[str_some_pre_ptr.into()], "");
-        let epf_val_ptr = self
+        let epf_data_ptr = self
             .builder
             .build_pointer_cast(epf_data.into_pointer_value(), ptr, "vpf")
             .map_err(llvm_err)?;
+        let epf_is_null = self
+            .builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                epf_data_ptr,
+                ptr.const_zero(),
+                "is_null_f",
+            )
+            .map_err(llvm_err)?;
+        let epf_data_bb = self.context.append_basic_block(epf_fn, "has_data");
+        let epf_no_data_bb = self.context.append_basic_block(epf_fn, "no_data");
+        let epf_merge_bb = self.context.append_basic_block(epf_fn, "merge");
+        let _ = self
+            .builder
+            .build_conditional_branch(epf_is_null, epf_no_data_bb, epf_data_bb);
+        // Has data: print EnumVariant<tag>(val) with float
+        self.builder.position_at_end(epf_data_bb);
+        let _ = self
+            .builder
+            .build_call(printf_fn, &[fmt_ev_pre.into()], "");
+        let _ = self
+            .builder
+            .build_call(printf_fn, &[fmt_int_ptr.into(), epf_tag.into()], "");
+        let _ = self
+            .builder
+            .build_call(printf_fn, &[fmt_ev_lp.into()], "");
         let epf_val = self
             .builder
-            .build_load(f64, epf_val_ptr, "valf")
+            .build_load(f64, epf_data_ptr, "valf")
             .map_err(llvm_err)?;
         let _ = self
             .builder
             .build_call(printf_fn, &[fmt_float_ptr.into(), epf_val.into()], "");
         let _ = self
             .builder
-            .build_call(printf_fn, &[str_some_suf_ptr.into()], "");
+            .build_call(printf_fn, &[fmt_ev_rp.into()], "");
         let _ = self.builder.build_unconditional_branch(epf_merge_bb);
-        // None: print "None"
-        self.builder.position_at_end(epf_none_bb);
+        // No data: print EnumVariant<tag>
+        self.builder.position_at_end(epf_no_data_bb);
         let _ = self
             .builder
-            .build_call(printf_fn, &[str_none_ptr.into()], "");
+            .build_call(printf_fn, &[fmt_ev_pre.into()], "");
+        let _ = self
+            .builder
+            .build_call(printf_fn, &[fmt_int_ptr.into(), epf_tag.into()], "");
+        let _ = self
+            .builder
+            .build_call(printf_fn, &[fmt_ev_gt.into()], "");
         let _ = self.builder.build_unconditional_branch(epf_merge_bb);
         self.builder.position_at_end(epf_merge_bb);
         let _ = self.builder.build_return(None);

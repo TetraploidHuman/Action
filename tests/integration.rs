@@ -426,7 +426,7 @@ fn test_string_edge() {
     // String manipulation edge cases
     assert_eq!(
         run_example("test_string_edge.at"),
-        "Hello Worldbcd03Some(1)Some(2)"
+        "Hello Worldbcd03EnumVariant<0>(1)EnumVariant<0>(2)"
     );
 }
 
@@ -456,7 +456,7 @@ fn test_task_stream() {
 fn test_import_selective() {
     assert_eq!(
         run_example("test_import_selective.at"),
-        "15\n5\n3.14159 \ndone\n"
+        "15\n5\n3.14159\ndone\n"
     );
 }
 
@@ -464,7 +464,7 @@ fn test_import_selective() {
 fn test_import_wildcard() {
     assert_eq!(
         run_example("test_import_wildcard.at"),
-        "15\n5\n3.14159 \ndone\n"
+        "15\n5\n3.14159\ndone\n"
     );
 }
 
