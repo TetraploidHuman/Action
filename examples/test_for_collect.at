@@ -1,0 +1,25 @@
+// Test: for expressions with collect, break, continue filtering
+fun main() {
+    // Test 1: Collect only even numbers using continue
+    val evens = for x in 1..7 {
+        when x % 2 == 0 { x else continue }
+    }
+    print(evens[0])
+    print(evens[1])
+    print(evens[2])
+
+    // Test 2: Collect squares of odd numbers
+    val squares = for x in 1..7 {
+        when x % 2 != 0 { x * x else continue }
+    }
+    print(squares[0])
+    print(squares[1])
+    print(squares[2])
+
+    // Test 3: Break early
+    var sum = 0
+    for i in 1..100 {
+        when i > 5 { break else sum = sum + i }
+    }
+    print(sum)
+}

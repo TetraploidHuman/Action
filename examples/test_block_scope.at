@@ -1,0 +1,28 @@
+// Test: block scoping, variable shadowing, and multi-statement blocks
+fun main() {
+    var x = 10
+    print(x)
+
+    // Block creates new scope with shadowing
+    val result = {
+        val x = 20
+        val y = 30
+        print(x)
+        print(y)
+        x + y
+    }
+    print(result)
+    print(x)
+
+    // Mutable variable mutation across blocks
+    var z = 5
+    {
+        z = z + 1
+        print(z)
+    }
+    {
+        z = z + 2
+        print(z)
+    }
+    print(z)
+}

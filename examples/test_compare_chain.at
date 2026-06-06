@@ -1,0 +1,38 @@
+// Test: comparison operators, chaining, short-circuit logic, and precedence
+fun side_effect(x: Int): Bool {
+    print(x)
+    x > 0
+}
+
+fun main() {
+    // Test 1: All comparison operators
+    print(5 < 10)
+    print(10 > 5)
+    print(5 <= 5)
+    print(5 >= 5)
+    print(5 == 5)
+    print(5 != 6)
+
+    // Test 2: Chained comparisons
+    val x = 15
+    val r1 = x > 10 and x < 20
+    print(r1)
+    val r2 = x < 10 or x > 20
+    print(r2)
+
+    // Test 3: Short-circuit AND
+    val a = false and side_effect(99)
+    print(0)
+
+    // Test 4: Short-circuit OR
+    val b = true or side_effect(88)
+    print(0)
+
+    // Test 5: Non-short-circuit AND (evaluates both)
+    val c = true and side_effect(42)
+    print(0)
+
+    // Test 6: Non-short-circuit OR (evaluates both)
+    val d = false or side_effect(77)
+    print(0)
+}

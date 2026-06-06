@@ -226,3 +226,71 @@ fn test_interp() {
         "Hello, World!Age: 42World is 42 years olddone"
     );
 }
+
+// ---- Additional complex tests for CI coverage ----
+
+#[test]
+fn test_nested_for3() {
+    // 3-level nested for (tests generalized N-binding fix, was hardcoded to 2)
+    // Cartesian product: x in [1,2], y in [1,2], z in [1,2] -> 8 elements
+    // r[0]=111, r[3]=122, r[5]=212, r[7]=222
+    assert_eq!(run_example("test_nested_for3.at"), "111122212222");
+}
+
+#[test]
+fn test_when_complex() {
+    // Guards with compound conditions, or-patterns, is-patterns,
+    // expression-based condition-chain when, destructuring arms
+    assert_eq!(run_example("test_when_complex.at"), "2010012-199");
+}
+
+#[test]
+fn test_for_collect() {
+    // for-expressions with continue filtering, break early exit
+    assert_eq!(run_example("test_for_collect.at"), "246192515");
+}
+
+#[test]
+fn test_struct_nested() {
+    // Nested struct field access and type inference through multiple levels
+    assert_eq!(run_example("test_struct_nested.at"), "102010020011022056");
+}
+
+#[test]
+fn test_enum_option() {
+    // Option enum: safe division, chained operations, nested pattern matching
+    assert_eq!(run_example("test_enum_option.at"), "2014325");
+}
+
+#[test]
+fn test_block_scope() {
+    // Block scoping, shadowing, mutable variable mutation across blocks
+    assert_eq!(run_example("test_block_scope.at"), "10203050105688");
+}
+
+#[test]
+fn test_lambda_capture() {
+    // Lambda captures, multi-param, implicit it, closure returning closure,
+    // direct invocation
+    assert_eq!(run_example("test_lambda_capture.at"), "120150424281542");
+}
+
+#[test]
+fn test_compare_chain() {
+    // All comparison operators, chained comparisons with and/or,
+    // short-circuit evaluation of and/or
+    assert_eq!(run_example("test_compare_chain.at"), "1111111004200770");
+}
+
+#[test]
+fn test_safe_ops() {
+    // Safe field access (?.), safe call on Option, None propagation,
+    // when-match unwrapping
+    assert_eq!(run_example("test_safe_ops.at"), "1042143-999");
+}
+
+#[test]
+fn test_arithmetic_complex() {
+    // Operator precedence, mixed arithmetic, unary ops, compound assignment
+    assert_eq!(run_example("test_arithmetic_complex.at"), "142032512645-71615251410");
+}

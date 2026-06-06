@@ -1,0 +1,29 @@
+// Test: nested struct field access and type inference
+type Point = {x: Int, y: Int}
+type Size = {width: Int, height: Int}
+type Rect = {origin: Point, size: Size}
+
+fun create_point(px: Int, py: Int): Point {
+    {x = px, y = py}
+}
+
+fun main() {
+    val p = {x = 10, y = 20}
+    val s = {width = 100, height = 200}
+    val r = {origin = p, size = s}
+
+    // Nested field access
+    print(r.origin.x)
+    print(r.origin.y)
+    print(r.size.width)
+    print(r.size.height)
+
+    // Arithmetic with nested fields
+    print(r.origin.x + r.size.width)
+    print(r.origin.y + r.size.height)
+
+    // Function returning struct, field access on result
+    val p2 = create_point(5, 6)
+    print(p2.x)
+    print(p2.y)
+}

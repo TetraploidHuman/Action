@@ -1,0 +1,35 @@
+// Test: complex arithmetic - precedence, mixed types, unary, compound assign
+fun main() {
+    // Test 1: Operator precedence - multiplication before addition
+    print(2 + 3 * 4)
+    print((2 + 3) * 4)
+
+    // Test 2: Division and modulo combined
+    print(17 / 5)
+    print(17 % 5)
+
+    // Test 3: Exponentiation (right-associative)
+    print(2 ** 3 ** 2)
+    print((2 ** 3) ** 2)
+
+    // Test 4: Unary operators
+    print(-5 + 10)
+    print(-(3 + 4))
+
+    // Test 5: Compound assignment with expressions
+    var a = 10
+    a += 2 * 3
+    print(a)
+
+    var b = 20
+    b -= 10 / 2
+    print(b)
+
+    var c = 5
+    c *= 2 + 3
+    print(c)
+
+    // Test 6: Combined arithmetic and bitwise
+    print(2 * (3 + 4))
+    print((5 & 3) * 10)
+}
