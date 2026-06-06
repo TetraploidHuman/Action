@@ -1,0 +1,25 @@
+// Test: JSON error handling - invalid input
+import "json"
+
+fun main() {
+    // Parse invalid JSON
+    val bad = jsonParse("{invalid json content}")
+    println(jsonType(bad))
+
+    // Parse valid JSON but access missing key
+    val obj = jsonParse("{\"x\": 1}")
+    var missing = jsonGet(obj, "y")
+    println(jsonIsNull(missing))
+
+    // Access array with out-of-bounds index
+    val arr = jsonParse("[1, 2, 3]")
+    var oob = jsonGetIdx(arr, 10)
+    println(jsonIsNull(oob))
+
+    // jsonLen on non-array/object
+    var num = jsonGet(obj, "x")
+    println(jsonLen(num))
+
+    jsonFree(obj)
+    jsonFree(arr)
+}

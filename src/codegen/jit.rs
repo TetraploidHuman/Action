@@ -100,6 +100,25 @@ fn map_host_symbols(cg: &CodeGen, engine: &inkwell::execution_engine::ExecutionE
         fn action_sleep_us(_: std::ffi::c_int) -> std::ffi::c_int;
         fn action_clock_gettime(_: std::ffi::c_int, _: *mut u8) -> std::ffi::c_int;
     }
+    // JSON (src/runtime_json.rs)
+    extern "C" {
+        fn action_json_parse(_: *const std::ffi::c_char) -> *mut std::ffi::c_void;
+        fn action_json_stringify(_: *mut std::ffi::c_void) -> *mut std::ffi::c_char;
+        fn action_json_free(_: *mut std::ffi::c_void);
+        fn action_json_type(_: *mut std::ffi::c_void) -> std::ffi::c_int;
+        fn action_json_get(
+            _: *mut std::ffi::c_void,
+            _: *const std::ffi::c_char,
+        ) -> *mut std::ffi::c_void;
+        fn action_json_get_idx(
+            _: *mut std::ffi::c_void,
+            _: std::ffi::c_int,
+        ) -> *mut std::ffi::c_void;
+        fn action_json_as_str(_: *mut std::ffi::c_void) -> *mut std::ffi::c_char;
+        fn action_json_as_float(_: *mut std::ffi::c_void) -> f64;
+        fn action_json_as_bool(_: *mut std::ffi::c_void) -> std::ffi::c_int;
+        fn action_json_len(_: *mut std::ffi::c_void) -> std::ffi::c_int;
+    }
     for name in [
         "action_http_request",
         "action_http_free",
@@ -119,6 +138,16 @@ fn map_host_symbols(cg: &CodeGen, engine: &inkwell::execution_engine::ExecutionE
         "action_thread_cancel",
         "action_sleep_us",
         "action_clock_gettime",
+        "action_json_parse",
+        "action_json_stringify",
+        "action_json_free",
+        "action_json_type",
+        "action_json_get",
+        "action_json_get_idx",
+        "action_json_as_str",
+        "action_json_as_float",
+        "action_json_as_bool",
+        "action_json_len",
     ] {
         if let Some(func) = cg.module.get_function(name) {
             let addr = match name {
@@ -140,6 +169,16 @@ fn map_host_symbols(cg: &CodeGen, engine: &inkwell::execution_engine::ExecutionE
                 "action_thread_cancel" => action_thread_cancel as *const () as usize,
                 "action_sleep_us" => action_sleep_us as *const () as usize,
                 "action_clock_gettime" => action_clock_gettime as *const () as usize,
+                "action_json_parse" => action_json_parse as *const () as usize,
+                "action_json_stringify" => action_json_stringify as *const () as usize,
+                "action_json_free" => action_json_free as *const () as usize,
+                "action_json_type" => action_json_type as *const () as usize,
+                "action_json_get" => action_json_get as *const () as usize,
+                "action_json_get_idx" => action_json_get_idx as *const () as usize,
+                "action_json_as_str" => action_json_as_str as *const () as usize,
+                "action_json_as_float" => action_json_as_float as *const () as usize,
+                "action_json_as_bool" => action_json_as_bool as *const () as usize,
+                "action_json_len" => action_json_len as *const () as usize,
                 _ => continue,
             };
             engine.add_global_mapping(&func, addr);

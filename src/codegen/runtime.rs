@@ -267,6 +267,60 @@ impl<'ctx> CodeGen<'ctx> {
             .module
             .add_function("action_test_ping", i64.fn_type(&[], false), None);
 
+        // ---- JSON runtime functions ----
+        // action_json_parse(json_str: ptr) -> ptr (returns null on error)
+        let _json_parse_fn =
+            self.module
+                .add_function("action_json_parse", ptr.fn_type(&[ptr.into()], false), None);
+        // action_json_stringify(node: ptr) -> ptr
+        let _json_stringify_fn = self.module.add_function(
+            "action_json_stringify",
+            ptr.fn_type(&[ptr.into()], false),
+            None,
+        );
+        // action_json_free(node: ptr)
+        let _json_free_fn =
+            self.module
+                .add_function("action_json_free", void.fn_type(&[ptr.into()], false), None);
+        // action_json_type(node: ptr) -> i32
+        let _json_type_fn =
+            self.module
+                .add_function("action_json_type", i32.fn_type(&[ptr.into()], false), None);
+        // action_json_get(node: ptr, key: ptr) -> ptr
+        let _json_get_fn = self.module.add_function(
+            "action_json_get",
+            ptr.fn_type(&[ptr.into(), ptr.into()], false),
+            None,
+        );
+        // action_json_get_idx(node: ptr, idx: i32) -> ptr
+        let _json_get_idx_fn = self.module.add_function(
+            "action_json_get_idx",
+            ptr.fn_type(&[ptr.into(), i32.into()], false),
+            None,
+        );
+        // action_json_as_str(node: ptr) -> ptr
+        let _json_as_str_fn = self.module.add_function(
+            "action_json_as_str",
+            ptr.fn_type(&[ptr.into()], false),
+            None,
+        );
+        // action_json_as_float(node: ptr) -> f64
+        let _json_as_float_fn = self.module.add_function(
+            "action_json_as_float",
+            f64.fn_type(&[ptr.into()], false),
+            None,
+        );
+        // action_json_as_bool(node: ptr) -> i32
+        let _json_as_bool_fn = self.module.add_function(
+            "action_json_as_bool",
+            i32.fn_type(&[ptr.into()], false),
+            None,
+        );
+        // action_json_len(node: ptr) -> i32
+        let _json_len_fn =
+            self.module
+                .add_function("action_json_len", i32.fn_type(&[ptr.into()], false), None);
+
         // Helper to create a global string constant
         let make_global_str = |name: &str, content: &[u8]| -> PointerValue<'ctx> {
             let arr_ty = i8.array_type(content.len() as u32);

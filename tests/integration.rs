@@ -559,3 +559,33 @@ fn test_http_error() {
     // Request to a port where nothing is listening — should return error status "0"
     run_example_starts_with("test_http_error.at", "0\n");
 }
+
+// ---- JSON tests ----
+
+#[test]
+fn test_json() {
+    assert_eq!(
+        run_example("test_json.at"),
+        "Alice\n\
+         30\n\
+         true\n\
+         95.5\n\
+         5\n\
+         10\n\
+         30\n\
+         Bob\n\
+         3\n\
+         92\n\
+         {\"active\":true,\"age\":30,\"name\":\"Alice\",\"score\":95.5}\n\
+         5\n\
+         4\n\
+         3\n\
+         2\n\
+         true\n"
+    );
+}
+
+#[test]
+fn test_json_error() {
+    assert_eq!(run_example("test_json_error.at"), "-1\ntrue\ntrue\n-1\n");
+}

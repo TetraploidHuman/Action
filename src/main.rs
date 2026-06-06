@@ -6,6 +6,7 @@ mod http_runtime;
 mod lexer;
 mod lsp;
 mod parser;
+mod runtime_json;
 mod runtime_threading;
 mod typecheck;
 

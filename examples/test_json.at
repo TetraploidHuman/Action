@@ -1,0 +1,50 @@
+// Test: JSON parse, access, and serialize
+import "json"
+
+fun main() {
+    // Test 1: Parse simple object
+    val obj = jsonParse("{\"name\": \"Alice\", \"age\": 30, \"active\": true, \"score\": 95.5}")
+    var nameNode = jsonGet(obj, "name")
+    println(jsonAsStr(nameNode))
+
+    var ageNode = jsonGet(obj, "age")
+    println(jsonAsFloat(ageNode))
+
+    var activeNode = jsonGet(obj, "active")
+    println(jsonAsBool(activeNode))
+
+    var scoreNode = jsonGet(obj, "score")
+    println(jsonAsFloat(scoreNode))
+
+    // Test 2: Array access
+    val arr = jsonParse("[10, 20, 30, 40, 50]")
+    println(jsonLen(arr))
+    println(jsonAsFloat(jsonGetIdx(arr, 0)))
+    println(jsonAsFloat(jsonGetIdx(arr, 2)))
+
+    // Test 3: Nested object
+    val nested = jsonParse("{\"user\": {\"name\": \"Bob\", \"scores\": [85, 92, 78]}}")
+    var user = jsonGet(nested, "user")
+    println(jsonAsStr(jsonGet(user, "name")))
+    var scores = jsonGet(user, "scores")
+    println(jsonLen(scores))
+    println(jsonAsFloat(jsonGetIdx(scores, 1)))
+
+    // Test 4: Stringify round-trip
+    println(jsonStringify(obj))
+
+    // Test 5: Type checking
+    println(jsonType(obj))
+    println(jsonType(arr))
+    println(jsonType(jsonGet(obj, "name")))
+    println(jsonType(jsonGet(obj, "age")))
+
+    // Test 6: Null check
+    var missing = jsonGet(obj, "nonexistent")
+    println(jsonIsNull(missing))
+
+    // Cleanup
+    jsonFree(obj)
+    jsonFree(arr)
+    jsonFree(nested)
+}
