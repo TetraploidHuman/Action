@@ -11409,11 +11409,7 @@ impl<'ctx> CodeGen<'ctx> {
                     None,
                 );
                 self.builder
-                    .build_call(
-                        acrt_fn,
-                        &[i32.const_int(0, false).into()],
-                        "stdin",
-                    )
+                    .build_call(acrt_fn, &[i32.const_int(0, false).into()], "stdin")
                     .map_err(llvm_err)?
                     .try_as_basic_value()
                     .unwrap_basic()
