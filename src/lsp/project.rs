@@ -128,14 +128,21 @@ impl Project {
     }
 
     /// Find definition: search current document first, then cross-file
-    pub fn find_definition(&self, _uri: &Url, name: &str) -> Option<lsp_types::Location> {
+    pub fn find_definition(&self, uri: &Url, name: &str) -> Option<lsp_types::Location> {
         if let Some(locs) = self.symbol_index.get(name) {
-            if let Some(loc) = locs.first() {
-                return Some(lsp_types::Location {
-                    uri: loc.file.clone(),
-                    range: position::span_to_lsp_range(&loc.span, ""),
-                });
-            }
+            // Prefer definition in current file
+            let in_file = locs.iter().find(|loc| &loc.file == uri);
+            let loc = in_file.or_else(|| locs.first())?;
+            // Use source from the document if available for accurate range
+            let source = self
+                .documents
+                .get(&loc.file)
+                .map(|d| d.source.as_str())
+                .unwrap_or("");
+            return Some(lsp_types::Location {
+                uri: loc.file.clone(),
+                range: position::span_to_lsp_range(&loc.span, source),
+            });
         }
         None
     }

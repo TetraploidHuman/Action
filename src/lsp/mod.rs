@@ -10,8 +10,8 @@ use std::path::Path;
 use lsp_server::{Connection, Message, Notification, Request, Response};
 use lsp_types::{
     CodeActionProviderCapability, CompletionOptions, InitializeResult, RenameOptions,
-    SemanticTokenModifier, SemanticTokensLegend, SemanticTokensOptions, ServerCapabilities,
-    SignatureHelpOptions, TextDocumentSyncCapability, TextDocumentSyncKind,
+    SemanticTokensOptions, ServerCapabilities, SignatureHelpOptions, TextDocumentSyncCapability,
+    TextDocumentSyncKind,
 };
 
 use crate::ast::Type;
@@ -43,22 +43,7 @@ pub fn start_lsp() -> Result<(), Box<dyn std::error::Error>> {
         semantic_tokens_provider: Some(
             lsp_types::SemanticTokensServerCapabilities::SemanticTokensOptions(
                 SemanticTokensOptions {
-                    legend: SemanticTokensLegend {
-                        token_types: vec![
-                            lsp_types::SemanticTokenType::KEYWORD,
-                            lsp_types::SemanticTokenType::VARIABLE,
-                            lsp_types::SemanticTokenType::FUNCTION,
-                            lsp_types::SemanticTokenType::STRING,
-                            lsp_types::SemanticTokenType::NUMBER,
-                            lsp_types::SemanticTokenType::TYPE,
-                            lsp_types::SemanticTokenType::ENUM_MEMBER,
-                            lsp_types::SemanticTokenType::OPERATOR,
-                        ],
-                        token_modifiers: vec![
-                            SemanticTokenModifier::DECLARATION,
-                            SemanticTokenModifier::READONLY,
-                        ],
-                    },
+                    legend: symbols::get_semantic_tokens_legend(),
                     full: Some(lsp_types::SemanticTokensFullOptions::Bool(true)),
                     ..Default::default()
                 },

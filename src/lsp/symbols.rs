@@ -3,6 +3,8 @@ use lsp_types::{DocumentSymbol, SemanticToken, SemanticTokenType, SymbolKind};
 use crate::ast::*;
 use crate::lexer::{Token, TokenKind};
 
+use super::position;
+
 /// Legend for semantic tokens
 pub fn get_semantic_tokens_legend() -> lsp_types::SemanticTokensLegend {
     lsp_types::SemanticTokensLegend {
@@ -177,11 +179,14 @@ pub fn compute_semantic_tokens(tokens: &[Token]) -> Vec<SemanticToken> {
 }
 
 /// Extract document symbols from AST statements
-pub fn extract_document_symbols(stmts: &[Stmt]) -> Vec<DocumentSymbol> {
-    stmts.iter().filter_map(stmt_to_document_symbol).collect()
+pub fn extract_document_symbols(stmts: &[Stmt], source: &str) -> Vec<DocumentSymbol> {
+    stmts
+        .iter()
+        .filter_map(|s| stmt_to_document_symbol(s, source))
+        .collect()
 }
 
-fn stmt_to_document_symbol(stmt: &Stmt) -> Option<DocumentSymbol> {
+fn stmt_to_document_symbol(stmt: &Stmt, source: &str) -> Option<DocumentSymbol> {
     match stmt {
         Stmt::Fun {
             name,
@@ -210,13 +215,13 @@ fn stmt_to_document_symbol(stmt: &Stmt) -> Option<DocumentSymbol> {
                         .join(", ")
                 )
             };
-            let children = extract_body_symbols(body);
+            let children = extract_body_symbols(body, source);
             Some(DocumentSymbol {
                 name: name.clone(),
                 detail: Some(detail),
                 kind: SymbolKind::FUNCTION,
-                range: span_to_lsp_range_sym(span, &String::new()),
-                selection_range: span_to_lsp_range_sym(span, &String::new()),
+                range: position::span_to_lsp_range(span, source),
+                selection_range: position::span_to_lsp_range(span, source),
                 children: Some(children),
                 tags: None,
                 deprecated: None,
@@ -230,8 +235,8 @@ fn stmt_to_document_symbol(stmt: &Stmt) -> Option<DocumentSymbol> {
                 name: name.clone(),
                 detail: Some(format!("let {}: {}", name, ty_str)),
                 kind: SymbolKind::VARIABLE,
-                range: span_to_lsp_range_sym(span, &String::new()),
-                selection_range: span_to_lsp_range_sym(span, &String::new()),
+                range: position::span_to_lsp_range(span, source),
+                selection_range: position::span_to_lsp_range(span, source),
                 children: None,
                 tags: None,
                 deprecated: None,
@@ -245,8 +250,8 @@ fn stmt_to_document_symbol(stmt: &Stmt) -> Option<DocumentSymbol> {
                 name: name.clone(),
                 detail: Some(format!("const {}: {}", name, ty_str)),
                 kind: SymbolKind::CONSTANT,
-                range: span_to_lsp_range_sym(span, &String::new()),
-                selection_range: span_to_lsp_range_sym(span, &String::new()),
+                range: position::span_to_lsp_range(span, source),
+                selection_range: position::span_to_lsp_range(span, source),
                 children: None,
                 tags: None,
                 deprecated: None,
@@ -277,8 +282,8 @@ fn stmt_to_document_symbol(stmt: &Stmt) -> Option<DocumentSymbol> {
                         name: v.name.clone(),
                         detail: Some(format!("{}{}", v.name, detail)),
                         kind: SymbolKind::ENUM_MEMBER,
-                        range: span_to_lsp_range_sym(span, &String::new()),
-                        selection_range: span_to_lsp_range_sym(span, &String::new()),
+                        range: position::span_to_lsp_range(span, source),
+                        selection_range: position::span_to_lsp_range(span, source),
                         children: None,
                         tags: None,
                         deprecated: None,
@@ -289,8 +294,8 @@ fn stmt_to_document_symbol(stmt: &Stmt) -> Option<DocumentSymbol> {
                 name: name.clone(),
                 detail: Some(format!("enum {}", name)),
                 kind: SymbolKind::ENUM,
-                range: span_to_lsp_range_sym(span, &String::new()),
-                selection_range: span_to_lsp_range_sym(span, &String::new()),
+                range: position::span_to_lsp_range(span, source),
+                selection_range: position::span_to_lsp_range(span, source),
                 children: Some(children),
                 tags: None,
                 deprecated: None,
@@ -300,8 +305,8 @@ fn stmt_to_document_symbol(stmt: &Stmt) -> Option<DocumentSymbol> {
             name: name.clone(),
             detail: Some(format!("type {}", name)),
             kind: SymbolKind::TYPE_PARAMETER,
-            range: span_to_lsp_range_sym(span, &String::new()),
-            selection_range: span_to_lsp_range_sym(span, &String::new()),
+            range: position::span_to_lsp_range(span, source),
+            selection_range: position::span_to_lsp_range(span, source),
             children: None,
             tags: None,
             deprecated: None,
@@ -309,13 +314,13 @@ fn stmt_to_document_symbol(stmt: &Stmt) -> Option<DocumentSymbol> {
         Stmt::Module {
             name, body, span, ..
         } => {
-            let children = extract_document_symbols(body);
+            let children = extract_document_symbols(body, source);
             Some(DocumentSymbol {
                 name: name.clone(),
                 detail: Some(format!("module {}", name)),
                 kind: SymbolKind::MODULE,
-                range: span_to_lsp_range_sym(span, &String::new()),
-                selection_range: span_to_lsp_range_sym(span, &String::new()),
+                range: position::span_to_lsp_range(span, source),
+                selection_range: position::span_to_lsp_range(span, source),
                 children: Some(children),
                 tags: None,
                 deprecated: None,
@@ -325,8 +330,8 @@ fn stmt_to_document_symbol(stmt: &Stmt) -> Option<DocumentSymbol> {
             name: names.join(", "),
             detail: Some(format!("destructure {}", names.join(", "))),
             kind: SymbolKind::VARIABLE,
-            range: span_to_lsp_range_sym(span, &String::new()),
-            selection_range: span_to_lsp_range_sym(span, &String::new()),
+            range: position::span_to_lsp_range(span, source),
+            selection_range: position::span_to_lsp_range(span, source),
             children: None,
             tags: None,
             deprecated: None,
@@ -335,9 +340,9 @@ fn stmt_to_document_symbol(stmt: &Stmt) -> Option<DocumentSymbol> {
     }
 }
 
-fn extract_body_symbols(body: &Expr) -> Vec<DocumentSymbol> {
+fn extract_body_symbols(body: &Expr, source: &str) -> Vec<DocumentSymbol> {
     match body {
-        Expr::Block(stmts) => extract_document_symbols(stmts),
+        Expr::Block(stmts) => extract_document_symbols(stmts, source),
         _ => Vec::new(),
     }
 }
@@ -386,18 +391,5 @@ fn type_to_detail(ty: &Type) -> String {
         Type::Ptr(t) => format!("Ptr<{}>", type_to_detail(t)),
         Type::FileHandle => "FileHandle".to_string(),
         Type::Unit => "()".to_string(),
-    }
-}
-
-fn span_to_lsp_range_sym(span: &crate::lexer::Span, _source: &str) -> lsp_types::Range {
-    lsp_types::Range {
-        start: lsp_types::Position {
-            line: (span.line as u32).saturating_sub(1),
-            character: (span.col as u32).saturating_sub(1),
-        },
-        end: lsp_types::Position {
-            line: (span.line as u32).saturating_sub(1),
-            character: ((span.col + span.end.saturating_sub(span.start)) as u32).saturating_sub(1),
-        },
     }
 }

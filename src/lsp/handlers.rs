@@ -255,7 +255,7 @@ pub fn handle_document_symbols(
 ) -> Option<DocumentSymbolResponse> {
     let uri = &params.text_document.uri;
     let doc = state.project.documents.get(uri)?;
-    let symbols = symbols::extract_document_symbols(&doc.ast);
+    let symbols = symbols::extract_document_symbols(&doc.ast, &doc.source);
     Some(DocumentSymbolResponse::Nested(symbols))
 }
 
@@ -509,12 +509,23 @@ pub fn handle_formatting(
     let tab_size = params.options.tab_size as usize;
     let use_spaces = params.options.insert_spaces;
 
-    // Basic indent normalization
     let indent_str = if use_spaces {
         " ".repeat(tab_size)
     } else {
         "\t".to_string()
     };
+
+    // Build per-line brace counts from tokens (avoids counting braces in strings/comments)
+    let mut line_braces: HashMap<u32, (u32, u32)> = HashMap::new();
+    for token in &doc.tokens {
+        let line = (token.span.line as u32).saturating_sub(1);
+        let entry = line_braces.entry(line).or_insert((0, 0));
+        match token.kind {
+            TokenKind::LBrace => entry.0 += 1,
+            TokenKind::RBrace => entry.1 += 1,
+            _ => {}
+        }
+    }
 
     let mut edits = Vec::new();
     let mut expected_depth: i32 = 0;
@@ -525,8 +536,11 @@ pub fn handle_formatting(
             continue;
         }
 
-        // Adjust depth for closing braces
-        let close_count = trimmed.chars().filter(|&c| c == '}').count();
+        let (open_count, close_count) = line_braces
+            .get(&(line_num as u32))
+            .copied()
+            .unwrap_or((0, 0));
+
         let current_depth = expected_depth.saturating_sub(close_count as i32);
 
         let current_indent_len = line.len() - trimmed.len();
@@ -550,8 +564,6 @@ pub fn handle_formatting(
             });
         }
 
-        // Compute next expected depth
-        let open_count = trimmed.chars().filter(|&c| c == '{').count();
         let next_depth = current_depth.saturating_add(open_count as i32);
         expected_depth = next_depth;
     }
