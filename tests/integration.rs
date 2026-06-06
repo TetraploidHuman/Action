@@ -39,6 +39,16 @@ fn action_binary() -> PathBuf {
     panic!("action binary not found — build with `cargo build` first");
 }
 
+fn run_example_starts_with(name: &str, prefix: &str) {
+    let output = run_example(name);
+    assert!(
+        output.starts_with(prefix),
+        "Expected output to start with {:?}, but got {:?}",
+        prefix,
+        output
+    );
+}
+
 fn run_example(name: &str) -> String {
     let example = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("examples")
@@ -536,4 +546,16 @@ fn test_new_features() {
          curry(add,5)(10): 15\n\
          done\n"
     );
+}
+
+#[test]
+fn test_network_ping() {
+    // Verify action_test_ping() FFI returns 42
+    assert_eq!(run_example("test_network_ping.at"), "42\n");
+}
+
+#[test]
+fn test_http_error() {
+    // Request to a port where nothing is listening — should return error status "0"
+    run_example_starts_with("test_http_error.at", "0\n");
 }

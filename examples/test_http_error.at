@@ -1,0 +1,5 @@
+fun main() {
+    // Connect to a port where nothing is listening — should fail fast
+    val result = httpRequest("GET", "http://localhost:1/", "", "")
+    println(result)
+}
