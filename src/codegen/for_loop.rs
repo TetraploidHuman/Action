@@ -385,7 +385,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_store(idx_alloca, start_val)
             .map_err(llvm_err)?;
 
-        // For list iteration, allocate separate element value storage
+        // For list iteration, allocate separate element value storage (fat struct {i64, ptr})
         let val_alloca = if input_list_ptr.is_some() {
             Some(
                 self.builder
@@ -445,8 +445,7 @@ impl<'ctx> CodeGen<'ctx> {
             let tag = self
                 .builder
                 .build_extract_value(fat_elem.into_struct_value(), 0, "elem_tag")
-                .map_err(llvm_err)?
-                .into_int_value();
+                .map_err(llvm_err)?;
             self.builder.build_store(va, tag).map_err(llvm_err)?;
         }
 
@@ -630,8 +629,9 @@ impl<'ctx> CodeGen<'ctx> {
         let innermost_body = self.context.append_basic_block(current_fn, "nested_body");
         let exit_block = self.context.append_basic_block(current_fn, "nested_exit");
 
-        // continue targets the outermost next block (same semantics as the original 2-binding impl)
-        self.continue_target = Some(nexts[0]);
+        // continue targets the innermost next block so `continue` inside the inner loop body
+        // increments the innermost counter (not the outermost one).
+        self.continue_target = Some(nexts[n - 1]);
         self.break_target = Some(exit_block);
 
         // Branch to first header

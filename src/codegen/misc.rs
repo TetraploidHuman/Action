@@ -649,6 +649,7 @@ impl<'ctx> CodeGen<'ctx> {
         };
         let alloca = self.builder.build_alloca(ty, name).map_err(llvm_err)?;
         self.store_typed_value(&inner, alloca, ty)?;
+        self.rc_inc_typed_value(&inner)?;
         self.scope.set(name.to_string(), alloca, ty, kind);
         Ok(())
     }
@@ -822,6 +823,14 @@ impl<'ctx> CodeGen<'ctx> {
                     None => Some(ptr),
                     Some(acc) => {
                         let cc = self.call_rt_with_2str("action_string_concat", acc, ptr)?;
+                        // Decrement old accumulator's RC since the concat result owns a new ref
+                        let old_str = self.load_string(acc)?;
+                        let old_data = self
+                            .builder
+                            .build_extract_value(old_str, 1, "old_data")
+                            .map_err(llvm_err)?
+                            .into_pointer_value();
+                        self.rc_dec(old_data)?;
                         match cc.try_as_basic_value().basic() {
                             Some(bv) => {
                                 let alloca = self
@@ -1106,10 +1115,8 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(ok_block);
         let field_val = self.try_struct_field_load(data_ptr, field)?;
         let field_ty = field_val.get_type_for_alloca(self);
-        let heap_ptr = self
-            .builder
-            .build_alloca(field_ty, "wrap_data")
-            .map_err(llvm_err)?;
+        let size = self.basic_type_size(field_ty)?;
+        let heap_ptr = self.malloc_rc(size)?;
         self.store_typed_value(&field_val, heap_ptr, field_ty)?;
         let heap_ptr_i8 = self
             .builder
@@ -1343,10 +1350,8 @@ impl<'ctx> CodeGen<'ctx> {
         let call_result = self.compile_ufcs_call(method_name, &all_args)?;
 
         let call_ty = call_result.get_type_for_alloca(self);
-        let heap_ptr = self
-            .builder
-            .build_alloca(call_ty, "sc_wrap")
-            .map_err(llvm_err)?;
+        let size = self.basic_type_size(call_ty)?;
+        let heap_ptr = self.malloc_rc(size)?;
         self.store_typed_value(&call_result, heap_ptr, call_ty)?;
         let heap_ptr_i8 = self
             .builder
@@ -1639,10 +1644,34 @@ impl<'ctx> CodeGen<'ctx> {
                 let bv = val
                     .to_bv()
                     .unwrap_or_else(|| self.i64_ty().const_int(0, false).into());
+                // Coerce Float/Bool to i64 (field 0 of string_type is i64)
+                let coerced: BasicValueEnum = match bv {
+                    BasicValueEnum::FloatValue(fv) => {
+                        let tmp = self
+                            .builder
+                            .build_alloca(self.f64_ty(), "ftmp")
+                            .map_err(llvm_err)?;
+                        self.builder.build_store(tmp, fv).map_err(llvm_err)?;
+                        let i64_ptr_ty = self.i64_ty().ptr_type(inkwell::AddressSpace::default());
+                        let casted = self
+                            .builder
+                            .build_pointer_cast(tmp, i64_ptr_ty, "fcast")
+                            .map_err(llvm_err)?;
+                        self.builder
+                            .build_load(self.i64_ty(), casted, "fbits")
+                            .map_err(llvm_err)?
+                    }
+                    BasicValueEnum::IntValue(iv) if iv.get_type().get_bit_width() == 1 => self
+                        .builder
+                        .build_int_z_extend(iv, self.i64_ty(), "b2i")
+                        .map_err(llvm_err)?
+                        .as_basic_value_enum(),
+                    _ => bv,
+                };
                 let undef = self.string_type.get_undef();
                 let r1 = self
                     .builder
-                    .build_insert_value(undef, bv, 0, "wrap0")
+                    .build_insert_value(undef, coerced, 0, "wrap0")
                     .map_err(llvm_err)?;
                 let r2 = self
                     .builder

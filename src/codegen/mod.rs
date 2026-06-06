@@ -600,6 +600,22 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_call(func, args, "").map_err(llvm_err)
     }
 
+    /// Get byte size of a BasicTypeEnum (dispatch to each variant's size_of).
+    pub(super) fn basic_type_size(&self, ty: BasicTypeEnum<'ctx>) -> Result<IntValue<'ctx>, String> {
+        use inkwell::types::*;
+        match ty {
+            BasicTypeEnum::IntType(t) => Ok(t.size_of()),
+            BasicTypeEnum::FloatType(t) => Ok(t.size_of()),
+            BasicTypeEnum::StructType(t) => t.size_of().ok_or("cannot get struct size".into()),
+            BasicTypeEnum::PointerType(t) => Ok(t.size_of()),
+            BasicTypeEnum::ArrayType(t) => t.size_of().ok_or("cannot get array size".into()),
+            BasicTypeEnum::VectorType(t) => t.size_of().ok_or("cannot get vector size".into()),
+            BasicTypeEnum::ScalableVectorType(t) => {
+                t.size_of().ok_or("cannot get scalable vector size".into())
+            }
+        }
+    }
+
     /// Allocate memory with a refcount header. Returns data pointer (ptr+8).
     #[allow(dead_code)]
     pub(super) fn malloc_rc(&self, size: IntValue<'ctx>) -> Result<PointerValue<'ctx>, String> {

@@ -116,7 +116,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .map_err(llvm_err)?;
                         Ok(TypedValue::Struct(new_alloca, *st))
                     }
-                    TypedValue::Enum(ptr, et, ..) => {
+                    TypedValue::Enum(ptr, et, inner_type, rc_managed) => {
                         let bt: BasicTypeEnum = (*et).into();
                         let loaded = self
                             .builder
@@ -129,7 +129,7 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder
                             .build_store(new_alloca, loaded)
                             .map_err(llvm_err)?;
-                        Ok(TypedValue::Enum(new_alloca, *et, InnerType::Int, false))
+                        Ok(TypedValue::Enum(new_alloca, *et, *inner_type, *rc_managed))
                     }
                     TypedValue::List(ptr) => {
                         let loaded = self.load_list(*ptr)?;
@@ -348,6 +348,46 @@ impl<'ctx> CodeGen<'ctx> {
             self.builder
                 .build_store(closure_ptr, cap_struct)
                 .map_err(llvm_err)?;
+
+            // RC increment for captured heap values (the closure now holds refs)
+            for name in &free_vars {
+                let var = self.scope.get(name).ok_or_else(|| {
+                    format!("Captured variable '{}' not found in parent scope", name)
+                })?;
+                match var.kind {
+                    ValKind::Str => {
+                        let sv = self.load_string(var.ptr)?;
+                        let dp = self
+                            .builder
+                            .build_extract_value(sv, 1, "crc_d")
+                            .map_err(llvm_err)?
+                            .into_pointer_value();
+                        self.rc_inc(dp)?;
+                    }
+                    ValKind::List | ValKind::Map | ValKind::Set => {
+                        let lv = self.load_list(var.ptr)?;
+                        let dp = self
+                            .builder
+                            .build_extract_value(lv, 0, "crc_d")
+                            .map_err(llvm_err)?
+                            .into_pointer_value();
+                        self.rc_inc(dp)?;
+                    }
+                    ValKind::Enum if var.enum_data_rc_managed => {
+                        let loaded = self
+                            .builder
+                            .build_load(var.ty, var.ptr, "crc_enum")
+                            .map_err(llvm_err)?;
+                        let dp = self
+                            .builder
+                            .build_extract_value(loaded.into_struct_value(), 1, "crc_ed")
+                            .map_err(llvm_err)?
+                            .into_pointer_value();
+                        self.rc_inc(dp)?;
+                    }
+                    _ => {}
+                }
+            }
 
             Ok(TypedValue::Closure {
                 fn_ptr,
@@ -975,9 +1015,8 @@ impl<'ctx> CodeGen<'ctx> {
             }
             BasicValueEnum::IntValue(v) => Ok(TypedValue::Int(v)),
             BasicValueEnum::FloatValue(v) => Ok(TypedValue::Float(v)),
-            BasicValueEnum::PointerValue(_v) => {
-                // Pointers might be string alloca pointers; handle carefully
-                Ok(TypedValue::Unit)
+            BasicValueEnum::PointerValue(v) => {
+                Ok(TypedValue::Ptr(v))
             }
             BasicValueEnum::StructValue(v) => {
                 let st = v.get_type();

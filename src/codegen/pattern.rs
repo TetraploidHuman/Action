@@ -646,54 +646,108 @@ impl<'ctx> CodeGen<'ctx> {
                         }
                     }
 
-                    // Fallback: load i64 values from heap data (for simple types like Int, Bool)
+                    // Fallback: load values from heap data using correct byte offsets and types
                     let total_params = args.len() + named_fields.len();
                     if total_params > 0 {
-                        // Bind positional sub-patterns
+                        // Calculate byte offsets matching compile_enum_construct layout:
+                        // 8 bytes for scalars (Int/Float/Bool), 16 for struct types (String)
+                        let mut offsets: Vec<u64> = Vec::with_capacity(total_params);
+                        let mut cur: u64 = 0;
+                        for pi in 0..total_params {
+                            offsets.push(cur);
+                            let ft = resolved_params.as_ref().and_then(|p| p.get(pi));
+                            cur += match ft {
+                                Some(Type::Named(n)) if n == "String" || n == "Str" => 16,
+                                _ => 8,
+                            };
+                        }
+                        let i8_ty = self.context.i8_type();
+                        // Bind positional sub-patterns with correct byte offsets
                         for (i, sub) in args.iter().enumerate() {
-                            let data_i64 = self
-                                .builder
-                                .build_pointer_cast(data_ptr, self.ptr_ty(), "data_i64")
-                                .map_err(llvm_err)?;
-                            let idx = self.i64_ty().const_int(i as u64, false);
-                            let field_ptr = unsafe {
-                                self.builder
-                                    .build_gep(self.i64_ty(), data_i64, &[idx], "fld")
-                            }
-                            .map_err(llvm_err)?;
-                            let field_val = self
-                                .builder
-                                .build_load(self.i64_ty(), field_ptr, "fld_ld")
-                                .map_err(llvm_err)?;
-                            let tv = self.bv_to_typed(field_val);
-                            if let Ok(tv) = tv {
-                                let sub_ty = resolved_params.as_ref().and_then(|p| p.get(i));
-                                self.bind_pattern_vars(sub, Some(&tv), sub_ty)?;
-                            }
+                            let fp = if offsets[i] == 0 {
+                                data_ptr
+                            } else {
+                                let o = self.i64_ty().const_int(offsets[i], false);
+                                unsafe { self.builder.build_gep(i8_ty, data_ptr, &[o], "efld") }
+                                    .map_err(llvm_err)?
+                            };
+                            let tv: TypedValue =
+                                match resolved_params.as_ref().and_then(|p| p.get(i)) {
+                                    Some(Type::Named(n)) if n == "String" || n == "Str" => {
+                                        let loaded = self
+                                            .builder
+                                            .build_load(self.string_type, fp, "efld_str")
+                                            .map_err(llvm_err)?;
+                                        let a = self
+                                            .builder
+                                            .build_alloca(self.string_type, "efld_stmp")
+                                            .map_err(llvm_err)?;
+                                        self.builder.build_store(a, loaded).map_err(llvm_err)?;
+                                        TypedValue::Str(a)
+                                    }
+                                    Some(Type::Named(n)) if n == "Float" || n == "Double" => {
+                                        let loaded = self
+                                            .builder
+                                            .build_load(self.f64_ty(), fp, "efld_f64")
+                                            .map_err(llvm_err)?
+                                            .into_float_value();
+                                        TypedValue::Float(loaded)
+                                    }
+                                    _ => {
+                                        let loaded = self
+                                            .builder
+                                            .build_load(self.i64_ty(), fp, "efld_i64")
+                                            .map_err(llvm_err)?
+                                            .into_int_value();
+                                        TypedValue::Int(loaded)
+                                    }
+                                };
+                            let sub_ty = resolved_params.as_ref().and_then(|p| p.get(i));
+                            self.bind_pattern_vars(sub, Some(&tv), sub_ty)?;
                         }
                         // Bind named fields similarly
                         for (ni, (_, sub)) in named_fields.iter().enumerate() {
-                            let data_i64 = self
-                                .builder
-                                .build_pointer_cast(data_ptr, self.ptr_ty(), "data_i64")
-                                .map_err(llvm_err)?;
-                            let idx = self.i64_ty().const_int((args.len() + ni) as u64, false);
-                            let field_ptr = unsafe {
-                                self.builder
-                                    .build_gep(self.i64_ty(), data_i64, &[idx], "nfld")
-                            }
-                            .map_err(llvm_err)?;
-                            let field_val = self
-                                .builder
-                                .build_load(self.i64_ty(), field_ptr, "nfld_ld")
-                                .map_err(llvm_err)?;
-                            let tv = self.bv_to_typed(field_val);
-                            if let Ok(tv) = tv {
-                                let sub_ty = resolved_params
-                                    .as_ref()
-                                    .and_then(|p| p.get(args.len() + ni));
-                                self.bind_pattern_vars(sub, Some(&tv), sub_ty)?;
-                            }
+                            let idx = args.len() + ni;
+                            let fp = if offsets[idx] == 0 {
+                                data_ptr
+                            } else {
+                                let o = self.i64_ty().const_int(offsets[idx], false);
+                                unsafe { self.builder.build_gep(i8_ty, data_ptr, &[o], "nefld") }
+                                    .map_err(llvm_err)?
+                            };
+                            let tv: TypedValue =
+                                match resolved_params.as_ref().and_then(|p| p.get(idx)) {
+                                    Some(Type::Named(n)) if n == "String" || n == "Str" => {
+                                        let loaded = self
+                                            .builder
+                                            .build_load(self.string_type, fp, "nefld_str")
+                                            .map_err(llvm_err)?;
+                                        let a = self
+                                            .builder
+                                            .build_alloca(self.string_type, "nefld_stmp")
+                                            .map_err(llvm_err)?;
+                                        self.builder.build_store(a, loaded).map_err(llvm_err)?;
+                                        TypedValue::Str(a)
+                                    }
+                                    Some(Type::Named(n)) if n == "Float" || n == "Double" => {
+                                        let loaded = self
+                                            .builder
+                                            .build_load(self.f64_ty(), fp, "nefld_f64")
+                                            .map_err(llvm_err)?
+                                            .into_float_value();
+                                        TypedValue::Float(loaded)
+                                    }
+                                    _ => {
+                                        let loaded = self
+                                            .builder
+                                            .build_load(self.i64_ty(), fp, "nefld_i64")
+                                            .map_err(llvm_err)?
+                                            .into_int_value();
+                                        TypedValue::Int(loaded)
+                                    }
+                                };
+                            let sub_ty = resolved_params.as_ref().and_then(|p| p.get(idx));
+                            self.bind_pattern_vars(sub, Some(&tv), sub_ty)?;
                         }
                     }
                 } else {

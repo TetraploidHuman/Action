@@ -3812,7 +3812,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let sub_buf = self
             .builder
-            .build_call(malloc_fn, &[sub_alc.into()], "buf")
+            .build_call(malloc_rc_fn, &[sub_alc.into()], "buf")
             .map_err(llvm_err)?
             .try_as_basic_value()
             .unwrap_basic()
