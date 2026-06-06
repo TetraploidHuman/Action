@@ -293,3 +293,8 @@ fn test_struct_nested() {
     // Nested struct: struct fields inside struct, two-level field access
     assert_eq!(run_example("test_struct_nested.at"), "1020100200");
 }
+
+#[test]
+fn test_lambda_capture() {
+    assert_eq!(run_example("test_lambda_capture.at"), "42");
+}

@@ -81,6 +81,7 @@ impl<'ctx> CodeGen<'ctx> {
                     | TypedValue::Bool(_)
                     | TypedValue::Unit
                     | TypedValue::Fn(_, _)
+                    | TypedValue::Closure { .. }
                     | TypedValue::CString(_)
                     | TypedValue::Ptr(_)
                     | TypedValue::FileHandle(_) => {
@@ -202,28 +203,96 @@ impl<'ctx> CodeGen<'ctx> {
         self.lambda_count += 1;
         let lambda_name = format!(".lambda_{}", self.lambda_count);
 
-        // Lambdas use the fat {i64,ptr} return type so callers through untyped
-        // parameters (Int fallback) get the correct struct return. The body's
-        // scalar result is packed into the struct by compile_fun_def.
+        // ---- Free variable analysis ----
+        let mut free_vars: Vec<String> = vec![];
+        let mut bound: Vec<String> = vec![];
+        collect_free_vars(body, params, &mut bound, &mut free_vars);
+
+        // ---- Build captures struct type if there are free vars ----
+        let has_captures = !free_vars.is_empty();
+        let captures_struct_ty: Option<StructType<'ctx>> = if has_captures {
+            let field_tys: Vec<BasicTypeEnum> = free_vars
+                .iter()
+                .map(|name| {
+                    self.scope
+                        .get(name)
+                        .map(|sv| sv.ty)
+                        .unwrap_or_else(|| self.i64_ty().into())
+                })
+                .collect();
+            let anon_ty = self
+                .context
+                .struct_type(&field_tys.iter().map(|&t| t).collect::<Vec<_>>(), false);
+            // Cache this anonymous struct type with key = (free_vars, lambda_name)
+            // so it can be referenced later if needed
+            Some(anon_ty)
+        } else {
+            None
+        };
+
+        // ---- Build LLVM function type ----
         let i64 = self.i64_ty();
-        let param_tys: Vec<BasicMetadataTypeEnum> = params
-            .iter()
-            .map(|_| BasicMetadataTypeEnum::from(i64))
-            .collect();
+        let ptr_ty: BasicMetadataTypeEnum = self.ptr_ty().into();
+        let mut param_tys: Vec<BasicMetadataTypeEnum> = Vec::new();
+        // If capturing, first param is the captures struct pointer
+        if has_captures {
+            param_tys.push(ptr_ty);
+        }
+        for _ in params.iter() {
+            param_tys.push(BasicMetadataTypeEnum::from(i64));
+        }
         let fn_type = self.build_fn_type(None, &lambda_name, &param_tys);
 
         let function = self.module.add_function(&lambda_name, fn_type, None);
+        let fn_ptr = function.as_global_value().as_pointer_value();
         let entry = self.context.append_basic_block(function, "entry");
 
         let saved_pos = self.builder.get_insert_block();
         self.builder.position_at_end(entry);
 
+        // ---- Scope setup ----
         let mut saved_scope = Scope::new();
         std::mem::swap(&mut self.scope, &mut saved_scope);
         self.scope = Scope::new();
 
+        // Load captured values from the captures struct into local allocas
+        if has_captures {
+            let cst = captures_struct_ty.unwrap();
+            if let Some(captures_ptr) = function.get_nth_param(0) {
+                let ptr_val = captures_ptr.into_pointer_value();
+                for (i, name) in free_vars.iter().enumerate() {
+                    let gep = self
+                        .builder
+                        .build_struct_gep(cst, ptr_val, i as u32, &format!("cap_gep_{}", name))
+                        .map_err(llvm_err)?;
+                    // Use saved_scope for type info (self.scope is the new empty lambda scope)
+                    let cap_ty = saved_scope
+                        .get(name)
+                        .map(|sv| sv.ty)
+                        .unwrap_or_else(|| self.i64_ty().into());
+                    let cap_kind = saved_scope
+                        .get(name)
+                        .map(|sv| sv.kind)
+                        .unwrap_or(ValKind::Int);
+                    let loaded = self
+                        .builder
+                        .build_load(cap_ty, gep, &format!("cap_load_{}", name))
+                        .map_err(llvm_err)?;
+                    let alloca = self
+                        .builder
+                        .build_alloca(loaded.get_type(), name)
+                        .map_err(llvm_err)?;
+                    self.builder.build_store(alloca, loaded).map_err(llvm_err)?;
+                    self.scope
+                        .set(name.clone(), alloca, loaded.get_type(), cap_kind);
+                }
+            }
+        }
+
+        // Lambda parameters
+        let param_offset: u32 = if has_captures { 1 } else { 0 };
         for (i, param) in params.iter().enumerate() {
-            if let Some(pv) = function.get_nth_param(i as u32) {
+            if let Some(pv) = function.get_nth_param(i as u32 + param_offset) {
                 let alloca = self
                     .builder
                     .build_alloca(pv.get_type(), param)
@@ -234,148 +303,189 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
 
+        // ---- Compile body ----
         let result = self.compile_expr(body)?;
 
+        // ---- Build return ----
         let current_block = self.builder.get_insert_block().unwrap();
         if current_block.get_terminator().is_none() {
-            let llvm_void: bool = function.get_type().get_return_type().is_none();
-
-            if llvm_void {
-                let _ = self.builder.build_return(None);
-            } else {
-                match &result {
-                    TypedValue::Enum(ptr, ty, ..) => {
-                        let bt: BasicTypeEnum = (*ty).into();
-                        let loaded = self
-                            .builder
-                            .build_load(bt, *ptr, "ret_enum")
-                            .map_err(llvm_err)?;
-                        // Convert from the specific enum type to fat_return_type
-                        // Both have {i64, ptr} layout but are different LLVM named types
-                        let sv = loaded.into_struct_value();
-                        let tag = self
-                            .builder
-                            .build_extract_value(sv, 0, "etag")
-                            .map_err(llvm_err)?;
-                        let data = self
-                            .builder
-                            .build_extract_value(sv, 1, "edata")
-                            .map_err(llvm_err)?;
-                        let undef_fat = self.fat_return_type.get_undef();
-                        let f1 = self
-                            .builder
-                            .build_insert_value(undef_fat, tag, 0, "ftag")
-                            .map_err(llvm_err)?;
-                        let f2 = self
-                            .builder
-                            .build_insert_value(f1, data, 1, "fdata")
-                            .map_err(llvm_err)?;
-                        let _ = self.builder.build_return(Some(&f2));
-                    }
-                    TypedValue::Struct(ptr, ty) => {
-                        let bt: BasicTypeEnum = (*ty).into();
-                        let loaded = self
-                            .builder
-                            .build_load(bt, *ptr, "ret_struct")
-                            .map_err(llvm_err)?;
-                        let _ = self.builder.build_return(Some(&loaded));
-                    }
-                    TypedValue::Bool(v) => {
-                        let extended = self
-                            .builder
-                            .build_int_z_extend(*v, i64, "ext")
-                            .map_err(llvm_err)?;
-                        // Pack into fat {i64,ptr} if needed
-                        if function
-                            .get_type()
-                            .get_return_type()
-                            .map_or(false, |rt| rt.is_struct_type())
-                        {
-                            let struct_ty = function
-                                .get_type()
-                                .get_return_type()
-                                .unwrap()
-                                .into_struct_type();
-                            let alloca = self
-                                .builder
-                                .build_alloca(struct_ty, "ret_pack")
-                                .map_err(llvm_err)?;
-                            let zero = struct_ty.const_zero();
-                            self.builder.build_store(alloca, zero).map_err(llvm_err)?;
-                            let gep0 = self
-                                .builder
-                                .build_struct_gep(struct_ty, alloca, 0, "ret_pack0")
-                                .map_err(llvm_err)?;
-                            self.builder.build_store(gep0, extended).map_err(llvm_err)?;
-                            let loaded = self
-                                .builder
-                                .build_load(struct_ty, alloca, "ret_packed")
-                                .map_err(llvm_err)?;
-                            let _ = self.builder.build_return(Some(&loaded));
-                        } else {
-                            let _ = self.builder.build_return(Some(&extended));
-                        }
-                    }
-                    _ => {
-                        if let Some(bv) = result.to_bv() {
-                            // If the lambda returns a fat {i64,ptr} struct but
-                            // the body produced a scalar, pack it.
-                            let need_pack = function
-                                .get_type()
-                                .get_return_type()
-                                .map_or(false, |rt| rt.is_struct_type());
-                            if need_pack {
-                                let struct_ty = function
-                                    .get_type()
-                                    .get_return_type()
-                                    .unwrap()
-                                    .into_struct_type();
-                                let alloca = self
-                                    .builder
-                                    .build_alloca(struct_ty, "ret_pack")
-                                    .map_err(llvm_err)?;
-                                let zero = struct_ty.const_zero();
-                                self.builder.build_store(alloca, zero).map_err(llvm_err)?;
-                                let gep0 = self
-                                    .builder
-                                    .build_struct_gep(struct_ty, alloca, 0, "ret_pack0")
-                                    .map_err(llvm_err)?;
-                                self.builder.build_store(gep0, bv).map_err(llvm_err)?;
-                                let loaded = self
-                                    .builder
-                                    .build_load(struct_ty, alloca, "ret_packed")
-                                    .map_err(llvm_err)?;
-                                let _ = self.builder.build_return(Some(&loaded));
-                            } else {
-                                let _ = self.builder.build_return(Some(&bv));
-                            }
-                        } else {
-                            // Unit, Str, List, etc. — return zero fat struct if needed
-                            if let Some(ret_ty) = function.get_type().get_return_type() {
-                                if ret_ty.is_struct_type() {
-                                    let zero = ret_ty.into_struct_type().const_zero();
-                                    let _ = self.builder.build_return(Some(&zero));
-                                } else {
-                                    let _ = self.builder.build_return(None);
-                                }
-                            } else {
-                                let _ = self.builder.build_return(None);
-                            }
-                        }
-                    }
-                }
-            }
+            self.build_lambda_return(&function, &result)?;
         }
 
+        // ---- Restore scope ----
         self.scope = saved_scope;
         if let Some(block) = saved_pos {
             self.builder.position_at_end(block);
         }
 
-        Ok(TypedValue::Fn(
-            function.as_global_value().as_pointer_value(),
-            fn_type,
-        ))
+        // ---- Allocate captures struct at definition site ----
+        if has_captures {
+            let cst = captures_struct_ty.unwrap();
+            let size_val = cst
+                .size_of()
+                .ok_or("Failed to get captures struct size")?;
+            let closure_ptr = self.malloc_rc(size_val)?;
+
+            // Populate captures struct with captured values
+            let undef = cst.get_undef();
+            let mut cap_struct = undef;
+            for (i, name) in free_vars.iter().enumerate() {
+                let val = self.scope.get(name).ok_or_else(|| {
+                    format!("Captured variable '{}' not found in parent scope", name)
+                })?;
+                let loaded = self
+                    .builder
+                    .build_load(val.ty, val.ptr, &format!("cap_val_{}", name))
+                    .map_err(llvm_err)?;
+                cap_struct = self
+                    .builder
+                    .build_insert_value(cap_struct, loaded, i as u32, &format!("cap_ins_{}", name))
+                    .map_err(llvm_err)?
+                    .into_struct_value();
+            }
+            let bt: BasicTypeEnum = cst.into();
+            self.builder.build_store(closure_ptr, cap_struct).map_err(llvm_err)?;
+
+            Ok(TypedValue::Closure {
+                fn_ptr,
+                actual_fn_type: fn_type,
+                closure_ptr,
+                closure_ty: cst,
+            })
+        } else {
+            Ok(TypedValue::Fn(fn_ptr, fn_type))
+        }
+    }
+
+    /// Build the return instruction for a lambda function.
+    fn build_lambda_return(
+        &mut self,
+        function: &inkwell::values::FunctionValue<'ctx>,
+        result: &TypedValue<'ctx>,
+    ) -> Result<(), String> {
+        let i64 = self.i64_ty();
+        let llvm_void: bool = function.get_type().get_return_type().is_none();
+
+        if llvm_void {
+            let _ = self.builder.build_return(None);
+            return Ok(());
+        }
+        match result {
+            TypedValue::Enum(ptr, ty, ..) => {
+                let bt: BasicTypeEnum = (*ty).into();
+                let loaded = self
+                    .builder
+                    .build_load(bt, *ptr, "ret_enum")
+                    .map_err(llvm_err)?;
+                let sv = loaded.into_struct_value();
+                let tag = self
+                    .builder
+                    .build_extract_value(sv, 0, "etag")
+                    .map_err(llvm_err)?;
+                let data = self
+                    .builder
+                    .build_extract_value(sv, 1, "edata")
+                    .map_err(llvm_err)?;
+                let undef_fat = self.fat_return_type.get_undef();
+                let f1 = self
+                    .builder
+                    .build_insert_value(undef_fat, tag, 0, "ftag")
+                    .map_err(llvm_err)?;
+                let f2 = self
+                    .builder
+                    .build_insert_value(f1, data, 1, "fdata")
+                    .map_err(llvm_err)?;
+                let _ = self.builder.build_return(Some(&f2));
+            }
+            TypedValue::Struct(ptr, ty) => {
+                let bt: BasicTypeEnum = (*ty).into();
+                let loaded = self
+                    .builder
+                    .build_load(bt, *ptr, "ret_struct")
+                    .map_err(llvm_err)?;
+                let _ = self.builder.build_return(Some(&loaded));
+            }
+            TypedValue::Bool(v) => {
+                let extended = self
+                    .builder
+                    .build_int_z_extend(*v, i64, "ext")
+                    .map_err(llvm_err)?;
+                if function
+                    .get_type()
+                    .get_return_type()
+                    .map_or(false, |rt| rt.is_struct_type())
+                {
+                    let struct_ty = function
+                        .get_type()
+                        .get_return_type()
+                        .unwrap()
+                        .into_struct_type();
+                    let alloca = self
+                        .builder
+                        .build_alloca(struct_ty, "ret_pack")
+                        .map_err(llvm_err)?;
+                    let zero = struct_ty.const_zero();
+                    self.builder.build_store(alloca, zero).map_err(llvm_err)?;
+                    let gep0 = self
+                        .builder
+                        .build_struct_gep(struct_ty, alloca, 0, "ret_pack0")
+                        .map_err(llvm_err)?;
+                    self.builder.build_store(gep0, extended).map_err(llvm_err)?;
+                    let loaded = self
+                        .builder
+                        .build_load(struct_ty, alloca, "ret_packed")
+                        .map_err(llvm_err)?;
+                    let _ = self.builder.build_return(Some(&loaded));
+                } else {
+                    let _ = self.builder.build_return(Some(&extended));
+                }
+            }
+            _ => {
+                if let Some(bv) = result.to_bv() {
+                    let need_pack = function
+                        .get_type()
+                        .get_return_type()
+                        .map_or(false, |rt| rt.is_struct_type());
+                    if need_pack {
+                        let struct_ty = function
+                            .get_type()
+                            .get_return_type()
+                            .unwrap()
+                            .into_struct_type();
+                        let alloca = self
+                            .builder
+                            .build_alloca(struct_ty, "ret_pack")
+                            .map_err(llvm_err)?;
+                        let zero = struct_ty.const_zero();
+                        self.builder.build_store(alloca, zero).map_err(llvm_err)?;
+                        let gep0 = self
+                            .builder
+                            .build_struct_gep(struct_ty, alloca, 0, "ret_pack0")
+                            .map_err(llvm_err)?;
+                        self.builder.build_store(gep0, bv).map_err(llvm_err)?;
+                        let loaded = self
+                            .builder
+                            .build_load(struct_ty, alloca, "ret_packed")
+                            .map_err(llvm_err)?;
+                        let _ = self.builder.build_return(Some(&loaded));
+                    } else {
+                        let _ = self.builder.build_return(Some(&bv));
+                    }
+                } else {
+                    if let Some(ret_ty) = function.get_type().get_return_type() {
+                        if ret_ty.is_struct_type() {
+                            let zero = ret_ty.into_struct_type().const_zero();
+                            let _ = self.builder.build_return(Some(&zero));
+                        } else {
+                            let _ = self.builder.build_return(None);
+                        }
+                    } else {
+                        let _ = self.builder.build_return(None);
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     pub(super) fn compile_literal(&mut self, lit: &Literal) -> Result<TypedValue<'ctx>, String> {
@@ -667,6 +777,22 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 ValKind::Fn => {
                     if let BasicValueEnum::PointerValue(p) = val {
+                        if var.is_closure {
+                            if let (Some(ct), Some(cfp), Some(aft)) =
+                                (var.closure_ty, var.closure_fn_ptr, var.actual_fn_type)
+                            {
+                                return Ok(TypedValue::Closure {
+                                    fn_ptr: cfp,
+                                    actual_fn_type: aft,
+                                    closure_ptr: p,
+                                    closure_ty: ct,
+                                });
+                            }
+                            return Err(format!(
+                                "Closure variable '{}' missing closure metadata",
+                                name
+                            ));
+                        }
                         if let Some(ft) = var.fn_type {
                             return Ok(TypedValue::Fn(p, ft));
                         }
@@ -1649,7 +1775,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             TypedValue::Enum(..) => "Enum".to_string(),
             TypedValue::Unit => "Unit".to_string(),
-            TypedValue::Fn(_, _) => "Fn".to_string(),
+            TypedValue::Fn(_, _) | TypedValue::Closure { .. } => "Fn".to_string(),
             TypedValue::List(_) => "List".to_string(),
             TypedValue::Map(_) => "Map".to_string(),
             TypedValue::Set(_) => "Set".to_string(),
@@ -1892,5 +2018,269 @@ impl<'ctx> CodeGen<'ctx> {
         } else {
             Err(format!("Undefined function reference: ::{}", name))
         }
+    }
+}
+
+/// Collect free variables in `expr` that are NOT bound by `params` or local let/destructure.
+fn collect_free_vars(expr: &Expr, params: &[String], bound: &mut Vec<String>, free: &mut Vec<String>) {
+    match expr {
+        Expr::Ident(name) => {
+            if !params.contains(name) && !bound.contains(name) && !free.contains(name) {
+                free.push(name.clone());
+            }
+        }
+        Expr::Lambda {
+            params: inner_params,
+            body,
+            ..
+        } => {
+            let mut inner_bound = bound.clone();
+            inner_bound.extend(inner_params.iter().cloned());
+            collect_free_vars(body, inner_params, &mut inner_bound, free);
+        }
+        Expr::Block(stmts) => {
+            for stmt in stmts {
+                visit_stmt_free_vars(stmt, params, bound, free);
+            }
+        }
+        Expr::Binary(lhs, _, rhs) => {
+            collect_free_vars(lhs, params, bound, free);
+            collect_free_vars(rhs, params, bound, free);
+        }
+        Expr::Unary(_, e) => collect_free_vars(e, params, bound, free),
+        Expr::Call {
+            func,
+            args,
+            trailing_lambda,
+        } => {
+            collect_free_vars(func, params, bound, free);
+            for a in args {
+                collect_free_vars(a, params, bound, free);
+            }
+            if let Some(t) = trailing_lambda {
+                collect_free_vars(t, params, bound, free);
+            }
+        }
+        Expr::FieldAccess(e, _) => collect_free_vars(e, params, bound, free),
+        Expr::Index(target, index) => {
+            collect_free_vars(target, params, bound, free);
+            collect_free_vars(index, params, bound, free);
+        }
+        Expr::When(w) => visit_when_free_vars(w, params, bound, free),
+        Expr::For(f) => visit_for_free_vars(f, params, bound, free),
+        Expr::StructLiteral(fields) => {
+            for (_, v) in fields {
+                collect_free_vars(v, params, bound, free);
+            }
+        }
+        Expr::SetLiteral(elems) => {
+            for e in elems {
+                collect_free_vars(e, params, bound, free);
+            }
+        }
+        Expr::MapLiteral(pairs) => {
+            for (k, v) in pairs {
+                collect_free_vars(k, params, bound, free);
+                collect_free_vars(v, params, bound, free);
+            }
+        }
+        Expr::SafeFieldAccess(e, _) => collect_free_vars(e, params, bound, free),
+        Expr::SafeCall { receiver, args } => {
+            collect_free_vars(receiver, params, bound, free);
+            for a in args {
+                collect_free_vars(a, params, bound, free);
+            }
+        }
+        Expr::Try(e) => collect_free_vars(e, params, bound, free),
+        Expr::Range(start, end) => {
+            collect_free_vars(start, params, bound, free);
+            collect_free_vars(end, params, bound, free);
+        }
+        Expr::Tuple(fields) => {
+            for (_, e) in fields {
+                collect_free_vars(e, params, bound, free);
+            }
+        }
+        Expr::Assign { target, value, .. } => {
+            collect_free_vars(target, params, bound, free);
+            collect_free_vars(value, params, bound, free);
+        }
+        Expr::Copy(e) => collect_free_vars(e, params, bound, free),
+        Expr::Unsafe(e) => collect_free_vars(e, params, bound, free),
+        Expr::StringInterpolate(parts) => {
+            for p in parts {
+                if let StringPart::Expr(e) = p {
+                    collect_free_vars(e, params, bound, free);
+                }
+            }
+        }
+        // Leaves
+        Expr::Literal(_) | Expr::FunctionRef(_) | Expr::Break | Expr::Continue => {}
+    }
+}
+
+/// Visit a When expression for free vars, handling arm pattern bindings.
+fn visit_when_free_vars(
+    w: &When,
+    params: &[String],
+    bound: &mut Vec<String>,
+    free: &mut Vec<String>,
+) {
+    match &w.kind {
+        WhenKind::OneLine {
+            condition,
+            then_expr,
+            else_expr,
+        } => {
+            collect_free_vars(condition, params, bound, free);
+            collect_free_vars(then_expr, params, bound, free);
+            collect_free_vars(else_expr, params, bound, free);
+        }
+        WhenKind::ValueMatch { value, arms } => {
+            collect_free_vars(value, params, bound, free);
+            for arm in arms {
+                let pat_vars = collect_pattern_vars(&arm.pattern);
+                bound.extend(pat_vars.iter().cloned());
+                if let Some(guard) = &arm.guard {
+                    collect_free_vars(guard, params, bound, free);
+                }
+                collect_free_vars(&arm.body, params, bound, free);
+                for _ in &pat_vars {
+                    bound.pop();
+                }
+            }
+        }
+        WhenKind::ConditionChain { arms } => {
+            for arm in arms {
+                let pat_vars = collect_pattern_vars(&arm.pattern);
+                bound.extend(pat_vars.iter().cloned());
+                if let Some(guard) = &arm.guard {
+                    collect_free_vars(guard, params, bound, free);
+                }
+                collect_free_vars(&arm.body, params, bound, free);
+                for _ in &pat_vars {
+                    bound.pop();
+                }
+            }
+        }
+    }
+}
+
+/// Visit a For expression for free vars, handling loop variable bindings.
+fn visit_for_free_vars(f: &For, params: &[String], bound: &mut Vec<String>, free: &mut Vec<String>) {
+    match &f.kind {
+        ForKind::Iterate {
+            var,
+            iterable,
+            body,
+            collect: _,
+        } => {
+            collect_free_vars(iterable, params, bound, free);
+            bound.push(var.clone());
+            collect_free_vars(body, params, bound, free);
+            bound.pop();
+        }
+        ForKind::IterateWithIndex {
+            vars,
+            iterable,
+            body,
+        } => {
+            collect_free_vars(iterable, params, bound, free);
+            for v in vars {
+                bound.push(v.clone());
+            }
+            collect_free_vars(body, params, bound, free);
+            for _ in vars {
+                bound.pop();
+            }
+        }
+        ForKind::NestedIterate {
+            bindings,
+            body,
+            collect: _,
+        } => {
+            for (var, iter) in bindings {
+                collect_free_vars(iter, params, bound, free);
+                bound.push(var.clone());
+            }
+            collect_free_vars(body, params, bound, free);
+            for _ in bindings {
+                bound.pop();
+            }
+        }
+        ForKind::Condition { condition, body } => {
+            collect_free_vars(condition, params, bound, free);
+            collect_free_vars(body, params, bound, free);
+        }
+        ForKind::Infinite { body } => {
+            collect_free_vars(body, params, bound, free);
+        }
+    }
+}
+
+/// Visit a Stmt for free vars in its sub-expressions.
+fn visit_stmt_free_vars(
+    stmt: &Stmt,
+    params: &[String],
+    bound: &mut Vec<String>,
+    free: &mut Vec<String>,
+) {
+    match stmt {
+        Stmt::Let { name, value, .. } => {
+            collect_free_vars(value, params, bound, free);
+            bound.push(name.clone());
+        }
+        Stmt::Destructure {
+            names,
+            renames,
+            rest,
+            value,
+            ..
+        } => {
+            collect_free_vars(value, params, bound, free);
+            for n in names {
+                bound.push(n.clone());
+            }
+            for (_, to) in renames {
+                bound.push(to.clone());
+            }
+            if let Some(r) = rest {
+                bound.push(r.clone());
+            }
+        }
+        Stmt::Expr { expr, .. } => {
+            collect_free_vars(expr, params, bound, free);
+        }
+        Stmt::Return { value, .. } => {
+            if let Some(e) = value {
+                collect_free_vars(e, params, bound, free);
+            }
+        }
+        Stmt::Fun { .. } | Stmt::TypeAlias { .. } | Stmt::Enum { .. }
+        | Stmt::Module { .. } | Stmt::Export { .. } | Stmt::Import { .. }
+        | Stmt::Const { .. } | Stmt::Extension { .. } | Stmt::External { .. }
+        | Stmt::ExternalType { .. } => {
+            // These introduce bindings at module/top level; skip for free var analysis
+        }
+        Stmt::Break { .. } | Stmt::Continue { .. } => {}
+    }
+}
+
+/// Collect variable names bound by a pattern.
+fn collect_pattern_vars(pat: &Pattern) -> Vec<String> {
+    match pat {
+        Pattern::Variable(name) => vec![name.clone()],
+        Pattern::Constructor {
+            args, named_fields, ..
+        } => {
+            let mut v: Vec<String> = args.iter().flat_map(collect_pattern_vars).collect();
+            for (_, p) in named_fields {
+                v.extend(collect_pattern_vars(p));
+            }
+            v
+        }
+        Pattern::Or(pats) => pats.iter().flat_map(collect_pattern_vars).collect(),
+        Pattern::Expr(_) | Pattern::Wildcard | Pattern::Literal(_)
+        | Pattern::Range(_, _) | Pattern::IsType(_) => vec![],
     }
 }

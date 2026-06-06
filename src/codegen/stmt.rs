@@ -60,6 +60,7 @@ impl<'ctx> CodeGen<'ctx> {
                     self.rc_inc_typed_value(&val)?;
                     let fn_type = match &val {
                         TypedValue::Fn(_, ft) => Some(*ft),
+                        TypedValue::Closure { .. } => None, // closure uses actual_fn_type
                         _ => None,
                     };
                     // Infer AST type for enum values to support pattern match resolution
@@ -89,6 +90,17 @@ impl<'ctx> CodeGen<'ctx> {
                     if let TypedValue::Enum(_, _, inner_type, rc_managed) = &val {
                         self.scope.set_enum_inner_type(name, *inner_type);
                         self.scope.set_enum_data_rc_managed(name, *rc_managed);
+                    }
+                    // Preserve closure metadata for later reconstruction
+                    if let TypedValue::Closure {
+                        fn_ptr,
+                        actual_fn_type,
+                        closure_ptr: _,
+                        closure_ty,
+                    } = &val
+                    {
+                        self.scope
+                            .set_closure_info(name, *closure_ty, *fn_ptr, *actual_fn_type);
                     }
                 }
             }

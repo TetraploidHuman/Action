@@ -1463,7 +1463,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.compile_indirect_call(target, args, trailing)
     }
 
-    /// Perform an indirect function call through a TypedValue::Fn or TypedValue::Int.
+    /// Perform an indirect function call through a TypedValue::Fn, TypedValue::Closure, or TypedValue::Int.
     pub(super) fn compile_indirect_call(
         &mut self,
         target: TypedValue<'ctx>,
@@ -1488,6 +1488,33 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?;
                 match cc.try_as_basic_value().basic() {
                     Some(bv) => self.unpack_fat_return(bv, fn_type.get_return_type()),
+                    None => Ok(TypedValue::Unit),
+                }
+            }
+            TypedValue::Closure {
+                fn_ptr,
+                actual_fn_type,
+                closure_ptr,
+                closure_ty: _,
+            } => {
+                let mut ca: Vec<BasicMetadataValueEnum> = Vec::new();
+                // First arg: the closure struct pointer (captures context)
+                ca.push(closure_ptr.into());
+                for a in args {
+                    let bv = self.compile_and_load(a)?;
+                    ca.push(bv.into());
+                }
+                if let Some(lam) = trailing {
+                    let bv = self.compile_and_load(lam)?;
+                    ca.push(bv.into());
+                }
+
+                let cc = self
+                    .builder
+                    .build_indirect_call(actual_fn_type, fn_ptr, &ca, "indirect_closure")
+                    .map_err(llvm_err)?;
+                match cc.try_as_basic_value().basic() {
+                    Some(bv) => self.unpack_fat_return(bv, actual_fn_type.get_return_type()),
                     None => Ok(TypedValue::Unit),
                 }
             }
@@ -1559,8 +1586,8 @@ impl<'ctx> CodeGen<'ctx> {
             TypedValue::Str(ptr) => {
                 let _ = self.call_rt_with_str("action_print_string", *ptr);
             }
-            TypedValue::Fn(_, _) => {
-                /* print fn pointer as int */
+            TypedValue::Fn(_, _) | TypedValue::Closure { .. } => {
+                /* print fn/closure pointer as int */
                 if let Some(bv) = v.to_bv() {
                     let _ = self.call_rt("action_print_int", &[bv.into()]);
                 }
@@ -1737,6 +1764,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let fn_val = self.compile_lambda(params, body)?;
                 match fn_val {
                     TypedValue::Fn(ptr, _) => Ok(ptr),
+                    TypedValue::Closure { fn_ptr, .. } => Ok(fn_ptr),
                     _ => Err("lazy_list: step function compilation failed".to_string()),
                 }
             }

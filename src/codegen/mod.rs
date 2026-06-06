@@ -80,6 +80,14 @@ struct ScopeVar<'ctx> {
     enum_inner_type: Option<InnerType>,
     /// For Enum values with heap-allocated data: whether the data pointer needs RC cleanup
     enum_data_rc_managed: bool,
+    /// Whether this variable holds a closure (vs a bare function pointer)
+    is_closure: bool,
+    /// For closures: the LLVM captures struct type
+    closure_ty: Option<StructType<'ctx>>,
+    /// For closures: the LLVM function pointer (for reconstruction after load)
+    closure_fn_ptr: Option<PointerValue<'ctx>>,
+    /// For closures: the actual LLVM fn type (with captures ptr param)
+    actual_fn_type: Option<FunctionType<'ctx>>,
 }
 
 #[derive(Clone)]
@@ -126,6 +134,10 @@ impl<'ctx> Scope<'ctx> {
                 ast_type: None,
                 enum_inner_type: None,
                 enum_data_rc_managed: false,
+                is_closure: false,
+                closure_ty: None,
+                closure_fn_ptr: None,
+                actual_fn_type: None,
             },
         );
     }
@@ -150,6 +162,10 @@ impl<'ctx> Scope<'ctx> {
                 ast_type: None,
                 enum_inner_type: None,
                 enum_data_rc_managed: false,
+                is_closure: false,
+                closure_ty: None,
+                closure_fn_ptr: None,
+                actual_fn_type: None,
             },
         );
     }
@@ -174,6 +190,10 @@ impl<'ctx> Scope<'ctx> {
                 ast_type: None,
                 enum_inner_type: None,
                 enum_data_rc_managed: false,
+                is_closure: false,
+                closure_ty: None,
+                closure_fn_ptr: None,
+                actual_fn_type: None,
             },
         );
     }
@@ -199,6 +219,10 @@ impl<'ctx> Scope<'ctx> {
                 ast_type: None,
                 enum_inner_type: None,
                 enum_data_rc_managed: false,
+                is_closure: false,
+                closure_ty: None,
+                closure_fn_ptr: None,
+                actual_fn_type: None,
             },
         );
     }
@@ -224,8 +248,26 @@ impl<'ctx> Scope<'ctx> {
                 ast_type: Some(ast_type),
                 enum_inner_type: None,
                 enum_data_rc_managed: false,
+                is_closure: false,
+                closure_ty: None,
+                closure_fn_ptr: None,
+                actual_fn_type: None,
             },
         );
+    }
+    fn set_closure_info(
+        &mut self,
+        name: &str,
+        closure_ty: StructType<'ctx>,
+        closure_fn_ptr: PointerValue<'ctx>,
+        actual_fn_type: FunctionType<'ctx>,
+    ) {
+        if let Some(var) = self.variables.get_mut(name) {
+            var.is_closure = true;
+            var.closure_ty = Some(closure_ty);
+            var.closure_fn_ptr = Some(closure_fn_ptr);
+            var.actual_fn_type = Some(actual_fn_type);
+        }
     }
     fn set_enum_inner_type(&mut self, name: &str, inner_type: InnerType) {
         if let Some(var) = self.variables.get_mut(name) {
@@ -259,6 +301,13 @@ pub(super) enum TypedValue<'ctx> {
     Str(PointerValue<'ctx>),
     /// Function pointer (lambda) with its function type for correct indirect calls
     Fn(PointerValue<'ctx>, FunctionType<'ctx>),
+    /// Closure: heap-allocated captures struct + function pointer for lambdas with free vars
+    Closure {
+        fn_ptr: PointerValue<'ctx>,
+        actual_fn_type: FunctionType<'ctx>,
+        closure_ptr: PointerValue<'ctx>,
+        closure_ty: StructType<'ctx>,
+    },
     /// List value (pointer to {ptr, i64, i64} alloca)
     List(PointerValue<'ctx>),
     /// Struct value (alloca pointer, LLVM struct type)
@@ -292,6 +341,9 @@ impl<'ctx> TypedValue<'ctx> {
             TypedValue::Bool(v) => Some(v.as_basic_value_enum()),
             TypedValue::Str(_v) => None,
             TypedValue::Fn(ptr, _) => Some(ptr.as_basic_value_enum()),
+            TypedValue::Closure {
+                closure_ptr, ..
+            } => Some(closure_ptr.as_basic_value_enum()),
             TypedValue::List(_) => None,
             TypedValue::Map(_) => None,
             TypedValue::Set(_) => None,
@@ -958,7 +1010,7 @@ impl<'ctx> CodeGen<'ctx> {
             TypedValue::Float(_) => "Float".to_string(),
             TypedValue::Bool(_) => "Bool".to_string(),
             TypedValue::Str(_) => "String".to_string(),
-            TypedValue::Fn(_, _) => "Fn".to_string(),
+            TypedValue::Fn(_, _) | TypedValue::Closure { .. } => "Fn".to_string(),
             TypedValue::List(_) => "List".to_string(),
             TypedValue::Struct(_, st) => {
                 // Try to find the named struct type
@@ -1335,7 +1387,7 @@ impl<'ctx> TypedValue<'ctx> {
             TypedValue::Float(_) => cg.f64_ty().into(),
             TypedValue::Bool(_) => cg.bool_ty().into(),
             TypedValue::Str(_) => cg.string_type.into(),
-            TypedValue::Fn(_, _) => cg.ptr_ty().into(),
+            TypedValue::Fn(_, _) | TypedValue::Closure { .. } => cg.ptr_ty().into(),
             TypedValue::List(_) => cg.list_type.into(),
             TypedValue::Map(_) => cg.list_type.into(),
             TypedValue::Set(_) => cg.list_type.into(),
@@ -1357,7 +1409,7 @@ impl<'ctx> TypedValue<'ctx> {
             TypedValue::Float(_) => ValKind::Float,
             TypedValue::Bool(_) => ValKind::Bool,
             TypedValue::Str(_) => ValKind::Str,
-            TypedValue::Fn(_, _) => ValKind::Fn,
+            TypedValue::Fn(_, _) | TypedValue::Closure { .. } => ValKind::Fn,
             TypedValue::List(_) => ValKind::List,
             TypedValue::Map(_) => ValKind::Map,
             TypedValue::Set(_) => ValKind::Set,
