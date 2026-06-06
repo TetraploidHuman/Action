@@ -1009,7 +1009,10 @@ impl TypeChecker {
             (Type::Generic(ba, ta), Type::Generic(bb, tb)) => {
                 ta.len() == tb.len()
                     && self.types_compatible(ba, bb)
-                    && ta.iter().zip(tb.iter()).all(|(a, b)| self.types_compatible(a, b))
+                    && ta
+                        .iter()
+                        .zip(tb.iter())
+                        .all(|(a, b)| self.types_compatible(a, b))
             }
             _ => true,
         }

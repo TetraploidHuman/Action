@@ -1298,7 +1298,9 @@ impl<'ctx> CodeGen<'ctx> {
                     "List" => ValKind::List,
                     "Set" => ValKind::Set,
                     "Map" => ValKind::Map,
-                    "Option" | "Result" if self.enum_types.contains_key(n.as_str()) => ValKind::Enum,
+                    "Option" | "Result" if self.enum_types.contains_key(n.as_str()) => {
+                        ValKind::Enum
+                    }
                     "Task" => ValKind::Task,
                     "Stream" => ValKind::Stream,
                     "LazyList" => ValKind::LazyList,
