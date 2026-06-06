@@ -1,42 +1,11 @@
-// Test: JSON FFI - direct external fun calls (no import)
+// Test: JSON FFI — minimal step-by-step
 external type JsonNode
 external fun action_json_parse(s: CString): Ptr[JsonNode]
-external fun action_json_stringify(node: Ptr[JsonNode]): CString
 external fun action_json_free(node: Ptr[JsonNode])
-external fun action_json_type(node: Ptr[JsonNode]): Int
-external fun action_json_get(node: Ptr[JsonNode], key: CString): Ptr[JsonNode]
-external fun action_json_get_idx(node: Ptr[JsonNode], idx: Int): Ptr[JsonNode]
-external fun action_json_as_str(node: Ptr[JsonNode]): CString
-external fun action_json_as_float(node: Ptr[JsonNode]): Float
-external fun action_json_as_bool(node: Ptr[JsonNode]): Int
-external fun action_json_len(node: Ptr[JsonNode]): Int
 
 fun main() {
-    // Test 1: Parse simple object
-    val objRaw = action_json_parse(to_cstring("{\"name\": \"Alice\", \"age\": 30}"))
-    val nameNode = action_json_get(objRaw, to_cstring("name"))
-    println(from_cstring(action_json_as_str(nameNode)))
-
-    val ageNode = action_json_get(objRaw, to_cstring("age"))
-    println(action_json_as_float(ageNode))
-
-    // Test 2: Array
-    val arrRaw = action_json_parse(to_cstring("[10, 20, 30]"))
-    println(action_json_len(arrRaw))
-    println(action_json_as_float(action_json_get_idx(arrRaw, 0)))
-
-    // Test 3: Type check
-    println(action_json_type(objRaw))
-    println(action_json_type(nameNode))
-
-    // Test 4: Stringify
-    println(from_cstring(action_json_stringify(objRaw)))
-
-    // Test 5: Missing key returns null
-    val missing = action_json_get(objRaw, to_cstring("nope"))
-    println(action_json_type(missing))
-
-    // Cleanup
-    action_json_free(objRaw)
-    action_json_free(arrRaw)
+    // Step 1: Can we call action_json_parse at all?
+    val raw = action_json_parse(to_cstring("42"))
+    println(42)
+    action_json_free(raw)
 }

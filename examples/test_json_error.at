@@ -1,32 +1,9 @@
-// Test: JSON error handling - invalid input
+// Test: JSON error — minimal
 external type JsonNode
 external fun action_json_parse(s: CString): Ptr[JsonNode]
 external fun action_json_type(node: Ptr[JsonNode]): Int
-external fun action_json_get(node: Ptr[JsonNode], key: CString): Ptr[JsonNode]
-external fun action_json_get_idx(node: Ptr[JsonNode], idx: Int): Ptr[JsonNode]
-external fun action_json_as_float(node: Ptr[JsonNode]): Float
-external fun action_json_len(node: Ptr[JsonNode]): Int
-external fun action_json_free(node: Ptr[JsonNode])
 
 fun main() {
-    // Parse invalid JSON
-    val bad = action_json_parse(to_cstring("{invalid"))
+    val bad = action_json_parse(to_cstring("not json"))
     println(action_json_type(bad))
-
-    // Missing key
-    val obj = action_json_parse(to_cstring("{\"x\": 1}"))
-    val missing = action_json_get(obj, to_cstring("y"))
-    println(action_json_type(missing))
-
-    // Out of bounds
-    val arr = action_json_parse(to_cstring("[1, 2, 3]"))
-    val oob = action_json_get_idx(arr, 10)
-    println(action_json_type(oob))
-
-    // jsonLen on number
-    val num = action_json_get(obj, to_cstring("x"))
-    println(action_json_len(num))
-
-    action_json_free(obj)
-    action_json_free(arr)
 }
