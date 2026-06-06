@@ -1,0 +1,16 @@
+// Test: nested struct field access (was broken: anonymous struct fields hardcoded to i64)
+type Point = {x: Int, y: Int}
+
+fun main() {
+    val p1 = {x = 10, y = 20}
+    val p2 = {x = 100, y = 200}
+
+    // Struct literal with struct-typed fields (previously crashed)
+    val r = {origin = p1, size = p2}
+
+    // Nested field access: two levels
+    print(r.origin.x)
+    print(r.origin.y)
+    print(r.size.x)
+    print(r.size.y)
+}

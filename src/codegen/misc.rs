@@ -777,9 +777,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_alloca(str_ty, "str_tmp")
                     .map_err(llvm_err)?;
-                self.builder
-                    .build_store(alloca, loaded)
-                    .map_err(llvm_err)?;
+                self.builder.build_store(alloca, loaded).map_err(llvm_err)?;
                 Ok(TypedValue::Str(alloca))
             }
         }
@@ -1380,25 +1378,28 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<TypedValue<'ctx>, String> {
         let field_names: Vec<String> = fields.iter().map(|(n, _)| n.clone()).collect();
 
-        // Try to find a matching named struct type
+        // Compile all field expressions first so we can determine their types
+        let mut field_vals: Vec<TypedValue> = Vec::new();
+        for (_, expr) in fields.iter() {
+            field_vals.push(self.compile_expr(expr)?);
+        }
+
+        // Determine struct type from registry (named) or from actual field types (anonymous)
         let struct_ty = if let Some(info) = self.registry.find_struct_by_fields(&field_names) {
             *self
                 .named_structs
                 .get(&info.name)
                 .ok_or_else(|| format!("Struct '{}' not in LLVM type map", info.name))?
+        } else if let Some(ct) = self.anon_structs.get(&field_names) {
+            *ct
         } else {
-            // Create an anonymous struct type
-            if let Some(ct) = self.anon_structs.get(&field_names) {
-                *ct
-            } else {
-                let field_tys: Vec<BasicTypeEnum> = fields
-                    .iter()
-                    .map(|_| Ok::<BasicTypeEnum, String>(self.i64_ty().into()))
-                    .collect::<Result<Vec<_>, _>>()?;
-                let anon_ty = self.context.struct_type(&field_tys, false);
-                self.anon_structs.insert(field_names, anon_ty);
-                anon_ty
-            }
+            let field_tys: Vec<BasicTypeEnum> = field_vals
+                .iter()
+                .map(|v| v.get_type_for_alloca(self))
+                .collect();
+            let anon_ty = self.context.struct_type(&field_tys, false);
+            self.anon_structs.insert(field_names, anon_ty);
+            anon_ty
         };
 
         let bt: BasicTypeEnum = struct_ty.into();
@@ -1410,11 +1411,19 @@ impl<'ctx> CodeGen<'ctx> {
         let undef = struct_ty.get_undef();
         let mut result = undef;
 
-        for (i, (_, expr)) in fields.iter().enumerate() {
-            let val = self.compile_expr(expr)?;
-            let bv = val
-                .to_bv()
-                .unwrap_or_else(|| self.i64_ty().const_int(0, false).as_basic_value_enum());
+        for (i, val) in field_vals.iter().enumerate() {
+            let bv = match val {
+                TypedValue::Struct(ptr, ty) => {
+                    let sbt: BasicTypeEnum = (*ty).into();
+                    self.builder
+                        .build_load(sbt, *ptr, "field_struct")
+                        .map_err(llvm_err)?
+                        .as_basic_value_enum()
+                }
+                _ => val
+                    .to_bv()
+                    .unwrap_or_else(|| self.i64_ty().const_int(0, false).as_basic_value_enum()),
+            };
             result = self
                 .builder
                 .build_insert_value(result, bv, i as u32, "field")
