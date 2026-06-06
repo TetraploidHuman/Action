@@ -266,7 +266,10 @@ fn test_block_scope() {
 fn test_compare_chain() {
     // All comparison operators, chained comparisons with and/or,
     // short-circuit evaluation of and/or (Bools print as true/false)
-    assert_eq!(run_example("test_compare_chain.at"), "truetruetruetruetruetruetruefalse00420770");
+    assert_eq!(
+        run_example("test_compare_chain.at"),
+        "truetruetruetruetruetruetruefalse00420770"
+    );
 }
 
 #[test]
@@ -279,7 +282,10 @@ fn test_safe_ops() {
 fn test_arithmetic_complex() {
     // Operator precedence, mixed arithmetic, unary ops, compound assignment
     // Note: ** is left-associative
-    assert_eq!(run_example("test_arithmetic_complex.at"), "14203264645-71615251410");
+    assert_eq!(
+        run_example("test_arithmetic_complex.at"),
+        "14203264645-71615251410"
+    );
 }
 
 #[test]
