@@ -1118,10 +1118,15 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
 
         self.builder.position_at_end(merge_block);
+        let result_inner_type = match &field_val {
+            TypedValue::Float(_) => InnerType::Float,
+            TypedValue::Str(_) => InnerType::Str,
+            _ => InnerType::Int,
+        };
         Ok(TypedValue::Enum(
             result_alloca,
             enum_ty,
-            InnerType::Int,
+            result_inner_type,
             false,
         ))
     }
@@ -1193,8 +1198,8 @@ impl<'ctx> CodeGen<'ctx> {
         };
 
         let enum_val = self.compile_expr(original)?;
-        let (enum_ptr, enum_ty) = match &enum_val {
-            TypedValue::Enum(p, t, ..) => (*p, *t),
+        let (enum_ptr, enum_ty, enum_inner_type) = match &enum_val {
+            TypedValue::Enum(p, t, inner_type, ..) => (*p, *t, *inner_type),
             _ => {
                 return Err(
                     "Safe call (?.method()) requires an Option or Result enum receiver".to_string(),
@@ -1275,17 +1280,49 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(llvm_err)?;
         }
 
-        // On success: unwrap inner value, call method, wrap result in Some/Ok
+        // On success: unwrap inner value with correct type, call method, wrap result in Some/Ok
         self.builder.position_at_end(ok_block);
         let inner_ptr = self
             .builder
             .build_pointer_cast(data_ptr, ptr_ty, "sc_inner")
             .map_err(llvm_err)?;
-        let inner_val = self
-            .builder
-            .build_load(i64, inner_ptr, "sc_inner_val")
-            .map_err(llvm_err)?;
-        let inner_typed = self.bv_to_typed(inner_val)?;
+        let inner_typed = match enum_inner_type {
+            InnerType::Int => {
+                let inner_val = self
+                    .builder
+                    .build_load(i64, inner_ptr, "sc_inner_val")
+                    .map_err(llvm_err)?;
+                self.bv_to_typed(inner_val)?
+            }
+            InnerType::Float => {
+                let f64 = self.f64_ty();
+                let inner_val = self
+                    .builder
+                    .build_load(f64, inner_ptr, "sc_inner_val")
+                    .map_err(llvm_err)?;
+                self.bv_to_typed(inner_val)?
+            }
+            InnerType::Str => {
+                let str_ty = self.string_type;
+                let str_ptr_ty = str_ty.ptr_type(inkwell::AddressSpace::default());
+                let str_ptr = self
+                    .builder
+                    .build_pointer_cast(inner_ptr, str_ptr_ty, "sc_inner_str")
+                    .map_err(llvm_err)?;
+                let loaded = self
+                    .builder
+                    .build_load(str_ty, str_ptr, "sc_inner_str_val")
+                    .map_err(llvm_err)?;
+                let alloca = self
+                    .builder
+                    .build_alloca(str_ty, "str_tmp")
+                    .map_err(llvm_err)?;
+                self.builder
+                    .build_store(alloca, loaded)
+                    .map_err(llvm_err)?;
+                TypedValue::Str(alloca)
+            }
+        };
 
         let mut all_args = vec![inner_typed];
         for a in args {
@@ -1320,10 +1357,15 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
 
         self.builder.position_at_end(merge_block);
+        let result_inner_type = match &call_result {
+            TypedValue::Float(_) => InnerType::Float,
+            TypedValue::Str(_) => InnerType::Str,
+            _ => InnerType::Int,
+        };
         Ok(TypedValue::Enum(
             result_alloca,
             enum_ty,
-            InnerType::Int,
+            result_inner_type,
             false,
         ))
     }

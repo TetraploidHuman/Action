@@ -967,8 +967,8 @@ impl<'ctx> CodeGen<'ctx> {
                             .map_err(llvm_err)?;
                         let lock_fn = self
                             .module
-                            .get_function("pthread_mutex_lock")
-                            .ok_or("pthread_mutex_lock not found")?;
+                            .get_function("action_mutex_lock")
+                            .ok_or("action_mutex_lock not found")?;
                         let _ = self
                             .builder
                             .build_call(lock_fn, &[mutex_ptr.into()], "")
@@ -986,8 +986,8 @@ impl<'ctx> CodeGen<'ctx> {
                             .map_err(llvm_err)?;
                         let cond_sig_fn = self
                             .module
-                            .get_function("pthread_cond_signal")
-                            .ok_or("pthread_cond_signal not found")?;
+                            .get_function("action_cond_signal")
+                            .ok_or("action_cond_signal not found")?;
                         let _ = self
                             .builder
                             .build_call(cond_sig_fn, &[cond_ptr.into()], "")
@@ -995,8 +995,8 @@ impl<'ctx> CodeGen<'ctx> {
                         // Unlock mutex
                         let unlock_fn = self
                             .module
-                            .get_function("pthread_mutex_unlock")
-                            .ok_or("pthread_mutex_unlock not found")?;
+                            .get_function("action_mutex_unlock")
+                            .ok_or("action_mutex_unlock not found")?;
                         let _ = self
                             .builder
                             .build_call(unlock_fn, &[mutex_ptr.into()], "")
@@ -1022,16 +1022,16 @@ impl<'ctx> CodeGen<'ctx> {
                             .map_err(llvm_err)?;
                         let lock_fn = self
                             .module
-                            .get_function("pthread_mutex_lock")
-                            .ok_or("pthread_mutex_lock not found")?;
+                            .get_function("action_mutex_lock")
+                            .ok_or("action_mutex_lock not found")?;
                         let unlock_fn = self
                             .module
-                            .get_function("pthread_mutex_unlock")
-                            .ok_or("pthread_mutex_unlock not found")?;
+                            .get_function("action_mutex_unlock")
+                            .ok_or("action_mutex_unlock not found")?;
                         let cond_wait_fn = self
                             .module
-                            .get_function("pthread_cond_wait")
-                            .ok_or("pthread_cond_wait not found")?;
+                            .get_function("action_cond_wait")
+                            .ok_or("action_cond_wait not found")?;
                         let mutex_ptr = self
                             .builder
                             .build_struct_gep(self.stream_type, stream_ptr, 0, "rm")
@@ -1222,7 +1222,7 @@ impl<'ctx> CodeGen<'ctx> {
                         let _ = self
                             .builder
                             .build_call(
-                                self.module.get_function("pthread_mutex_lock").unwrap(),
+                                self.module.get_function("action_mutex_lock").unwrap(),
                                 &[mutex_ptr.into()],
                                 "",
                             )
@@ -1241,7 +1241,7 @@ impl<'ctx> CodeGen<'ctx> {
                         let _ = self
                             .builder
                             .build_call(
-                                self.module.get_function("pthread_cond_broadcast").unwrap(),
+                                self.module.get_function("action_cond_broadcast").unwrap(),
                                 &[cond_ptr.into()],
                                 "",
                             )
@@ -1249,7 +1249,7 @@ impl<'ctx> CodeGen<'ctx> {
                         let _ = self
                             .builder
                             .build_call(
-                                self.module.get_function("pthread_mutex_unlock").unwrap(),
+                                self.module.get_function("action_mutex_unlock").unwrap(),
                                 &[mutex_ptr.into()],
                                 "",
                             )
@@ -1326,8 +1326,8 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_int_value();
                         let pthread_join_fn = self
                             .module
-                            .get_function("pthread_join")
-                            .ok_or("pthread_join not found")?;
+                            .get_function("action_thread_join")
+                            .ok_or("action_thread_join not found")?;
                         let null_ptr = self.ptr_ty().const_null();
                         let _ = self
                             .builder
@@ -1973,8 +1973,8 @@ impl<'ctx> CodeGen<'ctx> {
     /// unwrap(enum) - extract value from Some/Ok, return 0 on None/Err (debug builds can panic)
     pub(super) fn builtin_unwrap(&mut self, enum_expr: &Expr) -> Result<TypedValue<'ctx>, String> {
         let val = self.compile_expr(enum_expr)?;
-        let (enum_ptr, enum_ty) = match val {
-            TypedValue::Enum(p, t, ..) => (p, t),
+        let (enum_ptr, enum_ty, inner_type) = match val {
+            TypedValue::Enum(p, t, inner_type, ..) => (p, t, inner_type),
             _ => return Err("unwrap: argument must be an enum (Option or Result)".to_string()),
         };
         let i64 = self.i64_ty();
@@ -2019,24 +2019,71 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_pointer_cast(data_ptr, self.ptr_ty(), "uw_inner")
             .map_err(llvm_err)?;
-        let inner_val = self
-            .builder
-            .build_load(i64, inner_ptr, "uw_v")
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(merge_block);
-
-        // None/Err branch: return 0 (safe default, avoid complex panic machinery)
-        self.builder.position_at_end(none_block);
-        let _ = self.builder.build_unconditional_branch(merge_block);
-
-        // Merge
-        self.builder.position_at_end(merge_block);
-        let phi = self.builder.build_phi(i64, "uw_phi").map_err(llvm_err)?;
-        phi.add_incoming(&[
-            (&inner_val, some_block),
-            (&i64.const_int(0, false), none_block),
-        ]);
-        Ok(TypedValue::Int(phi.as_basic_value().into_int_value()))
+        match inner_type {
+            InnerType::Int => {
+                let inner_val = self
+                    .builder
+                    .build_load(i64, inner_ptr, "uw_v")
+                    .map_err(llvm_err)?;
+                let _ = self.builder.build_unconditional_branch(merge_block);
+                self.builder.position_at_end(none_block);
+                let _ = self.builder.build_unconditional_branch(merge_block);
+                self.builder.position_at_end(merge_block);
+                let phi = self.builder.build_phi(i64, "uw_phi").map_err(llvm_err)?;
+                phi.add_incoming(&[
+                    (&inner_val, some_block),
+                    (&i64.const_int(0, false), none_block),
+                ]);
+                Ok(TypedValue::Int(phi.as_basic_value().into_int_value()))
+            }
+            InnerType::Float => {
+                let f64_ty = self.f64_ty();
+                let inner_val = self
+                    .builder
+                    .build_load(f64_ty, inner_ptr, "uw_fv")
+                    .map_err(llvm_err)?;
+                let _ = self.builder.build_unconditional_branch(merge_block);
+                self.builder.position_at_end(none_block);
+                let _ = self.builder.build_unconditional_branch(merge_block);
+                self.builder.position_at_end(merge_block);
+                let phi = self
+                    .builder
+                    .build_phi(f64_ty, "uw_fphi")
+                    .map_err(llvm_err)?;
+                phi.add_incoming(&[
+                    (&inner_val, some_block),
+                    (&f64_ty.const_float(0.0), none_block),
+                ]);
+                Ok(TypedValue::Float(
+                    phi.as_basic_value().into_float_value(),
+                ))
+            }
+            InnerType::Str => {
+                let str_ptr_ty = self
+                    .string_type
+                    .ptr_type(inkwell::AddressSpace::default());
+                let str_ptr = self
+                    .builder
+                    .build_pointer_cast(inner_ptr, str_ptr_ty, "uw_str_ptr")
+                    .map_err(llvm_err)?;
+                let loaded = self
+                    .builder
+                    .build_load(self.string_type, str_ptr, "uw_str_val")
+                    .map_err(llvm_err)?;
+                let alloca = self
+                    .builder
+                    .build_alloca(self.string_type, "uw_str")
+                    .map_err(llvm_err)?;
+                self.builder
+                    .build_store(alloca, loaded)
+                    .map_err(llvm_err)?;
+                let _ = self.builder.build_unconditional_branch(merge_block);
+                self.builder.position_at_end(none_block);
+                let _ = self.builder.build_unconditional_branch(merge_block);
+                self.builder.position_at_end(merge_block);
+                Ok(TypedValue::Str(alloca))
+            }
+        }
     }
 
     /// or_else(enum, handler_or_default) - for Result: extract value or call handler with error
@@ -4642,8 +4689,8 @@ impl<'ctx> CodeGen<'ctx> {
         // 3. Call pthread_create
         let pthread_create_fn = self
             .module
-            .get_function("pthread_create")
-            .ok_or("pthread_create not found")?;
+            .get_function("action_thread_create")
+            .ok_or("action_thread_create not found")?;
         let pthread_field_ptr = self
             .builder
             .build_struct_gep(self.task_type, task_heap, 0, "pt_field")
@@ -4840,8 +4887,8 @@ impl<'ctx> CodeGen<'ctx> {
 
         let pthread_join_fn = self
             .module
-            .get_function("pthread_join")
-            .ok_or("pthread_join not found")?;
+            .get_function("action_thread_join")
+            .ok_or("action_thread_join not found")?;
         let null_ptr = self.ptr_ty().const_null();
         let _ = self
             .builder
@@ -4993,8 +5040,8 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
         let pthread_cancel_fn = self
             .module
-            .get_function("pthread_cancel")
-            .ok_or("pthread_cancel not found")?;
+            .get_function("action_thread_cancel")
+            .ok_or("action_thread_cancel not found")?;
         let _ = self
             .builder
             .build_call(pthread_cancel_fn, &[c_pt_val.into()], "")
@@ -5053,8 +5100,8 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let usleep_fn = self
             .module
-            .get_function("usleep")
-            .ok_or("usleep not found")?;
+            .get_function("action_sleep_us")
+            .ok_or("action_sleep_us not found")?;
         let _ = self
             .builder
             .build_call(usleep_fn, &[us_i32.into()], "")
@@ -5277,8 +5324,8 @@ impl<'ctx> CodeGen<'ctx> {
         // 3. Spawn thread with pthread_create
         let pthread_create_fn = self
             .module
-            .get_function("pthread_create")
-            .ok_or("pthread_create not found")?;
+            .get_function("action_thread_create")
+            .ok_or("action_thread_create not found")?;
         let pthread_field_ptr = self
             .builder
             .build_struct_gep(self.task_type, task_heap, 0, "wt_ptf")
@@ -5344,8 +5391,8 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(poll_body);
         let usleep_fn = self
             .module
-            .get_function("usleep")
-            .ok_or("usleep not found")?;
+            .get_function("action_sleep_us")
+            .ok_or("action_sleep_us not found")?;
         let _ = self
             .builder
             .build_call(
@@ -5385,8 +5432,8 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(poll_timeout);
         let pthread_cancel_fn = self
             .module
-            .get_function("pthread_cancel")
-            .ok_or("pthread_cancel not found")?;
+            .get_function("action_thread_cancel")
+            .ok_or("action_thread_cancel not found")?;
         let pthread_val_t = self
             .builder
             .build_load(self.i64_ty(), pthread_field_ptr, "wt_ptv")
@@ -5398,8 +5445,8 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let pthread_join_fn = self
             .module
-            .get_function("pthread_join")
-            .ok_or("pthread_join not found")?;
+            .get_function("action_thread_join")
+            .ok_or("action_thread_join not found")?;
         let _ = self
             .builder
             .build_call(
@@ -5664,8 +5711,8 @@ impl<'ctx> CodeGen<'ctx> {
         // Initialize mutex (field 0)
         let pthread_mutex_init_fn = self
             .module
-            .get_function("pthread_mutex_init")
-            .ok_or("pthread_mutex_init not found")?;
+            .get_function("action_mutex_init")
+            .ok_or("action_mutex_init not found")?;
         let mutex_field_ptr = self
             .builder
             .build_struct_gep(stream_ty, stream_ptr, 0, "mutex_field")
@@ -5682,8 +5729,8 @@ impl<'ctx> CodeGen<'ctx> {
         // Initialize condvar (field 1)
         let pthread_cond_init_fn = self
             .module
-            .get_function("pthread_cond_init")
-            .ok_or("pthread_cond_init not found")?;
+            .get_function("action_cond_init")
+            .ok_or("action_cond_init not found")?;
         let cond_field_ptr = self
             .builder
             .build_struct_gep(stream_ty, stream_ptr, 1, "cond_field")
@@ -5748,7 +5795,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let _ = self
                     .builder
                     .build_call(
-                        self.module.get_function("pthread_mutex_lock").unwrap(),
+                        self.module.get_function("action_mutex_lock").unwrap(),
                         &[mutex_ptr.into()],
                         "",
                     )
@@ -5767,7 +5814,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let _ = self
                     .builder
                     .build_call(
-                        self.module.get_function("pthread_cond_signal").unwrap(),
+                        self.module.get_function("action_cond_signal").unwrap(),
                         &[cond_ptr.into()],
                         "",
                     )
@@ -5776,7 +5823,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let _ = self
                     .builder
                     .build_call(
-                        self.module.get_function("pthread_mutex_unlock").unwrap(),
+                        self.module.get_function("action_mutex_unlock").unwrap(),
                         &[mutex_ptr.into()],
                         "",
                     )
@@ -5804,12 +5851,12 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_alloca(self.i64_ty(), "sop_result")
                     .map_err(llvm_err)?;
-                let lock_fn = self.module.get_function("pthread_mutex_lock").unwrap();
-                let unlock_fn = self.module.get_function("pthread_mutex_unlock").unwrap();
+                let lock_fn = self.module.get_function("action_mutex_lock").unwrap();
+                let unlock_fn = self.module.get_function("action_mutex_unlock").unwrap();
                 let cond_wait_fn = self
                     .module
-                    .get_function("pthread_cond_wait")
-                    .ok_or("pthread_cond_wait not found")?;
+                    .get_function("action_cond_wait")
+                    .ok_or("action_cond_wait not found")?;
                 let mutex_ptr = self
                     .builder
                     .build_struct_gep(self.stream_type, stream_ptr, 0, "rm")
@@ -5998,7 +6045,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let _ = self
                     .builder
                     .build_call(
-                        self.module.get_function("pthread_mutex_lock").unwrap(),
+                        self.module.get_function("action_mutex_lock").unwrap(),
                         &[mutex_ptr.into()],
                         "",
                     )
@@ -6017,7 +6064,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let _ = self
                     .builder
                     .build_call(
-                        self.module.get_function("pthread_cond_broadcast").unwrap(),
+                        self.module.get_function("action_cond_broadcast").unwrap(),
                         &[cond_ptr.into()],
                         "",
                     )
@@ -6025,7 +6072,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let _ = self
                     .builder
                     .build_call(
-                        self.module.get_function("pthread_mutex_unlock").unwrap(),
+                        self.module.get_function("action_mutex_unlock").unwrap(),
                         &[mutex_ptr.into()],
                         "",
                     )
@@ -6111,8 +6158,8 @@ impl<'ctx> CodeGen<'ctx> {
                     .into_int_value();
                 let pthread_join_fn = self
                     .module
-                    .get_function("pthread_join")
-                    .ok_or("pthread_join not found")?;
+                    .get_function("action_thread_join")
+                    .ok_or("action_thread_join not found")?;
                 let null_ptr = self.ptr_ty().const_null();
                 let _ = self
                     .builder

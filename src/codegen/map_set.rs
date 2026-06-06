@@ -434,8 +434,8 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
 
         // For data-carrying variants, allocate heap memory and store fields
-        let data_ptr = if variant.params.is_empty() {
-            ptr_ty.const_zero() // null pointer for unit variants
+        let (data_ptr, inner_type) = if variant.params.is_empty() {
+            (ptr_ty.const_zero(), InnerType::Int) // null pointer for unit variants
         } else {
             // Compile args first to determine sizes
             let compiled: Vec<TypedValue> = args
@@ -471,7 +471,13 @@ impl<'ctx> CodeGen<'ctx> {
             }
             // Set initial refcount to 1 (the enum owns the first reference)
             self.rc_inc(buf)?;
-            buf
+            // Determine inner type from the first data argument
+            let inner = compiled.first().map_or(InnerType::Int, |v| match v {
+                TypedValue::Float(_) => InnerType::Float,
+                TypedValue::Str(_) => InnerType::Str,
+                _ => InnerType::Int,
+            });
+            (buf, inner)
         };
 
         let r2 = self
@@ -480,6 +486,6 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         self.builder.build_store(alloca, r2).map_err(llvm_err)?;
 
-        Ok(TypedValue::Enum(alloca, enum_ty, InnerType::Int, true))
+        Ok(TypedValue::Enum(alloca, enum_ty, inner_type, true))
     }
 }
