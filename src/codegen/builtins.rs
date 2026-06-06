@@ -258,7 +258,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             // Handle flatMap/flatMapResult for Option/Result inline (avoids untyped callback issues)
             if name == "flatMap" || name == "flatMapResult" || name == "flat_map" {
-                let is_enum_op = if trailing.is_some() || args.len() >= 2 {
+                let is_enum_op = if (trailing.is_some() && !args.is_empty()) || args.len() >= 2 {
                     let enum_arg = if trailing.is_some() {
                         &args[0]
                     } else {

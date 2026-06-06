@@ -688,6 +688,7 @@ impl Lexer {
                             let mut hex = String::new();
                             while let Some(c) = self.current() {
                                 if c == '}' {
+                                    self.advance(); // skip '}'
                                     break;
                                 }
                                 if c.is_ascii_hexdigit() {
@@ -696,13 +697,13 @@ impl Lexer {
                                     break;
                                 }
                             }
-                            self.advance(); // skip '}'
                             if let Ok(cp) = u32::from_str_radix(&hex, 16) {
                                 char::from_u32(cp).unwrap_or('?')
                             } else {
                                 '?'
                             }
                         } else {
+                            self.advance(); // skip the non-{ char
                             '?'
                         }
                     }

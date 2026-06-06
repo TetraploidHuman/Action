@@ -659,18 +659,23 @@ impl<'ctx> CodeGen<'ctx> {
                 let obj_val = self.compile_expr(obj)?;
                 match obj_val {
                     TypedValue::Struct(ptr, st) => {
-                        let field_idx = self
+                        let struct_info = self
                             .registry
                             .structs
                             .values()
                             .find(|si| si.fields.iter().any(|(n, _)| n == field))
-                            .and_then(|si| si.fields.iter().position(|(n, _)| n == field))
                             .ok_or_else(|| format!("Field '{}' not found in struct", field))?;
+                        let field_idx = struct_info
+                            .fields
+                            .iter()
+                            .position(|(n, _)| n == field)
+                            .unwrap();
+                        let field_ty =
+                            self.ast_type_to_basic_type(&struct_info.fields[field_idx].1);
                         let field_ptr = self
                             .builder
                             .build_struct_gep(st, ptr, field_idx as u32, "field_gep")
                             .map_err(llvm_err)?;
-                        let field_ty = self.ast_type_to_basic_type(&Type::Named("Int".into()));
                         self.store_typed_value(&inner, field_ptr, field_ty)?;
                         Ok(inner)
                     }
@@ -688,8 +693,8 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         enum_val: &TypedValue<'ctx>,
     ) -> Result<TypedValue<'ctx>, String> {
-        let (enum_ptr, enum_ty) = match enum_val {
-            TypedValue::Enum(p, t, ..) => (*p, *t),
+        let (enum_ptr, enum_ty, inner_type) = match enum_val {
+            TypedValue::Enum(p, t, inner_type, ..) => (*p, *t, *inner_type),
             _ => return Err("Error propagation (?) requires an Option or Result enum".to_string()),
         };
 
@@ -735,17 +740,49 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(fail_block);
         let _ = self.builder.build_return(Some(&loaded));
 
-        // On success: extract the inner value
+        // On success: extract the inner value with the correct type
         self.builder.position_at_end(ok_block);
         let inner_ptr = self
             .builder
             .build_pointer_cast(data_ptr, ptr_ty, "prop_inner")
             .map_err(llvm_err)?;
-        let inner_val = self
-            .builder
-            .build_load(i64, inner_ptr, "prop_inner_val")
-            .map_err(llvm_err)?;
-        self.bv_to_typed(inner_val)
+        match inner_type {
+            InnerType::Int => {
+                let inner_val = self
+                    .builder
+                    .build_load(i64, inner_ptr, "prop_inner_val")
+                    .map_err(llvm_err)?;
+                self.bv_to_typed(inner_val)
+            }
+            InnerType::Float => {
+                let f64 = self.f64_ty();
+                let inner_val = self
+                    .builder
+                    .build_load(f64, inner_ptr, "prop_inner_val")
+                    .map_err(llvm_err)?;
+                self.bv_to_typed(inner_val)
+            }
+            InnerType::Str => {
+                let str_ty = self.string_type;
+                let str_ptr_ty = str_ty.ptr_type(inkwell::AddressSpace::default());
+                let str_ptr = self
+                    .builder
+                    .build_pointer_cast(inner_ptr, str_ptr_ty, "prop_inner_str")
+                    .map_err(llvm_err)?;
+                let loaded = self
+                    .builder
+                    .build_load(str_ty, str_ptr, "prop_inner_str_val")
+                    .map_err(llvm_err)?;
+                let alloca = self
+                    .builder
+                    .build_alloca(str_ty, "str_tmp")
+                    .map_err(llvm_err)?;
+                self.builder
+                    .build_store(alloca, loaded)
+                    .map_err(llvm_err)?;
+                Ok(TypedValue::Str(alloca))
+            }
+        }
     }
 
     pub(super) fn compile_string_interp(
