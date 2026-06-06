@@ -105,19 +105,19 @@ fn map_host_symbols(cg: &CodeGen, engine: &inkwell::execution_engine::ExecutionE
         fn action_json_parse(_: *const std::ffi::c_char) -> *mut std::ffi::c_void;
         fn action_json_stringify(_: *mut std::ffi::c_void) -> *mut std::ffi::c_char;
         fn action_json_free(_: *mut std::ffi::c_void);
-        fn action_json_type(_: *mut std::ffi::c_void) -> std::ffi::c_int;
+        fn action_json_type(_: *mut std::ffi::c_void) -> i64;
         fn action_json_get(
             _: *mut std::ffi::c_void,
             _: *const std::ffi::c_char,
         ) -> *mut std::ffi::c_void;
         fn action_json_get_idx(
             _: *mut std::ffi::c_void,
-            _: std::ffi::c_int,
+            _: i64,
         ) -> *mut std::ffi::c_void;
         fn action_json_as_str(_: *mut std::ffi::c_void) -> *mut std::ffi::c_char;
         fn action_json_as_float(_: *mut std::ffi::c_void) -> f64;
-        fn action_json_as_bool(_: *mut std::ffi::c_void) -> std::ffi::c_int;
-        fn action_json_len(_: *mut std::ffi::c_void) -> std::ffi::c_int;
+        fn action_json_as_bool(_: *mut std::ffi::c_void) -> i64;
+        fn action_json_len(_: *mut std::ffi::c_void) -> i64;
     }
     for name in [
         "action_http_request",

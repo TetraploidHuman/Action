@@ -282,20 +282,20 @@ impl<'ctx> CodeGen<'ctx> {
         let _json_free_fn =
             self.module
                 .add_function("action_json_free", void.fn_type(&[ptr.into()], false), None);
-        // action_json_type(node: ptr) -> i32
+        // action_json_type(node: ptr) -> i64
         let _json_type_fn =
             self.module
-                .add_function("action_json_type", i32.fn_type(&[ptr.into()], false), None);
+                .add_function("action_json_type", i64.fn_type(&[ptr.into()], false), None);
         // action_json_get(node: ptr, key: ptr) -> ptr
         let _json_get_fn = self.module.add_function(
             "action_json_get",
             ptr.fn_type(&[ptr.into(), ptr.into()], false),
             None,
         );
-        // action_json_get_idx(node: ptr, idx: i32) -> ptr
+        // action_json_get_idx(node: ptr, idx: i64) -> ptr
         let _json_get_idx_fn = self.module.add_function(
             "action_json_get_idx",
-            ptr.fn_type(&[ptr.into(), i32.into()], false),
+            ptr.fn_type(&[ptr.into(), i64.into()], false),
             None,
         );
         // action_json_as_str(node: ptr) -> ptr
@@ -310,16 +310,16 @@ impl<'ctx> CodeGen<'ctx> {
             f64.fn_type(&[ptr.into()], false),
             None,
         );
-        // action_json_as_bool(node: ptr) -> i32
+        // action_json_as_bool(node: ptr) -> i64
         let _json_as_bool_fn = self.module.add_function(
             "action_json_as_bool",
-            i32.fn_type(&[ptr.into()], false),
+            i64.fn_type(&[ptr.into()], false),
             None,
         );
-        // action_json_len(node: ptr) -> i32
+        // action_json_len(node: ptr) -> i64
         let _json_len_fn =
             self.module
-                .add_function("action_json_len", i32.fn_type(&[ptr.into()], false), None);
+                .add_function("action_json_len", i64.fn_type(&[ptr.into()], false), None);
 
         // Helper to create a global string constant
         let make_global_str = |name: &str, content: &[u8]| -> PointerValue<'ctx> {

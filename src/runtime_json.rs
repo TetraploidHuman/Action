@@ -3,7 +3,6 @@
 // Exposes opaque JsonNode handles via #[no_mangle] extern "C" functions.
 
 use std::ffi::{c_char, c_void, CString};
-use std::os::raw::c_int;
 
 use serde_json::Value;
 
@@ -17,12 +16,12 @@ static ACTION_JSON_STRINGIFY_PTR: unsafe extern "C" fn(*mut c_void) -> *mut c_ch
 #[used]
 static ACTION_JSON_FREE_PTR: unsafe extern "C" fn(*mut c_void) = action_json_free;
 #[used]
-static ACTION_JSON_TYPE_PTR: unsafe extern "C" fn(*mut c_void) -> c_int = action_json_type;
+static ACTION_JSON_TYPE_PTR: unsafe extern "C" fn(*mut c_void) -> i64 = action_json_type;
 #[used]
 static ACTION_JSON_GET_PTR: unsafe extern "C" fn(*mut c_void, *const c_char) -> *mut c_void =
     action_json_get;
 #[used]
-static ACTION_JSON_GET_IDX_PTR: unsafe extern "C" fn(*mut c_void, c_int) -> *mut c_void =
+static ACTION_JSON_GET_IDX_PTR: unsafe extern "C" fn(*mut c_void, i64) -> *mut c_void =
     action_json_get_idx;
 #[used]
 static ACTION_JSON_AS_STR_PTR: unsafe extern "C" fn(*mut c_void) -> *mut c_char =
@@ -30,9 +29,9 @@ static ACTION_JSON_AS_STR_PTR: unsafe extern "C" fn(*mut c_void) -> *mut c_char 
 #[used]
 static ACTION_JSON_AS_FLOAT_PTR: unsafe extern "C" fn(*mut c_void) -> f64 = action_json_as_float;
 #[used]
-static ACTION_JSON_AS_BOOL_PTR: unsafe extern "C" fn(*mut c_void) -> c_int = action_json_as_bool;
+static ACTION_JSON_AS_BOOL_PTR: unsafe extern "C" fn(*mut c_void) -> i64 = action_json_as_bool;
 #[used]
-static ACTION_JSON_LEN_PTR: unsafe extern "C" fn(*mut c_void) -> c_int = action_json_len;
+static ACTION_JSON_LEN_PTR: unsafe extern "C" fn(*mut c_void) -> i64 = action_json_len;
 
 fn to_cstring(s: &str) -> *mut c_char {
     CString::new(s)
@@ -87,7 +86,7 @@ pub extern "C" fn action_json_free(node: *mut c_void) {
 /// Get the type of a JsonNode.
 /// Returns: 0=null, 1=bool, 2=number, 3=string, 4=array, 5=object, -1=error
 #[no_mangle]
-pub extern "C" fn action_json_type(node: *mut c_void) -> c_int {
+pub extern "C" fn action_json_type(node: *mut c_void) -> i64 {
     if node.is_null() {
         return -1;
     }
@@ -123,7 +122,7 @@ pub extern "C" fn action_json_get(node: *mut c_void, key: *const c_char) -> *mut
 /// Get an array element by index. Returns null if not an array or index out of bounds.
 /// The returned pointer is an internal reference — it lives as long as the root node.
 #[no_mangle]
-pub extern "C" fn action_json_get_idx(node: *mut c_void, idx: c_int) -> *mut c_void {
+pub extern "C" fn action_json_get_idx(node: *mut c_void, idx: i64) -> *mut c_void {
     if node.is_null() || idx < 0 {
         return std::ptr::null_mut();
     }
@@ -166,7 +165,7 @@ pub extern "C" fn action_json_as_float(node: *mut c_void) -> f64 {
 
 /// Extract boolean value. Returns -1 if not a bool.
 #[no_mangle]
-pub extern "C" fn action_json_as_bool(node: *mut c_void) -> c_int {
+pub extern "C" fn action_json_as_bool(node: *mut c_void) -> i64 {
     if node.is_null() {
         return -1;
     }
@@ -185,14 +184,14 @@ pub extern "C" fn action_json_as_bool(node: *mut c_void) -> c_int {
 
 /// Get length of array or object. Returns -1 for other types.
 #[no_mangle]
-pub extern "C" fn action_json_len(node: *mut c_void) -> c_int {
+pub extern "C" fn action_json_len(node: *mut c_void) -> i64 {
     if node.is_null() {
         return -1;
     }
     let value = unsafe { &*(node as *const Value) };
     match value {
-        Value::Array(arr) => arr.len() as c_int,
-        Value::Object(map) => map.len() as c_int,
+        Value::Array(arr) => arr.len() as i64,
+        Value::Object(map) => map.len() as i64,
         _ => -1,
     }
 }
