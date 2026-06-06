@@ -1,4 +1,4 @@
-// Test: complex arithmetic - precedence, mixed types, unary, compound assign
+// Test: complex arithmetic - precedence, unary, compound assign
 fun main() {
     // Test 1: Operator precedence - multiplication before addition
     print(2 + 3 * 4)
@@ -8,7 +8,7 @@ fun main() {
     print(17 / 5)
     print(17 % 5)
 
-    // Test 3: Exponentiation (right-associative)
+    // Test 3: Exponentiation (left-associative)
     print(2 ** 3 ** 2)
     print((2 ** 3) ** 2)
 

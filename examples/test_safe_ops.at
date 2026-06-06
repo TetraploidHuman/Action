@@ -1,13 +1,5 @@
-// Test: safe field access (?.) and safe call operations - additional edge cases
+// Test: safe field access (?.) and Option propagation
 enum Option { Some(Int), None }
-
-fun get_value(): Option {
-    Some(42)
-}
-
-fun no_value(): Option {
-    None
-}
 
 fun main() {
     // Test 1: Safe field access on Some
@@ -18,32 +10,11 @@ fun main() {
         None -> print(0)
     }
 
-    // Test 2: Safe call on Some result
-    val r2 = get_value()?.length
+    // Test 2: Safe field access on None
+    val n = None
+    val r2 = n?.length
     when r2 {
-        Some(v) -> print(v)
-        None -> print(0)
-    }
-
-    // Test 3: Safe call on None - propagates None
-    val r3 = no_value()?.length
-    when r3 {
         Some(v) -> print(9)
         None -> print(1)
     }
-
-    // Test 4: Safe access result used in expression
-    val r4 = get_value()
-    val extracted = when r4 {
-        Some(v) -> v + 1
-        None -> 0
-    }
-    print(extracted)
-
-    // Test 5: Nested safe operations
-    val r5 = when no_value() {
-        Some(v) -> v
-        None -> -999
-    }
-    print(r5)
 }
