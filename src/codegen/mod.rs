@@ -341,9 +341,7 @@ impl<'ctx> TypedValue<'ctx> {
             TypedValue::Bool(v) => Some(v.as_basic_value_enum()),
             TypedValue::Str(_v) => None,
             TypedValue::Fn(ptr, _) => Some(ptr.as_basic_value_enum()),
-            TypedValue::Closure {
-                closure_ptr, ..
-            } => Some(closure_ptr.as_basic_value_enum()),
+            TypedValue::Closure { closure_ptr, .. } => Some(closure_ptr.as_basic_value_enum()),
             TypedValue::List(_) => None,
             TypedValue::Map(_) => None,
             TypedValue::Set(_) => None,

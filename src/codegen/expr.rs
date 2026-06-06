@@ -2,7 +2,7 @@
 
 use crate::ast::*;
 use inkwell::builder::BuilderError;
-use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum, FunctionType};
+use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum, FunctionType, StructType};
 use inkwell::values::{BasicValue, BasicValueEnum, IntValue, PointerValue};
 use inkwell::{FloatPredicate, IntPredicate};
 
@@ -321,9 +321,7 @@ impl<'ctx> CodeGen<'ctx> {
         // ---- Allocate captures struct at definition site ----
         if has_captures {
             let cst = captures_struct_ty.unwrap();
-            let size_val = cst
-                .size_of()
-                .ok_or("Failed to get captures struct size")?;
+            let size_val = cst.size_of().ok_or("Failed to get captures struct size")?;
             let closure_ptr = self.malloc_rc(size_val)?;
 
             // Populate captures struct with captured values
@@ -344,7 +342,9 @@ impl<'ctx> CodeGen<'ctx> {
                     .into_struct_value();
             }
             let bt: BasicTypeEnum = cst.into();
-            self.builder.build_store(closure_ptr, cap_struct).map_err(llvm_err)?;
+            self.builder
+                .build_store(closure_ptr, cap_struct)
+                .map_err(llvm_err)?;
 
             Ok(TypedValue::Closure {
                 fn_ptr,
@@ -2022,7 +2022,12 @@ impl<'ctx> CodeGen<'ctx> {
 }
 
 /// Collect free variables in `expr` that are NOT bound by `params` or local let/destructure.
-fn collect_free_vars(expr: &Expr, params: &[String], bound: &mut Vec<String>, free: &mut Vec<String>) {
+fn collect_free_vars(
+    expr: &Expr,
+    params: &[String],
+    bound: &mut Vec<String>,
+    free: &mut Vec<String>,
+) {
     match expr {
         Expr::Ident(name) => {
             if !params.contains(name) && !bound.contains(name) && !free.contains(name) {
@@ -2167,7 +2172,12 @@ fn visit_when_free_vars(
 }
 
 /// Visit a For expression for free vars, handling loop variable bindings.
-fn visit_for_free_vars(f: &For, params: &[String], bound: &mut Vec<String>, free: &mut Vec<String>) {
+fn visit_for_free_vars(
+    f: &For,
+    params: &[String],
+    bound: &mut Vec<String>,
+    free: &mut Vec<String>,
+) {
     match &f.kind {
         ForKind::Iterate {
             var,
@@ -2256,9 +2266,15 @@ fn visit_stmt_free_vars(
                 collect_free_vars(e, params, bound, free);
             }
         }
-        Stmt::Fun { .. } | Stmt::TypeAlias { .. } | Stmt::Enum { .. }
-        | Stmt::Module { .. } | Stmt::Export { .. } | Stmt::Import { .. }
-        | Stmt::Const { .. } | Stmt::Extension { .. } | Stmt::External { .. }
+        Stmt::Fun { .. }
+        | Stmt::TypeAlias { .. }
+        | Stmt::Enum { .. }
+        | Stmt::Module { .. }
+        | Stmt::Export { .. }
+        | Stmt::Import { .. }
+        | Stmt::Const { .. }
+        | Stmt::Extension { .. }
+        | Stmt::External { .. }
         | Stmt::ExternalType { .. } => {
             // These introduce bindings at module/top level; skip for free var analysis
         }
@@ -2280,7 +2296,10 @@ fn collect_pattern_vars(pat: &Pattern) -> Vec<String> {
             v
         }
         Pattern::Or(pats) => pats.iter().flat_map(collect_pattern_vars).collect(),
-        Pattern::Expr(_) | Pattern::Wildcard | Pattern::Literal(_)
-        | Pattern::Range(_, _) | Pattern::IsType(_) => vec![],
+        Pattern::Expr(_)
+        | Pattern::Wildcard
+        | Pattern::Literal(_)
+        | Pattern::Range(_, _)
+        | Pattern::IsType(_) => vec![],
     }
 }
