@@ -582,24 +582,6 @@ impl<'ctx> CodeGen<'ctx> {
                 .into_pointer_value();
             // Store the HANDLE to *tid_ptr
             let _ = self.builder.build_store(tc_tid, result);
-            // Check if CreateThread returned NULL (failure)
-            let is_null = self
-                .builder
-                .build_int_compare(
-                    IntPredicate::EQ,
-                    result.into_int_value(),
-                    null_ptr.into_int_value(),
-                    "tc_fail",
-                )
-                .map_err(llvm_err)?;
-            let fail_bb = self.context.append_basic_block(thread_create_fn, "tc_fail");
-            let ok_bb = self.context.append_basic_block(thread_create_fn, "tc_ok");
-            let _ = self
-                .builder
-                .build_conditional_branch(is_null, fail_bb, ok_bb);
-            self.builder.position_at_end(fail_bb);
-            let _ = self.builder.build_return(Some(&i32.const_int(1, false)));
-            self.builder.position_at_end(ok_bb);
             let _ = self.builder.build_return(Some(&i32.const_int(0, false)));
 
             // ---- Wrapper: pthread_join(thread_handle, retval) -> i32 ----
@@ -667,8 +649,14 @@ impl<'ctx> CodeGen<'ctx> {
             // Convert microseconds to milliseconds: (usec + 999) / 1000
             let thousand = i32.const_int(1000, false);
             let nine99 = i32.const_int(999, false);
-            let adjusted = self.builder.build_int_add(us_usec, nine99, "us_adjusted");
-            let millis = self.builder.build_int_signed_div(adjusted, thousand, "ms");
+            let adjusted = self
+                .builder
+                .build_int_add(us_usec, nine99, "us_adjusted")
+                .map_err(llvm_err)?;
+            let millis = self
+                .builder
+                .build_int_signed_div(adjusted, thousand, "ms")
+                .map_err(llvm_err)?;
             let _ = self.builder.build_call(
                 self.module.get_function("Sleep").unwrap(),
                 &[millis.into()],

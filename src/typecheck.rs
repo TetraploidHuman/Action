@@ -249,6 +249,23 @@ impl TypeChecker {
         }
     }
 
+    /// Access the type environment after checking
+    pub fn type_env(&self) -> &HashMap<String, Type> {
+        &self.type_env
+    }
+
+    /// Access the type registry
+    pub fn registry_ref(&self) -> &TypeRegistry {
+        &self.registry
+    }
+
+    /// Pre-populate the type environment (e.g., with stdlib bindings)
+    pub fn seed_type_env(&mut self, env: &HashMap<String, Type>) {
+        for (k, v) in env {
+            self.type_env.entry(k.clone()).or_insert_with(|| v.clone());
+        }
+    }
+
     /// Build the type environment from top-level statements
     fn build_type_env(&mut self, program: &Program) {
         // First pass: detect overloaded function names

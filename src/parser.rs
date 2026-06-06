@@ -256,6 +256,27 @@ impl Parser {
         Ok(Program { stmts })
     }
 
+    /// Parse a full program with error recovery.
+    /// Returns successfully parsed statements and all parse errors encountered.
+    pub fn parse_program_recover(&mut self) -> (Vec<Stmt>, Vec<ParseError>) {
+        let mut stmts = Vec::new();
+        let mut errors = Vec::new();
+        while self.current_kind() != TokenKind::Eof {
+            match self.parse_statement() {
+                Ok(stmt) => {
+                    stmts.push(stmt);
+                    self.skip(TokenKind::Semicolon);
+                }
+                Err(e) => {
+                    errors.push(e);
+                    self.skip_to_next_stmt();
+                    self.skip(TokenKind::Semicolon);
+                }
+            }
+        }
+        (stmts, errors)
+    }
+
     // ---- Statement Parsing ----
 
     fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
