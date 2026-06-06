@@ -35,51 +35,48 @@ const TYPE_OPERATOR: u32 = 7;
 const MOD_DECLARATION: u32 = 0;
 const MOD_READONLY: u32 = 1;
 
-fn classify_token(
-    token: &Token,
-    prev_kind: Option<&TokenKind>,
-) -> Option<(u32, u32)> {
+fn classify_token(token: &Token, prev_kind: Option<&TokenKind>) -> Option<(u32, u32)> {
     match &token.kind {
         // Keywords
-        TokenKind::Val | TokenKind::Var | TokenKind::Fun | TokenKind::When
-        | TokenKind::Else | TokenKind::For | TokenKind::In | TokenKind::Is
-        | TokenKind::Break | TokenKind::Continue | TokenKind::Return | TokenKind::Enum
-        | TokenKind::Type | TokenKind::Import | TokenKind::Module | TokenKind::Export
-        | TokenKind::Const | TokenKind::Copy | TokenKind::Lazy | TokenKind::Unsafe
-        | TokenKind::External | TokenKind::Extension | TokenKind::And | TokenKind::Or
-        | TokenKind::Not | TokenKind::As | TokenKind::Task => {
-            Some((TYPE_KEYWORD, 0))
-        }
+        TokenKind::Val
+        | TokenKind::Var
+        | TokenKind::Fun
+        | TokenKind::When
+        | TokenKind::Else
+        | TokenKind::For
+        | TokenKind::In
+        | TokenKind::Is
+        | TokenKind::Break
+        | TokenKind::Continue
+        | TokenKind::Return
+        | TokenKind::Enum
+        | TokenKind::Type
+        | TokenKind::Import
+        | TokenKind::Module
+        | TokenKind::Export
+        | TokenKind::Const
+        | TokenKind::Copy
+        | TokenKind::Lazy
+        | TokenKind::Unsafe
+        | TokenKind::External
+        | TokenKind::Extension
+        | TokenKind::And
+        | TokenKind::Or
+        | TokenKind::Not
+        | TokenKind::As
+        | TokenKind::Task => Some((TYPE_KEYWORD, 0)),
 
         // Identifiers — classify by preceding keyword context
-        TokenKind::Ident(_name) => {
-            match prev_kind {
-                Some(TokenKind::Fun) => {
-                    Some((TYPE_FUNCTION, MOD_DECLARATION))
-                }
-                Some(TokenKind::Val) => {
-                    Some((TYPE_VARIABLE, MOD_DECLARATION | MOD_READONLY))
-                }
-                Some(TokenKind::Var) => {
-                    Some((TYPE_VARIABLE, MOD_DECLARATION))
-                }
-                Some(TokenKind::Const) => {
-                    Some((TYPE_VARIABLE, MOD_DECLARATION | MOD_READONLY))
-                }
-                Some(TokenKind::Enum) => {
-                    Some((TYPE_ENUM_MEMBER, MOD_DECLARATION))
-                }
-                Some(TokenKind::Type) => {
-                    Some((TYPE_TYPE, MOD_DECLARATION))
-                }
-                Some(TokenKind::Module) => {
-                    Some((TYPE_VARIABLE, MOD_DECLARATION))
-                }
-                _ => {
-                    Some((TYPE_VARIABLE, 0))
-                }
-            }
-        }
+        TokenKind::Ident(_name) => match prev_kind {
+            Some(TokenKind::Fun) => Some((TYPE_FUNCTION, MOD_DECLARATION)),
+            Some(TokenKind::Val) => Some((TYPE_VARIABLE, MOD_DECLARATION | MOD_READONLY)),
+            Some(TokenKind::Var) => Some((TYPE_VARIABLE, MOD_DECLARATION)),
+            Some(TokenKind::Const) => Some((TYPE_VARIABLE, MOD_DECLARATION | MOD_READONLY)),
+            Some(TokenKind::Enum) => Some((TYPE_ENUM_MEMBER, MOD_DECLARATION)),
+            Some(TokenKind::Type) => Some((TYPE_TYPE, MOD_DECLARATION)),
+            Some(TokenKind::Module) => Some((TYPE_VARIABLE, MOD_DECLARATION)),
+            _ => Some((TYPE_VARIABLE, 0)),
+        },
 
         // Literals
         TokenKind::IntLiteral(_) | TokenKind::FloatLiteral(_) => Some((TYPE_NUMBER, 0)),
@@ -87,22 +84,52 @@ fn classify_token(
         TokenKind::StringLiteral(_) | TokenKind::CharLiteral(_) => Some((TYPE_STRING, 0)),
 
         // Operators
-        TokenKind::Plus | TokenKind::Minus | TokenKind::Star | TokenKind::Slash
-        | TokenKind::Percent | TokenKind::PlusEq | TokenKind::MinusEq | TokenKind::StarEq
-        | TokenKind::SlashEq | TokenKind::PercentEq | TokenKind::StarStar
-        | TokenKind::Ampersand | TokenKind::Pipe | TokenKind::Caret | TokenKind::Tilde
-        | TokenKind::Shl | TokenKind::Shr | TokenKind::Eq | TokenKind::EqEq
-        | TokenKind::Neq | TokenKind::Lt | TokenKind::Gt | TokenKind::Lte | TokenKind::Gte
-        | TokenKind::Arrow | TokenKind::FatArrow | TokenKind::Dot | TokenKind::DotDot
-        | TokenKind::DotDotLt | TokenKind::DotDotDot | TokenKind::SafeDot
-        | TokenKind::Colon | TokenKind::ColonColon | TokenKind::Question => {
-            Some((TYPE_OPERATOR, 0))
-        }
+        TokenKind::Plus
+        | TokenKind::Minus
+        | TokenKind::Star
+        | TokenKind::Slash
+        | TokenKind::Percent
+        | TokenKind::PlusEq
+        | TokenKind::MinusEq
+        | TokenKind::StarEq
+        | TokenKind::SlashEq
+        | TokenKind::PercentEq
+        | TokenKind::StarStar
+        | TokenKind::Ampersand
+        | TokenKind::Pipe
+        | TokenKind::Caret
+        | TokenKind::Tilde
+        | TokenKind::Shl
+        | TokenKind::Shr
+        | TokenKind::Eq
+        | TokenKind::EqEq
+        | TokenKind::Neq
+        | TokenKind::Lt
+        | TokenKind::Gt
+        | TokenKind::Lte
+        | TokenKind::Gte
+        | TokenKind::Arrow
+        | TokenKind::FatArrow
+        | TokenKind::Dot
+        | TokenKind::DotDot
+        | TokenKind::DotDotLt
+        | TokenKind::DotDotDot
+        | TokenKind::SafeDot
+        | TokenKind::Colon
+        | TokenKind::ColonColon
+        | TokenKind::Question => Some((TYPE_OPERATOR, 0)),
 
         // Delimiters — not highlighted
-        TokenKind::LParen | TokenKind::RParen | TokenKind::LBrace | TokenKind::RBrace
-        | TokenKind::LBracket | TokenKind::RBracket | TokenKind::Comma
-        | TokenKind::Semicolon | TokenKind::Underscore | TokenKind::Eof => None,
+        TokenKind::LParen
+        | TokenKind::RParen
+        | TokenKind::LBrace
+        | TokenKind::RBrace
+        | TokenKind::LBracket
+        | TokenKind::RBracket
+        | TokenKind::Comma
+        | TokenKind::Semicolon
+        | TokenKind::Underscore
+        | TokenKind::Eof => None,
     }
 }
 
@@ -156,20 +183,32 @@ pub fn extract_document_symbols(stmts: &[Stmt]) -> Vec<DocumentSymbol> {
 
 fn stmt_to_document_symbol(stmt: &Stmt) -> Option<DocumentSymbol> {
     match stmt {
-        Stmt::Fun { name, params, return_type, body, span, .. } => {
+        Stmt::Fun {
+            name,
+            params,
+            return_type,
+            body,
+            span,
+            ..
+        } => {
             let detail = if let Some(rt) = return_type {
                 format!("fun {}{}", name, type_to_detail(rt))
             } else {
-                format!("fun {}({})", name, params.iter()
-                    .map(|p| {
-                        if let Some(ty) = &p.ty {
-                            format!("{}: {}", p.name, type_to_detail(ty))
-                        } else {
-                            p.name.clone()
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join(", "))
+                format!(
+                    "fun {}({})",
+                    name,
+                    params
+                        .iter()
+                        .map(|p| {
+                            if let Some(ty) = &p.ty {
+                                format!("{}: {}", p.name, type_to_detail(ty))
+                            } else {
+                                p.name.clone()
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
             };
             let children = extract_body_symbols(body);
             Some(DocumentSymbol {
@@ -179,10 +218,13 @@ fn stmt_to_document_symbol(stmt: &Stmt) -> Option<DocumentSymbol> {
                 range: span_to_lsp_range_sym(span, &String::new()),
                 selection_range: span_to_lsp_range_sym(span, &String::new()),
                 children: Some(children),
-                tags: None, deprecated: None
+                tags: None,
+                deprecated: None,
             })
         }
-        Stmt::Let { name, value, span, .. } => {
+        Stmt::Let {
+            name, value, span, ..
+        } => {
             let ty_str = infer_value_type(value);
             Some(DocumentSymbol {
                 name: name.clone(),
@@ -191,10 +233,13 @@ fn stmt_to_document_symbol(stmt: &Stmt) -> Option<DocumentSymbol> {
                 range: span_to_lsp_range_sym(span, &String::new()),
                 selection_range: span_to_lsp_range_sym(span, &String::new()),
                 children: None,
-                tags: None, deprecated: None
+                tags: None,
+                deprecated: None,
             })
         }
-        Stmt::Const { name, value, span, .. } => {
+        Stmt::Const {
+            name, value, span, ..
+        } => {
             let ty_str = infer_value_type(value);
             Some(DocumentSymbol {
                 name: name.clone(),
@@ -203,26 +248,43 @@ fn stmt_to_document_symbol(stmt: &Stmt) -> Option<DocumentSymbol> {
                 range: span_to_lsp_range_sym(span, &String::new()),
                 selection_range: span_to_lsp_range_sym(span, &String::new()),
                 children: None,
-                tags: None, deprecated: None
+                tags: None,
+                deprecated: None,
             })
         }
-        Stmt::Enum { name, variants, span, .. } => {
-            let children: Vec<DocumentSymbol> = variants.iter().map(|v| {
-                let detail = if v.params.is_empty() {
-                    String::new()
-                } else {
-                    format!("({})", v.params.iter().map(|p| format!("{:?}", p)).collect::<Vec<_>>().join(", "))
-                };
-                DocumentSymbol {
-                    name: v.name.clone(),
-                    detail: Some(format!("{}{}", v.name, detail)),
-                    kind: SymbolKind::ENUM_MEMBER,
-                    range: span_to_lsp_range_sym(span, &String::new()),
-                    selection_range: span_to_lsp_range_sym(span, &String::new()),
-                    children: None,
-                    tags: None, deprecated: None
-                }
-            }).collect();
+        Stmt::Enum {
+            name,
+            variants,
+            span,
+            ..
+        } => {
+            let children: Vec<DocumentSymbol> = variants
+                .iter()
+                .map(|v| {
+                    let detail = if v.params.is_empty() {
+                        String::new()
+                    } else {
+                        format!(
+                            "({})",
+                            v.params
+                                .iter()
+                                .map(|p| format!("{:?}", p))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        )
+                    };
+                    DocumentSymbol {
+                        name: v.name.clone(),
+                        detail: Some(format!("{}{}", v.name, detail)),
+                        kind: SymbolKind::ENUM_MEMBER,
+                        range: span_to_lsp_range_sym(span, &String::new()),
+                        selection_range: span_to_lsp_range_sym(span, &String::new()),
+                        children: None,
+                        tags: None,
+                        deprecated: None,
+                    }
+                })
+                .collect();
             Some(DocumentSymbol {
                 name: name.clone(),
                 detail: Some(format!("enum {}", name)),
@@ -230,21 +292,23 @@ fn stmt_to_document_symbol(stmt: &Stmt) -> Option<DocumentSymbol> {
                 range: span_to_lsp_range_sym(span, &String::new()),
                 selection_range: span_to_lsp_range_sym(span, &String::new()),
                 children: Some(children),
-                tags: None, deprecated: None
+                tags: None,
+                deprecated: None,
             })
         }
-        Stmt::TypeAlias { name, span, .. } => {
-            Some(DocumentSymbol {
-                name: name.clone(),
-                detail: Some(format!("type {}", name)),
-                kind: SymbolKind::TYPE_PARAMETER,
-                range: span_to_lsp_range_sym(span, &String::new()),
-                selection_range: span_to_lsp_range_sym(span, &String::new()),
-                children: None,
-                tags: None, deprecated: None
-            })
-        }
-        Stmt::Module { name, body, span, .. } => {
+        Stmt::TypeAlias { name, span, .. } => Some(DocumentSymbol {
+            name: name.clone(),
+            detail: Some(format!("type {}", name)),
+            kind: SymbolKind::TYPE_PARAMETER,
+            range: span_to_lsp_range_sym(span, &String::new()),
+            selection_range: span_to_lsp_range_sym(span, &String::new()),
+            children: None,
+            tags: None,
+            deprecated: None,
+        }),
+        Stmt::Module {
+            name, body, span, ..
+        } => {
             let children = extract_document_symbols(body);
             Some(DocumentSymbol {
                 name: name.clone(),
@@ -253,20 +317,20 @@ fn stmt_to_document_symbol(stmt: &Stmt) -> Option<DocumentSymbol> {
                 range: span_to_lsp_range_sym(span, &String::new()),
                 selection_range: span_to_lsp_range_sym(span, &String::new()),
                 children: Some(children),
-                tags: None, deprecated: None
+                tags: None,
+                deprecated: None,
             })
         }
-        Stmt::Destructure { names, span, .. } => {
-            Some(DocumentSymbol {
-                name: names.join(", "),
-                detail: Some(format!("destructure {}", names.join(", "))),
-                kind: SymbolKind::VARIABLE,
-                range: span_to_lsp_range_sym(span, &String::new()),
-                selection_range: span_to_lsp_range_sym(span, &String::new()),
-                children: None,
-                tags: None, deprecated: None
-            })
-        }
+        Stmt::Destructure { names, span, .. } => Some(DocumentSymbol {
+            name: names.join(", "),
+            detail: Some(format!("destructure {}", names.join(", "))),
+            kind: SymbolKind::VARIABLE,
+            range: span_to_lsp_range_sym(span, &String::new()),
+            selection_range: span_to_lsp_range_sym(span, &String::new()),
+            children: None,
+            tags: None,
+            deprecated: None,
+        }),
         _ => None,
     }
 }
@@ -307,7 +371,10 @@ fn type_to_detail(ty: &Type) -> String {
             format!("({}) -> {}", params_str.join(", "), type_to_detail(ret))
         }
         Type::Struct(fields) => {
-            let fs: Vec<String> = fields.iter().map(|(n, t)| format!("{}: {}", n, type_to_detail(t))).collect();
+            let fs: Vec<String> = fields
+                .iter()
+                .map(|(n, t)| format!("{}: {}", n, type_to_detail(t)))
+                .collect();
             format!("{{{}}}", fs.join(", "))
         }
         Type::Map(k, v) => format!("Map<{}, {}>", type_to_detail(k), type_to_detail(v)),

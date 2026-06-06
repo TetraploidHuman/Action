@@ -47,7 +47,7 @@ impl Document {
         stdlib_type_env: &HashMap<String, Type>,
     ) {
         // 1. Tokenize
-        let lexer = Lexer::new(&self.source);
+        let mut lexer = Lexer::new(&self.source);
         self.tokens = lexer.tokenize();
 
         // 2. Parse with error recovery

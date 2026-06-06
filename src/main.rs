@@ -4,6 +4,7 @@ mod config;
 mod error;
 mod http_runtime;
 mod lexer;
+mod lsp;
 mod parser;
 mod typecheck;
 
@@ -72,6 +73,8 @@ enum Commands {
         #[arg(long)]
         explain: bool,
     },
+    /// Start the Action Language LSP server
+    Lsp,
 }
 
 fn main() {
@@ -131,6 +134,12 @@ fn main() {
                 std::process::exit(1);
             }
         },
+        Commands::Lsp => {
+            if let Err(e) = lsp::start_lsp() {
+                eprintln!("LSP error: {}", e);
+                std::process::exit(1);
+            }
+        }
     }
 }
 

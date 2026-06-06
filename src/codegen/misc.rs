@@ -1317,9 +1317,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_alloca(str_ty, "str_tmp")
                     .map_err(llvm_err)?;
-                self.builder
-                    .build_store(alloca, loaded)
-                    .map_err(llvm_err)?;
+                self.builder.build_store(alloca, loaded).map_err(llvm_err)?;
                 TypedValue::Str(alloca)
             }
         };

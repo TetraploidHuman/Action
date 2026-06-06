@@ -1,21 +1,21 @@
 use std::collections::HashMap;
 
 use lsp_types::{
-    CodeAction, CodeActionKind, CompletionItem, CompletionItemKind, CompletionParams,
-    CompletionResponse, Diagnostic, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, DocumentHighlight, DocumentHighlightKind, DocumentSymbolParams,
-    DocumentSymbolResponse, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents,
-    HoverParams, InlayHint, InlayHintParams, Location, MarkupContent, MarkupKind,
-    Position, PrepareRenameResponse, Range, RenameParams, SemanticTokensParams,
-    SemanticTokensResult, SignatureHelp, SignatureHelpParams, TextDocumentPositionParams,
-    TextEdit, Url, WorkspaceEdit, FoldingRange, FoldingRangeParams,
-    DocumentFormattingParams, CodeActionParams, CodeActionResponse,
-    ReferenceParams, WorkspaceSymbolParams, DocumentHighlightParams,
+    CodeAction, CodeActionKind, CodeActionParams, CodeActionResponse, CompletionItem,
+    CompletionItemKind, CompletionParams, CompletionResponse, Diagnostic,
+    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    DocumentFormattingParams, DocumentHighlight, DocumentHighlightKind, DocumentHighlightParams,
+    DocumentSymbolParams, DocumentSymbolResponse, FoldingRange, FoldingRangeParams,
+    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents, HoverParams, InlayHint,
+    InlayHintParams, Location, MarkupContent, MarkupKind, Position, PrepareRenameResponse, Range,
+    ReferenceParams, RenameParams, SemanticTokensParams, SemanticTokensResult, SignatureHelp,
+    SignatureHelpParams, TextDocumentPositionParams, TextEdit, Url, WorkspaceEdit,
+    WorkspaceSymbolParams,
 };
 
 use crate::lexer::TokenKind;
 
-use super::position::{self, FoundNode, find_node_at};
+use super::position::{self, find_node_at, FoundNode};
 use super::project::Project;
 use super::symbols;
 
@@ -32,14 +32,20 @@ impl ServerState {
 
 // ---- Notification handlers ----
 
-pub fn handle_did_open(state: &mut ServerState, params: DidOpenTextDocumentParams) -> Vec<Diagnostic> {
+pub fn handle_did_open(
+    state: &mut ServerState,
+    params: DidOpenTextDocumentParams,
+) -> Vec<Diagnostic> {
     let uri = params.text_document.uri.clone();
     let source = params.text_document.text;
     let version = params.text_document.version;
     state.project.update_document(&uri, source, version)
 }
 
-pub fn handle_did_change(state: &mut ServerState, params: DidChangeTextDocumentParams) -> Vec<Diagnostic> {
+pub fn handle_did_change(
+    state: &mut ServerState,
+    params: DidChangeTextDocumentParams,
+) -> Vec<Diagnostic> {
     let uri = params.text_document.uri.clone();
     let version = params.text_document.version;
     // Full text sync: take the last content change
@@ -87,13 +93,13 @@ pub fn handle_hover(state: &ServerState, params: HoverParams) -> Option<Hover> {
     let token = position::find_token_at(&doc.tokens, offset);
     let range = token.map(|t| position::span_to_lsp_range(&t.span, &doc.source));
 
-    Some(Hover {
-        contents,
-        range,
-    })
+    Some(Hover { contents, range })
 }
 
-pub fn handle_goto_definition(state: &ServerState, params: GotoDefinitionParams) -> Option<GotoDefinitionResponse> {
+pub fn handle_goto_definition(
+    state: &ServerState,
+    params: GotoDefinitionParams,
+) -> Option<GotoDefinitionResponse> {
     let pos = params.text_document_position_params.position;
     let uri = &params.text_document_position_params.text_document.uri;
     let doc = state.project.documents.get(uri)?;
@@ -120,7 +126,10 @@ pub fn handle_goto_definition(state: &ServerState, params: GotoDefinitionParams)
     None
 }
 
-pub fn handle_completion(state: &ServerState, params: CompletionParams) -> Option<CompletionResponse> {
+pub fn handle_completion(
+    state: &ServerState,
+    params: CompletionParams,
+) -> Option<CompletionResponse> {
     let pos = params.text_document_position.position;
     let uri = &params.text_document_position.text_document.uri;
 
@@ -135,9 +144,33 @@ pub fn handle_completion(state: &ServerState, params: CompletionParams) -> Optio
 
     // Keywords
     let keywords = &[
-        "val", "var", "fun", "when", "else", "for", "in", "is", "break", "continue",
-        "return", "enum", "type", "import", "module", "export", "const", "copy",
-        "lazy", "unsafe", "external", "extension", "and", "or", "not", "as", "task",
+        "val",
+        "var",
+        "fun",
+        "when",
+        "else",
+        "for",
+        "in",
+        "is",
+        "break",
+        "continue",
+        "return",
+        "enum",
+        "type",
+        "import",
+        "module",
+        "export",
+        "const",
+        "copy",
+        "lazy",
+        "unsafe",
+        "external",
+        "extension",
+        "and",
+        "or",
+        "not",
+        "as",
+        "task",
     ];
     for kw in keywords {
         if kw.starts_with(&prefix) {
@@ -203,7 +236,10 @@ pub fn handle_completion(state: &ServerState, params: CompletionParams) -> Optio
     Some(CompletionResponse::Array(items))
 }
 
-pub fn handle_semantic_tokens(state: &ServerState, params: SemanticTokensParams) -> Option<SemanticTokensResult> {
+pub fn handle_semantic_tokens(
+    state: &ServerState,
+    params: SemanticTokensParams,
+) -> Option<SemanticTokensResult> {
     let uri = &params.text_document.uri;
     let doc = state.project.documents.get(uri)?;
     let tokens = symbols::compute_semantic_tokens(&doc.tokens);
@@ -213,14 +249,20 @@ pub fn handle_semantic_tokens(state: &ServerState, params: SemanticTokensParams)
     }))
 }
 
-pub fn handle_document_symbols(state: &ServerState, params: DocumentSymbolParams) -> Option<DocumentSymbolResponse> {
+pub fn handle_document_symbols(
+    state: &ServerState,
+    params: DocumentSymbolParams,
+) -> Option<DocumentSymbolResponse> {
     let uri = &params.text_document.uri;
     let doc = state.project.documents.get(uri)?;
     let symbols = symbols::extract_document_symbols(&doc.ast);
     Some(DocumentSymbolResponse::Nested(symbols))
 }
 
-pub fn handle_signature_help(state: &ServerState, params: SignatureHelpParams) -> Option<SignatureHelp> {
+pub fn handle_signature_help(
+    state: &ServerState,
+    params: SignatureHelpParams,
+) -> Option<SignatureHelp> {
     let pos = params.text_document_position_params.position;
     let uri = &params.text_document_position_params.text_document.uri;
     let doc = state.project.documents.get(uri)?;
@@ -255,9 +297,7 @@ pub fn handle_signature_help(state: &ServerState, params: SignatureHelpParams) -
                             .iter()
                             .enumerate()
                             .map(|(i, t)| lsp_types::ParameterInformation {
-                                label: lsp_types::ParameterLabel::Simple(
-                                    format!("p{}: {}", i, t),
-                                ),
+                                label: lsp_types::ParameterLabel::Simple(format!("p{}: {}", i, t)),
                                 documentation: None,
                             })
                             .collect(),
@@ -268,18 +308,16 @@ pub fn handle_signature_help(state: &ServerState, params: SignatureHelpParams) -
                 active_parameter: Some(0),
             })
         }
-        _ => {
-            Some(SignatureHelp {
-                signatures: vec![lsp_types::SignatureInformation {
-                    label: format!("{}()", func_name),
-                    documentation: None,
-                    parameters: None,
-                    active_parameter: None,
-                }],
-                active_signature: Some(0),
+        _ => Some(SignatureHelp {
+            signatures: vec![lsp_types::SignatureInformation {
+                label: format!("{}()", func_name),
+                documentation: None,
+                parameters: None,
                 active_parameter: None,
-            })
-        }
+            }],
+            active_signature: Some(0),
+            active_parameter: None,
+        }),
     }
 }
 
@@ -297,7 +335,10 @@ pub fn handle_references(state: &ServerState, params: ReferenceParams) -> Option
     Some(state.project.find_references(&name))
 }
 
-pub fn handle_document_highlight(state: &ServerState, params: DocumentHighlightParams) -> Option<Vec<DocumentHighlight>> {
+pub fn handle_document_highlight(
+    state: &ServerState,
+    params: DocumentHighlightParams,
+) -> Option<Vec<DocumentHighlight>> {
     let pos = params.text_document_position_params.position;
     let uri = &params.text_document_position_params.text_document.uri;
     let doc = state.project.documents.get(uri)?;
@@ -322,7 +363,10 @@ pub fn handle_document_highlight(state: &ServerState, params: DocumentHighlightP
     Some(highlights)
 }
 
-pub fn handle_prepare_rename(state: &ServerState, params: TextDocumentPositionParams) -> Option<PrepareRenameResponse> {
+pub fn handle_prepare_rename(
+    state: &ServerState,
+    params: TextDocumentPositionParams,
+) -> Option<PrepareRenameResponse> {
     let uri = &params.text_document.uri;
     let doc = state.project.documents.get(uri)?;
 
@@ -373,7 +417,10 @@ pub fn handle_rename(state: &ServerState, params: RenameParams) -> Option<Worksp
     })
 }
 
-pub fn handle_folding_range(state: &ServerState, params: FoldingRangeParams) -> Option<Vec<FoldingRange>> {
+pub fn handle_folding_range(
+    state: &ServerState,
+    params: FoldingRangeParams,
+) -> Option<Vec<FoldingRange>> {
     let uri = &params.text_document.uri;
     let doc = state.project.documents.get(uri)?;
 
@@ -426,15 +473,11 @@ pub fn handle_inlay_hints(state: &ServerState, params: InlayHintParams) -> Optio
             if let Some(next_token) = doc.tokens.get(i + 1) {
                 if let TokenKind::Ident(name) = &next_token.kind {
                     if let Some(ty) = doc.type_env.get(name) {
-                        let pos = position::offset_to_lsp_position(
-                            &doc.source,
-                            next_token.span.end,
-                        );
+                        let pos =
+                            position::offset_to_lsp_position(&doc.source, next_token.span.end);
                         hints.push(InlayHint {
                             position: pos,
-                            label: lsp_types::InlayHintLabel::String(
-                                format!(": {}", ty),
-                            ),
+                            label: lsp_types::InlayHintLabel::String(format!(": {}", ty)),
                             kind: Some(lsp_types::InlayHintKind::TYPE),
                             text_edits: None,
                             tooltip: None,
@@ -455,7 +498,10 @@ pub fn handle_inlay_hints(state: &ServerState, params: InlayHintParams) -> Optio
     }
 }
 
-pub fn handle_formatting(state: &ServerState, params: DocumentFormattingParams) -> Option<Vec<TextEdit>> {
+pub fn handle_formatting(
+    state: &ServerState,
+    params: DocumentFormattingParams,
+) -> Option<Vec<TextEdit>> {
     let uri = &params.text_document.uri;
     let doc = state.project.documents.get(uri)?;
 
@@ -517,7 +563,10 @@ pub fn handle_formatting(state: &ServerState, params: DocumentFormattingParams) 
     }
 }
 
-pub fn handle_code_actions(state: &ServerState, params: CodeActionParams) -> Option<CodeActionResponse> {
+pub fn handle_code_actions(
+    state: &ServerState,
+    params: CodeActionParams,
+) -> Option<CodeActionResponse> {
     let uri = &params.text_document.uri;
     let _doc = state.project.documents.get(uri)?;
 
@@ -551,7 +600,10 @@ pub fn handle_code_actions(state: &ServerState, params: CodeActionParams) -> Opt
     }
 }
 
-pub fn handle_workspace_symbol(state: &ServerState, params: WorkspaceSymbolParams) -> Option<Vec<lsp_types::SymbolInformation>> {
+pub fn handle_workspace_symbol(
+    state: &ServerState,
+    params: WorkspaceSymbolParams,
+) -> Option<Vec<lsp_types::SymbolInformation>> {
     Some(state.project.workspace_symbols(&params.query))
 }
 
@@ -573,7 +625,11 @@ fn get_word_prefix(source: &str, pos: &Position) -> String {
 
 /// Find the function name being called at the cursor position
 /// Walks tokens tracking parenthesis depth
-fn find_call_target(tokens: &[crate::lexer::Token], source: &str, pos: &Position) -> Option<String> {
+fn find_call_target(
+    tokens: &[crate::lexer::Token],
+    source: &str,
+    pos: &Position,
+) -> Option<String> {
     let offset = position::lsp_position_to_offset(source, pos);
 
     // Walk backwards through tokens to find the function name

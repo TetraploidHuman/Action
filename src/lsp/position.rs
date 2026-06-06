@@ -90,25 +90,55 @@ pub fn find_node_at(tokens: &[Token], source: &str, pos: &Position) -> Option<Fo
         TokenKind::IntLiteral(v) => Some(FoundNode::Literal(format!("{}", v))),
         TokenKind::FloatLiteral(v) => Some(FoundNode::Literal(format!("{}", v))),
         TokenKind::StringLiteral(s) => Some(FoundNode::Literal(format!("\"{}\"", s))),
-        TokenKind::BoolLiteral(b) => Some(FoundNode::Keyword(if *b { "true" } else { "false" }.to_string())),
+        TokenKind::BoolLiteral(b) => Some(FoundNode::Keyword(
+            if *b { "true" } else { "false" }.to_string(),
+        )),
         TokenKind::CharLiteral(c) => Some(FoundNode::Literal(format!("'{}'", c))),
-        TokenKind::Val | TokenKind::Var | TokenKind::Fun | TokenKind::Return
-        | TokenKind::When | TokenKind::Else | TokenKind::For | TokenKind::In
-        | TokenKind::Is | TokenKind::Break | TokenKind::Continue | TokenKind::Enum
-        | TokenKind::Type | TokenKind::Import | TokenKind::Module | TokenKind::Export
-        | TokenKind::Const | TokenKind::Copy | TokenKind::Lazy | TokenKind::Unsafe
-        | TokenKind::External | TokenKind::Extension | TokenKind::And | TokenKind::Or
-        | TokenKind::Not | TokenKind::As | TokenKind::True | TokenKind::False => {
-            Some(FoundNode::Keyword(format!("{:?}", token.kind)))
-        }
-        TokenKind::LBrace | TokenKind::RBrace | TokenKind::LParen | TokenKind::RParen
-        | TokenKind::LBracket | TokenKind::RBracket | TokenKind::Semicolon
-        | TokenKind::Comma | TokenKind::Colon | TokenKind::Dot | TokenKind::Arrow
-        | TokenKind::FatArrow | TokenKind::Dollar | TokenKind::DotDot
-        | TokenKind::DotDotLt | TokenKind::ColonColon | TokenKind::Question
-        | TokenKind::QuestionDot | TokenKind::At => {
-            Some(FoundNode::Operator(format!("{:?}", token.kind)))
-        }
+        TokenKind::Val
+        | TokenKind::Var
+        | TokenKind::Fun
+        | TokenKind::Return
+        | TokenKind::When
+        | TokenKind::Else
+        | TokenKind::For
+        | TokenKind::In
+        | TokenKind::Is
+        | TokenKind::Break
+        | TokenKind::Continue
+        | TokenKind::Enum
+        | TokenKind::Type
+        | TokenKind::Import
+        | TokenKind::Module
+        | TokenKind::Export
+        | TokenKind::Const
+        | TokenKind::Copy
+        | TokenKind::Lazy
+        | TokenKind::Unsafe
+        | TokenKind::External
+        | TokenKind::Extension
+        | TokenKind::And
+        | TokenKind::Or
+        | TokenKind::Not
+        | TokenKind::As
+        | TokenKind::Task => Some(FoundNode::Keyword(format!("{:?}", token.kind))),
+        TokenKind::LBrace
+        | TokenKind::RBrace
+        | TokenKind::LParen
+        | TokenKind::RParen
+        | TokenKind::LBracket
+        | TokenKind::RBracket
+        | TokenKind::Semicolon
+        | TokenKind::Comma
+        | TokenKind::Colon
+        | TokenKind::Dot
+        | TokenKind::Arrow
+        | TokenKind::FatArrow
+        | TokenKind::DotDot
+        | TokenKind::DotDotDot
+        | TokenKind::DotDotLt
+        | TokenKind::ColonColon
+        | TokenKind::Question
+        | TokenKind::SafeDot => Some(FoundNode::Operator(format!("{:?}", token.kind))),
         _ => None,
     }
 }

@@ -9,10 +9,9 @@ use std::path::Path;
 
 use lsp_server::{Connection, Message, Notification, Request, Response};
 use lsp_types::{
-    InitializeResult, ServerCapabilities, TextDocumentSyncCapability,
-    TextDocumentSyncKind, CompletionOptions, SemanticTokensOptions,
-    SemanticTokensLegend, SemanticTokenModifier, SignatureHelpOptions,
-    RenameOptions, CodeActionProviderCapability,
+    CodeActionProviderCapability, CompletionOptions, InitializeResult, RenameOptions,
+    SemanticTokenModifier, SemanticTokensLegend, SemanticTokensOptions, ServerCapabilities,
+    SignatureHelpOptions, TextDocumentSyncCapability, TextDocumentSyncKind,
 };
 
 use crate::ast::Type;
@@ -33,9 +32,7 @@ pub fn start_lsp() -> Result<(), Box<dyn std::error::Error>> {
     let (init_id, _init_params) = connection.initialize_start()?;
 
     let capabilities = ServerCapabilities {
-        text_document_sync: Some(TextDocumentSyncCapability::Kind(
-            TextDocumentSyncKind::FULL,
-        )),
+        text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
         hover_provider: Some(lsp_types::HoverProviderCapability::Simple(true)),
         definition_provider: Some(lsp_types::OneOf::Left(true)),
         references_provider: Some(lsp_types::OneOf::Left(true)),
@@ -228,9 +225,7 @@ fn handle_request(state: &mut ServerState, req: &Request) -> Response {
                 .unwrap_or(None);
             Response::new_ok(id, result)
         }
-        _ => {
-            Response::new_ok(id, Option::<()>::None)
-        }
+        _ => Response::new_ok(id, Option::<()>::None),
     }
 }
 
@@ -241,20 +236,26 @@ fn handle_notification(
 ) -> Result<(), Box<dyn std::error::Error>> {
     match not.method.as_str() {
         "textDocument/didOpen" => {
-            if let Ok(params) = serde_json::from_value::<lsp_types::DidOpenTextDocumentParams>(not.params.clone()) {
+            if let Ok(params) =
+                serde_json::from_value::<lsp_types::DidOpenTextDocumentParams>(not.params.clone())
+            {
                 let uri = params.text_document.uri.clone();
                 let diags = handlers::handle_did_open(state, params);
                 publish_diagnostics(connection, &uri, diags)?;
             }
         }
         "textDocument/didChange" => {
-            if let Ok(params) = serde_json::from_value::<lsp_types::DidChangeTextDocumentParams>(not.params.clone()) {
+            if let Ok(params) =
+                serde_json::from_value::<lsp_types::DidChangeTextDocumentParams>(not.params.clone())
+            {
                 let diags = handlers::handle_did_change(state, params.clone());
                 publish_diagnostics(connection, &params.text_document.uri, diags)?;
             }
         }
         "textDocument/didClose" => {
-            if let Ok(params) = serde_json::from_value::<lsp_types::DidCloseTextDocumentParams>(not.params.clone()) {
+            if let Ok(params) =
+                serde_json::from_value::<lsp_types::DidCloseTextDocumentParams>(not.params.clone())
+            {
                 handlers::handle_did_close(state, params);
             }
         }

@@ -53,10 +53,7 @@ pub struct Project {
 }
 
 impl Project {
-    pub fn new(
-        stdlib_registry: TypeRegistry,
-        stdlib_type_env: HashMap<String, Type>,
-    ) -> Self {
+    pub fn new(stdlib_registry: TypeRegistry, stdlib_type_env: HashMap<String, Type>) -> Self {
         Project {
             documents: HashMap::new(),
             stdlib_registry,
@@ -66,7 +63,12 @@ impl Project {
     }
 
     /// Add or update a document, recheck it, and refresh the symbol index
-    pub fn update_document(&mut self, uri: &Url, source: String, version: i32) -> Vec<lsp_types::Diagnostic> {
+    pub fn update_document(
+        &mut self,
+        uri: &Url,
+        source: String,
+        version: i32,
+    ) -> Vec<lsp_types::Diagnostic> {
         let mut doc = Document::new(uri.clone(), source, version);
         doc.recheck(&self.stdlib_registry, &self.stdlib_type_env);
         let diagnostics = doc.get_diagnostics();
@@ -97,7 +99,11 @@ impl Project {
         for i in 0..tokens.len() {
             let token = &tokens[i];
             if let TokenKind::Ident(name) = &token.kind {
-                let prev_kind = if i > 0 { Some(&tokens[i - 1].kind) } else { None };
+                let prev_kind = if i > 0 {
+                    Some(&tokens[i - 1].kind)
+                } else {
+                    None
+                };
                 let kind = match prev_kind {
                     Some(TokenKind::Fun) => SymbolKind::Function,
                     Some(TokenKind::Val) | Some(TokenKind::Var) => SymbolKind::Variable,
