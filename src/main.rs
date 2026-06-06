@@ -604,6 +604,26 @@ fn resolve_imports(program: &Program, search_dirs: &[PathBuf]) -> Result<Vec<Stm
                             }
                         }
                     }
+                    // External declarations are infrastructure — always import as-is
+                    Stmt::External {
+                        name,
+                        params,
+                        return_type,
+                        ..
+                    } => {
+                        extra_stmts.push(Stmt::External {
+                            name: name.clone(),
+                            params: params.clone(),
+                            return_type: return_type.clone(),
+                            span: Span::default(),
+                        });
+                    }
+                    Stmt::ExternalType { name, .. } => {
+                        extra_stmts.push(Stmt::ExternalType {
+                            name: name.clone(),
+                            span: Span::default(),
+                        });
+                    }
                     _ => {}
                 }
             }

@@ -1,5 +1,5 @@
 // Test: JSON parse, access, and serialize
-import "json"
+import json.{jsonParse, jsonGet, jsonAsStr, jsonAsFloat, jsonAsBool, jsonGetIdx, jsonLen, jsonStringify, jsonType, jsonIsNull, jsonFree}
 
 fun main() {
     // Test 1: Parse simple object

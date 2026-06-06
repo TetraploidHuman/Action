@@ -1,5 +1,5 @@
 // Test: JSON error handling - invalid input
-import "json"
+import json.{jsonParse, jsonType, jsonGet, jsonIsNull, jsonGetIdx, jsonLen, jsonFree}
 
 fun main() {
     // Parse invalid JSON
