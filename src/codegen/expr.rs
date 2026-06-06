@@ -207,6 +207,10 @@ impl<'ctx> CodeGen<'ctx> {
         let mut free_vars: Vec<String> = vec![];
         let mut bound: Vec<String> = vec![];
         collect_free_vars(body, params, &mut bound, &mut free_vars);
+        // Only variables that exist in the parent scope can be captured.
+        // Builtins (enum constructors like Some/None/Ok/Err, pi, e, etc.)
+        // are resolved at compile time and must not be treated as captures.
+        free_vars.retain(|name| self.scope.get(name).is_some());
 
         // ---- Build captures struct type if there are free vars ----
         let has_captures = !free_vars.is_empty();
@@ -341,7 +345,6 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?
                     .into_struct_value();
             }
-            let bt: BasicTypeEnum = cst.into();
             self.builder
                 .build_store(closure_ptr, cap_struct)
                 .map_err(llvm_err)?;

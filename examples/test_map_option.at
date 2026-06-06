@@ -1,0 +1,8 @@
+fun main() {
+    val opt = Some(21)
+    val doubled = map(opt) { x -> x * 2 }
+    when doubled {
+        Some(v) -> print(v)
+        None -> print(0)
+    }
+}

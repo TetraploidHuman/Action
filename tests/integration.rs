@@ -298,3 +298,8 @@ fn test_struct_nested() {
 fn test_lambda_capture() {
     assert_eq!(run_example("test_lambda_capture.at"), "42");
 }
+
+#[test]
+fn test_map_option() {
+    assert_eq!(run_example("test_map_option.at"), "42");
+}
