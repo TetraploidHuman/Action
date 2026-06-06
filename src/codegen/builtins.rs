@@ -7043,7 +7043,10 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(ext);
         self.builder.position_at_end(ext);
-        // Build Option enum: Some(found) or None
+        // Build Option enum: Some(found) or None.
+        // InnerType defaults to Int — list elements are fat structs whose type
+        // is only known at runtime. Fixing this requires adding element type info
+        // to List/Map/Set TypedValue variants.
         self.build_option_from_fat_struct(found_a, found_flag_a, InnerType::Int)
     }
 
@@ -7283,6 +7286,8 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(acc_alloca, phi_val)
             .map_err(llvm_err)?;
+        // InnerType defaults to Int — accumulator is a fat struct whose type
+        // is only known at runtime. See comment at builtin_find for details.
         self.build_option_from_fat_struct(acc_alloca, found_flag_a, InnerType::Int)
     }
 

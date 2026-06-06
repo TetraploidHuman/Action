@@ -359,10 +359,16 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self.builder.build_unconditional_branch(merge_bb);
 
         self.builder.position_at_end(merge_bb);
+        let inner_type = match &elem_val2 {
+            TypedValue::Int(_) => InnerType::Int,
+            TypedValue::Float(_) => InnerType::Float,
+            TypedValue::Str(_) => InnerType::Str,
+            _ => InnerType::Int,
+        };
         Ok(TypedValue::Enum(
             option_alloca,
             option_ty,
-            InnerType::Int,
+            inner_type,
             false,
         ))
     }
@@ -537,7 +543,7 @@ impl<'ctx> CodeGen<'ctx> {
                         }
                         var.ptr
                     };
-                    let field_val = self.extract_field_from_struct(&v, i)?;
+                    let field_val = self.extract_field_from_struct(&v, i, None)?;
                     if let Some(bv) = field_val.to_bv() {
                         self.builder.build_store(var_ptr, bv).map_err(llvm_err)?;
                     }
@@ -572,11 +578,14 @@ impl<'ctx> CodeGen<'ctx> {
         Err(format!("Field '{}' not found in struct", field))
     }
 
-    /// Extract a field value from a TypedValue::Struct at the given index
+    /// Extract a field value from a TypedValue::Struct at the given index.
+    /// `inner_type` is the InnerType of the data inside enum fields, if known.
+    /// When None (struct name not tracked at codegen level), defaults to Int.
     pub(super) fn extract_field_from_struct(
         &mut self,
         struct_val: &TypedValue<'ctx>,
         idx: usize,
+        inner_type: Option<InnerType>,
     ) -> Result<TypedValue<'ctx>, String> {
         match struct_val {
             TypedValue::Struct(ptr, st) => {
@@ -603,7 +612,12 @@ impl<'ctx> CodeGen<'ctx> {
                     ValKind::Map => Ok(TypedValue::Map(alloca)),
                     ValKind::Set => Ok(TypedValue::Set(alloca)),
                     ValKind::Struct => Ok(TypedValue::Struct(alloca, *st)),
-                    ValKind::Enum => Ok(TypedValue::Enum(alloca, *st, InnerType::Int, false)),
+                    ValKind::Enum => Ok(TypedValue::Enum(
+                        alloca,
+                        *st,
+                        inner_type.unwrap_or(InnerType::Int),
+                        false,
+                    )),
                     ValKind::Bool => Ok(TypedValue::Bool(field.into_int_value())),
                     ValKind::Int => Ok(TypedValue::Int(field.into_int_value())),
                     ValKind::Float => Ok(TypedValue::Float(field.into_float_value())),

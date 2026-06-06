@@ -291,6 +291,9 @@ impl TypeChecker {
                     return_type,
                     ..
                 } => {
+                    // NOTE: untyped parameters and return types default to Int.
+                    // Full type inference (Hindley-Milner) is not implemented;
+                    // fixing this requires type variable unification across all call sites.
                     let param_tys: Vec<Type> = params
                         .iter()
                         .map(|p| p.ty.clone().unwrap_or(Type::Named("Int".into())))

@@ -6,8 +6,6 @@
 // On Linux:   thin wrappers around pthread/libc functions.
 // On Windows: thin wrappers around kernel32.dll primitives.
 
-use std::ffi::c_int;
-
 // ---------------------------------------------------------------------------
 // Linux — delegate to pthread / libc
 // ---------------------------------------------------------------------------
