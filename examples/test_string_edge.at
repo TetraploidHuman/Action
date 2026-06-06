@@ -1,0 +1,18 @@
+// Test string manipulation edge cases
+fun main() {
+    // String concatenation
+    val s = "Hello" + " " + "World"
+    print(s)
+
+    // Substring with slice
+    val sub = slice("abcdef", 1, 4)
+    print(sub)
+
+    // String length
+    print(len(""))
+    print(len("abc"))
+
+    // Index of substring
+    print(index_of("e", "hello"))
+    print(index_of("ll", "hello"))
+}

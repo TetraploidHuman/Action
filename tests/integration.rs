@@ -315,3 +315,225 @@ fn test_io() {
     // read_line with EOF -> unwrap_or default "World"
     assert_eq!(run_example("io.at"), "Hello, World\n");
 }
+
+// ---- Edge-case tests: pattern matching ----
+
+#[test]
+fn test_and_guards() {
+    assert_eq!(run_example("test_and_guards.at"), "positive\ndone\n");
+}
+
+#[test]
+fn test_or_patterns() {
+    assert_eq!(run_example("test_or_patterns.at"), "small\ndone\n");
+}
+
+// ---- Edge-case tests: data structures ----
+
+#[test]
+fn test_named_tuple() {
+    assert_eq!(
+        run_example("test_named_tuple.at"),
+        "name: Alice\nage: 30\npos0: Alice\ndone\n"
+    );
+}
+
+#[test]
+fn test_struct_destructure() {
+    assert_eq!(
+        run_example("test_struct_destructure.at"),
+        "x: 10\ny: 20\ndone\n"
+    );
+}
+
+#[test]
+fn test_map_set_ops() {
+    assert_eq!(run_example("test_map_set.at"), "true100999true");
+}
+
+#[test]
+fn test_empty_collections() {
+    assert_eq!(run_example("test_empty_collections.at"), "0true0true00true");
+}
+
+// ---- Edge-case tests: functions ----
+
+#[test]
+fn test_tco_deep() {
+    // Deep recursion that would overflow without TCO (n=5000)
+    assert_eq!(run_example("test_tco.at"), "12036288005005000");
+}
+
+#[test]
+fn test_overload_str() {
+    assert_eq!(run_example("test_overload_str.at"), "Hello, World\n42\n");
+}
+
+// ---- Edge-case tests: callbacks and closures ----
+
+#[test]
+fn test_pat_cb() {
+    // Pattern binding + callback in same function
+    assert_eq!(run_example("test_pat_cb.at"), "42");
+}
+
+#[test]
+fn test_simple_cb() {
+    // Untyped callback parameter
+    assert_eq!(run_example("test_simple_cb.at"), "15");
+}
+
+#[test]
+fn test_cb4() {
+    // Callback returning Int
+    assert_eq!(run_example("test_cb4.at"), "42");
+}
+
+#[test]
+fn test_cb2() {
+    // Callback returning Option, called via typed function
+    assert_eq!(run_example("test_cb2.at"), "4210");
+}
+
+#[test]
+fn test_cb5() {
+    // Callback returning Option (simpler variant)
+    assert_eq!(run_example("test_cb5.at"), "42");
+}
+
+#[test]
+fn test_multi_capture() {
+    // Multiple closures capturing the same variable
+    assert_eq!(run_example("test_nested_closure.at"), "4284");
+}
+
+#[test]
+fn test_closure_loop() {
+    // Closures in for loops capturing loop variable
+    assert_eq!(run_example("test_closure_loop.at"), "15");
+}
+
+// ---- Edge-case tests: float and string ----
+
+#[test]
+fn test_float_edge() {
+    // Float arithmetic edge cases: decimals, negatives, fractions
+    assert_eq!(run_example("test_float_edge.at"), "truetruetruetruetrue");
+}
+
+#[test]
+fn test_string_edge() {
+    // String manipulation edge cases
+    assert_eq!(
+        run_example("test_string_edge.at"),
+        "Hello Worldbcd03Some(1)Some(2)"
+    );
+}
+
+// ---- Edge-case tests: stream, coroutine, task ----
+
+#[test]
+fn test_stream_ops() {
+    assert_eq!(run_example("test_stream.at"), "4299done");
+}
+
+#[test]
+fn test_coroutine() {
+    assert_eq!(run_example("test_coroutine.at"), "322");
+}
+
+#[test]
+fn test_task_stream() {
+    assert_eq!(
+        run_example("test_task_stream.at"),
+        "4299falsefalse1237falsefalse456"
+    );
+}
+
+// ---- Edge-case tests: imports ----
+
+#[test]
+fn test_import_selective() {
+    assert_eq!(
+        run_example("test_import_selective.at"),
+        "15\n5\n3.14159 \ndone\n"
+    );
+}
+
+#[test]
+fn test_import_wildcard() {
+    assert_eq!(
+        run_example("test_import_wildcard.at"),
+        "15\n5\n3.14159 \ndone\n"
+    );
+}
+
+// ---- Comprehensive builtin tests ----
+
+#[test]
+fn test_option_returns() {
+    // Comprehensive test of Option-returning builtins: tail, init, index_of,
+    // to_int, to_float, parse_int, slice, from_list, contains_key
+    assert_eq!(
+        run_example("test_option_returns.at"),
+        "tail([1,2,3]) is_some: true\n\
+         tail([]) is_none: true\n\
+         init([1,2,3]) is_some: true\n\
+         init([]) is_none: true\n\
+         index_of(2, [1,2,3]) is_some: true\n\
+         index_of(2, [1,2,3]) value: 1\n\
+         index_of(99, [1,2,3]) is_none: true\n\
+         index_of('bc', 'abcde') is_some: true\n\
+         index_of('bc', 'abcde') value: 1\n\
+         index_of('xyz', 'abcde') is_none: true\n\
+         to_int('42') is_some: true\n\
+         to_int('42') value: 42\n\
+         to_int('abc') is_none: true\n\
+         to_int(3.14) is_some: true\n\
+         to_float('3.14') is_some: true\n\
+         to_float('abc') is_none: true\n\
+         to_float(42) is_some: true\n\
+         parse_int('123') is_some: true\n\
+         parse_int('123') value: 123\n\
+         parse_int('not_a_number') is_none: true\n\
+         slice('hello world', 0, 5): hello\n\
+         from_list([1,2,3]) contains 2: true\n\
+         contains_key(m, 'a'): true\n\
+         contains_key(m, 'c'): false\n\
+         done\n"
+    );
+}
+
+#[test]
+fn test_new_features() {
+    // Comprehensive test of v6 features: Option/Result methods, dot notation,
+    // LazyList, curry, ok()
+    assert_eq!(
+        run_example("test_new_features.at"),
+        "is_some(Some(42)): true\n\
+         is_none(Some(42)): false\n\
+         is_none(None): true\n\
+         unwrap_or(Some(42), 0): 42\n\
+         unwrap_or(None, 0): 0\n\
+         unwrap(Some(42)): 42\n\
+         s.is_some(): true\n\
+         n.is_none(): true\n\
+         s.unwrap_or(99): 42\n\
+         n.unwrap_or(99): 99\n\
+         is_ok(Ok(10)): true\n\
+         is_err(Err(...)): true\n\
+         unwrap_or(Ok(10), 0): 10\n\
+         unwrap_or(Err(...), 0): 0\n\
+         unwrap(Ok(10)): 10\n\
+         ok(Some(42), 99) -> is_ok: true\n\
+         ok(None, 99) -> is_err: true\n\
+         to_lazy_list + len: 3\n\
+         to_list back + len: 3\n\
+         lazy_head of non-empty: true\n\
+         lazy_head of empty: false\n\
+         lazy_take(2) len: 2\n\
+         lazy_drop(1) len: 2\n\
+         curry(add,5)(10): 15\n\
+         done\n"
+    );
+}

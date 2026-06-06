@@ -1,0 +1,8 @@
+// Test: multiple closures capturing the same variable
+fun main() {
+    val x = 42
+    val get_x = { x }
+    val double_x = { x * 2 }
+    print(get_x())
+    print(double_x())
+}
