@@ -1,0 +1,104 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Action",
+  "scopeName": "source.action",
+  "fileTypes": [".at"],
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#constants"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#functions"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.block.action",
+          "begin": "/\\*",
+          "end": "\\*/"
+        },
+        {
+          "name": "comment.line.double-slash.action",
+          "match": "//.*$"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.action",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [{ "name": "constant.character.escape.action", "match": "\\\\." }]
+        },
+        {
+          "name": "string.quoted.single.action",
+          "begin": "'",
+          "end": "'",
+          "patterns": [{ "name": "constant.character.escape.action", "match": "\\\\." }]
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.action",
+          "match": "\\b(val|var|fun|return|when|else|for|in|is|break|continue|enum|type|import|module|export|const|copy|extension|and|or|not|as|lazy|unsafe|external|task)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "entity.name.type.action",
+          "match": "\\b(Int|Float|Bool|String|Char|Map|Set|List|Task|Stream|LazyList|CString|Ptr|FileHandle|Option|Result|Unit|Void)\\b"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.action",
+          "match": "\\b(true|false)\\b"
+        },
+        {
+          "name": "constant.numeric.action",
+          "match": "\\b[0-9]+(\\.[0-9]+)?\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.action",
+          "match": "(==|!=|<=|>=|<-|->|=>|\\.\\.\\.?|\\+\\=|\\-\\=|\\*\\=|\\/\\=|\\%\\=|\\+|-|\\*|\\/|\\%|\\^|\\||\\&|\\!|\\~|\\?|\\.)"
+        }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        {
+          "name": "entity.name.function.action",
+          "match": "\\b([a-z_][a-zA-Z0-9_]*)\\s*(?=\\()"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "name": "action-language",
+  "displayName": "Action Language",
+  "description": "Action language support with LSP",
+  "version": "0.2.0",
+  "publisher": "action-lang",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": ["Programming Languages"],
+  "activationEvents": [
+    "onLanguage:action"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "action",
+        "aliases": ["Action", "action"],
+        "extensions": [".at"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "action",
+        "scopeName": "source.action",
+        "path": "./syntaxes/action.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Action Language",
+      "properties": {
+        "action.lsp.path": {
+          "type": "string",
+          "default": "action",
+          "description": "Path to the Action LSP binary"
+        },
+        "action.lsp.trace": {
+          "type": "string",
+          "enum": ["off", "messages", "verbose"],
+          "default": "off",
+          "description": "LSP trace level"
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.0"
+  }
+}
