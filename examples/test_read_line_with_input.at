@@ -1,0 +1,5 @@
+// Test readLine with piped input (using unwrapOr instead of pattern matching)
+fun main() {
+    val input = unwrapOr(readLine(), "EOF")
+    print(input)
+}

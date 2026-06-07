@@ -1,0 +1,10 @@
+// Test readLine with multiple piped inputs
+fun main() {
+    var running = true
+    for running {
+        val input = unwrapOr(readLine(), "quit")
+        running = when input == "quit" { false else true }
+        when running { println("Hello, " + input) }
+    }
+    print("Goodbye!")
+}

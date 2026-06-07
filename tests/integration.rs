@@ -1,5 +1,6 @@
+use std::io::Write;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 fn action_binary() -> PathBuf {
     // CARGO_BIN_EXE_action is set by cargo test itself — trust it unconditionally.
@@ -318,6 +319,56 @@ fn test_map_option() {
 fn test_read_line() {
     // No stdin input: readLine returns None, prints "EOF"
     assert_eq!(run_example("test_read_line.at"), "EOF");
+}
+
+#[test]
+fn test_read_line_with_input() {
+    // Pipe input to stdin: readLine should return the input string
+    let example = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("examples")
+        .join("test_read_line_with_input.at");
+    let mut child = Command::new(action_binary())
+        .args(["run", example.to_str().unwrap()])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn action");
+
+    {
+        let mut stdin = child.stdin.take().unwrap();
+        stdin.write_all(b"hello\n").unwrap();
+    }
+
+    let output = child.wait_with_output().expect("Failed to read output");
+    let stdout = String::from_utf8_lossy(&output.stdout)
+        .replace("\r\n", "\n")
+        .replace('\r', "");
+    assert_eq!(stdout, "hello\n", "readLine should return piped input");
+}
+
+#[test]
+fn test_read_line_multiple() {
+    // Pipe multiple lines: each readLine call should return one line
+    let example = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("examples")
+        .join("test_read_line_multi.at");
+    let mut child = Command::new(action_binary())
+        .args(["run", example.to_str().unwrap()])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("Failed to spawn action");
+
+    {
+        let mut stdin = child.stdin.take().unwrap();
+        stdin.write_all(b"Alice\nBob\nquit\n").unwrap();
+    }
+
+    let output = child.wait_with_output().expect("Failed to read output");
+    let stdout = String::from_utf8_lossy(&output.stdout)
+        .replace("\r\n", "\n")
+        .replace('\r', "");
+    assert_eq!(stdout, "Hello, Alice\nHello, Bob\nGoodbye!");
 }
 
 #[test]
