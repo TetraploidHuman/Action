@@ -337,7 +337,11 @@ impl Lexer {
             let clean: String = num_str[2..].chars().filter(|c| *c != '_').collect();
             // Use u128 to detect overflow before clamping to i64 range
             let val = u128::from_str_radix(&clean, 16).unwrap_or(u128::MAX);
-            return TokenKind::IntLiteral(if val > i64::MAX as u128 { i64::MAX } else { val as i64 });
+            return TokenKind::IntLiteral(if val > i64::MAX as u128 {
+                i64::MAX
+            } else {
+                val as i64
+            });
         }
 
         // Read binary prefix 0b/0B
@@ -352,7 +356,11 @@ impl Lexer {
             }
             let clean: String = num_str[2..].chars().filter(|c| *c != '_').collect();
             let val = u128::from_str_radix(&clean, 2).unwrap_or(u128::MAX);
-            return TokenKind::IntLiteral(if val > i64::MAX as u128 { i64::MAX } else { val as i64 });
+            return TokenKind::IntLiteral(if val > i64::MAX as u128 {
+                i64::MAX
+            } else {
+                val as i64
+            });
         }
 
         // Read octal prefix 0o/0O
@@ -367,7 +375,11 @@ impl Lexer {
             }
             let clean: String = num_str[2..].chars().filter(|c| *c != '_').collect();
             let val = u128::from_str_radix(&clean, 8).unwrap_or(u128::MAX);
-            return TokenKind::IntLiteral(if val > i64::MAX as u128 { i64::MAX } else { val as i64 });
+            return TokenKind::IntLiteral(if val > i64::MAX as u128 {
+                i64::MAX
+            } else {
+                val as i64
+            });
         }
 
         let mut is_float = false;
@@ -422,8 +434,18 @@ impl Lexer {
         if is_float {
             TokenKind::FloatLiteral(clean.parse::<f64>().unwrap_or(f64::INFINITY))
         } else {
-            let val = clean.parse::<i128>().unwrap_or(if clean.starts_with('-') { i128::MIN } else { i128::MAX });
-            let clamped = if val > i64::MAX as i128 { i64::MAX } else if val < i64::MIN as i128 { i64::MIN } else { val as i64 };
+            let val = clean.parse::<i128>().unwrap_or(if clean.starts_with('-') {
+                i128::MIN
+            } else {
+                i128::MAX
+            });
+            let clamped = if val > i64::MAX as i128 {
+                i64::MAX
+            } else if val < i64::MIN as i128 {
+                i64::MIN
+            } else {
+                val as i64
+            };
             TokenKind::IntLiteral(clamped)
         }
     }

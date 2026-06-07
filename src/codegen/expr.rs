@@ -602,13 +602,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let heap = self.malloc_rc(len_plus1)?;
                     // memcpy from global data to heap
                     self.builder
-                        .build_memcpy(
-                            heap,
-                            1,
-                            data_ptr,
-                            1,
-                            len_plus1,
-                        )
+                        .build_memcpy(heap, 1, data_ptr, 1, len_plus1)
                         .map_err(llvm_err)?;
                     let str_ty = self.string_type;
                     let alloca = self
@@ -619,12 +613,16 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_struct_gep(str_ty, alloca, 0, "cs_len")
                         .map_err(llvm_err)?;
-                    self.builder.build_store(len_field, len_val).map_err(llvm_err)?;
+                    self.builder
+                        .build_store(len_field, len_val)
+                        .map_err(llvm_err)?;
                     let ptr_field = self
                         .builder
                         .build_struct_gep(str_ty, alloca, 1, "cs_ptr")
                         .map_err(llvm_err)?;
-                    self.builder.build_store(ptr_field, heap).map_err(llvm_err)?;
+                    self.builder
+                        .build_store(ptr_field, heap)
+                        .map_err(llvm_err)?;
                     return Ok(TypedValue::Str(alloca));
                 }
                 ValKind::List => {

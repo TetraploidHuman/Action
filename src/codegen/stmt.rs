@@ -968,8 +968,7 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 // Enum parameters carry heap-allocated data that needs RC cleanup
                 if kind == ValKind::Enum {
-                    self.scope
-                        .set_enum_data_rc_managed(&param.name, true);
+                    self.scope.set_enum_data_rc_managed(&param.name, true);
                 }
             }
         }

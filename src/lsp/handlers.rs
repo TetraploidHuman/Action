@@ -603,11 +603,7 @@ pub fn handle_code_actions(
                         kind: Some(CodeActionKind::QUICKFIX),
                         diagnostics: Some(vec![diag.clone()]),
                         edit: Some(WorkspaceEdit {
-                            changes: Some(
-                                vec![(uri_clone, vec![edit])]
-                                    .into_iter()
-                                    .collect(),
-                            ),
+                            changes: Some(vec![(uri_clone, vec![edit])].into_iter().collect()),
                             ..Default::default()
                         }),
                         command: None,

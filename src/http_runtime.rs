@@ -72,7 +72,10 @@ fn validate_url(url: &str) -> Result<(), String> {
             || host_lower.starts_with("192.168.")
             || host_lower.starts_with("172.") && {
                 let parts: Vec<&str> = host_lower.split('.').collect();
-                parts.len() == 4 && parts[1].parse::<u32>().map_or(false, |n| n >= 16 && n <= 31)
+                parts.len() == 4
+                    && parts[1]
+                        .parse::<u32>()
+                        .map_or(false, |n| n >= 16 && n <= 31)
             }
         {
             return Err(format!("URL targets a private/internal address: {}", host));

@@ -91,12 +91,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_and(
                         self.builder
-                            .build_int_compare(
-                                inkwell::IntPredicate::SGE,
-                                index_val,
-                                zero,
-                                "ge0",
-                            )
+                            .build_int_compare(inkwell::IntPredicate::SGE, index_val, zero, "ge0")
                             .map_err(llvm_err)?,
                         self.builder
                             .build_int_compare(
