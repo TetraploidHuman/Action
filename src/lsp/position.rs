@@ -72,16 +72,11 @@ pub fn find_token_at(tokens: &[Token], offset: usize) -> Option<&Token> {
 }
 
 /// Result of finding a node at a position
-#[allow(dead_code)]
 pub enum FoundNode {
     Ident(String),
     Keyword(String),
-    #[allow(dead_code)]
-    Literal(String),
-    #[allow(dead_code)]
-    TypeName(String),
-    #[allow(dead_code)]
-    Operator(String),
+    Literal,
+    Operator,
 }
 
 /// Find what kind of node is at the given LSP position
@@ -91,13 +86,13 @@ pub fn find_node_at(tokens: &[Token], source: &str, pos: &Position) -> Option<Fo
 
     match &token.kind {
         TokenKind::Ident(name) => Some(FoundNode::Ident(name.clone())),
-        TokenKind::IntLiteral(v) => Some(FoundNode::Literal(format!("{}", v))),
-        TokenKind::FloatLiteral(v) => Some(FoundNode::Literal(format!("{}", v))),
-        TokenKind::StringLiteral(s) => Some(FoundNode::Literal(format!("\"{}\"", s))),
+        TokenKind::IntLiteral(_) => Some(FoundNode::Literal),
+        TokenKind::FloatLiteral(_) => Some(FoundNode::Literal),
+        TokenKind::StringLiteral(_) => Some(FoundNode::Literal),
+        TokenKind::CharLiteral(_) => Some(FoundNode::Literal),
         TokenKind::BoolLiteral(b) => Some(FoundNode::Keyword(
             if *b { "true" } else { "false" }.to_string(),
         )),
-        TokenKind::CharLiteral(c) => Some(FoundNode::Literal(format!("'{}'", c))),
         TokenKind::Val
         | TokenKind::Var
         | TokenKind::Fun
@@ -142,7 +137,7 @@ pub fn find_node_at(tokens: &[Token], source: &str, pos: &Position) -> Option<Fo
         | TokenKind::DotDotLt
         | TokenKind::ColonColon
         | TokenKind::Question
-        | TokenKind::SafeDot => Some(FoundNode::Operator(format!("{:?}", token.kind))),
+        | TokenKind::SafeDot => Some(FoundNode::Operator),
         _ => None,
     }
 }

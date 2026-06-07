@@ -11,13 +11,11 @@ use super::position;
 
 /// Symbol kind for cross-file indexing
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
 pub enum SymbolKind {
     Function,
     Variable,
     Constant,
     Type,
-    Enum,
     EnumVariant,
     Module,
 }
@@ -29,7 +27,6 @@ impl SymbolKind {
             SymbolKind::Variable => lsp_types::SymbolKind::VARIABLE,
             SymbolKind::Constant => lsp_types::SymbolKind::CONSTANT,
             SymbolKind::Type => lsp_types::SymbolKind::CLASS,
-            SymbolKind::Enum => lsp_types::SymbolKind::ENUM,
             SymbolKind::EnumVariant => lsp_types::SymbolKind::ENUM_MEMBER,
             SymbolKind::Module => lsp_types::SymbolKind::MODULE,
         }
@@ -167,6 +164,7 @@ impl Project {
     }
 
     /// Search workspace symbols by query string
+    #[allow(deprecated)]
     pub fn workspace_symbols(&self, query: &str) -> Vec<lsp_types::SymbolInformation> {
         let mut results = Vec::new();
         let lower_query = query.to_lowercase();
@@ -183,7 +181,6 @@ impl Project {
 
                         container_name: None,
                         tags: None,
-                        #[allow(deprecated)]
                         deprecated: None,
                     });
                 }

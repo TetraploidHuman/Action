@@ -41,8 +41,6 @@ static ATOMIC_TEST_PING_PTR: unsafe extern "C" fn() -> i64 = action_test_ping;
 /// On error, returns "0\nError message"
 /// Caller must free with action_http_free()
 const ALLOWED_METHODS: &[&str] = &["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"];
-#[allow(dead_code)]
-const ALLOWED_SCHEMES: &[&str] = &["http", "https"];
 
 fn validate_url(url: &str) -> Result<(), String> {
     if url.is_empty() {
@@ -104,7 +102,6 @@ fn validate_header_line(header: &str) -> Result<(), String> {
 }
 
 #[no_mangle]
-#[allow(unused_assignments)]
 pub extern "C" fn action_http_request(
     method: *const c_char,
     url: *const c_char,
@@ -174,24 +171,20 @@ pub extern "C" fn action_http_request(
             // Parse HTTP response: may contain proxy CONNECT tunnel headers
             // before the actual response (e.g. "HTTP/1.1 200 Connection established\r\n\r\n").
             // Skip past any leading header blocks whose status line is a CONNECT response.
-            let mut body_start = 0usize;
             let mut search_from = 0usize;
-            loop {
+            let body_start = loop {
                 let next = raw[search_from..]
                     .find("\r\n\r\n")
                     .map(|i| search_from + i + 4)
                     .or_else(|| raw[search_from..].find("\n\n").map(|i| search_from + i + 2))
                     .unwrap_or(raw.len());
                 let after_headers = &raw[next..];
-                // If the "body" starts with HTTP/, it's another header block (e.g. after proxy CONNECT).
-                // Skip it and search again.
                 if after_headers.starts_with("HTTP/") {
                     search_from = next;
                 } else {
-                    body_start = next;
-                    break;
+                    break next;
                 }
-            }
+            };
 
             let headers_part = &raw[..body_start.saturating_sub(2)];
             let response_body = &raw[body_start..];

@@ -186,6 +186,7 @@ pub fn extract_document_symbols(stmts: &[Stmt], source: &str) -> Vec<DocumentSym
         .collect()
 }
 
+#[allow(deprecated)]
 fn stmt_to_document_symbol(stmt: &Stmt, source: &str) -> Option<DocumentSymbol> {
     match stmt {
         Stmt::Fun {
@@ -224,7 +225,6 @@ fn stmt_to_document_symbol(stmt: &Stmt, source: &str) -> Option<DocumentSymbol> 
                 selection_range: position::span_to_lsp_range(span, source),
                 children: Some(children),
                 tags: None,
-                #[allow(deprecated)]
                 deprecated: None,
             })
         }
@@ -240,7 +240,6 @@ fn stmt_to_document_symbol(stmt: &Stmt, source: &str) -> Option<DocumentSymbol> 
                 selection_range: position::span_to_lsp_range(span, source),
                 children: None,
                 tags: None,
-                #[allow(deprecated)]
                 deprecated: None,
             })
         }
@@ -256,7 +255,6 @@ fn stmt_to_document_symbol(stmt: &Stmt, source: &str) -> Option<DocumentSymbol> 
                 selection_range: position::span_to_lsp_range(span, source),
                 children: None,
                 tags: None,
-                #[allow(deprecated)]
                 deprecated: None,
             })
         }
@@ -289,7 +287,6 @@ fn stmt_to_document_symbol(stmt: &Stmt, source: &str) -> Option<DocumentSymbol> 
                         selection_range: position::span_to_lsp_range(span, source),
                         children: None,
                         tags: None,
-                        #[allow(deprecated)]
                         deprecated: None,
                     }
                 })
@@ -302,7 +299,6 @@ fn stmt_to_document_symbol(stmt: &Stmt, source: &str) -> Option<DocumentSymbol> 
                 selection_range: position::span_to_lsp_range(span, source),
                 children: Some(children),
                 tags: None,
-                #[allow(deprecated)]
                 deprecated: None,
             })
         }
@@ -314,7 +310,6 @@ fn stmt_to_document_symbol(stmt: &Stmt, source: &str) -> Option<DocumentSymbol> 
             selection_range: position::span_to_lsp_range(span, source),
             children: None,
             tags: None,
-            #[allow(deprecated)]
             deprecated: None,
         }),
         Stmt::Module {
@@ -329,7 +324,6 @@ fn stmt_to_document_symbol(stmt: &Stmt, source: &str) -> Option<DocumentSymbol> 
                 selection_range: position::span_to_lsp_range(span, source),
                 children: Some(children),
                 tags: None,
-                #[allow(deprecated)]
                 deprecated: None,
             })
         }
@@ -341,7 +335,6 @@ fn stmt_to_document_symbol(stmt: &Stmt, source: &str) -> Option<DocumentSymbol> 
             selection_range: position::span_to_lsp_range(span, source),
             children: None,
             tags: None,
-            #[allow(deprecated)]
             deprecated: None,
         }),
         _ => None,

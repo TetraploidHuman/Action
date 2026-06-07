@@ -14,8 +14,6 @@ use super::position;
 pub struct Document {
     pub uri: Url,
     pub source: String,
-    #[allow(dead_code)]
-    pub version: i32,
     pub tokens: Vec<Token>,
     pub ast: Vec<Stmt>,
     pub parse_errors: Vec<ParseError>,
@@ -25,11 +23,10 @@ pub struct Document {
 }
 
 impl Document {
-    pub fn new(uri: Url, source: String, version: i32) -> Self {
+    pub fn new(uri: Url, source: String, _version: i32) -> Self {
         let mut doc = Document {
             uri,
             source,
-            version,
             tokens: Vec::new(),
             ast: Vec::new(),
             parse_errors: Vec::new(),
