@@ -73,7 +73,9 @@ impl<'ctx> CodeGen<'ctx> {
         let arm_types: Vec<Type> = arms.iter().map(|a| self.infer_expr_type(&a.body)).collect();
         let result_type = arm_types
             .iter()
-            .find(|t| matches!(t, Type::Named(n) if self.enum_types.contains_key(n) || n == "String"))
+            .find(
+                |t| matches!(t, Type::Named(n) if self.enum_types.contains_key(n) || n == "String"),
+            )
             .or_else(|| arm_types.first())
             .cloned()
             .unwrap_or_else(|| Type::Named("Int".into()));
