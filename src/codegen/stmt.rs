@@ -947,6 +947,31 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?;
                 self.builder.build_store(alloca, pv).map_err(llvm_err)?;
                 let kind = self.param_val_kind(param.ty.as_ref());
+                // RC inc for heap-typed parameters so the callee holds a reference.
+                // Without this, a raw value (RC=0) passed directly (e.g. string literal)
+                // will be freed by scope cleanup on the first variable binding that
+                // rc_inc's then rc_dec's it.
+                match kind {
+                    ValKind::Str => {
+                        let sv = self.load_string(alloca)?;
+                        let pdata = self
+                            .builder
+                            .build_extract_value(sv, 1, "pdata")
+                            .map_err(llvm_err)?
+                            .into_pointer_value();
+                        self.rc_inc(pdata)?;
+                    }
+                    ValKind::List | ValKind::Map | ValKind::Set => {
+                        let lv = self.load_list(alloca)?;
+                        let pdata = self
+                            .builder
+                            .build_extract_value(lv, 0, "pdata")
+                            .map_err(llvm_err)?
+                            .into_pointer_value();
+                        self.rc_inc(pdata)?;
+                    }
+                    _ => {}
+                }
                 param_slots.push((alloca, pv.get_type(), kind));
                 if let Some(Type::Function(param_tys_ast, ret_ast)) = param.ty.as_ref() {
                     let ret = Some(ret_ast.as_ref());

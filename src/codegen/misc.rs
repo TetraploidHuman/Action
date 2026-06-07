@@ -468,6 +468,12 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
 
+        // RC inc the return value before cleaning up the scope.
+        // Without this, emit_scope_cleanup would rc_dec the variable being
+        // returned (e.g. `var r = ...; r`), freeing its data before the
+        // caller can take ownership.
+        self.rc_inc_typed_value(&last)?;
+
         // RC cleanup: decrement refcounts on heap-typed variables in this scope
         self.emit_scope_cleanup()?;
 
