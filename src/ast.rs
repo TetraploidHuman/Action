@@ -225,7 +225,7 @@ pub enum Pattern {
 impl fmt::Display for Pattern {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Pattern::Wildcard => write!(f, "_"),
+            Pattern::Wildcard => write!(f, "else"),
             Pattern::Literal(lit) => write!(f, "{}", lit),
             Pattern::Variable(name) => write!(f, "{}", name),
             Pattern::Constructor {

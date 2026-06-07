@@ -6,13 +6,13 @@ fun main() {
     when s {
         "world" -> print(0)
         "hello" -> print(1)
-        _ -> print(0)
+        else -> print(0)
     }
 
     // Different length - should correctly not match
     when s {
         "hell" -> print(0)
-        _ -> print(2)
+        else -> print(2)
     }
 
     // Same length, different content again
@@ -20,13 +20,13 @@ fun main() {
     when x {
         "abcdf" -> print(0)
         "abcde" -> print(3)
-        _ -> print(0)
+        else -> print(0)
     }
 
     // Empty string test
     val e = ""
     when e {
         "" -> print(4)
-        _ -> print(0)
+        else -> print(0)
     }
 }

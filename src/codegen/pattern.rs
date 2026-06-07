@@ -69,9 +69,15 @@ impl<'ctx> CodeGen<'ctx> {
 
         let merge_block = self.context.append_basic_block(current_fn, "chain_merge");
 
-        // Determine result type from first arm's body (for alloca)
-        let first_body = self.compile_expr(&arms[0].body)?;
-        let result_ty = first_body.get_type_for_alloca(self);
+        // Infer result type from first arm (avoid compiling body just for type)
+        let arm_types: Vec<Type> = arms.iter().map(|a| self.infer_expr_type(&a.body)).collect();
+        let result_type = arm_types
+            .iter()
+            .find(|t| matches!(t, Type::Named(n) if self.enum_types.contains_key(n) || n == "String"))
+            .or_else(|| arm_types.first())
+            .cloned()
+            .unwrap_or_else(|| Type::Named("Int".into()));
+        let result_ty = self.ast_type_to_basic_type(&result_type);
 
         // Allocate result at entry
         let entry = current_fn.get_first_basic_block().unwrap();

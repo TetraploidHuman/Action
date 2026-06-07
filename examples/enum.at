@@ -12,7 +12,7 @@ fun main() {
     when c {
         Red -> print("Red")
         Green -> print("Green")
-        _ -> print("Other")
+        else -> print("Other")
     }
 
     // Data-carrying enum construction and destructuring

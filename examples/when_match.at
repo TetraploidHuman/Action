@@ -6,7 +6,7 @@ fun main() {
         0 -> print("zero")
         1 -> print("one")
         42 -> print("the answer")
-        _ -> print("something else")
+        else -> print("something else")
     }
 
     // Match with variable binding (binds matched value)

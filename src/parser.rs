@@ -1735,10 +1735,6 @@ impl Parser {
 
     fn parse_single_pattern(&mut self) -> Result<Pattern, ParseError> {
         match self.current_kind() {
-            TokenKind::Underscore => {
-                self.advance();
-                Ok(Pattern::Wildcard)
-            }
             TokenKind::Else => {
                 self.advance();
                 Ok(Pattern::Wildcard)
