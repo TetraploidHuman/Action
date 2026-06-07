@@ -36,6 +36,7 @@ jobs:
           targets: ${{ matrix.target }}
 
       - uses: Swatinem/rust-cache@v2
+        if: runner.os == 'Windows'
         with:
           key: ${{ matrix.name }}
 
