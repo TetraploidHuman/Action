@@ -1847,7 +1847,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(enum_sv, 0, "uwo_tag")
             .map_err(llvm_err)?
             .into_int_value();
-        let isSome = self
+        let is_some = self
             .builder
             .build_int_compare(
                 IntPredicate::EQ,
@@ -1863,7 +1863,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let _ = self
             .builder
-            .build_conditional_branch(isSome, some_block, none_block);
+            .build_conditional_branch(is_some, some_block, none_block);
 
         // Some/Ok branch: extract value based on inner type
         self.builder.position_at_end(some_block);
@@ -1996,7 +1996,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(enum_sv, 0, "uw_tag")
             .map_err(llvm_err)?
             .into_int_value();
-        let isSome = self
+        let is_some = self
             .builder
             .build_int_compare(IntPredicate::EQ, tag, i64.const_int(0, false), "uw_is_some")
             .map_err(llvm_err)?;
@@ -2007,7 +2007,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let _ = self
             .builder
-            .build_conditional_branch(isSome, some_block, none_block);
+            .build_conditional_branch(is_some, some_block, none_block);
 
         // Some/Ok branch: extract value
         self.builder.position_at_end(some_block);
@@ -2113,7 +2113,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(enum_sv, 0, "oe_tag")
             .map_err(llvm_err)?
             .into_int_value();
-        let isSome = self
+        let is_some = self
             .builder
             .build_int_compare(IntPredicate::EQ, tag, i64.const_int(0, false), "oe_is_some")
             .map_err(llvm_err)?;
@@ -2124,7 +2124,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let _ = self
             .builder
-            .build_conditional_branch(isSome, some_block, none_block);
+            .build_conditional_branch(is_some, some_block, none_block);
 
         // Some/Ok branch: extract and return the value
         self.builder.position_at_end(some_block);
@@ -2266,7 +2266,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(opt_sv, 0, "ok_tag")
             .map_err(llvm_err)?
             .into_int_value();
-        let isSome = self
+        let is_some = self
             .builder
             .build_int_compare(IntPredicate::EQ, tag, i64.const_int(0, false), "ok_is_some")
             .map_err(llvm_err)?;
@@ -2299,7 +2299,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let _ = self
             .builder
-            .build_conditional_branch(isSome, some_block, none_block);
+            .build_conditional_branch(is_some, some_block, none_block);
 
         // Some branch: extract value with correct type, create Ok(result)
         self.builder.position_at_end(some_block);
@@ -4308,7 +4308,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<TypedValue<'ctx>, String> {
         let lazy_val = self.compile_expr(lazy_expr)?;
         // If LazyList, extract head directly. If List, use first element.
-        let (head_val, isEmpty) = match &lazy_val {
+        let (head_val, is_empty) = match &lazy_val {
             TypedValue::LazyList(ptr) => {
                 let ll_sv = self
                     .builder
@@ -4319,7 +4319,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_extract_value(ll_sv, 0, "head_h")
                     .map_err(llvm_err)?;
-                // A LazyList always has a head, so isEmpty = false (i1)
+                // A LazyList always has a head, so is_empty = false (i1)
                 (h, self.bool_ty().const_int(0, false))
             }
             TypedValue::List(ptr) => {
@@ -4337,7 +4337,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let zero = self.i64_ty().const_int(0, false);
                 let is_empty_cond = self
                     .builder
-                    .build_int_compare(IntPredicate::EQ, len, zero, "isEmpty")
+                    .build_int_compare(IntPredicate::EQ, len, zero, "is_empty")
                     .map_err(llvm_err)?;
                 // Load first element's fat struct
                 let first_ptr = unsafe {
@@ -4385,7 +4385,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let _ = self
             .builder
-            .build_conditional_branch(isEmpty, none_block, some_block);
+            .build_conditional_branch(is_empty, none_block, some_block);
 
         // Some branch: head_val contains the i64 value
         self.builder.position_at_end(some_block);
@@ -7156,9 +7156,9 @@ impl<'ctx> CodeGen<'ctx> {
         let i64 = self.i64_ty();
         let zero = i64.const_int(0, false);
         let one = i64.const_int(1, false);
-        let isEmpty = self
+        let is_empty = self
             .builder
-            .build_int_compare(IntPredicate::EQ, input_len, zero, "isEmpty")
+            .build_int_compare(IntPredicate::EQ, input_len, zero, "is_empty")
             .map_err(llvm_err)?;
         // Accumulator: fat {i64,ptr}
         let acc_a = self
@@ -7176,7 +7176,7 @@ impl<'ctx> CodeGen<'ctx> {
         let merge_bb = self.context.append_basic_block(current_fn, "reduce_merge");
         let _ = self
             .builder
-            .build_conditional_branch(isEmpty, empty_bb, init_bb);
+            .build_conditional_branch(is_empty, empty_bb, init_bb);
         // Init: load first element
         self.builder.position_at_end(init_bb);
         let input_list0 = self.load_list(list_ptr)?;
@@ -8378,7 +8378,7 @@ impl<'ctx> CodeGen<'ctx> {
         let (fn_ptr, map_ptr) = if let Some(lam) = trailing {
             if args.len() != 1 {
                 return Err(
-                    "mapMapValues with trailing lambda expects 1 argument (map)".to_string(),
+                    "mapMapValues with trailing lambda expects 1 argument (map)".to_string()
                 );
             }
             let mv = self.compile_expr(&args[0])?;
@@ -9033,11 +9033,11 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::Enum(alloca, enum_ty, InnerType::Float, true))
     }
 
-    /// Build Option<List<T>>: Some(list) or None based on isEmpty condition
+    /// Build Option<List<T>>: Some(list) or None based on is_empty condition
     pub(super) fn build_option_list(
         &mut self,
         list_val: StructValue<'ctx>,
-        isEmpty: IntValue<'ctx>,
+        is_empty_value: IntValue<'ctx>,
     ) -> Result<TypedValue<'ctx>, String> {
         let current_fn = self
             .builder
@@ -9054,7 +9054,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(
                 IntPredicate::NE,
-                isEmpty,
+                is_empty,
                 self.bool_ty().const_zero(),
                 "is_empty_cond",
             )
@@ -9214,13 +9214,13 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(enum_loaded, 0, "fm_tag")
             .map_err(llvm_err)?
             .into_int_value();
-        let isSome = self
+        let is_some = self
             .builder
             .build_int_compare(IntPredicate::EQ, tag, i64.const_int(0, false), "fm_is_some")
             .map_err(llvm_err)?;
         let _ = self
             .builder
-            .build_conditional_branch(isSome, some_block, none_block);
+            .build_conditional_branch(is_some, some_block, none_block);
 
         // Some/Ok branch: extract inner value, call callback, store result
         self.builder.position_at_end(some_block);
@@ -9374,13 +9374,13 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(enum_loaded, 0, "em_tag")
             .map_err(llvm_err)?
             .into_int_value();
-        let isSome = self
+        let is_some = self
             .builder
             .build_int_compare(IntPredicate::EQ, tag, i64.const_int(0, false), "em_is_some")
             .map_err(llvm_err)?;
         let _ = self
             .builder
-            .build_conditional_branch(isSome, some_block, none_block);
+            .build_conditional_branch(is_some, some_block, none_block);
 
         // Some/Ok branch: extract inner value, call callback, wrap result in Some/Ok
         self.builder.position_at_end(some_block);
@@ -9465,7 +9465,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.bv_to_typed(result)
     }
 
-    /// Builtin stdlib functions: len, isEmpty, append, concat
+    /// Builtin stdlib functions: len, is_empty, append, concat
     pub(super) fn builtin_stdlib(
         &mut self,
         name: &str,
@@ -9575,17 +9575,17 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     _ => {
                         return Err(
-                            "isEmpty: argument must be a list, string, map, set, or lazy list"
+                            "is_empty: argument must be a list, string, map, set, or lazy list"
                                 .to_string(),
                         )
                     }
                 };
                 let zero = self.i64_ty().const_int(0, false);
-                let isEmpty = self
+                let is_empty = self
                     .builder
-                    .build_int_compare(IntPredicate::EQ, len, zero, "isEmpty")
+                    .build_int_compare(IntPredicate::EQ, len, zero, "is_empty")
                     .map_err(llvm_err)?;
-                Ok(TypedValue::Bool(isEmpty))
+                Ok(TypedValue::Bool(is_empty))
             }
             "append" => {
                 if args.len() != 2 {
@@ -10801,7 +10801,7 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 let v = self.compile_expr(&args[0])?;
                 let fv = self.typed_to_float(&v)?;
-                let isNaN = self
+                let is_nan = self
                     .builder
                     .build_float_compare(FloatPredicate::UNO, fv, fv, "isNaN")
                     .map_err(llvm_err)?;
@@ -11675,7 +11675,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .build_extract_value(lv, 1, "len")
                             .map_err(llvm_err)?
                             .into_int_value();
-                        let isEmpty = self
+                        let is_empty = self
                             .builder
                             .build_int_compare(
                                 IntPredicate::EQ,
@@ -11690,7 +11690,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .basic()
                             .ok_or("tail failed")?
                             .into_struct_value();
-                        self.build_option_list(result, isEmpty)
+                        self.build_option_list(result, is_empty)
                     }
                     _ => Err("tail: argument must be a list".to_string()),
                 }
@@ -11726,10 +11726,7 @@ impl<'ctx> CodeGen<'ctx> {
                     TypedValue::Str(sp) => {
                         let sv = self.load_string(sp)?;
                         let cc = self.call_rt("action_string_split_lines", &[sv.into()])?;
-                        let result = cc
-                            .try_as_basic_value()
-                            .basic()
-                            .ok_or("splitLines failed")?;
+                        let result = cc.try_as_basic_value().basic().ok_or("splitLines failed")?;
                         let alloca = self
                             .builder
                             .build_alloca(self.list_type, "lines")
@@ -11806,7 +11803,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .build_extract_value(lv, 1, "len")
                             .map_err(llvm_err)?
                             .into_int_value();
-                        let isEmpty = self
+                        let is_empty = self
                             .builder
                             .build_int_compare(
                                 IntPredicate::EQ,
@@ -11821,7 +11818,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .basic()
                             .ok_or("init failed")?
                             .into_struct_value();
-                        self.build_option_list(result, isEmpty)
+                        self.build_option_list(result, is_empty)
                     }
                     _ => Err("init: argument must be a list".to_string()),
                 }
@@ -12610,10 +12607,7 @@ impl<'ctx> CodeGen<'ctx> {
                     TypedValue::Map(mp) => {
                         let mv = self.load_list(mp)?;
                         let cc = self.call_rt("action_map_entries", &[mv.into()])?;
-                        let result = cc
-                            .try_as_basic_value()
-                            .basic()
-                            .ok_or("mapEntries failed")?;
+                        let result = cc.try_as_basic_value().basic().ok_or("mapEntries failed")?;
                         let alloca = self
                             .builder
                             .build_alloca(self.list_type, "entries")
@@ -13783,10 +13777,7 @@ impl<'ctx> CodeGen<'ctx> {
                     return Err("nowUtc expects no arguments".to_string());
                 }
                 let sty = self.context.struct_type(&[self.i64_ty().into(); 6], false);
-                let alloca = self
-                    .builder
-                    .build_alloca(sty, "nowUtc")
-                    .map_err(llvm_err)?;
+                let alloca = self.builder.build_alloca(sty, "nowUtc").map_err(llvm_err)?;
                 let time_fn = self
                     .module
                     .get_function("time")
@@ -15472,7 +15463,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .context
                     .ptr_type(inkwell::AddressSpace::default())
                     .const_zero();
-                let isNull = self
+                let is_null = self
                     .builder
                     .build_int_compare(IntPredicate::EQ, p, null_ptr, "isNull")
                     .map_err(llvm_err)?;
