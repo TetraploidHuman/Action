@@ -1003,6 +1003,9 @@ impl TypeChecker {
                 };
                 norm_a == norm_b
             }
+            // Int is the compiler's fallback sentinel for uninferred types; be lenient
+            (Type::Named(n), _) if n == "Int" => true,
+            (_, Type::Named(n)) if n == "Int" => true,
             (Type::Struct(fa), Type::Struct(fb)) => {
                 if fa.len() != fb.len() {
                     return false;
@@ -1017,6 +1020,9 @@ impl TypeChecker {
             (Type::Set(ea), Type::Set(eb)) => self.types_compatible(ea, eb),
             (Type::Task(ta), Type::Task(tb)) => self.types_compatible(ta, tb),
             (Type::Stream(sa), Type::Stream(sb)) => self.types_compatible(sa, sb),
+            (Type::LazyList(la), Type::LazyList(lb)) => self.types_compatible(la, lb),
+            (Type::Ptr(pa), Type::Ptr(pb)) => self.types_compatible(pa, pb),
+            (Type::CString, Type::CString) | (Type::FileHandle, Type::FileHandle) => true,
             (Type::Function(pa, ra), Type::Function(pb, rb)) => {
                 if pa.len() != pb.len() {
                     return false;
@@ -1034,7 +1040,8 @@ impl TypeChecker {
                         .zip(tb.iter())
                         .all(|(a, b)| self.types_compatible(a, b))
             }
-            _ => true,
+            // All other combinations are type mismatches
+            _ => false,
         }
     }
 }
