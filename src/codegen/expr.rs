@@ -831,12 +831,19 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_alloca(lazy_ty, "enum_tmp")
                         .map_err(llvm_err)?;
                     self.builder.build_store(alloca, val).map_err(llvm_err)?;
-                    Ok(TypedValue::Enum(
-                        alloca,
-                        val.into_struct_value().get_type(),
-                        InnerType::Int,
-                        false,
-                    ))
+                    let et = val.into_struct_value().get_type();
+                    let inner_type = self
+                        .scope
+                        .get(name)
+                        .and_then(|v| v.enum_inner_type)
+                        .unwrap_or(InnerType::Int);
+                    let rc_managed = self
+                        .scope
+                        .get(name)
+                        .map(|v| v.enum_data_rc_managed)
+                        .unwrap_or(false);
+                    self.last_enum_inner = Some((inner_type, rc_managed));
+                    Ok(TypedValue::Enum(alloca, et, inner_type, rc_managed))
                 }
                 _ => self.bv_to_typed(val),
             };
@@ -1083,7 +1090,11 @@ impl<'ctx> CodeGen<'ctx> {
                     Ok(TypedValue::Str(alloca))
                 } else if self.enum_types.values().any(|et| *et == st) {
                     // Matches a registered enum type (anonymous {i64,ptr})
-                    Ok(TypedValue::Enum(alloca, st, InnerType::Int, false))
+                    let (inner_type, rc_managed) = self
+                        .last_enum_inner
+                        .take()
+                        .unwrap_or((InnerType::Int, false));
+                    Ok(TypedValue::Enum(alloca, st, inner_type, rc_managed))
                 } else {
                     Ok(TypedValue::Struct(alloca, st))
                 }

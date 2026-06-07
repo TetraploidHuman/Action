@@ -7,7 +7,7 @@ use inkwell::FloatPredicate;
 use inkwell::IntPredicate;
 use std::collections::HashMap;
 
-use super::{llvm_err, CodeGen, Scope, TypedValue};
+use super::{llvm_err, CodeGen, InnerType, Scope, TypedValue};
 
 impl<'ctx> CodeGen<'ctx> {
     pub(super) fn compile_when(&mut self, w: &When) -> Result<TypedValue<'ctx>, String> {
@@ -92,6 +92,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let mut next_check = self.context.append_basic_block(current_fn, "chain_check0");
         let _ = self.builder.build_unconditional_branch(next_check);
+        let mut chain_enum_info: Option<(InnerType, bool)> = None;
 
         for (i, arm) in arms.iter().enumerate() {
             let is_last = i == arms.len() - 1;
@@ -140,6 +141,9 @@ impl<'ctx> CodeGen<'ctx> {
             self.scope = Scope::with_parent(saved_scope);
             self.bind_pattern_vars(&arm.pattern, None, None)?;
             let body_val = self.compile_expr(&arm.body)?;
+            if let TypedValue::Enum(_, _, inner, rc) = &body_val {
+                chain_enum_info = Some((*inner, *rc));
+            }
             self.store_value_to_alloca(&body_val, result_alloca)?;
             // Restore scope
             let mut parent = Scope::new();
@@ -151,6 +155,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         self.builder.position_at_end(merge_block);
+        self.last_enum_inner = chain_enum_info;
         let loaded = self
             .builder
             .build_load(result_ty, result_alloca, "chain_ld")
@@ -219,6 +224,8 @@ impl<'ctx> CodeGen<'ctx> {
         let merge_block = self.context.append_basic_block(current_fn, "match_merge");
         let mut next_check = self.context.append_basic_block(current_fn, "match_check0");
         let _ = self.builder.build_unconditional_branch(next_check);
+        // Track enum inner type from arm bodies to preserve through bv_to_typed
+        let mut result_enum_info: Option<(InnerType, bool)> = None;
 
         for (i, arm) in arms.iter().enumerate() {
             let is_last = i == arms.len() - 1;
@@ -278,6 +285,9 @@ impl<'ctx> CodeGen<'ctx> {
             } else {
                 self.compile_expr(&arm.body)?
             };
+            if let TypedValue::Enum(_, _, inner, rc) = &body_val {
+                result_enum_info = Some((*inner, *rc));
+            }
             self.store_value_to_alloca(&body_val, result_alloca)?;
             let mut parent = Scope::new();
             std::mem::swap(&mut self.scope, &mut parent);
@@ -288,6 +298,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         self.builder.position_at_end(merge_block);
+        self.last_enum_inner = result_enum_info;
         let loaded = self
             .builder
             .build_load(result_ty, result_alloca, "match_ld")
@@ -895,6 +906,9 @@ impl<'ctx> CodeGen<'ctx> {
             None
         };
 
+        // Track enum inner type from both branches for bv_to_typed
+        let mut when_enum_info: Option<(InnerType, bool)> = None;
+
         // Then branch
         self.builder.position_at_end(then_block);
         if then_diverges {
@@ -902,6 +916,9 @@ impl<'ctx> CodeGen<'ctx> {
             // divergent: branch already built by compile_expr, nothing more
         } else {
             let tv = self.compile_expr(then_expr)?;
+            if let TypedValue::Enum(_, _, inner, rc) = &tv {
+                when_enum_info = Some((*inner, *rc));
+            }
             self.store_value_to_alloca(&tv, result_alloca.unwrap())?;
             let _ = self.builder.build_unconditional_branch(merge_block);
         }
@@ -913,6 +930,11 @@ impl<'ctx> CodeGen<'ctx> {
             // divergent: branch already built by compile_expr, nothing more
         } else {
             let ev = self.compile_expr(else_expr)?;
+            if when_enum_info.is_none() {
+                if let TypedValue::Enum(_, _, inner, rc) = &ev {
+                    when_enum_info = Some((*inner, *rc));
+                }
+            }
             self.store_value_to_alloca(&ev, result_alloca.unwrap())?;
             let _ = self.builder.build_unconditional_branch(merge_block);
         }
@@ -920,6 +942,7 @@ impl<'ctx> CodeGen<'ctx> {
         // Merge: load result if at least one branch reaches here
         self.builder.position_at_end(merge_block);
         if let Some(alloca) = result_alloca {
+            self.last_enum_inner = when_enum_info;
             let loaded = self
                 .builder
                 .build_load(result_ty, alloca, "when_ld")

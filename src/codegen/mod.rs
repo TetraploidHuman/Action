@@ -408,6 +408,8 @@ pub struct CodeGen<'ctx> {
     /// Last fat_ret alloca from unpack_fat_return/bv_to_typed, for potential
     /// bitcast when the result is returned from a typed function (e.g., enum).
     pub(super) last_fat_ret: Option<(PointerValue<'ctx>, StructType<'ctx>)>,
+    /// Last-known enum inner type for bv_to_typed to preserve through struct→Enum conversion.
+    pub(super) last_enum_inner: Option<(InnerType, bool)>,
     /// Overloaded function mapping: base name → [(param_types, mangled_name)]
     /// e.g., "add" → [([Int, Int], "add_Int_Int"), ([Float, Float], "add_Float_Float")]
     pub(super) overloaded_functions: HashMap<String, Vec<(Vec<Type>, String)>>,
@@ -540,6 +542,7 @@ impl<'ctx> CodeGen<'ctx> {
             stream_type,
             fat_return_type,
             last_fat_ret: None,
+            last_enum_inner: None,
             overloaded_functions: HashMap::new(),
             in_unsafe: false,
             external_fns: HashMap::new(),
