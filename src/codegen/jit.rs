@@ -74,6 +74,149 @@ fn map_host_symbols(cg: &CodeGen, engine: &inkwell::execution_engine::ExecutionE
             }
             engine.add_global_mapping(&func, __acrt_iob_func as AcrtIob as usize);
         }
+
+        // Standard C library functions — on Windows these are imported
+        // from ucrtbase.dll and may not be resolvable by the JIT's default
+        // symbol lookup (GetProcAddress on the main module). Map them
+        // explicitly via their Rust extern "C" bindings.
+        extern "C" {
+            fn fgets(
+                buf: *mut std::ffi::c_void,
+                n: std::ffi::c_int,
+                stream: *mut std::ffi::c_void,
+            ) -> *mut std::ffi::c_void;
+            fn malloc(size: u64) -> *mut std::ffi::c_void;
+            fn free(ptr: *mut std::ffi::c_void);
+            fn strlen(s: *const std::ffi::c_char) -> u64;
+            fn memcpy(
+                dst: *mut std::ffi::c_void,
+                src: *const std::ffi::c_void,
+                n: u64,
+            ) -> *mut std::ffi::c_void;
+            fn strcmp(s1: *const std::ffi::c_char, s2: *const std::ffi::c_char) -> std::ffi::c_int;
+            fn printf(fmt: *const std::ffi::c_char, ...) -> std::ffi::c_int;
+            fn fprintf(
+                stream: *mut std::ffi::c_void,
+                fmt: *const std::ffi::c_char,
+                ...
+            ) -> std::ffi::c_int;
+            fn fflush(stream: *mut std::ffi::c_void) -> std::ffi::c_int;
+            fn fclose(stream: *mut std::ffi::c_void) -> std::ffi::c_int;
+            fn fopen(
+                path: *const std::ffi::c_char,
+                mode: *const std::ffi::c_char,
+            ) -> *mut std::ffi::c_void;
+            fn fread(
+                ptr: *mut std::ffi::c_void,
+                size: u64,
+                nmemb: u64,
+                stream: *mut std::ffi::c_void,
+            ) -> u64;
+            fn fwrite(
+                ptr: *const std::ffi::c_void,
+                size: u64,
+                nmemb: u64,
+                stream: *mut std::ffi::c_void,
+            ) -> u64;
+            fn fseek(
+                stream: *mut std::ffi::c_void,
+                offset: i64,
+                whence: std::ffi::c_int,
+            ) -> std::ffi::c_int;
+            fn ftell(stream: *mut std::ffi::c_void) -> i64;
+            fn feof(stream: *mut std::ffi::c_void) -> std::ffi::c_int;
+            fn remove(path: *const std::ffi::c_char) -> std::ffi::c_int;
+            fn sprintf(
+                buf: *mut std::ffi::c_char,
+                fmt: *const std::ffi::c_char,
+                ...
+            ) -> std::ffi::c_int;
+            fn strtod(nptr: *const std::ffi::c_char, endptr: *mut *mut std::ffi::c_char) -> f64;
+            fn strftime(
+                s: *mut std::ffi::c_char,
+                max: u64,
+                fmt: *const std::ffi::c_char,
+                tm: *const std::ffi::c_void,
+            ) -> u64;
+            fn strptime(
+                buf: *const std::ffi::c_char,
+                fmt: *const std::ffi::c_char,
+                tm: *mut std::ffi::c_void,
+            ) -> *mut std::ffi::c_char;
+            // Math functions from ucrtbase.dll
+            fn sqrt(x: f64) -> f64;
+            fn sin(x: f64) -> f64;
+            fn cos(x: f64) -> f64;
+            fn tan(x: f64) -> f64;
+            fn asin(x: f64) -> f64;
+            fn acos(x: f64) -> f64;
+            fn atan(x: f64) -> f64;
+            fn atan2(y: f64, x: f64) -> f64;
+            fn exp(x: f64) -> f64;
+            fn log(x: f64) -> f64;
+            fn log10(x: f64) -> f64;
+            fn log2(x: f64) -> f64;
+            fn pow(base: f64, exp: f64) -> f64;
+            fn abs(x: std::ffi::c_int) -> std::ffi::c_int;
+            fn floor(x: f64) -> f64;
+            fn ceil(x: f64) -> f64;
+            fn round(x: f64) -> f64;
+            fn cbrt(x: f64) -> f64;
+        }
+
+        for name in [
+            "fgets", "malloc", "free", "strlen", "memcpy", "strcmp", "printf", "fprintf", "fflush",
+            "fclose", "fopen", "fread", "fwrite", "fseek", "ftell", "feof", "remove", "sprintf",
+            "strtod", "strftime", "strptime", "sqrt", "sin", "cos", "tan", "asin", "acos", "atan",
+            "atan2", "exp", "log", "log10", "log2", "pow", "abs", "floor", "ceil", "round", "cbrt",
+        ] {
+            if let Some(func) = cg.module.get_function(name) {
+                let addr = match name {
+                    "fgets" => fgets as *const () as usize,
+                    "malloc" => malloc as *const () as usize,
+                    "free" => free as *const () as usize,
+                    "strlen" => strlen as *const () as usize,
+                    "memcpy" => memcpy as *const () as usize,
+                    "strcmp" => strcmp as *const () as usize,
+                    "printf" => printf as *const () as usize,
+                    "fprintf" => fprintf as *const () as usize,
+                    "fflush" => fflush as *const () as usize,
+                    "fclose" => fclose as *const () as usize,
+                    "fopen" => fopen as *const () as usize,
+                    "fread" => fread as *const () as usize,
+                    "fwrite" => fwrite as *const () as usize,
+                    "fseek" => fseek as *const () as usize,
+                    "ftell" => ftell as *const () as usize,
+                    "feof" => feof as *const () as usize,
+                    "remove" => remove as *const () as usize,
+                    "sprintf" => sprintf as *const () as usize,
+                    "strtod" => strtod as *const () as usize,
+                    "strftime" => strftime as *const () as usize,
+                    "strptime" => strptime as *const () as usize,
+                    "sqrt" => sqrt as *const () as usize,
+                    "sin" => sin as *const () as usize,
+                    "cos" => cos as *const () as usize,
+                    "tan" => tan as *const () as usize,
+                    "asin" => asin as *const () as usize,
+                    "acos" => acos as *const () as usize,
+                    "atan" => atan as *const () as usize,
+                    "atan2" => atan2 as *const () as usize,
+                    "exp" => exp as *const () as usize,
+                    "log" => log as *const () as usize,
+                    "log10" => log10 as *const () as usize,
+                    "log2" => log2 as *const () as usize,
+                    "pow" => pow as *const () as usize,
+                    "abs" => abs as *const () as usize,
+                    "floor" => floor as *const () as usize,
+                    "ceil" => ceil as *const () as usize,
+                    "round" => round as *const () as usize,
+                    "cbrt" => cbrt as *const () as usize,
+                    _ => continue,
+                };
+                engine.add_global_mapping(&func, addr);
+            }
+        }
+
         // Kernel32 functions — always available on Windows
         if let Some(func) = cg.module.get_function("GetStdHandle") {
             type Gsh = unsafe extern "C" fn(std::ffi::c_int) -> *mut std::ffi::c_void;
