@@ -79,7 +79,19 @@ enum Commands {
     Lsp,
 }
 
+#[cfg(windows)]
+extern "system" {
+    fn SetConsoleOutputCP(code_page: u32) -> i32;
+}
+
 fn main() {
+    #[cfg(windows)]
+    unsafe {
+        // Set console output to UTF-8 so AI responses display correctly
+        // (Windows defaults to the system code page, e.g. GBK, which garbles UTF-8)
+        SetConsoleOutputCP(65001);
+    }
+
     let cli = Cli::parse();
 
     match cli.command {

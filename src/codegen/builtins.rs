@@ -15421,31 +15421,109 @@ impl<'ctx> CodeGen<'ctx> {
         let val = self.compile_expr(expr)?;
         match val {
             TypedValue::CString(ptr) | TypedValue::Ptr(ptr) | TypedValue::FileHandle(ptr) => {
-                // strlen - FileHandle is treated as a pointer for null check
                 if matches!(val, TypedValue::FileHandle(_)) {
                     return Err("fromCString: cannot convert FileHandle to string".to_string());
                 }
-                // strlen
+                // Null check: return empty string for null pointers
+                let null_ptr = self
+                    .context
+                    .ptr_type(inkwell::AddressSpace::default())
+                    .const_zero();
+                let is_null = self
+                    .builder
+                    .build_int_compare(IntPredicate::EQ, ptr, null_ptr, "is_null")
+                    .map_err(llvm_err)?;
+                let is_null_bb = self
+                    .context
+                    .append_basic_block(
+                        self.builder
+                            .get_insert_block()
+                            .and_then(|b| b.get_parent())
+                            .ok_or("no function")?,
+                        "fcs_null",
+                    );
+                let ok_bb = self
+                    .context
+                    .append_basic_block(
+                        self.builder
+                            .get_insert_block()
+                            .and_then(|b| b.get_parent())
+                            .ok_or("no function")?,
+                        "fcs_ok",
+                    );
+                let merge_bb = self
+                    .context
+                    .append_basic_block(
+                        self.builder
+                            .get_insert_block()
+                            .and_then(|b| b.get_parent())
+                            .ok_or("no function")?,
+                        "fcs_merge",
+                    );
+                let _ = self
+                    .builder
+                    .build_conditional_branch(is_null, is_null_bb, ok_bb);
+
+                // Null path: return empty string ""
+                self.builder.position_at_end(is_null_bb);
+                let empty_str = self.builder.build_alloca(self.string_type, "empty").map_err(llvm_err)?;
+                let empty_undef = self.string_type.get_undef();
+                let e1 = self
+                    .builder
+                    .build_insert_value(empty_undef, self.i64_ty().const_int(0, false), 0, "e_len")
+                    .map_err(llvm_err)?;
+                // Allocate a zero byte for the empty string data
+                let zero_byte = self.builder.build_alloca(self.context.i8_type(), "zero_byte").map_err(llvm_err)?;
+                self.builder
+                    .build_store(zero_byte, self.context.i8_type().const_int(0, false))
+                    .map_err(llvm_err)?;
+                let e2 = self
+                    .builder
+                    .build_insert_value(e1, zero_byte, 1, "e_ptr")
+                    .map_err(llvm_err)?;
+                self.builder
+                    .build_store(empty_str, e2)
+                    .map_err(llvm_err)?;
+                let _ = self.builder.build_unconditional_branch(merge_bb);
+
+                // OK path: strlen + allocate
+                self.builder.position_at_end(ok_bb);
                 let len_val = self.call_rt("strlen", &[ptr.into()])?;
                 let len = len_val
                     .try_as_basic_value()
                     .basic()
                     .ok_or("strlen failed")?
                     .into_int_value();
-                // allocate Atomic string
                 let str_struct = self.call_rt("action_string_create", &[ptr.into(), len.into()])?;
                 let str_val = str_struct
                     .try_as_basic_value()
                     .basic()
                     .ok_or("string_create failed")?;
-                let alloca = self
+                let ok_alloca = self
                     .builder
                     .build_alloca(self.string_type, "from_cstr")
                     .map_err(llvm_err)?;
                 self.builder
-                    .build_store(alloca, str_val)
+                    .build_store(ok_alloca, str_val)
                     .map_err(llvm_err)?;
-                Ok(TypedValue::Str(alloca))
+                let _ = self.builder.build_unconditional_branch(merge_bb);
+
+                // Merge with phi
+                self.builder.position_at_end(merge_bb);
+                let phi = self
+                    .builder
+                    .build_phi(
+                        self.context
+                            .ptr_type(inkwell::AddressSpace::default()),
+                        "fcs_phi",
+                    )
+                    .map_err(llvm_err)?;
+                phi.add_incoming(&[
+                    (&empty_str.as_basic_value(), is_null_bb),
+                    (&ok_alloca.as_basic_value(), ok_bb),
+                ]);
+                let result_alloca = phi.as_basic_value().into_pointer_value();
+                Ok(TypedValue::Str(result_alloca))
             }
             _ => Err("fromCString: argument must be a CString or Ptr".to_string()),
         }
