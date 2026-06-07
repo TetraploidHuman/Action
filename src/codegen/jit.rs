@@ -101,6 +101,39 @@ fn map_host_symbols(cg: &CodeGen, engine: &inkwell::execution_engine::ExecutionE
             }
             engine.add_global_mapping(&func, ReadFile as Rf as usize);
         }
+        if let Some(func) = cg.module.get_function("FindFirstFileA") {
+            type Fff = unsafe extern "C" fn(
+                *const std::ffi::c_char,
+                *mut std::ffi::c_void,
+            ) -> *mut std::ffi::c_void;
+            extern "C" {
+                fn FindFirstFileA(
+                    lpFileName: *const std::ffi::c_char,
+                    lpFindFileData: *mut std::ffi::c_void,
+                ) -> *mut std::ffi::c_void;
+            }
+            engine.add_global_mapping(&func, FindFirstFileA as Fff as usize);
+        }
+        if let Some(func) = cg.module.get_function("FindNextFileA") {
+            type Fnf = unsafe extern "C" fn(
+                *mut std::ffi::c_void,
+                *mut std::ffi::c_void,
+            ) -> std::ffi::c_int;
+            extern "C" {
+                fn FindNextFileA(
+                    hFindFile: *mut std::ffi::c_void,
+                    lpFindFileData: *mut std::ffi::c_void,
+                ) -> std::ffi::c_int;
+            }
+            engine.add_global_mapping(&func, FindNextFileA as Fnf as usize);
+        }
+        if let Some(func) = cg.module.get_function("FindClose") {
+            type Fc = unsafe extern "C" fn(*mut std::ffi::c_void) -> std::ffi::c_int;
+            extern "C" {
+                fn FindClose(hFindFile: *mut std::ffi::c_void) -> std::ffi::c_int;
+            }
+            engine.add_global_mapping(&func, FindClose as Fc as usize);
+        }
     }
 
     // Map host-provided runtime functions that the module declares as
