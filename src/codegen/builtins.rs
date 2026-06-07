@@ -229,7 +229,7 @@ impl<'ctx> CodeGen<'ctx> {
             {
                 // Handle trailing lambda for lazyMap/filter/takeWhile:
                 // lazyMap(ll) { fn } → args becomes [fn, ll]
-                if trailing.isSome()
+                if trailing.is_some()
                     && (name == "lazyMap" || name == "lazyFilter" || name == "lazyTakeWhile")
                 {
                     let mut new_args = vec![*trailing.clone().unwrap()];
@@ -244,11 +244,11 @@ impl<'ctx> CodeGen<'ctx> {
                 .lookup_variant(name)
                 .map(|(ei, vi)| (ei.clone(), vi.clone()))
             {
-                if !variant.params.isEmpty() {
+                if !variant.params.is_empty() {
                     return self.compile_enum_construct(&enum_info, &variant, args);
                 }
                 // Unit variant without args: simply construct
-                if args.isEmpty() {
+                if args.is_empty() {
                     return self.compile_enum_construct(&enum_info, &variant, &[]);
                 }
                 return Err(format!(
@@ -259,8 +259,8 @@ impl<'ctx> CodeGen<'ctx> {
             }
             // Handle flatMap/flatMapResult for Option/Result inline (avoids untyped callback issues)
             if name == "flatMap" || name == "flatMapResult" || name == "flatMap" {
-                let is_enum_op = if (trailing.isSome() && !args.isEmpty()) || args.len() >= 2 {
-                    let enum_arg = if trailing.isSome() {
+                let is_enum_op = if (trailing.is_some() && !args.is_empty()) || args.len() >= 2 {
+                    let enum_arg = if trailing.is_some() {
                         &args[0]
                     } else {
                         &args[1]
@@ -283,7 +283,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             if name == "map" || name == "filter" || name == "fold" {
                 let list_arg_idx: Option<usize> = if name == "map" || name == "filter" {
-                    if trailing.isSome() {
+                    if trailing.is_some() {
                         Some(0)
                     } else if args.len() >= 2 {
                         Some(1)
@@ -291,7 +291,7 @@ impl<'ctx> CodeGen<'ctx> {
                         None
                     }
                 } else if name == "fold" {
-                    if trailing.isSome() && args.len() >= 2 {
+                    if trailing.is_some() && args.len() >= 2 {
                         Some(1)
                     } else if args.len() >= 3 {
                         Some(1)
@@ -316,8 +316,8 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 // Also check if it's an enum op (Option/Result map)
                 if name == "map" {
-                    let is_enum_op = if trailing.isSome() || args.len() >= 2 {
-                        let enum_arg = if trailing.isSome() {
+                    let is_enum_op = if trailing.is_some() || args.len() >= 2 {
+                        let enum_arg = if trailing.is_some() {
                             &args[0]
                         } else {
                             &args[1]
@@ -336,7 +336,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             // flatMap for lists: flatMap(fn, list) or flatMap(list) { lambda }
             if name == "flatMap" {
-                let list_arg_idx: Option<usize> = if trailing.isSome() {
+                let list_arg_idx: Option<usize> = if trailing.is_some() {
                     Some(0)
                 } else if args.len() >= 2 {
                     Some(1)
@@ -365,7 +365,7 @@ impl<'ctx> CodeGen<'ctx> {
                 || name == "count"
             {
                 let list_arg_idx: Option<usize> = if name == "foldRight" {
-                    if trailing.isSome() && args.len() >= 2 {
+                    if trailing.is_some() && args.len() >= 2 {
                         Some(1)
                     } else if args.len() >= 3 {
                         Some(1)
@@ -373,7 +373,7 @@ impl<'ctx> CodeGen<'ctx> {
                         None
                     }
                 } else {
-                    if trailing.isSome() {
+                    if trailing.is_some() {
                         Some(0)
                     } else if args.len() >= 2 {
                         Some(1)
@@ -396,7 +396,7 @@ impl<'ctx> CodeGen<'ctx> {
                     self.compile_expr(&args[i])
                         .map_or(false, |v| matches!(v, TypedValue::Map(_)))
                 });
-                if map_idx.isSome() {
+                if map_idx.is_some() {
                     return self.builtin_callback_map(name, args, trailing);
                 }
             }
@@ -423,7 +423,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .iter()
                     .map(|v| self.typed_value_type_name(v))
                     .collect();
-                let mangled = if arg_type_names.isEmpty() {
+                let mangled = if arg_type_names.is_empty() {
                     name.clone()
                 } else {
                     format!("{}_{}", name, arg_type_names.join("_"))
@@ -434,7 +434,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .iter()
                     .find(|(_, mn)| *mn == mangled)
                     .map(|(_, mn)| mn)
-                    .orElse(|| {
+                    .or_else(|| {
                         // Exact match not found; try fallback: if all args are Int,
                         // it might be an untyped call — use the first overload
                         overloads.first().map(|(_, mn)| mn)
@@ -531,7 +531,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
 
             // Try direct call if function exists in module
-            if self.module.get_function(name).isSome() {
+            if self.module.get_function(name).is_some() {
                 let fn_val = self.module.get_function(name).unwrap();
                 let fn_type = fn_val.get_type();
                 let param_tys = fn_type.get_param_types();
@@ -573,7 +573,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let new_func = Expr::Ident(mangled);
                     return self.compile_call(&new_func, args, trailing);
                 }
-                if self.module.get_function(&mangled).isSome() {
+                if self.module.get_function(&mangled).is_some() {
                     let fn_val = self.module.get_function(&mangled).unwrap();
                     let fn_type = fn_val.get_type();
                     let param_tys = fn_type.get_param_types();
@@ -734,7 +734,7 @@ impl<'ctx> CodeGen<'ctx> {
                             return self.builtin_range_contains(receiver, &args[0]);
                         }
                         "toList" => {
-                            if !args.isEmpty() {
+                            if !args.is_empty() {
                                 return Err("range.toList expects no arguments".to_string());
                             }
                             return self.builtin_range_to_list(receiver);
@@ -1561,7 +1561,7 @@ impl<'ctx> CodeGen<'ctx> {
         name: &str,
         args: &[Expr],
     ) -> Result<TypedValue<'ctx>, String> {
-        if args.isEmpty() {
+        if args.is_empty() {
             if name == "println" {
                 let _ = self.call_rt("action_println", &[]);
             }
@@ -1690,7 +1690,7 @@ impl<'ctx> CodeGen<'ctx> {
         args: &[Expr],
         trailing: &Option<Box<Expr>>,
     ) -> Result<TypedValue<'ctx>, String> {
-        if args.isEmpty() {
+        if args.is_empty() {
             return Err("lazy_list expects at least 1 argument (seed)".to_string());
         }
         let seed = self.compile_expr(&args[0])?;
@@ -1759,7 +1759,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<inkwell::values::PointerValue<'ctx>, String> {
         match lam {
             Expr::Lambda { params, body, .. } => {
-                if params.isEmpty() {
+                if params.is_empty() {
                     return Err("lazy_list step function expects 1 parameter".to_string());
                 }
                 let fn_val = self.compile_lambda(params, body)?;
@@ -4593,7 +4593,7 @@ impl<'ctx> CodeGen<'ctx> {
         trailing: &Option<Box<Expr>>,
     ) -> Result<TypedValue<'ctx>, String> {
         // Parse optional scheduler argument
-        let scheduler = if !args.isEmpty() {
+        let scheduler = if !args.is_empty() {
             match &args[0] {
                 Expr::Ident(s) if s == "io" => 1i64,
                 Expr::Ident(s) if s == "cpu" => 2i64,
@@ -4606,7 +4606,7 @@ impl<'ctx> CodeGen<'ctx> {
             .as_ref()
             .ok_or("launch requires a trailing lambda body")?;
         let body_expr = match body.as_ref() {
-            Expr::Lambda { params, body, .. } if params.isEmpty() => body.as_ref(),
+            Expr::Lambda { params, body, .. } if params.is_empty() => body.as_ref(),
             _ => return Err("launch expects a block body: launch { ... }".to_string()),
         };
 
@@ -4774,7 +4774,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Return from thread function
         let current_block = self.builder.get_insert_block().unwrap();
-        if current_block.get_terminator().isNone() {
+        if current_block.get_terminator().is_none() {
             let null_ret = self.ptr_ty().const_null();
             let _ = self.builder.build_return(Some(&null_ret));
         }
@@ -4837,7 +4837,7 @@ impl<'ctx> CodeGen<'ctx> {
             .as_ref()
             .ok_or("coroutineScope requires a trailing lambda body")?;
         let body_expr = match body.as_ref() {
-            Expr::Lambda { params, body, .. } if params.isEmpty() => body.as_ref(),
+            Expr::Lambda { params, body, .. } if params.is_empty() => body.as_ref(),
             _ => {
                 return Err(
                     "coroutineScope expects a block body: coroutineScope { ... }".to_string(),
@@ -5245,7 +5245,7 @@ impl<'ctx> CodeGen<'ctx> {
             .as_ref()
             .ok_or("withTimeout requires a trailing lambda body")?;
         let body_expr = match body.as_ref() {
-            Expr::Lambda { params, body, .. } if params.isEmpty() => body.as_ref().clone(),
+            Expr::Lambda { params, body, .. } if params.is_empty() => body.as_ref().clone(),
             _ => {
                 return Err("withTimeout expects a block body: withTimeout(ms) { ... }".to_string())
             }
@@ -9696,10 +9696,10 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
             "readLine" => {
-                if !args.isEmpty() {
+                if !args.is_empty() {
                     return Err("readLine expects no arguments".to_string());
                 }
-                if self.module.get_function("action_read_line").isNone() {
+                if self.module.get_function("action_read_line").is_none() {
                     self.emit_read_line_runtime()?;
                 }
                 let cc = self.call_rt("action_read_line", &[])?;
@@ -10269,7 +10269,7 @@ impl<'ctx> CodeGen<'ctx> {
                 Ok(TypedValue::Int(result))
             }
             "randFloat" => {
-                if !args.isEmpty() {
+                if !args.is_empty() {
                     return Err("randFloat expects no arguments".to_string());
                 }
                 let cc = self.call_rt("action_rand_float", &[])?;
@@ -10729,14 +10729,14 @@ impl<'ctx> CodeGen<'ctx> {
                 Ok(TypedValue::Float(r))
             }
             "pi" => {
-                if !args.isEmpty() {
+                if !args.is_empty() {
                     return Err("pi expects no arguments".to_string());
                 }
                 let pi_val = self.f64_ty().const_float(std::f64::consts::PI);
                 Ok(TypedValue::Float(pi_val))
             }
             "e" => {
-                if !args.isEmpty() {
+                if !args.is_empty() {
                     return Err("e expects no arguments".to_string());
                 }
                 let e_val = self.f64_ty().const_float(std::f64::consts::E);
@@ -10841,7 +10841,7 @@ impl<'ctx> CodeGen<'ctx> {
                         let _ = self.call_rt("action_println", &[])?;
                         // Call exit(1)
                         let exit_fn = self.module.get_function("exit");
-                        if exit_fn.isNone() {
+                        if exit_fn.is_none() {
                             let _ = self.module.add_function(
                                 "exit",
                                 self.void_ty().fn_type(&[self.i32_ty().into()], false),
@@ -10898,7 +10898,7 @@ impl<'ctx> CodeGen<'ctx> {
                         let _ = self.call_rt("action_print_string", &[full.into()])?;
                         let _ = self.call_rt("action_println", &[])?;
                         let exit_fn = self.module.get_function("exit");
-                        if exit_fn.isNone() {
+                        if exit_fn.is_none() {
                             let _ = self.module.add_function(
                                 "exit",
                                 self.void_ty().fn_type(&[self.i32_ty().into()], false),
@@ -11877,14 +11877,14 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
             "today" => {
-                if !args.isEmpty() {
+                if !args.is_empty() {
                     return Err("today expects no arguments".to_string());
                 }
                 // Call C time() and localtime_r() to get real current date
                 self.emit_today_now(false)
             }
             "now" => {
-                if !args.isEmpty() {
+                if !args.is_empty() {
                     return Err("now expects no arguments".to_string());
                 }
                 self.emit_today_now(true)
@@ -12788,7 +12788,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("readDir expects 1 argument (path)".to_string());
                 }
-                if self.module.get_function("action_read_dir").isNone() {
+                if self.module.get_function("action_read_dir").is_none() {
                     self.emit_read_dir_runtime()?;
                 }
                 let v = self.compile_expr(&args[0])?;
@@ -13779,7 +13779,7 @@ impl<'ctx> CodeGen<'ctx> {
                 Ok(TypedValue::Str(sa))
             }
             "nowUtc" => {
-                if !args.isEmpty() {
+                if !args.is_empty() {
                     return Err("nowUtc expects no arguments".to_string());
                 }
                 let sty = self.context.struct_type(&[self.i64_ty().into(); 6], false);
@@ -15284,7 +15284,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
 
         if include_time {
-            let dt_struct = self.named_structs.get("DateTime").orElse(|| {
+            let dt_struct = self.named_structs.get("DateTime").or_else(|| {
                 self.anon_structs
                     .values()
                     .find(|s| s.get_field_types().len() == 6)
@@ -15355,7 +15355,7 @@ impl<'ctx> CodeGen<'ctx> {
                 None => Err("now: DateTime type not defined".to_string()),
             }
         } else {
-            let date_struct = self.named_structs.get("Date").orElse(|| {
+            let date_struct = self.named_structs.get("Date").or_else(|| {
                 self.anon_structs
                     .values()
                     .find(|s| s.get_field_types().len() == 3)
