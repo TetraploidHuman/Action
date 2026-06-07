@@ -132,7 +132,9 @@ impl<'ctx> CodeGen<'ctx> {
                 .append_basic_block(current_fn, &format!("chain_body{}", i));
 
             if is_last {
-                let _ = self.builder.build_unconditional_branch(body_block);
+                let _ = self
+                    .builder
+                    .build_conditional_branch(matches, body_block, merge_block);
             } else {
                 next_check = self
                     .context
@@ -265,7 +267,9 @@ impl<'ctx> CodeGen<'ctx> {
                 .append_basic_block(current_fn, &format!("match_body{}", i));
 
             if is_last {
-                let _ = self.builder.build_unconditional_branch(body_block);
+                let _ = self
+                    .builder
+                    .build_conditional_branch(matches, body_block, merge_block);
             } else {
                 next_check = self
                     .context

@@ -256,6 +256,18 @@ fn test_when_complex() {
 }
 
 #[test]
+fn test_when_no_else_match() {
+    // value-match when without else branch — only matching arm executes
+    assert_eq!(run_example("test_when_no_else_match.at"), "23");
+}
+
+#[test]
+fn test_when_no_else_chain() {
+    // condition-chain when without else branch — only matching arm executes
+    assert_eq!(run_example("test_when_no_else_chain.at"), "23");
+}
+
+#[test]
 fn test_for_collect() {
     // for-expressions with continue filtering, break early exit
     assert_eq!(run_example("test_for_collect.at"), "246192515");
