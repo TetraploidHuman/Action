@@ -1029,10 +1029,17 @@ fn load_program(
         .parent()
         .unwrap_or(std::path::Path::new("."))
         .to_path_buf();
-    let lib_dir = std::env::current_dir()
+    let cwd_lib = std::env::current_dir()
         .map_err(|e| vec![CompilerError::new(format!("Cannot get current dir: {}", e))])?
         .join("lib");
-    let search_dirs = vec![mod_dir, lib_dir.clone()];
+    // Also search relative to the executable, so release packages work out-of-the-box
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+        .unwrap_or_default();
+    let exe_lib = exe_dir.join("..").join("lib");
+    let exe_stdlib = exe_dir.join("..").join("stdlib");
+    let search_dirs = vec![mod_dir, cwd_lib, exe_lib, exe_stdlib];
     let imported = resolve_imports(&program, &search_dirs)
         .map_err(|e| vec![CompilerError::new(format!("Import error: {}", e))])?;
 

@@ -111,11 +111,13 @@ jobs:
           PKG="action-${VER}-linux-${{ matrix.arch }}"
           DIR="/tmp/${PKG}"
 
-          mkdir -p "${DIR}/bin" "${DIR}/examples"
+          mkdir -p "${DIR}/bin" "${DIR}/examples" "${DIR}/lib" "${DIR}/stdlib"
 
           cp "target/${{ matrix.target }}/release/action" "${DIR}/bin/"
           cp README.md "${DIR}/"
           cp -r examples/* "${DIR}/examples/" 2>/dev/null || true
+          cp -r lib/* "${DIR}/lib/" 2>/dev/null || true
+          cp -r stdlib/* "${DIR}/stdlib/" 2>/dev/null || true
 
           strip "${DIR}/bin/action" 2>/dev/null || true
 
@@ -135,10 +137,14 @@ jobs:
 
           New-Item -ItemType Directory -Force -Path "$DIR\bin" | Out-Null
           New-Item -ItemType Directory -Force -Path "$DIR\examples" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$DIR\lib" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$DIR\stdlib" | Out-Null
 
           Copy-Item "target\${{ matrix.target }}\release\action.exe" -Destination "$DIR\bin\"
           Copy-Item "README.md" -Destination "$DIR\"
           Copy-Item "examples\*" -Destination "$DIR\examples\" -Recurse -Force -ErrorAction SilentlyContinue
+          Copy-Item "lib\*" -Destination "$DIR\lib\" -Recurse -Force -ErrorAction SilentlyContinue
+          Copy-Item "stdlib\*" -Destination "$DIR\stdlib\" -Recurse -Force -ErrorAction SilentlyContinue
 
           $archive = "${PKG}.zip"
           Compress-Archive -Path "$DIR" -DestinationPath "C:\${archive}"
