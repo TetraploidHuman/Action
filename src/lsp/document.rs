@@ -14,6 +14,7 @@ use super::position;
 pub struct Document {
     pub uri: Url,
     pub source: String,
+    #[allow(dead_code)]
     pub version: i32,
     pub tokens: Vec<Token>,
     pub ast: Vec<Stmt>,

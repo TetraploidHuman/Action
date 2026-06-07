@@ -828,10 +828,9 @@ impl<'ctx> CodeGen<'ctx> {
             }
             InnerType::Str => {
                 let str_ty = self.string_type;
-                let str_ptr_ty = str_ty.ptr_type(inkwell::AddressSpace::default());
                 let str_ptr = self
                     .builder
-                    .build_pointer_cast(inner_ptr, str_ptr_ty, "prop_inner_str")
+                    .build_pointer_cast(inner_ptr, self.ptr_ty(), "prop_inner_str")
                     .map_err(llvm_err)?;
                 let loaded = self
                     .builder
@@ -1374,10 +1373,9 @@ impl<'ctx> CodeGen<'ctx> {
             }
             InnerType::Str => {
                 let str_ty = self.string_type;
-                let str_ptr_ty = str_ty.ptr_type(inkwell::AddressSpace::default());
                 let str_ptr = self
                     .builder
-                    .build_pointer_cast(inner_ptr, str_ptr_ty, "sc_inner_str")
+                    .build_pointer_cast(inner_ptr, self.ptr_ty(), "sc_inner_str")
                     .map_err(llvm_err)?;
                 let loaded = self
                     .builder
@@ -1701,10 +1699,9 @@ impl<'ctx> CodeGen<'ctx> {
                             .build_alloca(self.f64_ty(), "ftmp")
                             .map_err(llvm_err)?;
                         self.builder.build_store(tmp, fv).map_err(llvm_err)?;
-                        let i64_ptr_ty = self.i64_ty().ptr_type(inkwell::AddressSpace::default());
                         let casted = self
                             .builder
-                            .build_pointer_cast(tmp, i64_ptr_ty, "fcast")
+                            .build_pointer_cast(tmp, self.ptr_ty(), "fcast")
                             .map_err(llvm_err)?;
                         self.builder
                             .build_load(self.i64_ty(), casted, "fbits")

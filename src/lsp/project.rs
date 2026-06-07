@@ -11,6 +11,7 @@ use super::position;
 
 /// Symbol kind for cross-file indexing
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum SymbolKind {
     Function,
     Variable,
@@ -182,6 +183,7 @@ impl Project {
 
                         container_name: None,
                         tags: None,
+                        #[allow(deprecated)]
                         deprecated: None,
                     });
                 }

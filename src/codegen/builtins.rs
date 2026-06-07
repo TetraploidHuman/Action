@@ -2058,7 +2058,7 @@ impl<'ctx> CodeGen<'ctx> {
                 Ok(TypedValue::Float(phi.as_basic_value().into_float_value()))
             }
             InnerType::Str => {
-                let str_ptr_ty = self.string_type.ptr_type(inkwell::AddressSpace::default());
+                let str_ptr_ty = self.ptr_ty();
                 let str_ptr = self
                     .builder
                     .build_pointer_cast(inner_ptr, str_ptr_ty, "uw_str_ptr")
@@ -2187,7 +2187,7 @@ impl<'ctx> CodeGen<'ctx> {
                 Ok(TypedValue::Float(phi.as_basic_value().into_float_value()))
             }
             InnerType::Str => {
-                let str_ptr_ty = self.string_type.ptr_type(inkwell::AddressSpace::default());
+                let str_ptr_ty = self.ptr_ty();
                 let str_ptr = self
                     .builder
                     .build_pointer_cast(inner_ptr, str_ptr_ty, "oe_str_ptr")
@@ -2337,7 +2337,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_pointer_cast(
                         buf,
-                        f64_ty.ptr_type(inkwell::AddressSpace::default()),
+                        self.ptr_ty(),
                         "ok_buf_f",
                     )
                     .map_err(llvm_err)?;
@@ -2346,7 +2346,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?;
             }
             InnerType::Str => {
-                let str_ptr_ty = self.string_type.ptr_type(inkwell::AddressSpace::default());
+                let str_ptr_ty = self.ptr_ty();
                 let str_ptr = self
                     .builder
                     .build_pointer_cast(inner_ptr, str_ptr_ty, "ok_str_ptr")
@@ -9249,7 +9249,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(llvm_err)?
                 .as_basic_value_enum(),
             InnerType::Str => {
-                let str_ptr_ty = self.string_type.ptr_type(inkwell::AddressSpace::default());
+                let str_ptr_ty = self.ptr_ty();
                 let str_ptr = self
                     .builder
                     .build_pointer_cast(inner_ptr, str_ptr_ty, "fm_str_ptr")
@@ -9409,7 +9409,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(llvm_err)?
                 .as_basic_value_enum(),
             InnerType::Str => {
-                let str_ptr_ty = self.string_type.ptr_type(inkwell::AddressSpace::default());
+                let str_ptr_ty = self.ptr_ty();
                 let str_ptr = self
                     .builder
                     .build_pointer_cast(inner_ptr, str_ptr_ty, "em_str_ptr")

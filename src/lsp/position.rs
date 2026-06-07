@@ -72,11 +72,15 @@ pub fn find_token_at(tokens: &[Token], offset: usize) -> Option<&Token> {
 }
 
 /// Result of finding a node at a position
+#[allow(dead_code)]
 pub enum FoundNode {
     Ident(String),
     Keyword(String),
+    #[allow(dead_code)]
     Literal(String),
+    #[allow(dead_code)]
     TypeName(String),
+    #[allow(dead_code)]
     Operator(String),
 }
 
