@@ -9054,7 +9054,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(
                 IntPredicate::NE,
-                is_empty,
+                is_empty_value,
                 self.bool_ty().const_zero(),
                 "is_empty_cond",
             )
@@ -10805,7 +10805,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_float_compare(FloatPredicate::UNO, fv, fv, "isNaN")
                     .map_err(llvm_err)?;
-                Ok(TypedValue::Bool(isNaN))
+                Ok(TypedValue::Bool(is_nan))
             }
             "isInfinite" => {
                 if args.len() != 1 {
@@ -15467,7 +15467,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_int_compare(IntPredicate::EQ, p, null_ptr, "isNull")
                     .map_err(llvm_err)?;
-                Ok(TypedValue::Bool(isNull))
+                Ok(TypedValue::Bool(is_null))
             }
             _ => Err("isNull: argument must be a Ptr, CString, or FileHandle".to_string()),
         }
