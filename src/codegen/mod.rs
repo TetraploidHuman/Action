@@ -673,6 +673,60 @@ impl<'ctx> CodeGen<'ctx> {
                 ValKind::LazyList => {
                     // LazyList is stack-only ({i64, ptr, i64, i64}), no heap data to clean up
                 }
+                ValKind::Stream => {
+                    // Stream variable stores a pointer (i8*) to the heap-allocated struct
+                    // var.ty is ptr_ty, not stream_type — load the pointer first
+                    let stream_heap_ptr = self
+                        .builder
+                        .build_load(var.ty, var.ptr, "stream_cleanup_ptr")
+                        .map_err(llvm_err)?
+                        .into_pointer_value();
+                    let stream_typed = self
+                        .builder
+                        .build_pointer_cast(stream_heap_ptr, self.ptr_ty(), "stream_typed")
+                        .map_err(llvm_err)?;
+                    let list_gep = self
+                        .builder
+                        .build_struct_gep(self.stream_type, stream_typed, 3, "slist_gep")
+                        .map_err(llvm_err)?;
+                    let list_val = self
+                        .builder
+                        .build_load(self.list_type, list_gep, "slist")
+                        .map_err(llvm_err)?;
+                    let data_ptr = self
+                        .builder
+                        .build_extract_value(list_val.into_struct_value(), 0, "sdata")
+                        .map_err(llvm_err)?
+                        .into_pointer_value();
+                    self.rc_dec(data_ptr)?;
+                }
+                ValKind::Task => {
+                    // Task variable stores a pointer to the heap-allocated struct
+                    // var.ty is task_type but only a pointer is stored — load the pointer first
+                    let task_heap_ptr = self
+                        .builder
+                        .build_load(self.ptr_ty(), var.ptr, "task_cleanup_ptr")
+                        .map_err(llvm_err)?
+                        .into_pointer_value();
+                    let task_typed = self
+                        .builder
+                        .build_pointer_cast(task_heap_ptr, self.ptr_ty(), "task_typed")
+                        .map_err(llvm_err)?;
+                    let list_gep = self
+                        .builder
+                        .build_struct_gep(self.task_type, task_typed, 4, "tlist_gep")
+                        .map_err(llvm_err)?;
+                    let list_val = self
+                        .builder
+                        .build_load(self.list_type, list_gep, "tlist")
+                        .map_err(llvm_err)?;
+                    let data_ptr = self
+                        .builder
+                        .build_extract_value(list_val.into_struct_value(), 0, "tdata")
+                        .map_err(llvm_err)?
+                        .into_pointer_value();
+                    self.rc_dec(data_ptr)?;
+                }
                 ValKind::Enum if var.enum_data_rc_managed => {
                     let loaded = self
                         .builder
@@ -687,6 +741,50 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 _ => {}
             }
+        }
+        Ok(())
+    }
+
+    /// Decrement RC for a variable's old value before reassignment.
+    pub(super) fn rc_dec_at(
+        &self,
+        ptr: PointerValue<'ctx>,
+        kind: ValKind,
+        ty: inkwell::types::BasicTypeEnum<'ctx>,
+        rc_managed: bool,
+    ) -> Result<(), String> {
+        match kind {
+            ValKind::Str => {
+                let str_val = self.load_string(ptr)?;
+                let data_ptr = self
+                    .builder
+                    .build_extract_value(str_val, 1, "data")
+                    .map_err(llvm_err)?
+                    .into_pointer_value();
+                self.rc_dec(data_ptr)?;
+            }
+            ValKind::List | ValKind::Map | ValKind::Set => {
+                let list_val = self.load_list(ptr)?;
+                let data_ptr = self
+                    .builder
+                    .build_extract_value(list_val, 0, "data")
+                    .map_err(llvm_err)?
+                    .into_pointer_value();
+                self.rc_dec(data_ptr)?;
+            }
+            ValKind::Enum if rc_managed => {
+                let loaded = self
+                    .builder
+                    .build_load(ty, ptr, "enum_dec")
+                    .map_err(llvm_err)?;
+                let data_ptr = self
+                    .builder
+                    .build_extract_value(loaded.into_struct_value(), 1, "edata")
+                    .map_err(llvm_err)?
+                    .into_pointer_value();
+                self.rc_dec(data_ptr)?;
+            }
+            _ => {}
         }
         Ok(())
     }

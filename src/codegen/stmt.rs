@@ -966,6 +966,11 @@ impl<'ctx> CodeGen<'ctx> {
                     self.scope
                         .set(param.name.clone(), alloca, pv.get_type(), kind);
                 }
+                // Enum parameters carry heap-allocated data that needs RC cleanup
+                if kind == ValKind::Enum {
+                    self.scope
+                        .set_enum_data_rc_managed(&param.name, true);
+                }
             }
         }
 

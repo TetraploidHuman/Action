@@ -469,8 +469,8 @@ impl<'ctx> CodeGen<'ctx> {
                 // store_value_to_alloca handles load+store for complex types
                 self.store_value_to_alloca(v, field_ptr)?;
             }
-            // Set initial refcount to 1 (the enum owns the first reference)
-            self.rc_inc(buf)?;
+            // The first reference will be taken by the variable binding (compile_let)
+            // or by the function parameter. Don't inc here — action_malloc_rc starts at 0.
             // Determine inner type from the first data argument
             let inner = compiled.first().map_or(InnerType::Int, |v| match v {
                 TypedValue::Float(_) => InnerType::Float,

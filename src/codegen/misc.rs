@@ -71,15 +71,53 @@ impl<'ctx> CodeGen<'ctx> {
             }
             TypedValue::Str(str_ptr) => {
                 let str_val = self.load_string(str_ptr)?;
+                let len_val = self
+                    .builder
+                    .build_extract_value(str_val, 0, "slen")
+                    .map_err(llvm_err)?
+                    .into_int_value();
                 let data = self
                     .builder
                     .build_extract_value(str_val, 1, "data")
                     .map_err(llvm_err)?
                     .into_pointer_value();
+                // Bounds check: clamp index to [0, len-1], return 0 for OOB
+                let zero = self.i64_ty().const_int(0, false);
+                let len_minus1 = self
+                    .builder
+                    .build_int_sub(len_val, self.i64_ty().const_int(1, false), "len1")
+                    .map_err(llvm_err)?;
+                let in_bounds = self
+                    .builder
+                    .build_and(
+                        self.builder
+                            .build_int_compare(
+                                inkwell::IntPredicate::SGE,
+                                index_val,
+                                zero,
+                                "ge0",
+                            )
+                            .map_err(llvm_err)?,
+                        self.builder
+                            .build_int_compare(
+                                inkwell::IntPredicate::SLE,
+                                index_val,
+                                len_minus1,
+                                "le_len",
+                            )
+                            .map_err(llvm_err)?,
+                        "in_bounds",
+                    )
+                    .map_err(llvm_err)?;
+                let safe_idx = self
+                    .builder
+                    .build_select(in_bounds, index_val, zero, "safe_idx")
+                    .map_err(llvm_err)?
+                    .into_int_value();
                 let i8 = self.context.i8_type();
                 let char_ptr = unsafe {
                     self.builder
-                        .build_gep(i8, data, &[index_val], "char_ptr")
+                        .build_gep(i8, data, &[safe_idx], "char_ptr")
                         .map_err(llvm_err)
                 }?;
                 let char_val = self
@@ -87,11 +125,17 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_load(i8, char_ptr, "char")
                     .map_err(llvm_err)?
                     .into_int_value();
-                let extended = self
+                let raw = self
                     .builder
                     .build_int_z_extend(char_val, self.i64_ty(), "char_ext")
                     .map_err(llvm_err)?;
-                Ok(TypedValue::Int(extended))
+                // Return 0 for out-of-bounds, actual char value for in-bounds
+                let result = self
+                    .builder
+                    .build_select(in_bounds, raw, zero, "idx_result")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                Ok(TypedValue::Int(result))
             }
             _ => Err("Index access not supported for this type".to_string()),
         }
@@ -448,21 +492,26 @@ impl<'ctx> CodeGen<'ctx> {
         let v = self.compile_expr(value)?;
         match target {
             Expr::Ident(name) => {
-                let var = self
-                    .scope
-                    .get(name)
-                    .ok_or_else(|| format!("Undefined variable: {}", name))?;
-                if !var.mutable {
-                    return Err(format!(
-                        "Cannot assign to immutable variable '{}' (use 'var' instead of 'val')",
-                        name
-                    ));
-                }
+                let (var_ptr, var_kind, var_ty, var_rc_managed) = {
+                    let var = self
+                        .scope
+                        .get(name)
+                        .ok_or_else(|| format!("Undefined variable: {}", name))?;
+                    if !var.mutable {
+                        return Err(format!(
+                            "Cannot assign to immutable variable '{}' (use 'var' instead of 'val')",
+                            name
+                        ));
+                    }
+                    (var.ptr, var.kind, var.ty, var.enum_data_rc_managed)
+                };
+                // Decrement RC of old value before overwriting
+                self.rc_dec_at(var_ptr, var_kind, var_ty, var_rc_managed)?;
                 match &v {
                     TypedValue::Str(ptr) => {
                         let str_struct = self.load_string(*ptr)?;
                         self.builder
-                            .build_store(var.ptr, str_struct)
+                            .build_store(var_ptr, str_struct)
                             .map_err(llvm_err)?;
                     }
                     TypedValue::List(ptr)
@@ -472,7 +521,7 @@ impl<'ctx> CodeGen<'ctx> {
                     | TypedValue::Stream(ptr) => {
                         let list_struct = self.load_list(*ptr)?;
                         self.builder
-                            .build_store(var.ptr, list_struct)
+                            .build_store(var_ptr, list_struct)
                             .map_err(llvm_err)?;
                     }
                     TypedValue::Struct(ptr, ty) => {
@@ -482,31 +531,36 @@ impl<'ctx> CodeGen<'ctx> {
                             .build_load(bt, *ptr, "assign_ld")
                             .map_err(llvm_err)?;
                         self.builder
-                            .build_store(var.ptr, loaded)
+                            .build_store(var_ptr, loaded)
                             .map_err(llvm_err)?;
                     }
-                    TypedValue::Enum(ptr, ty, ..) => {
+                    TypedValue::Enum(ptr, ty, inner_type, rc_managed) => {
                         let bt: BasicTypeEnum = (*ty).into();
                         let loaded = self
                             .builder
                             .build_load(bt, *ptr, "assign_ld")
                             .map_err(llvm_err)?;
                         self.builder
-                            .build_store(var.ptr, loaded)
+                            .build_store(var_ptr, loaded)
                             .map_err(llvm_err)?;
+                        // Update RC managed flag for the new enum value
+                        self.scope.set_enum_inner_type(name, *inner_type);
+                        self.scope.set_enum_data_rc_managed(name, *rc_managed);
                     }
                     TypedValue::LazyList(ptr)
                     | TypedValue::CString(ptr)
                     | TypedValue::Ptr(ptr)
                     | TypedValue::FileHandle(ptr) => {
-                        self.builder.build_store(var.ptr, *ptr).map_err(llvm_err)?;
+                        self.builder.build_store(var_ptr, *ptr).map_err(llvm_err)?;
                     }
                     _ => {
                         if let Some(bv) = v.to_bv() {
-                            self.builder.build_store(var.ptr, bv).map_err(llvm_err)?;
+                            self.builder.build_store(var_ptr, bv).map_err(llvm_err)?;
                         }
                     }
                 }
+                // Increment RC of new value
+                self.rc_inc_typed_value(&v)?;
                 Ok(v)
             }
             Expr::FieldAccess(obj, field) => {

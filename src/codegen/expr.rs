@@ -582,11 +582,49 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(llvm_err)?;
             match kind {
                 ValKind::Str => {
+                    // Const strings point to global data without an RC header.
+                    // Copy to heap so RC operations (inc/dec) work on valid memory.
+                    let str_struct = loaded.into_struct_value();
+                    let data_ptr = self
+                        .builder
+                        .build_extract_value(str_struct, 1, "cdata")
+                        .map_err(llvm_err)?
+                        .into_pointer_value();
+                    let len_val = self
+                        .builder
+                        .build_extract_value(str_struct, 0, "clen")
+                        .map_err(llvm_err)?
+                        .into_int_value();
+                    let len_plus1 = self
+                        .builder
+                        .build_int_add(len_val, self.i64_ty().const_int(1, false), "clen1")
+                        .map_err(llvm_err)?;
+                    let heap = self.malloc_rc(len_plus1)?;
+                    // memcpy from global data to heap
+                    self.builder
+                        .build_memcpy(
+                            heap,
+                            1,
+                            data_ptr,
+                            1,
+                            len_plus1,
+                        )
+                        .map_err(llvm_err)?;
+                    let str_ty = self.string_type;
                     let alloca = self
                         .builder
-                        .build_alloca(ty, "const_str")
+                        .build_alloca(str_ty, "const_str")
                         .map_err(llvm_err)?;
-                    self.builder.build_store(alloca, loaded).map_err(llvm_err)?;
+                    let len_field = self
+                        .builder
+                        .build_struct_gep(str_ty, alloca, 0, "cs_len")
+                        .map_err(llvm_err)?;
+                    self.builder.build_store(len_field, len_val).map_err(llvm_err)?;
+                    let ptr_field = self
+                        .builder
+                        .build_struct_gep(str_ty, alloca, 1, "cs_ptr")
+                        .map_err(llvm_err)?;
+                    self.builder.build_store(ptr_field, heap).map_err(llvm_err)?;
                     return Ok(TypedValue::Str(alloca));
                 }
                 ValKind::List => {
