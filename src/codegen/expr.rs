@@ -1015,9 +1015,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             BasicValueEnum::IntValue(v) => Ok(TypedValue::Int(v)),
             BasicValueEnum::FloatValue(v) => Ok(TypedValue::Float(v)),
-            BasicValueEnum::PointerValue(v) => {
-                Ok(TypedValue::Ptr(v))
-            }
+            BasicValueEnum::PointerValue(v) => Ok(TypedValue::Ptr(v)),
             BasicValueEnum::StructValue(v) => {
                 let st = v.get_type();
                 let alloca = self

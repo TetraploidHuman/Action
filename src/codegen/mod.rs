@@ -349,8 +349,8 @@ impl<'ctx> TypedValue<'ctx> {
             TypedValue::Stream(_)
             | TypedValue::LazyList(_)
             | TypedValue::CString(_)
-            | TypedValue::Ptr(_)
             | TypedValue::FileHandle(_) => None,
+            TypedValue::Ptr(v) => Some(v.as_basic_value_enum()),
             TypedValue::Struct(_, _) => None,
             TypedValue::Enum(..) => None,
             TypedValue::Unit => None,
@@ -601,7 +601,10 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Get byte size of a BasicTypeEnum (dispatch to each variant's size_of).
-    pub(super) fn basic_type_size(&self, ty: BasicTypeEnum<'ctx>) -> Result<IntValue<'ctx>, String> {
+    pub(super) fn basic_type_size(
+        &self,
+        ty: BasicTypeEnum<'ctx>,
+    ) -> Result<IntValue<'ctx>, String> {
         use inkwell::types::*;
         match ty {
             BasicTypeEnum::IntType(t) => Ok(t.size_of()),
@@ -832,7 +835,7 @@ impl<'ctx> CodeGen<'ctx> {
             Expr::Call { func, .. } => {
                 if let Expr::Ident(name) = func.as_ref() {
                     match name.as_str() {
-                        "print" | "println" => Type::Unit,
+                        "print" | "println" | "action_json_free" => Type::Unit,
                         "toString" | "toUpper" | "toLower" => Type::Named("String".into()),
                         "substring" | "unwrap_or" | "read_line" | "jsonEscape" | "httpRequest"
                         | "str" | "chatOnce" | "storeMessages" | "extractContent"
@@ -1004,6 +1007,13 @@ impl<'ctx> CodeGen<'ctx> {
                 let fat_ty = self.list_type;
                 fat_ty.fn_type(param_tys, false)
             }
+            Some(Type::Ptr(_)) | Some(Type::CString) | Some(Type::FileHandle) => {
+                self.ptr_ty().fn_type(param_tys, false)
+            }
+            Some(Type::Generic(base, _)) => match base.as_ref() {
+                Type::Named(n) if n == "Ptr" => self.ptr_ty().fn_type(param_tys, false),
+                _ => self.string_type.fn_type(param_tys, false),
+            },
             _ => self.string_type.fn_type(param_tys, false),
         }
     }
