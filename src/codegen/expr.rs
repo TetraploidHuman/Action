@@ -173,10 +173,14 @@ impl<'ctx> CodeGen<'ctx> {
                         Ok(TypedValue::Stream(*ptr))
                     }
                     TypedValue::LazyList(ptr) => {
-                        let loaded = self.load_list(*ptr)?;
+                        let bt: BasicTypeEnum = self.lazylist_type.into();
+                        let loaded = self
+                            .builder
+                            .build_load(bt, *ptr, "lazylist_copy_ld")
+                            .map_err(llvm_err)?;
                         let new_alloca = self
                             .builder
-                            .build_alloca(self.list_type, "lazylist_copy")
+                            .build_alloca(bt, "lazylist_copy")
                             .map_err(llvm_err)?;
                         self.builder
                             .build_store(new_alloca, loaded)

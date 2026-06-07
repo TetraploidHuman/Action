@@ -715,10 +715,11 @@ impl<'ctx> CodeGen<'ctx> {
             TypedValue::LazyList(_) => {
                 // LazyList is stack-only ({i64, ptr, i64, i64}), no heap data to RC
             }
-            TypedValue::Enum(alloca, _, _, true) => {
+            TypedValue::Enum(alloca, enum_ty, _, true) => {
+                let bt: BasicTypeEnum = (*enum_ty).into();
                 let loaded = self
                     .builder
-                    .build_load(self.string_type, *alloca, "enum_rcinc")
+                    .build_load(bt, *alloca, "enum_rcinc")
                     .map_err(llvm_err)?;
                 let data_ptr = self
                     .builder
