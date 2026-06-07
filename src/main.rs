@@ -962,14 +962,21 @@ fn transform_module_access(program: &mut Program) {
 /// Load stdlib source files
 fn load_stdlib() -> Result<Vec<Stmt>, String> {
     let mut stmts = Vec::new();
-    // Resolve lib/ relative to the executable or current working directory
-    let lib_dir = std::env::current_dir()
+    // Search lib/ relative to the executable (release packages) and cwd
+    let exe_lib = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.join("..").join("lib")))
+        .unwrap_or_default();
+    let cwd_lib = std::env::current_dir()
         .map_err(|e| format!("Cannot get current dir: {}", e))?
         .join("lib");
 
     for file_name in &["option.at", "result.at"] {
-        let path = lib_dir.join(file_name);
-        if path.exists() {
+        let path = [&exe_lib, &cwd_lib]
+            .iter()
+            .map(|d| d.join(file_name))
+            .find(|p| p.exists());
+        if let Some(path) = path {
             let source = fs::read_to_string(&path)
                 .map_err(|e| format!("Cannot read '{}': {}", path.display(), e))?;
             let mut lexer = lexer::Lexer::new(&source);
