@@ -5,100 +5,100 @@ fun main() {
     // ---- Test tail: should return Option<List<Int>> ----
     val lst = List[1, 2, 3]
     val t = tail(lst)
-    print("tail([1,2,3]) is_some: ")
-    println(is_some(t))
+    print("tail([1,2,3]) isSome: ")
+    println(isSome(t))
 
     val empty = List[]
     val t2 = tail(empty)
-    print("tail([]) is_none: ")
-    println(is_none(t2))
+    print("tail([]) isNone: ")
+    println(isNone(t2))
 
     // ---- Test init: should return Option<List<Int>> ----
     val i = init(lst)
-    print("init([1,2,3]) is_some: ")
-    println(is_some(i))
+    print("init([1,2,3]) isSome: ")
+    println(isSome(i))
 
     val i2 = init(empty)
-    print("init([]) is_none: ")
-    println(is_none(i2))
+    print("init([]) isNone: ")
+    println(isNone(i2))
 
-    // ---- Test index_of for list: should return Option<Int> ----
-    val idx = index_of(2, lst)
-    print("index_of(2, [1,2,3]) is_some: ")
-    println(is_some(idx))
-    print("index_of(2, [1,2,3]) value: ")
-    println(unwrap_or(idx, -1))
+    // ---- Test indexOf for list: should return Option<Int> ----
+    val idx = indexOf(2, lst)
+    print("indexOf(2, [1,2,3]) isSome: ")
+    println(isSome(idx))
+    print("indexOf(2, [1,2,3]) value: ")
+    println(unwrapOr(idx, -1))
 
-    val idx2 = index_of(99, lst)
-    print("index_of(99, [1,2,3]) is_none: ")
-    println(is_none(idx2))
+    val idx2 = indexOf(99, lst)
+    print("indexOf(99, [1,2,3]) isNone: ")
+    println(isNone(idx2))
 
-    // ---- Test index_of for string: should return Option<Int> ----
-    val sidx = index_of("bc", "abcde")
-    print("index_of('bc', 'abcde') is_some: ")
-    println(is_some(sidx))
-    print("index_of('bc', 'abcde') value: ")
-    println(unwrap_or(sidx, -1))
+    // ---- Test indexOf for string: should return Option<Int> ----
+    val sidx = indexOf("bc", "abcde")
+    print("indexOf('bc', 'abcde') isSome: ")
+    println(isSome(sidx))
+    print("indexOf('bc', 'abcde') value: ")
+    println(unwrapOr(sidx, -1))
 
-    val sidx2 = index_of("xyz", "abcde")
-    print("index_of('xyz', 'abcde') is_none: ")
-    println(is_none(sidx2))
+    val sidx2 = indexOf("xyz", "abcde")
+    print("indexOf('xyz', 'abcde') isNone: ")
+    println(isNone(sidx2))
 
-    // ---- Test to_int: should return Option<Int> ----
-    val ti1 = to_int("42")
-    print("to_int('42') is_some: ")
-    println(is_some(ti1))
-    print("to_int('42') value: ")
-    println(unwrap_or(ti1, -1))
+    // ---- Test toInt: should return Option<Int> ----
+    val ti1 = toInt("42")
+    print("toInt('42') isSome: ")
+    println(isSome(ti1))
+    print("toInt('42') value: ")
+    println(unwrapOr(ti1, -1))
 
-    val ti2 = to_int("abc")
-    print("to_int('abc') is_none: ")
-    println(is_none(ti2))
+    val ti2 = toInt("abc")
+    print("toInt('abc') isNone: ")
+    println(isNone(ti2))
 
-    val ti3 = to_int(3.14)
-    print("to_int(3.14) is_some: ")
-    println(is_some(ti3))
+    val ti3 = toInt(3.14)
+    print("toInt(3.14) isSome: ")
+    println(isSome(ti3))
 
-    // ---- Test to_float: should return Option<Float> ----
-    val tf1 = to_float("3.14")
-    print("to_float('3.14') is_some: ")
-    println(is_some(tf1))
+    // ---- Test toFloat: should return Option<Float> ----
+    val tf1 = toFloat("3.14")
+    print("toFloat('3.14') isSome: ")
+    println(isSome(tf1))
 
-    val tf2 = to_float("abc")
-    print("to_float('abc') is_none: ")
-    println(is_none(tf2))
+    val tf2 = toFloat("abc")
+    print("toFloat('abc') isNone: ")
+    println(isNone(tf2))
 
-    val tf3 = to_float(42)
-    print("to_float(42) is_some: ")
-    println(is_some(tf3))
+    val tf3 = toFloat(42)
+    print("toFloat(42) isSome: ")
+    println(isSome(tf3))
 
-    // ---- Test parse_int: should return Option<Int> ----
-    val pi1 = parse_int("123")
-    print("parse_int('123') is_some: ")
-    println(is_some(pi1))
-    print("parse_int('123') value: ")
-    println(unwrap_or(pi1, -1))
+    // ---- Test parseInt: should return Option<Int> ----
+    val pi1 = parseInt("123")
+    print("parseInt('123') isSome: ")
+    println(isSome(pi1))
+    print("parseInt('123') value: ")
+    println(unwrapOr(pi1, -1))
 
-    val pi2 = parse_int("not_a_number")
-    print("parse_int('not_a_number') is_none: ")
-    println(is_none(pi2))
+    val pi2 = parseInt("not_a_number")
+    print("parseInt('not_a_number') isNone: ")
+    println(isNone(pi2))
 
     // ---- Test string slice with [start, end) semantics ----
     val ss = slice("hello world", 0, 5)
     print("slice('hello world', 0, 5): ")
     println(ss)
 
-    // ---- Test from_list alias ----
-    val s = from_list(List[1, 2, 3])
-    print("from_list([1,2,3]) contains 2: ")
+    // ---- Test fromList alias ----
+    val s = fromList(List[1, 2, 3])
+    print("fromList([1,2,3]) contains 2: ")
     println(contains(s, 2))
 
-    // ---- Test contains_key for Map ----
+    // ---- Test containsKey for Map ----
     val m = Map["a": 1, "b": 2]
-    print("contains_key(m, 'a'): ")
-    println(contains_key(m, "a"))
-    print("contains_key(m, 'c'): ")
-    println(contains_key(m, "c"))
+    print("containsKey(m, 'a'): ")
+    println(containsKey(m, "a"))
+    print("containsKey(m, 'c'): ")
+    println(containsKey(m, "c"))
 
     println("done")
 }

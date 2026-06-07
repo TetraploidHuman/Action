@@ -4,6 +4,6 @@ external fun action_json_parse(s: CString): Ptr[JsonNode]
 external fun action_json_type(node: Ptr[JsonNode]): Int
 
 fun main() {
-    val bad = action_json_parse(to_cstring("not json"))
+    val bad = action_json_parse(toCString("not json"))
     println(action_json_type(bad))
 }

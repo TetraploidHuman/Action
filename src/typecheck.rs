@@ -825,9 +825,9 @@ impl TypeChecker {
                         "coroutineScope" => Type::Named("List".into()),
                         // Callback-based list functions
                         "any" | "all" => Type::Named("Bool".into()),
-                        "find" | "find_index" | "reduce" => Type::Named("Option".into()),
-                        "fold_right" => Type::Named("Int".into()),
-                        "take_while" | "drop_while" | "sorted_by" => Type::Named("List".into()),
+                        "find" | "findIndex" | "reduce" => Type::Named("Option".into()),
+                        "foldRight" => Type::Named("Int".into()),
+                        "takeWhile" | "dropWhile" | "sortedBy" => Type::Named("List".into()),
                         _ => {
                             if self.registry.lookup_variant(name).is_some() {
                                 let enum_name = self
@@ -850,8 +850,8 @@ impl TypeChecker {
                         // Map/Set UFCS methods
                         (Type::Map(_, _), "contains")
                         | (Type::Set(_), "contains")
-                        | (Type::Map(_, _), "is_empty")
-                        | (Type::Set(_), "is_empty") => Type::Named("Bool".into()),
+                        | (Type::Map(_, _), "isEmpty")
+                        | (Type::Set(_), "isEmpty") => Type::Named("Bool".into()),
                         (Type::Map(_, _), "insert") | (Type::Set(_), "insert") => Type::Unit,
                         (Type::Map(_, _), "remove")
                         | (Type::Map(_, _), "get")

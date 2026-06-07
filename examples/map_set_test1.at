@@ -1,6 +1,6 @@
 fun main() {
     val m = Map["a": 1, "b": 2]
-    val k = map_keys(m)
+    val k = mapKeys(m)
     print("keys len: ")
     print(len(k))
     println("")

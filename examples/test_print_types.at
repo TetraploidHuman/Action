@@ -17,7 +17,7 @@ fun main() {
 
     // ---- Print LazyList ----
     val lst = List[10, 20, 30]
-    val ll = to_lazy_list(lst)
+    val ll = toLazyList(lst)
     print("LazyList print: ")
     println(ll)
 

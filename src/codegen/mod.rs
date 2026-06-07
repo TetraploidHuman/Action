@@ -939,10 +939,10 @@ impl<'ctx> CodeGen<'ctx> {
                     match name.as_str() {
                         "print" | "println" | "action_json_free" => Type::Unit,
                         "toString" | "toUpper" | "toLower" => Type::Named("String".into()),
-                        "substring" | "unwrap_or" | "read_line" | "jsonEscape" | "httpRequest"
+                        "substring" | "unwrapOr" | "readLine" | "jsonEscape" | "httpRequest"
                         | "str" | "chatOnce" | "storeMessages" | "extractContent"
                         | "handleChat" => Type::Named("String".into()),
-                        "parse_date" | "date" => Type::Generic(
+                        "parseDate" | "date" => Type::Generic(
                             Box::new(Type::Named("Option".into())),
                             vec![Type::Named("Date".into())],
                         ),
@@ -959,7 +959,7 @@ impl<'ctx> CodeGen<'ctx> {
                         ),
                         "flip" | "constant" | "identity" => Type::Named("Int".into()),
                         "Random_new" => Type::Named("Random".into()),
-                        "next_int" => Type::Generic(
+                        "nextInt" => Type::Generic(
                             Box::new(Type::Named("Tuple".into())),
                             vec![Type::Named("Random".into()), Type::Named("Int".into())],
                         ),

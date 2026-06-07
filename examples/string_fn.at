@@ -1,10 +1,10 @@
-// String stdlib functions: to_upper, to_lower, trim, concat
+// String stdlib functions: toUpper, toLower, trim, concat
 fun main() {
-    // to_upper - convert to uppercase
-    print(to_upper("hello world"))    // "HELLO WORLD"
+    // toUpper - convert to uppercase
+    print(toUpper("hello world"))    // "HELLO WORLD"
 
-    // to_lower - convert to lowercase
-    print(to_lower("HELLO WORLD"))    // "hello world"
+    // toLower - convert to lowercase
+    print(toLower("HELLO WORLD"))    // "hello world"
 
     // trim - remove leading/trailing whitespace
     val s = "  hello  "
@@ -17,7 +17,7 @@ fun main() {
     // len on strings
     print(len("abc"))                  // 3
 
-    // is_empty on strings
-    print(is_empty(""))                // true
-    print(is_empty("hi"))             // false
+    // isEmpty on strings
+    print(isEmpty(""))                // true
+    print(isEmpty("hi"))             // false
 }

@@ -20,9 +20,9 @@ fun main() {
     print(rng.seed)
     println("")
 
-    // Use rand_int with an explicit min/max
+    // Use randInt with an explicit min/max
     print("rand: ")
-    print(rand_int(1, 100))
+    print(randInt(1, 100))
     println("")
 
     println("done")

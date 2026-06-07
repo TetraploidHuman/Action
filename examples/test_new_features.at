@@ -9,93 +9,93 @@ fun main() {
     val s = Some(42)
     val n = None
 
-    print("is_some(Some(42)): ")
-    println(is_some(s))
+    print("isSome(Some(42)): ")
+    println(isSome(s))
 
-    print("is_none(Some(42)): ")
-    println(is_none(s))
+    print("isNone(Some(42)): ")
+    println(isNone(s))
 
-    print("is_none(None): ")
-    println(is_none(n))
+    print("isNone(None): ")
+    println(isNone(n))
 
-    print("unwrap_or(Some(42), 0): ")
-    println(unwrap_or(s, 0))
+    print("unwrapOr(Some(42), 0): ")
+    println(unwrapOr(s, 0))
 
-    print("unwrap_or(None, 0): ")
-    println(unwrap_or(n, 0))
+    print("unwrapOr(None, 0): ")
+    println(unwrapOr(n, 0))
 
     print("unwrap(Some(42)): ")
     println(unwrap(s))
 
     // ---- Test Option dot-notation methods ----
-    print("s.is_some(): ")
-    println(s.is_some())
+    print("s.isSome(): ")
+    println(s.isSome())
 
-    print("n.is_none(): ")
-    println(n.is_none())
+    print("n.isNone(): ")
+    println(n.isNone())
 
-    print("s.unwrap_or(99): ")
-    println(s.unwrap_or(99))
+    print("s.unwrapOr(99): ")
+    println(s.unwrapOr(99))
 
-    print("n.unwrap_or(99): ")
-    println(n.unwrap_or(99))
+    print("n.unwrapOr(99): ")
+    println(n.unwrapOr(99))
 
     // ---- Test Result methods ----
     val ok = Ok(10)
     val err = Err(99)
 
-    print("is_ok(Ok(10)): ")
-    println(is_ok(ok))
+    print("isOk(Ok(10)): ")
+    println(isOk(ok))
 
-    print("is_err(Err(...)): ")
-    println(is_err(err))
+    print("isErr(Err(...)): ")
+    println(isErr(err))
 
-    print("unwrap_or(Ok(10), 0): ")
-    println(unwrap_or(ok, 0))
+    print("unwrapOr(Ok(10), 0): ")
+    println(unwrapOr(ok, 0))
 
-    print("unwrap_or(Err(...), 0): ")
-    println(unwrap_or(err, 0))
+    print("unwrapOr(Err(...), 0): ")
+    println(unwrapOr(err, 0))
 
     print("unwrap(Ok(10)): ")
     println(unwrap(ok))
 
     // ---- Test ok() - Option to Result ----
-    print("ok(Some(42), 99) -> is_ok: ")
+    print("ok(Some(42), 99) -> isOk: ")
     val r1 = ok(s, 99)
-    println(is_ok(r1))
+    println(isOk(r1))
 
-    print("ok(None, 99) -> is_err: ")
+    print("ok(None, 99) -> isErr: ")
     val r2 = ok(n, 99)
-    println(is_err(r2))
+    println(isErr(r2))
 
-    // ---- Test to_lazy_list and to_list ----
+    // ---- Test toLazyList and toList ----
     val lst = List[1, 2, 3]
-    val ll = to_lazy_list(lst)
-    print("to_lazy_list + len: ")
+    val ll = toLazyList(lst)
+    print("toLazyList + len: ")
     println(len(ll))
 
-    val back = to_list(ll)
-    print("to_list back + len: ")
+    val back = toList(ll)
+    print("toList back + len: ")
     println(len(back))
 
-    // ---- Test lazy_head ----
-    print("lazy_head of non-empty: ")
-    val h1 = lazy_head(ll)
-    println(is_some(h1))
+    // ---- Test lazyHead ----
+    print("lazyHead of non-empty: ")
+    val h1 = lazyHead(ll)
+    println(isSome(h1))
 
-    val empty_ll = to_lazy_list(List[])
-    print("lazy_head of empty: ")
-    val h2 = lazy_head(empty_ll)
-    println(is_none(h2))
+    val empty_ll = toLazyList(List[])
+    print("lazyHead of empty: ")
+    val h2 = lazyHead(empty_ll)
+    println(isNone(h2))
 
-    // ---- Test lazy_take ----
-    val taken = lazy_take(2, ll)
-    print("lazy_take(2) len: ")
+    // ---- Test lazyTake ----
+    val taken = lazyTake(2, ll)
+    print("lazyTake(2) len: ")
     println(len(taken))
 
-    // ---- Test lazy_drop ----
-    val dropped = lazy_drop(1, ll)
-    print("lazy_drop(1) len: ")
+    // ---- Test lazyDrop ----
+    val dropped = lazyDrop(1, ll)
+    print("lazyDrop(1) len: ")
     println(len(dropped))
 
     // ---- Test curry ----

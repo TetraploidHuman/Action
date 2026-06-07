@@ -10,7 +10,7 @@ fun main() {
     var running = true
     for running {
         print("You: ")
-        val input = unwrap_or(read_line(), "quit")
+        val input = unwrapOr(readLine(), "quit")
         running = when input == "quit" { false else true }
         messages = when running { handleChat(input, messages) else messages }
     }

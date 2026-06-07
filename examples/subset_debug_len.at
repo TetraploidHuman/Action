@@ -10,7 +10,7 @@ fun main() {
     print("a in s2: ") println(contains(s2, "a"))
     print("d in s2: ") println(contains(s2, "d"))
 
-    val r = set_is_subset(s1, s2)
+    val r = setIsSubset(s1, s2)
     print("subset: ")
     println(r)
 

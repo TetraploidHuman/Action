@@ -7,10 +7,10 @@ fun main() {
     print(len(flat))
     println("")
 
-    // Test split_at
+    // Test splitAt
     val xs = range(1, 7)
-    val parts = split_at(xs, 3)
-    print("split_at parts len: ")
+    val parts = splitAt(xs, 3)
+    print("splitAt parts len: ")
     print(len(parts))
     println("")
 
@@ -55,15 +55,15 @@ fun main() {
     print(identity(42))
     println("")
 
-    // Test rand_shuffle
-    val shuffled = rand_shuffle(range(1, 4))
+    // Test randShuffle
+    val shuffled = randShuffle(range(1, 4))
     print("shuffled len: ")
     print(len(shuffled))
     println("")
 
-    // Test with_index
-    val wi = with_index(List[10, 20, 30])
-    print("with_index len: ")
+    // Test withIndex
+    val wi = withIndex(List[10, 20, 30])
+    print("withIndex len: ")
     print(len(wi))
     println("")
 

@@ -1,28 +1,28 @@
-// Test assert and to_string
+// Test assert and toString
 fun main() {
-    // Test to_string for Int
-    val si = to_string(42)
+    // Test toString for Int
+    val si = toString(42)
     print("int: ")
     print(si)
     println("")
 
-    // Test to_string for Float
-    val sf = to_string(3.14)
+    // Test toString for Float
+    val sf = toString(3.14)
     print("float: ")
     print(sf)
     println("")
 
-    // Test to_string for Bool
+    // Test toString for Bool
     print("true: ")
-    print(to_string(true))
+    print(toString(true))
     println("")
     print("false: ")
-    print(to_string(false))
+    print(toString(false))
     println("")
 
-    // Test to_string for String (identity)
+    // Test toString for String (identity)
     print("str: ")
-    print(to_string("hello"))
+    print(toString("hello"))
     println("")
 
     // Test assert with true condition (should continue)

@@ -10,13 +10,13 @@ fun main() {
     print("4 in s2: ") println(contains(s2, 4))
 
     // Subset check: {1,4} subset of {1,2,3} should be false
-    val r = set_is_subset(s1, s2)
+    val r = setIsSubset(s1, s2)
     print("subset: ")
     println(r)
 
     // Also test: {1} subset of {1,2,3} should be true
     val s3 = Set[1]
-    val r2 = set_is_subset(s3, s2)
+    val r2 = setIsSubset(s3, s2)
     print("subset2: ")
     println(r2)
 

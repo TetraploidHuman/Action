@@ -2047,15 +2047,15 @@ impl<'ctx> CodeGen<'ctx> {
                 ("Float", "toString") => "action_float_to_string",
                 // String methods
                 ("String", "len") | ("String", "length") => "action_string_len",
-                ("String", "to_upper") => "action_string_to_upper",
-                ("String", "to_lower") => "action_string_to_lower",
+                ("String", "toUpper") => "action_string_to_upper",
+                ("String", "toLower") => "action_string_to_lower",
                 ("String", "trim") => "action_string_trim",
                 ("String", "substring") => "action_string_substring",
-                ("String", "starts_with") => "action_string_starts_with",
-                ("String", "ends_with") => "action_string_ends_with",
+                ("String", "startsWith") => "action_string_starts_with",
+                ("String", "endsWith") => "action_string_ends_with",
                 ("String", "split") => "action_string_split",
                 ("String", "contains") => "action_string_contains",
-                ("String", "to_int") | ("String", "to_float") => {
+                ("String", "toInt") | ("String", "toFloat") => {
                     return Err(format!(
                         "::{}::{} cannot be used as a function reference (requires parsing)",
                         type_name, method
@@ -2085,32 +2085,32 @@ impl<'ctx> CodeGen<'ctx> {
                 ("String", "join") => "action_string_join",
                 ("String", "replace") => "action_string_replace",
                 ("String", "repeat") => "action_string_repeat",
-                ("String", "trim_start") => "action_string_trim_start",
-                ("String", "trim_end") => "action_string_trim_end",
+                ("String", "trimStart") => "action_string_trim_start",
+                ("String", "trimEnd") => "action_string_trim_end",
                 // Methods without simple runtime function counterparts
                 ("List", "map")
                 | ("List", "filter")
                 | ("List", "fold")
-                | ("List", "flat_map")
+                | ("List", "flatMap")
                 | ("List", "flatten")
                 | ("List", "unique")
-                | ("List", "with_index")
+                | ("List", "withIndex")
                 | ("List", "sorted")
                 | ("List", "sum")
                 | ("List", "product")
                 | ("List", "prepend")
-                | ("List", "is_empty")
+                | ("List", "isEmpty")
                 | ("List", "any")
                 | ("List", "all")
                 | ("List", "find")
                 | ("List", "reduce")
-                | ("List", "split_lines")
+                | ("List", "splitLines")
                 | ("Option", "map")
                 | ("Option", "flatMap")
                 | ("Option", "unwrap")
-                | ("Option", "unwrap_or")
-                | ("Option", "is_some")
-                | ("Option", "is_none")
+                | ("Option", "unwrapOr")
+                | ("Option", "isSome")
+                | ("Option", "isNone")
                 | ("LazyList", _)
                 | ("Task", _)
                 | ("Stream", _)

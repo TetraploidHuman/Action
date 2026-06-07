@@ -1,4 +1,4 @@
-// Debug integration_test crash - step 5: is_empty + append
+// Debug integration_test crash - step 5: isEmpty + append
 
 enum Option { Some(Int), None }
 enum Result { Ok(Int), Err(Int) }
@@ -23,7 +23,7 @@ fun main() {
     // List
     val xs = List[10, 20, 30]
     print(len(xs))
-    print(is_empty(xs))
+    print(isEmpty(xs))
 
     val ys = append(xs, 40)
     print(len(ys))

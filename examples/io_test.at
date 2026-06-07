@@ -10,14 +10,14 @@ fun main() {
     print(exists("/nonexistent_file_xyz.txt"))
     println("")
 
-    // Test delete_file (delete a temp file)
+    // Test deleteFile (delete a temp file)
     print("delete nofile: ")
-    print(delete_file("/nonexistent_temp.txt"))
+    print(deleteFile("/nonexistent_temp.txt"))
     println("")
 
-    // Test append_file
+    // Test appendFile
     print("append: ")
-    print(append_file("/tmp/action_test_append.txt", "hello\n"))
+    print(appendFile("/tmp/action_test_append.txt", "hello\n"))
     println("")
 
     // Verify the appended file exists
@@ -27,7 +27,7 @@ fun main() {
 
     // Cleanup
     print("delete test: ")
-    print(delete_file("/tmp/action_test_append.txt"))
+    print(deleteFile("/tmp/action_test_append.txt"))
     println("")
 
     println("done")

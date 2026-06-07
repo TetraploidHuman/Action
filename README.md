@@ -103,17 +103,17 @@ val s = "hello"
 // 常用操作
 val t = trim("  hi  ")              // "hi"
 val r = replace("foo bar", "bar", "baz")  // "foo baz"
-val u = to_upper("hello")           // "HELLO"
-val l = to_lower("HELLO")           // "hello"
+val u = toUpper("hello")           // "HELLO"
+val l = toLower("HELLO")           // "hello"
 val sub = substring("hello", 0, 2)  // "he"
 val n = len("hello")                // 5
 val parts = split("a,b,c", ",")     // List["a", "b", "c"]
 val joined = join(parts, "-")       // "a-b-c"
-val b = starts_with("hello", "he")  // true
-val c = char_at("hello", 1)         // Char 'e'
+val b = startsWith("hello", "he")  // true
+val c = charAt("hello", 1)         // Char 'e'
 val chars_list = chars("hi")        // List['h', 'i']
-val code = char_code('A')           // 65
-val ch = code_to_char(65)           // 'A'
+val code = charCode('A')           // 65
+val ch = codeToChar(65)           // 'A'
 ```
 
 ### 字符串插值
@@ -252,7 +252,7 @@ val list = List[1, 2, 3]
 val l = len(list)                  // 长度
 val first = list[0]                // 索引访问
 val has = contains(list, 2)        // 包含检查
-val idx = index_of(list, 3)        // 查找索引
+val idx = indexOf(list, 3)        // 查找索引
 val more = append(list, 4)         // 追加元素
 val merged = concat(list, List[5, 6])  // 合并
 val taken = take(list, 2)          // 取前 n 个
@@ -268,34 +268,34 @@ val flat = flatten(List[List[1, 2], List[3, 4]])  // 展平
 // Set
 val s1 = Set[1, 2, 3]
 val s2 = Set[2, 3, 4]
-val union = set_union(s1, s2)            // Set[1, 2, 3, 4]
-val inter = set_intersection(s1, s2)     // Set[2, 3]
-val diff = set_difference(s1, s2)        // Set[1]
+val union = setUnion(s1, s2)            // Set[1, 2, 3, 4]
+val inter = setIntersection(s1, s2)     // Set[2, 3]
+val diff = setDifference(s1, s2)        // Set[1]
 val in_set = contains(s1, 2)             // true
 
 // Map
 val m1 = Map["a": 1, "b": 2]
 val m2 = Map["b": 20, "c": 3]
-val keys = map_keys(m1)            // List["a", "b"]
-val vals = map_values(m1)          // List[1, 2]
-val merged = map_union(m1, m2)     // Map["a": 1, "b": 20, "c": 3]
+val keys = mapKeys(m1)            // List["a", "b"]
+val vals = mapValues(m1)          // List[1, 2]
+val merged = mapUnion(m1, m2)     // Map["a": 1, "b": 20, "c": 3]
 ```
 
 ### 文件 I/O
 
 ```action
-val f = open_file("/tmp/test.txt", "w")
-write_file(f, "hello\n")
-close_file(f)
+val f = openFile("/tmp/test.txt", "w")
+writeFile(f, "hello\n")
+closeFile(f)
 
-val f2 = open_file("/tmp/test.txt", "r")
-val line = read_line(f2)
-close_file(f2)
+val f2 = openFile("/tmp/test.txt", "r")
+val line = readLine(f2)
+closeFile(f2)
 
 // 便捷函数
-append_file("/tmp/log.txt", "log entry\n")
+appendFile("/tmp/log.txt", "log entry\n")
 val exists_bool = exists("/tmp/test.txt")     // true/false
-delete_file("/tmp/test.txt")
+deleteFile("/tmp/test.txt")
 ```
 
 ### HTTP 请求
@@ -313,10 +313,10 @@ println(resp)
 ### 类型转换
 
 ```action
-val f = to_float(42)              // Int → Float: 42.0
-val i = to_int(3.14)              // Float → Int: 3
-val s = int_to_string(42)         // Int → String: "42"
-val n = parse_int("42")           // String → Int: 42
+val f = toFloat(42)              // Int → Float: 42.0
+val i = toInt(3.14)              // Float → Int: 3
+val s = intToString(42)         // Int → String: "42"
+val n = parseInt("42")           // String → Int: 42
 ```
 
 ### 数学函数
@@ -358,7 +358,7 @@ val value = obj?.method(arg)       // 安全方法调用
 ### 错误传播
 
 ```action
-val x? = parse_int("123")          // ? 传播错误
+val x? = parseInt("123")          // ? 传播错误
 val y = result?                    // 后缀 try 运算符
 ```
 
@@ -380,11 +380,11 @@ val done = is_closed(rx)    // 检查流是否关闭
 ### 模块系统
 
 ```action
-// 导入整个模块
-import "math.at"
+// 导入整个模块（通过模块名访问其成员）
+import math
 
-// 选择性导入
-import {sin, cos} from "math.at"
+// 选择性导入（直接使用导入的项）
+import math.{sin, cos}
 
 // 导出
 export fun helper() { 42 }
@@ -406,7 +406,7 @@ external type FileHandle
 | 函数 | 签名 | 说明 |
 |------|------|------|
 | `len` | `(T) → Int` | List/String/Map/Set 长度 |
-| `is_empty` | `(T) → Bool` | 是否为空 |
+| `isEmpty` | `(T) → Bool` | 是否为空 |
 | `print` | `(T) → void` | 打印（无换行）|
 | `println` | `(T) → void` | 打印（带换行）|
 
@@ -415,18 +415,18 @@ external type FileHandle
 |------|------|------|
 | `trim` | `(String) → String` | 去除两端空白 |
 | `replace` | `(String, String, String) → String` | 替换子串 |
-| `to_upper` | `(String) → String` | 转大写 |
-| `to_lower` | `(String) → String` | 转小写 |
+| `toUpper` | `(String) → String` | 转大写 |
+| `toLower` | `(String) → String` | 转小写 |
 | `split` | `(String, String) → List[String]` | 分割字符串 |
 | `join` | `(List[String], String) → String` | 连接字符串 |
 | `substring` | `(String, Int, Int) → String` | 取子串 (from, to) |
-| `starts_with` | `(String, String) → Bool` | 前缀匹配 |
-| `ends_with` | `(String, String) → Bool` | 后缀匹配 |
+| `startsWith` | `(String, String) → Bool` | 前缀匹配 |
+| `endsWith` | `(String, String) → Bool` | 后缀匹配 |
 | `contains` | `(String/String, String/元素) → Bool` | 包含检查 |
-| `char_at` | `(String, Int) → Char` | 取字符 |
+| `charAt` | `(String, Int) → Char` | 取字符 |
 | `chars` | `(String) → List[Char]` | 转为字符列表 |
-| `char_code` | `(Char) → Int` | 字符 → ASCII 码 |
-| `code_to_char` | `(Int) → Char` | ASCII 码 → 字符 |
+| `charCode` | `(Char) → Int` | 字符 → ASCII 码 |
+| `codeToChar` | `(Int) → Char` | ASCII 码 → 字符 |
 
 ### 列表
 | 函数 | 签名 | 说明 |
@@ -435,7 +435,7 @@ external type FileHandle
 | `append` | `(List[T], T) → List[T]` | 追加元素 |
 | `concat` | `(List[T], List[T]) → List[T]` | 合并列表 |
 | `contains` | `(List[T], T) → Bool` | 包含检查 |
-| `index_of` | `(List[T], T) → Int` | 查找索引 |
+| `indexOf` | `(List[T], T) → Int` | 查找索引 |
 | `reverse` | `(List[T]) → List[T]` | 反转 |
 | `sort` | `(List[T]) → List[T]` | 排序 |
 | `unique` | `(List[T]) → List[T]` | 去重 |
@@ -460,32 +460,32 @@ external type FileHandle
 |------|------|
 | `Set[...]` | 构造 Set |
 | `Map[key: val, ...]` | 构造 Map |
-| `set_union(a, b)` | 并集 |
-| `set_intersection(a, b)` | 交集 |
-| `set_difference(a, b)` | 差集 |
-| `map_union(a, b)` | 合并 Map（后者覆盖）|
-| `map_keys(m)` | 获取所有键 |
-| `map_values(m)` | 获取所有值 |
+| `setUnion(a, b)` | 并集 |
+| `setIntersection(a, b)` | 交集 |
+| `setDifference(a, b)` | 差集 |
+| `mapUnion(a, b)` | 合并 Map（后者覆盖）|
+| `mapKeys(m)` | 获取所有键 |
+| `mapValues(m)` | 获取所有值 |
 
 ### 文件
 | 函数 | 说明 |
 |------|------|
-| `open_file(path, mode)` | 打开文件 ("r"/"w") |
-| `close_file(f)` | 关闭文件 |
-| `read_line(f)` | 读取一行 |
-| `write_file(f, s)` | 写入字符串 |
-| `append_file(path, s)` | 追加到文件 |
+| `openFile(path, mode)` | 打开文件 ("r"/"w") |
+| `closeFile(f)` | 关闭文件 |
+| `readLine(f)` | 读取一行 |
+| `writeFile(f, s)` | 写入字符串 |
+| `appendFile(path, s)` | 追加到文件 |
 | `exists(path)` | 文件是否存在 |
-| `delete_file(path)` | 删除文件 |
+| `deleteFile(path)` | 删除文件 |
 
 ### 类型转换
 | 函数 | 说明 |
 |------|------|
-| `to_float(Int)` | Int → Float |
-| `to_int(Float)` | Float → Int |
-| `int_to_string(Int)` | Int → String |
-| `float_to_string(Float)` | Float → String |
-| `parse_int(String)` | String → Int |
+| `toFloat(Int)` | Int → Float |
+| `toInt(Float)` | Float → Int |
+| `intToString(Int)` | Int → String |
+| `floatToString(Float)` | Float → String |
+| `parseInt(String)` | String → Int |
 
 ### 数学
 | 函数 | 说明 |

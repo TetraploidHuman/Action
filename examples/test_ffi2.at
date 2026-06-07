@@ -3,14 +3,14 @@ external fun puts(s: CString): Int
 
 fun main() {
     val msg = "Hello from Atomic FFI!"
-    val cstr = to_cstring(msg)
+    val cstr = toCString(msg)
     // Call external C puts() - this prints the string
     val ret = puts(cstr)
     println("puts returned:")
     println(ret)
 
-    // Test from_cstring round-trip
-    val back = from_cstring(cstr)
+    // Test fromCString round-trip
+    val back = fromCString(cstr)
     println(back)
 
     println("done")

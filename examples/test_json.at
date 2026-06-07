@@ -5,7 +5,7 @@ external fun action_json_free(node: Ptr[JsonNode])
 
 fun main() {
     // Step 1: Can we call action_json_parse at all?
-    val raw = action_json_parse(to_cstring("42"))
+    val raw = action_json_parse(toCString("42"))
     println(42)
     action_json_free(raw)
 }

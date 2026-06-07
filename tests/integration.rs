@@ -316,13 +316,13 @@ fn test_map_option() {
 
 #[test]
 fn test_read_line() {
-    // No stdin input: read_line returns None, prints "EOF"
+    // No stdin input: readLine returns None, prints "EOF"
     assert_eq!(run_example("test_read_line.at"), "EOF");
 }
 
 #[test]
 fn test_io() {
-    // read_line with EOF -> unwrap_or default "World"
+    // readLine with EOF -> unwrapOr default "World"
     assert_eq!(run_example("io.at"), "Hello, World\n");
 }
 
@@ -482,34 +482,34 @@ fn test_import_wildcard() {
 
 #[test]
 fn test_option_returns() {
-    // Comprehensive test of Option-returning builtins: tail, init, index_of,
-    // to_int, to_float, parse_int, slice, from_list, contains_key
+    // Comprehensive test of Option-returning builtins: tail, init, indexOf,
+    // toInt, toFloat, parseInt, slice, fromList, containsKey
     assert_eq!(
         run_example("test_option_returns.at"),
-        "tail([1,2,3]) is_some: true\n\
-         tail([]) is_none: true\n\
-         init([1,2,3]) is_some: true\n\
-         init([]) is_none: true\n\
-         index_of(2, [1,2,3]) is_some: true\n\
-         index_of(2, [1,2,3]) value: 1\n\
-         index_of(99, [1,2,3]) is_none: true\n\
-         index_of('bc', 'abcde') is_some: true\n\
-         index_of('bc', 'abcde') value: 1\n\
-         index_of('xyz', 'abcde') is_none: true\n\
-         to_int('42') is_some: true\n\
-         to_int('42') value: 42\n\
-         to_int('abc') is_none: true\n\
-         to_int(3.14) is_some: true\n\
-         to_float('3.14') is_some: true\n\
-         to_float('abc') is_none: true\n\
-         to_float(42) is_some: true\n\
-         parse_int('123') is_some: true\n\
-         parse_int('123') value: 123\n\
-         parse_int('not_a_number') is_none: true\n\
+        "tail([1,2,3]) isSome: true\n\
+         tail([]) isNone: true\n\
+         init([1,2,3]) isSome: true\n\
+         init([]) isNone: true\n\
+         indexOf(2, [1,2,3]) isSome: true\n\
+         indexOf(2, [1,2,3]) value: 1\n\
+         indexOf(99, [1,2,3]) isNone: true\n\
+         indexOf('bc', 'abcde') isSome: true\n\
+         indexOf('bc', 'abcde') value: 1\n\
+         indexOf('xyz', 'abcde') isNone: true\n\
+         toInt('42') isSome: true\n\
+         toInt('42') value: 42\n\
+         toInt('abc') isNone: true\n\
+         toInt(3.14) isSome: true\n\
+         toFloat('3.14') isSome: true\n\
+         toFloat('abc') isNone: true\n\
+         toFloat(42) isSome: true\n\
+         parseInt('123') isSome: true\n\
+         parseInt('123') value: 123\n\
+         parseInt('not_a_number') isNone: true\n\
          slice('hello world', 0, 5): hello\n\
-         from_list([1,2,3]) contains 2: true\n\
-         contains_key(m, 'a'): true\n\
-         contains_key(m, 'c'): false\n\
+         fromList([1,2,3]) contains 2: true\n\
+         containsKey(m, 'a'): true\n\
+         containsKey(m, 'c'): false\n\
          done\n"
     );
 }
@@ -520,29 +520,29 @@ fn test_new_features() {
     // LazyList, curry, ok()
     assert_eq!(
         run_example("test_new_features.at"),
-        "is_some(Some(42)): true\n\
-         is_none(Some(42)): false\n\
-         is_none(None): true\n\
-         unwrap_or(Some(42), 0): 42\n\
-         unwrap_or(None, 0): 0\n\
+        "isSome(Some(42)): true\n\
+         isNone(Some(42)): false\n\
+         isNone(None): true\n\
+         unwrapOr(Some(42), 0): 42\n\
+         unwrapOr(None, 0): 0\n\
          unwrap(Some(42)): 42\n\
-         s.is_some(): true\n\
-         n.is_none(): true\n\
-         s.unwrap_or(99): 42\n\
-         n.unwrap_or(99): 99\n\
-         is_ok(Ok(10)): true\n\
-         is_err(Err(...)): true\n\
-         unwrap_or(Ok(10), 0): 10\n\
-         unwrap_or(Err(...), 0): 0\n\
+         s.isSome(): true\n\
+         n.isNone(): true\n\
+         s.unwrapOr(99): 42\n\
+         n.unwrapOr(99): 99\n\
+         isOk(Ok(10)): true\n\
+         isErr(Err(...)): true\n\
+         unwrapOr(Ok(10), 0): 10\n\
+         unwrapOr(Err(...), 0): 0\n\
          unwrap(Ok(10)): 10\n\
-         ok(Some(42), 99) -> is_ok: true\n\
-         ok(None, 99) -> is_err: true\n\
-         to_lazy_list + len: 3\n\
-         to_list back + len: 3\n\
-         lazy_head of non-empty: true\n\
-         lazy_head of empty: false\n\
-         lazy_take(2) len: 2\n\
-         lazy_drop(1) len: 2\n\
+         ok(Some(42), 99) -> isOk: true\n\
+         ok(None, 99) -> isErr: true\n\
+         toLazyList + len: 3\n\
+         toList back + len: 3\n\
+         lazyHead of non-empty: true\n\
+         lazyHead of empty: false\n\
+         lazyTake(2) len: 2\n\
+         lazyDrop(1) len: 2\n\
          curry(add,5)(10): 15\n\
          done\n"
     );

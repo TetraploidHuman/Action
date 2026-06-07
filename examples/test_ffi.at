@@ -3,8 +3,8 @@ external fun puts(s: CString): Int
 
 fun main() {
     val msg = "Hello from Atomic FFI!"
-    val cstr = to_cstring(msg)
-    val back = from_cstring(cstr)
+    val cstr = toCString(msg)
+    val back = fromCString(cstr)
     println(back)
     println("done")
 }

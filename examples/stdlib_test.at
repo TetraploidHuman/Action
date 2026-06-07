@@ -1,18 +1,18 @@
 // Test for new stdlib functions
 fun main() {
-    // Test starts_with
+    // Test startsWith
     val s = "Hello World"
-    print("starts_with: ")
-    print(starts_with(s, "Hello"))
+    print("startsWith: ")
+    print(startsWith(s, "Hello"))
     print(" ")
-    print(starts_with(s, "World"))
+    print(startsWith(s, "World"))
     println("")
 
-    // Test ends_with
-    print("ends_with: ")
-    print(ends_with(s, "World"))
+    // Test endsWith
+    print("endsWith: ")
+    print(endsWith(s, "World"))
     print(" ")
-    print(ends_with(s, "Hello"))
+    print(endsWith(s, "Hello"))
     println("")
 
     // Test substring
@@ -22,25 +22,25 @@ fun main() {
     print(substring(s, 6, 5))
     println("")
 
-    // Test parse_int
-    print("parse_int: ")
-    print(parse_int("42"))
+    // Test parseInt
+    print("parseInt: ")
+    print(parseInt("42"))
     print(" ")
-    print(parse_int("-123"))
+    print(parseInt("-123"))
     println("")
 
-    // Test rand_int and rand_float
-    print("rand_int(1, 10): ")
-    print(rand_int(1, 10))
+    // Test randInt and randFloat
+    print("randInt(1, 10): ")
+    print(randInt(1, 10))
     print(" ")
-    print(rand_int(1, 10))
+    print(randInt(1, 10))
     print(" ")
-    print(rand_int(1, 10))
+    print(randInt(1, 10))
     println("")
-    print("rand_float: ")
-    print(rand_float())
+    print("randFloat: ")
+    print(randFloat())
     print(" ")
-    print(rand_float())
+    print(randFloat())
     println("")
 
     println("done")

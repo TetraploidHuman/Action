@@ -27,7 +27,7 @@ fun main() {
     // === List builtins ===
     val xs = List[10, 20, 30]
     print(len(xs))                      // 3
-    print(is_empty(xs))                 // 0 (false)
+    print(isEmpty(xs))                 // 0 (false)
 
     val ys = append(xs, 40)
     print(len(ys))                      // 4
@@ -36,13 +36,13 @@ fun main() {
     print(len("hello"))                 // 5
     print(len(concat("foo", "bar")))    // 6
 
-    val upper = to_upper("abc")
+    val upper = toUpper("abc")
     print(len(upper))                   // 3
 
-    val lower = to_lower("XYZ")
+    val lower = toLower("XYZ")
     print(len(lower))                   // 3
 
     val trimmed = trim("  hi  ")
     print(len(trimmed))                 // 2
-    print(is_empty(trim("   ")))       // 1 (true - all whitespace)
+    print(isEmpty(trim("   ")))       // 1 (true - all whitespace)
 }

@@ -69,7 +69,7 @@ fun parseResponseImpl(raw: String, newlinePos: Int): HttpResponse = {
     val statusStr = substring(raw, 0, newlinePos)
     val bodyStr = substring(raw, newlinePos + 1, len(raw) - newlinePos - 1)
     return when newlinePos >= 0 {
-        {status = parse_int(statusStr), body = bodyStr}
+        {status = parseInt(statusStr), body = bodyStr}
     else {
         {status = 0, body = raw}
     }}
