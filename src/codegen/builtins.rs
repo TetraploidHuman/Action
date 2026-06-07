@@ -614,32 +614,32 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.builtin_map_contains(receiver, args);
                 }
                 if method == "len" || method == "isEmpty" {
-                    let new_func = Expr::Ident(method.toString());
+                    let new_func = Expr::Ident(method.to_string());
                     return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                 }
                 if method == "keys" {
-                    let new_func = Expr::Ident("mapKeys".toString());
+                    let new_func = Expr::Ident("mapKeys".to_string());
                     return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                 }
                 if method == "values" {
                     // map.values() -> get all values as a list
-                    let new_func = Expr::Ident("mapValues".toString());
+                    let new_func = Expr::Ident("mapValues".to_string());
                     return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                 }
                 if method == "mapValues" {
                     // map.mapValues(transform) -> mapMapValues(map, transform)
-                    let new_func = Expr::Ident("mapMapValues".toString());
+                    let new_func = Expr::Ident("mapMapValues".to_string());
                     return self.compile_call(&new_func, &[receiver.as_ref().clone()], trailing);
                 }
                 if method == "entries" {
-                    let new_func = Expr::Ident("mapEntries".toString());
+                    let new_func = Expr::Ident("mapEntries".to_string());
                     return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                 }
                 if method == "union" {
                     if args.len() != 1 {
-                        return Err("map.union expects 1 argument (other map)".toString());
+                        return Err("map.union expects 1 argument (other map)".to_string());
                     }
-                    let new_func = Expr::Ident("mapUnion".toString());
+                    let new_func = Expr::Ident("mapUnion".to_string());
                     return self.compile_call(
                         &new_func,
                         &[receiver.as_ref().clone(), args[0].clone()],
@@ -648,12 +648,12 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 if method == "filter" {
                     // map.filter(predicate) -> mapFilter(map, predicate)
-                    let new_func = Expr::Ident("mapFilter".toString());
+                    let new_func = Expr::Ident("mapFilter".to_string());
                     return self.compile_call(&new_func, &[receiver.as_ref().clone()], trailing);
                 }
                 if method == "fold" {
                     // map.fold(init, folder) -> mapFold(map, init, folder)
-                    let new_func = Expr::Ident("mapFold".toString());
+                    let new_func = Expr::Ident("mapFold".to_string());
                     let mut new_args = vec![receiver.as_ref().clone()];
                     new_args.extend(args.iter().cloned());
                     return self.compile_call(&new_func, &new_args, trailing);
@@ -671,14 +671,14 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.builtin_set_contains(receiver, args);
                 }
                 if method == "len" || method == "isEmpty" {
-                    let new_func = Expr::Ident(method.toString());
+                    let new_func = Expr::Ident(method.to_string());
                     return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                 }
                 if method == "union" {
                     if args.len() != 1 {
-                        return Err("set.union expects 1 argument (other set)".toString());
+                        return Err("set.union expects 1 argument (other set)".to_string());
                     }
-                    let new_func = Expr::Ident("setUnion".toString());
+                    let new_func = Expr::Ident("setUnion".to_string());
                     return self.compile_call(
                         &new_func,
                         &[receiver.as_ref().clone(), args[0].clone()],
@@ -687,9 +687,9 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 if method == "intersection" {
                     if args.len() != 1 {
-                        return Err("set.intersection expects 1 argument (other set)".toString());
+                        return Err("set.intersection expects 1 argument (other set)".to_string());
                     }
-                    let new_func = Expr::Ident("setIntersection".toString());
+                    let new_func = Expr::Ident("setIntersection".to_string());
                     return self.compile_call(
                         &new_func,
                         &[receiver.as_ref().clone(), args[0].clone()],
@@ -698,9 +698,9 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 if method == "difference" {
                     if args.len() != 1 {
-                        return Err("set.difference expects 1 argument (other set)".toString());
+                        return Err("set.difference expects 1 argument (other set)".to_string());
                     }
-                    let new_func = Expr::Ident("setDifference".toString());
+                    let new_func = Expr::Ident("setDifference".to_string());
                     return self.compile_call(
                         &new_func,
                         &[receiver.as_ref().clone(), args[0].clone()],
@@ -709,9 +709,9 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 if method == "is_subset" {
                     if args.len() != 1 {
-                        return Err("set.isSubset expects 1 argument (other set)".toString());
+                        return Err("set.isSubset expects 1 argument (other set)".to_string());
                     }
-                    let new_func = Expr::Ident("setIsSubset".toString());
+                    let new_func = Expr::Ident("setIsSubset".to_string());
                     return self.compile_call(
                         &new_func,
                         &[receiver.as_ref().clone(), args[0].clone()],
@@ -719,7 +719,7 @@ impl<'ctx> CodeGen<'ctx> {
                     );
                 }
                 if method == "toList" {
-                    let new_func = Expr::Ident("toList".toString());
+                    let new_func = Expr::Ident("toList".to_string());
                     return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                 }
             }
@@ -729,13 +729,13 @@ impl<'ctx> CodeGen<'ctx> {
                     match method.as_str() {
                         "contains" => {
                             if args.len() != 1 {
-                                return Err("range.contains expects 1 argument".toString());
+                                return Err("range.contains expects 1 argument".to_string());
                             }
                             return self.builtin_range_contains(receiver, &args[0]);
                         }
                         "toList" => {
                             if !args.isEmpty() {
-                                return Err("range.toList expects no arguments".toString());
+                                return Err("range.toList expects no arguments".to_string());
                             }
                             return self.builtin_range_to_list(receiver);
                         }
@@ -747,14 +747,14 @@ impl<'ctx> CodeGen<'ctx> {
             if matches!(recv_val, TypedValue::Enum(..)) {
                 match method.as_str() {
                     "isSome" | "isNone" | "isOk" | "isErr" => {
-                        let new_func = Expr::Ident(method.toString());
+                        let new_func = Expr::Ident(method.to_string());
                         return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                     }
                     "unwrapOr" => {
                         if args.len() != 1 {
-                            return Err("unwrapOr expects 1 argument".toString());
+                            return Err("unwrapOr expects 1 argument".to_string());
                         }
-                        let new_func = Expr::Ident("unwrapOr".toString());
+                        let new_func = Expr::Ident("unwrapOr".to_string());
                         return self.compile_call(
                             &new_func,
                             &[receiver.as_ref().clone(), args[0].clone()],
@@ -762,14 +762,14 @@ impl<'ctx> CodeGen<'ctx> {
                         );
                     }
                     "unwrap" => {
-                        let new_func = Expr::Ident("unwrap".toString());
+                        let new_func = Expr::Ident("unwrap".to_string());
                         return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                     }
                     "orElse" => {
                         if args.len() != 1 {
-                            return Err("orElse expects 1 argument".toString());
+                            return Err("orElse expects 1 argument".to_string());
                         }
-                        let new_func = Expr::Ident("orElse".toString());
+                        let new_func = Expr::Ident("orElse".to_string());
                         return self.compile_call(
                             &new_func,
                             &[receiver.as_ref().clone(), args[0].clone()],
@@ -778,9 +778,9 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     "ok" => {
                         if args.len() != 1 {
-                            return Err("ok expects 1 argument (error value)".toString());
+                            return Err("ok expects 1 argument (error value)".to_string());
                         }
-                        let new_func = Expr::Ident("ok".toString());
+                        let new_func = Expr::Ident("ok".to_string());
                         return self.compile_call(
                             &new_func,
                             &[receiver.as_ref().clone(), args[0].clone()],
@@ -788,7 +788,7 @@ impl<'ctx> CodeGen<'ctx> {
                         );
                     }
                     "map" | "flatMap" => {
-                        let new_func = Expr::Ident(method.toString());
+                        let new_func = Expr::Ident(method.to_string());
                         let mut new_args = vec![receiver.as_ref().clone()];
                         new_args.extend(args.iter().cloned());
                         return self.compile_call(&new_func, &new_args, trailing);
@@ -800,18 +800,18 @@ impl<'ctx> CodeGen<'ctx> {
             if matches!(recv_val, TypedValue::LazyList(_)) {
                 match method.as_str() {
                     "toList" => {
-                        let new_func = Expr::Ident("toList".toString());
+                        let new_func = Expr::Ident("toList".to_string());
                         return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                     }
                     "toLazyList" => {
-                        let new_func = Expr::Ident("toLazyList".toString());
+                        let new_func = Expr::Ident("toLazyList".to_string());
                         return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                     }
                     "take" => {
                         if args.len() != 1 {
-                            return Err("lazy.take expects 1 argument (n)".toString());
+                            return Err("lazy.take expects 1 argument (n)".to_string());
                         }
-                        let new_func = Expr::Ident("lazyTake".toString());
+                        let new_func = Expr::Ident("lazyTake".to_string());
                         return self.compile_call(
                             &new_func,
                             &[args[0].clone(), receiver.as_ref().clone()],
@@ -820,9 +820,9 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     "drop" => {
                         if args.len() != 1 {
-                            return Err("lazy.drop expects 1 argument (n)".toString());
+                            return Err("lazy.drop expects 1 argument (n)".to_string());
                         }
-                        let new_func = Expr::Ident("lazyDrop".toString());
+                        let new_func = Expr::Ident("lazyDrop".to_string());
                         return self.compile_call(
                             &new_func,
                             &[args[0].clone(), receiver.as_ref().clone()],
@@ -830,7 +830,7 @@ impl<'ctx> CodeGen<'ctx> {
                         );
                     }
                     "map" => {
-                        let new_func = Expr::Ident("lazyMap".toString());
+                        let new_func = Expr::Ident("lazyMap".to_string());
                         return self.compile_call(
                             &new_func,
                             &[receiver.as_ref().clone()],
@@ -838,7 +838,7 @@ impl<'ctx> CodeGen<'ctx> {
                         );
                     }
                     "filter" => {
-                        let new_func = Expr::Ident("lazyFilter".toString());
+                        let new_func = Expr::Ident("lazyFilter".to_string());
                         return self.compile_call(
                             &new_func,
                             &[receiver.as_ref().clone()],
@@ -846,7 +846,7 @@ impl<'ctx> CodeGen<'ctx> {
                         );
                     }
                     "takeWhile" => {
-                        let new_func = Expr::Ident("lazyTakeWhile".toString());
+                        let new_func = Expr::Ident("lazyTakeWhile".to_string());
                         return self.compile_call(
                             &new_func,
                             &[receiver.as_ref().clone()],
@@ -854,14 +854,14 @@ impl<'ctx> CodeGen<'ctx> {
                         );
                     }
                     "head" => {
-                        let new_func = Expr::Ident("lazyHead".toString());
+                        let new_func = Expr::Ident("lazyHead".to_string());
                         return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                     }
                     "zip" => {
                         if args.len() != 1 {
-                            return Err("lazy.zip expects 1 argument (other)".toString());
+                            return Err("lazy.zip expects 1 argument (other)".to_string());
                         }
-                        let new_func = Expr::Ident("lazyZip".toString());
+                        let new_func = Expr::Ident("lazyZip".to_string());
                         return self.compile_call(
                             &new_func,
                             &[receiver.as_ref().clone(), args[0].clone()],
@@ -877,7 +877,7 @@ impl<'ctx> CodeGen<'ctx> {
                     // No-arg methods
                     "len" | "isEmpty" | "toUpper" | "toLower" | "trim" | "trimStart"
                     | "trimEnd" | "chars" | "splitLines" | "toInt" | "toFloat" => {
-                        let new_func = Expr::Ident(method.toString());
+                        let new_func = Expr::Ident(method.to_string());
                         return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                     }
                     // Single-arg methods (method(string, arg))
@@ -892,7 +892,7 @@ impl<'ctx> CodeGen<'ctx> {
                             "slice" => "slice",
                             other => other,
                         };
-                        let new_func = Expr::Ident(mapped.toString());
+                        let new_func = Expr::Ident(mapped.to_string());
                         return self.compile_call(
                             &new_func,
                             &[receiver.as_ref().clone(), args[0].clone()],
@@ -903,10 +903,10 @@ impl<'ctx> CodeGen<'ctx> {
                     "substring" => {
                         if args.len() != 2 {
                             return Err(
-                                "string.substring expects 2 arguments (start, length)".toString()
+                                "string.substring expects 2 arguments (start, length)".to_string()
                             );
                         }
-                        let new_func = Expr::Ident("substring".toString());
+                        let new_func = Expr::Ident("substring".to_string());
                         return self.compile_call(
                             &new_func,
                             &[receiver.as_ref().clone(), args[0].clone(), args[1].clone()],
@@ -916,9 +916,9 @@ impl<'ctx> CodeGen<'ctx> {
                     "join" => {
                         // string.join(list) = join(string, list)
                         if args.len() != 1 {
-                            return Err("string.join expects 1 argument (list)".toString());
+                            return Err("string.join expects 1 argument (list)".to_string());
                         }
-                        let new_func = Expr::Ident("join".toString());
+                        let new_func = Expr::Ident("join".to_string());
                         return self.compile_call(
                             &new_func,
                             &[receiver.as_ref().clone(), args[0].clone()],
@@ -926,7 +926,7 @@ impl<'ctx> CodeGen<'ctx> {
                         );
                     }
                     "toCString" => {
-                        let new_func = Expr::Ident("toCString".toString());
+                        let new_func = Expr::Ident("toCString".to_string());
                         return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                     }
                     _ => return Err(format!("Method '{}' not found on String", method)),
@@ -939,11 +939,11 @@ impl<'ctx> CodeGen<'ctx> {
             ) {
                 match method.as_str() {
                     "isNull" => {
-                        let new_func = Expr::Ident("isNull".toString());
+                        let new_func = Expr::Ident("isNull".to_string());
                         return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                     }
                     "deref" => {
-                        let new_func = Expr::Ident("deref".toString());
+                        let new_func = Expr::Ident("deref".to_string());
                         return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                     }
                     _ => return Err(format!("Method '{}' not found on Ptr/CString", method)),
@@ -954,7 +954,7 @@ impl<'ctx> CodeGen<'ctx> {
                 match method.as_str() {
                     "send" => {
                         if args.len() != 1 {
-                            return Err("stream.send expects 1 argument: value".toString());
+                            return Err("stream.send expects 1 argument: value".to_string());
                         }
                         let stream_ptr = match recv_val {
                             TypedValue::Stream(p) => p,
@@ -1376,7 +1376,7 @@ impl<'ctx> CodeGen<'ctx> {
                     // No-arg methods: f(list)
                     "len" | "isEmpty" | "head" | "last" | "tail" | "init" | "reverse" | "sum"
                     | "product" | "sorted" | "flatten" | "unique" | "toList" | "toLazyList" => {
-                        let new_func = Expr::Ident(method.toString());
+                        let new_func = Expr::Ident(method.to_string());
                         return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                     }
                     // Single-arg methods: f(list, arg) — dispatch to builtin_stdlib
@@ -1386,7 +1386,7 @@ impl<'ctx> CodeGen<'ctx> {
                         if args.len() != 1 {
                             return Err(format!("list.{} expects 1 argument", method));
                         }
-                        let new_func = Expr::Ident(method.toString());
+                        let new_func = Expr::Ident(method.to_string());
                         return self.compile_call(
                             &new_func,
                             &[receiver.as_ref().clone(), args[0].clone()],
@@ -1396,7 +1396,7 @@ impl<'ctx> CodeGen<'ctx> {
                     // map, filter, fold, any, all, find, reduce, foldRight, takeWhile, dropWhile, flatMap, sortedBy
                     "map" | "filter" | "any" | "all" | "find" | "reduce" | "takeWhile"
                     | "dropWhile" | "flatMap" | "foldRight" | "sortedBy" | "findIndex" => {
-                        let new_func = Expr::Ident(method.toString());
+                        let new_func = Expr::Ident(method.to_string());
                         return self.compile_call(
                             &new_func,
                             &[receiver.as_ref().clone()],
@@ -1405,9 +1405,9 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     "fold" => {
                         if args.len() < 1 {
-                            return Err("list.fold expects at least 1 argument (init)".toString());
+                            return Err("list.fold expects at least 1 argument (init)".to_string());
                         }
-                        let new_func = Expr::Ident("fold".toString());
+                        let new_func = Expr::Ident("fold".to_string());
                         let mut new_args = vec![receiver.as_ref().clone()];
                         new_args.extend(args.iter().cloned());
                         return self.compile_call(&new_func, &new_args, trailing);
@@ -1552,7 +1552,7 @@ impl<'ctx> CodeGen<'ctx> {
                     None => Ok(TypedValue::Unit),
                 }
             }
-            _ => Err("Call target is not a function".toString()),
+            _ => Err("Call target is not a function".to_string()),
         }
     }
 
@@ -1691,12 +1691,12 @@ impl<'ctx> CodeGen<'ctx> {
         trailing: &Option<Box<Expr>>,
     ) -> Result<TypedValue<'ctx>, String> {
         if args.isEmpty() {
-            return Err("lazy_list expects at least 1 argument (seed)".toString());
+            return Err("lazy_list expects at least 1 argument (seed)".to_string());
         }
         let seed = self.compile_expr(&args[0])?;
         let seed_i64 = match &seed {
             TypedValue::Int(v) => *v,
-            _ => return Err("lazy_list: seed must be an Int".toString()),
+            _ => return Err("lazy_list: seed must be an Int".to_string()),
         };
 
         // Compile step function if provided
@@ -1760,16 +1760,16 @@ impl<'ctx> CodeGen<'ctx> {
         match lam {
             Expr::Lambda { params, body, .. } => {
                 if params.isEmpty() {
-                    return Err("lazy_list step function expects 1 parameter".toString());
+                    return Err("lazy_list step function expects 1 parameter".to_string());
                 }
                 let fn_val = self.compile_lambda(params, body)?;
                 match fn_val {
                     TypedValue::Fn(ptr, _) => Ok(ptr),
                     TypedValue::Closure { fn_ptr, .. } => Ok(fn_ptr),
-                    _ => Err("lazy_list: step function compilation failed".toString()),
+                    _ => Err("lazy_list: step function compilation failed".to_string()),
                 }
             }
-            _ => Err("lazy_list: expected lambda body".toString()),
+            _ => Err("lazy_list: expected lambda body".to_string()),
         }
     }
 
@@ -1787,7 +1787,7 @@ impl<'ctx> CodeGen<'ctx> {
             _ => {
                 return Err(
                     "isSome/isNone/isOk/isErr: argument must be an enum (Option or Result)"
-                        .toString(),
+                        .to_string(),
                 )
             }
         };
@@ -1825,7 +1825,7 @@ impl<'ctx> CodeGen<'ctx> {
             TypedValue::Enum(p, t, it, _) => (p, t, it),
             _ => {
                 return Err(
-                    "unwrapOr: first argument must be an enum (Option or Result)".toString(),
+                    "unwrapOr: first argument must be an enum (Option or Result)".to_string(),
                 )
             }
         };
@@ -1919,7 +1919,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(llvm_err)?,
                     _ => {
                         return Err(
-                            "unwrapOr: default must be numeric for Option<Float>".toString()
+                            "unwrapOr: default must be numeric for Option<Float>".to_string()
                         )
                     }
                 };
@@ -1944,7 +1944,7 @@ impl<'ctx> CodeGen<'ctx> {
                     TypedValue::Str(p) => p,
                     _ => {
                         return Err(
-                            "unwrapOr: default must be a string for Option<String>".toString()
+                            "unwrapOr: default must be a string for Option<String>".to_string()
                         )
                     }
                 };
@@ -1976,7 +1976,7 @@ impl<'ctx> CodeGen<'ctx> {
         let val = self.compile_expr(enum_expr)?;
         let (enum_ptr, enum_ty, inner_type) = match val {
             TypedValue::Enum(p, t, inner_type, ..) => (p, t, inner_type),
-            _ => return Err("unwrap: argument must be an enum (Option or Result)".toString()),
+            _ => return Err("unwrap: argument must be an enum (Option or Result)".to_string()),
         };
         let i64 = self.i64_ty();
         let current_fn = self
@@ -2092,7 +2092,7 @@ impl<'ctx> CodeGen<'ctx> {
         let (enum_ptr, enum_ty, inner_type) = match val {
             TypedValue::Enum(p, t, inner_type, ..) => (p, t, inner_type),
             _ => {
-                return Err("orElse: first argument must be an enum (Option or Result)".toString())
+                return Err("orElse: first argument must be an enum (Option or Result)".to_string())
             }
         };
         let i64 = self.i64_ty();
@@ -2174,7 +2174,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_signed_int_to_float(i, f64_ty, "oe_i2f")
                         .map_err(llvm_err)?,
                     _ => {
-                        return Err("orElse: default must be numeric for Option<Float>".toString())
+                        return Err("orElse: default must be numeric for Option<Float>".to_string())
                     }
                 };
                 let _ = self.builder.build_unconditional_branch(merge_block);
@@ -2203,7 +2203,7 @@ impl<'ctx> CodeGen<'ctx> {
                     TypedValue::Str(p) => p,
                     _ => {
                         return Err(
-                            "orElse: default must be a string for Option<String>".toString()
+                            "orElse: default must be a string for Option<String>".to_string()
                         )
                     }
                 };
@@ -2240,7 +2240,7 @@ impl<'ctx> CodeGen<'ctx> {
         let val = self.compile_expr(opt_expr)?;
         let (opt_ptr, opt_ty, opt_inner_type) = match val {
             TypedValue::Enum(p, t, inner_type, ..) => (p, t, inner_type),
-            _ => return Err("ok: first argument must be an Option enum".toString()),
+            _ => return Err("ok: first argument must be an Option enum".to_string()),
         };
         let i64 = self.i64_ty();
         let current_fn = self
@@ -2451,7 +2451,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<inkwell::values::StructValue<'ctx>, String> {
         let ll_ptr = match ll_val {
             TypedValue::LazyList(p) => *p,
-            _ => return Err("convert_lazylist_to_list: expected LazyList".toString()),
+            _ => return Err("convert_lazylist_to_list: expected LazyList".to_string()),
         };
         let ll_sv = self
             .builder
@@ -2949,11 +2949,11 @@ impl<'ctx> CodeGen<'ctx> {
         let val_val = self.compile_expr(val_expr)?;
         let (ptr, st) = match range_val {
             TypedValue::Struct(p, s) => (p, s),
-            _ => return Err("range.contains requires a range value".toString()),
+            _ => return Err("range.contains requires a range value".to_string()),
         };
         let val_int = match val_val {
             TypedValue::Int(v) => v,
-            _ => return Err("range.contains requires an integer argument".toString()),
+            _ => return Err("range.contains requires an integer argument".to_string()),
         };
         let bt: BasicTypeEnum = st.into();
         let loaded = self
@@ -3000,7 +3000,7 @@ impl<'ctx> CodeGen<'ctx> {
         let range_val = self.compile_expr(range_expr)?;
         let (ptr, st) = match range_val {
             TypedValue::Struct(p, s) => (p, s),
-            _ => return Err("range.toList requires a range value".toString()),
+            _ => return Err("range.toList requires a range value".to_string()),
         };
         let bt: BasicTypeEnum = st.into();
         let loaded = self
@@ -3138,7 +3138,7 @@ impl<'ctx> CodeGen<'ctx> {
                 Ok(TypedValue::List(new_alloca))
             }
             TypedValue::List(_) => Ok(val),
-            _ => Err("toList: argument must be a LazyList or Set".toString()),
+            _ => Err("toList: argument must be a LazyList or Set".to_string()),
         }
     }
 
@@ -3220,7 +3220,7 @@ impl<'ctx> CodeGen<'ctx> {
                 Ok(TypedValue::LazyList(ll_alloca))
             }
             TypedValue::LazyList(_) => Ok(val),
-            _ => Err("toLazyList: argument must be a List".toString()),
+            _ => Err("toLazyList: argument must be a List".to_string()),
         }
     }
 
@@ -3233,12 +3233,12 @@ impl<'ctx> CodeGen<'ctx> {
         let n_val = self.compile_expr(n_expr)?;
         let n = match n_val {
             TypedValue::Int(v) => v,
-            _ => return Err("lazyTake: first argument must be an Int".toString()),
+            _ => return Err("lazyTake: first argument must be an Int".to_string()),
         };
         let lazy_val = self.compile_expr(lazy_expr)?;
         let lazy_ptr = match &lazy_val {
             TypedValue::LazyList(p) => *p,
-            _ => return Err("lazyTake: second argument must be a LazyList".toString()),
+            _ => return Err("lazyTake: second argument must be a LazyList".to_string()),
         };
         // Load the LazyList struct, copy it with updated take_count
         let ll_sv = self
@@ -3311,12 +3311,12 @@ impl<'ctx> CodeGen<'ctx> {
         let n_val = self.compile_expr(n_expr)?;
         let n = match n_val {
             TypedValue::Int(v) => v,
-            _ => return Err("lazyDrop: first argument must be an Int".toString()),
+            _ => return Err("lazyDrop: first argument must be an Int".to_string()),
         };
         let lazy_val = self.compile_expr(lazy_expr)?;
         let lazy_ptr = match &lazy_val {
             TypedValue::LazyList(p) => *p,
-            _ => return Err("lazyDrop: second argument must be a LazyList".toString()),
+            _ => return Err("lazyDrop: second argument must be a LazyList".to_string()),
         };
 
         let ll_sv = self
@@ -3668,7 +3668,7 @@ impl<'ctx> CodeGen<'ctx> {
         let fn_val = self.compile_expr(fn_expr)?;
         let (map_fn_ptr, _fn_type) = match fn_val {
             TypedValue::Fn(p, ft) => (p, ft),
-            _ => return Err("lazyMap: first argument must be a function".toString()),
+            _ => return Err("lazyMap: first argument must be a function".to_string()),
         };
         let lazy_val = self.compile_expr(lazy_expr)?;
         match &lazy_val {
@@ -3678,10 +3678,10 @@ impl<'ctx> CodeGen<'ctx> {
                 let ll_val = self.builtin_to_lazy_list(lazy_expr)?;
                 match ll_val {
                     TypedValue::LazyList(ll_ptr) => self.lazy_map_impl(map_fn_ptr, ll_ptr),
-                    _ => Err("lazyMap: toLazyList did not return LazyList".toString()),
+                    _ => Err("lazyMap: toLazyList did not return LazyList".to_string()),
                 }
             }
-            _ => Err("lazyMap: second argument must be a LazyList or List".toString()),
+            _ => Err("lazyMap: second argument must be a LazyList or List".to_string()),
         }
     }
 
@@ -3894,7 +3894,7 @@ impl<'ctx> CodeGen<'ctx> {
         let fn_val = self.compile_expr(fn_expr)?;
         let (filter_fn_ptr, _) = match fn_val {
             TypedValue::Fn(p, _) => (p, fn_val),
-            _ => return Err("lazyFilter: first argument must be a function".toString()),
+            _ => return Err("lazyFilter: first argument must be a function".to_string()),
         };
         let lazy_val = self.compile_expr(lazy_expr)?;
         match &lazy_val {
@@ -3903,10 +3903,10 @@ impl<'ctx> CodeGen<'ctx> {
                 let ll_val = self.builtin_to_lazy_list(lazy_expr)?;
                 match ll_val {
                     TypedValue::LazyList(ll_ptr) => self.lazy_filter_impl(filter_fn_ptr, ll_ptr),
-                    _ => Err("lazyFilter: toLazyList did not return LazyList".toString()),
+                    _ => Err("lazyFilter: toLazyList did not return LazyList".to_string()),
                 }
             }
-            _ => Err("lazyFilter: second argument must be a LazyList or List".toString()),
+            _ => Err("lazyFilter: second argument must be a LazyList or List".to_string()),
         }
     }
 
@@ -4182,7 +4182,7 @@ impl<'ctx> CodeGen<'ctx> {
         let fn_val = self.compile_expr(fn_expr)?;
         let (fn_ptr, _) = match fn_val {
             TypedValue::Fn(p, _) => (p, fn_val),
-            _ => return Err("lazyTakeWhile: first argument must be a function".toString()),
+            _ => return Err("lazyTakeWhile: first argument must be a function".to_string()),
         };
         let lazy_val = self.compile_expr(lazy_expr)?;
         let lazy_ptr = self.ensure_list_ptr(&lazy_val, "ltw")?;
@@ -4356,7 +4356,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?;
                 (h, is_empty_cond)
             }
-            _ => return Err("lazyHead: argument must be a LazyList or List".toString()),
+            _ => return Err("lazyHead: argument must be a LazyList or List".to_string()),
         };
 
         let i64 = self.i64_ty();
@@ -4597,7 +4597,7 @@ impl<'ctx> CodeGen<'ctx> {
             match &args[0] {
                 Expr::Ident(s) if s == "io" => 1i64,
                 Expr::Ident(s) if s == "cpu" => 2i64,
-                _ => return Err("launch scheduler must be 'io' or 'cpu'".toString()),
+                _ => return Err("launch scheduler must be 'io' or 'cpu'".to_string()),
             }
         } else {
             0i64 // default scheduler
@@ -4607,7 +4607,7 @@ impl<'ctx> CodeGen<'ctx> {
             .ok_or("launch requires a trailing lambda body")?;
         let body_expr = match body.as_ref() {
             Expr::Lambda { params, body, .. } if params.isEmpty() => body.as_ref(),
-            _ => return Err("launch expects a block body: launch { ... }".toString()),
+            _ => return Err("launch expects a block body: launch { ... }".to_string()),
         };
 
         // 1. Heap-allocate Task struct (so thread can safely write to it after main returns)
@@ -4840,7 +4840,7 @@ impl<'ctx> CodeGen<'ctx> {
             Expr::Lambda { params, body, .. } if params.isEmpty() => body.as_ref(),
             _ => {
                 return Err(
-                    "coroutineScope expects a block body: coroutineScope { ... }".toString(),
+                    "coroutineScope expects a block body: coroutineScope { ... }".to_string(),
                 )
             }
         };
@@ -5178,12 +5178,12 @@ impl<'ctx> CodeGen<'ctx> {
     /// delay(ms) — suspend coroutine for ms milliseconds using usleep.
     pub(super) fn builtin_delay(&mut self, args: &[Expr]) -> Result<TypedValue<'ctx>, String> {
         if args.len() != 1 {
-            return Err("delay expects 1 argument (ms)".toString());
+            return Err("delay expects 1 argument (ms)".to_string());
         }
         let ms_val = self.compile_expr(&args[0])?;
         let ms = match ms_val {
             TypedValue::Int(v) => v,
-            _ => return Err("delay: argument must be an Int (milliseconds)".toString()),
+            _ => return Err("delay: argument must be an Int (milliseconds)".to_string()),
         };
         // usleep takes microseconds: ms * 1000
         let thousand = self.i64_ty().const_int(1000, false);
@@ -5233,13 +5233,13 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<TypedValue<'ctx>, String> {
         if args.len() != 1 {
             return Err(
-                "withTimeout expects 2 arguments: timeout(ms) and a trailing lambda".toString(),
+                "withTimeout expects 2 arguments: timeout(ms) and a trailing lambda".to_string(),
             );
         }
         let timeout_ms_val = self.compile_expr(&args[0])?;
         let timeout_ms = match &timeout_ms_val {
             TypedValue::Int(v) => *v,
-            _ => return Err("withTimeout: first argument must be Int (milliseconds)".toString()),
+            _ => return Err("withTimeout: first argument must be Int (milliseconds)".to_string()),
         };
         let body = trailing
             .as_ref()
@@ -5247,7 +5247,7 @@ impl<'ctx> CodeGen<'ctx> {
         let body_expr = match body.as_ref() {
             Expr::Lambda { params, body, .. } if params.isEmpty() => body.as_ref().clone(),
             _ => {
-                return Err("withTimeout expects a block body: withTimeout(ms) { ... }".toString())
+                return Err("withTimeout expects a block body: withTimeout(ms) { ... }".to_string())
             }
         };
 
@@ -5577,7 +5577,7 @@ impl<'ctx> CodeGen<'ctx> {
         // Store the timeout error payload into the Err
         let err_enum_ptr = match &err_enum {
             TypedValue::Enum(p, _, ..) => *p,
-            _ => return Err("withTimeout: failed to construct Err".toString()),
+            _ => return Err("withTimeout: failed to construct Err".to_string()),
         };
         let err_bt: BasicTypeEnum = self.string_type.into();
         let err_loaded = self
@@ -5878,12 +5878,12 @@ impl<'ctx> CodeGen<'ctx> {
         match name {
             "send" => {
                 if args.len() != 2 {
-                    return Err("send expects 2 arguments: stream and value".toString());
+                    return Err("send expects 2 arguments: stream and value".to_string());
                 }
                 let stream_val = self.compile_expr(&args[0])?;
                 let stream_ptr = match stream_val {
                     TypedValue::Stream(p) => p,
-                    _ => return Err("send: first argument must be a Stream".toString()),
+                    _ => return Err("send: first argument must be a Stream".to_string()),
                 };
                 let value = self.compile_expr(&args[1])?;
                 let mutex_ptr = self
@@ -5930,12 +5930,12 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "receive" => {
                 if args.len() != 1 {
-                    return Err("receive expects 1 argument: stream".toString());
+                    return Err("receive expects 1 argument: stream".to_string());
                 }
                 let stream_val = self.compile_expr(&args[0])?;
                 let stream_ptr = match stream_val {
                     TypedValue::Stream(p) => p,
-                    _ => return Err("receive: argument must be a Stream".toString()),
+                    _ => return Err("receive: argument must be a Stream".to_string()),
                 };
                 let zero = self.i64_ty().const_int(0, false);
                 let one = self.i64_ty().const_int(1, false);
@@ -6128,12 +6128,12 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "close" => {
                 if args.len() != 1 {
-                    return Err("close expects 1 argument: stream".toString());
+                    return Err("close expects 1 argument: stream".to_string());
                 }
                 let stream_val = self.compile_expr(&args[0])?;
                 let stream_ptr = match stream_val {
                     TypedValue::Stream(p) => p,
-                    _ => return Err("close: argument must be a Stream".toString()),
+                    _ => return Err("close: argument must be a Stream".to_string()),
                 };
                 // Lock mutex, set closed=1, broadcast to wake all waiters, unlock
                 let mutex_ptr = self
@@ -6310,7 +6310,7 @@ impl<'ctx> CodeGen<'ctx> {
         let (fn_ptr, list_val) = if let Some(lam) = trailing {
             // map(list) { lambda }
             if args.len() != 1 {
-                return Err("map with trailing lambda expects 1 argument (list)".toString());
+                return Err("map with trailing lambda expects 1 argument (list)".to_string());
             }
             let lv = self.compile_expr(&args[0])?;
             let fv = self.compile_expr(lam)?;
@@ -6320,16 +6320,16 @@ impl<'ctx> CodeGen<'ctx> {
             let lv = self.compile_expr(&args[1])?;
             (fv, lv)
         } else {
-            return Err("map expects 2 arguments (fn, list)".toString());
+            return Err("map expects 2 arguments (fn, list)".to_string());
         };
 
         let fn_ptr = match fn_ptr {
             TypedValue::Fn(p, _) => p,
-            _ => return Err("map: first argument must be a function".toString()),
+            _ => return Err("map: first argument must be a function".to_string()),
         };
         let list_ptr = match list_val {
             TypedValue::List(p) => p,
-            _ => return Err("map: second argument must be a list".toString()),
+            _ => return Err("map: second argument must be a list".to_string()),
         };
 
         // Build the result list
@@ -6437,7 +6437,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<TypedValue<'ctx>, String> {
         let (fn_ptr, list_val) = if let Some(lam) = trailing {
             if args.len() != 1 {
-                return Err("filter with trailing lambda expects 1 argument (list)".toString());
+                return Err("filter with trailing lambda expects 1 argument (list)".to_string());
             }
             let lv = self.compile_expr(&args[0])?;
             let fv = self.compile_expr(lam)?;
@@ -6447,16 +6447,16 @@ impl<'ctx> CodeGen<'ctx> {
             let lv = self.compile_expr(&args[1])?;
             (fv, lv)
         } else {
-            return Err("filter expects 2 arguments (fn, list)".toString());
+            return Err("filter expects 2 arguments (fn, list)".to_string());
         };
 
         let fn_ptr = match fn_ptr {
             TypedValue::Fn(p, _) => p,
-            _ => return Err("filter: first argument must be a function".toString()),
+            _ => return Err("filter: first argument must be a function".to_string()),
         };
         let list_ptr = match list_val {
             TypedValue::List(p) => p,
-            _ => return Err("filter: second argument must be a list".toString()),
+            _ => return Err("filter: second argument must be a list".to_string()),
         };
 
         let list_struct = self.load_list(list_ptr)?;
@@ -6590,7 +6590,7 @@ impl<'ctx> CodeGen<'ctx> {
         let (fn_ptr, init_val, list_val) = if let Some(lam) = trailing {
             if args.len() != 2 {
                 return Err(
-                    "fold with trailing lambda expects 2 arguments (init, list)".toString()
+                    "fold with trailing lambda expects 2 arguments (init, list)".to_string()
                 );
             }
             let iv = self.compile_expr(&args[0])?;
@@ -6603,20 +6603,20 @@ impl<'ctx> CodeGen<'ctx> {
             let lv = self.compile_expr(&args[2])?;
             (fv, iv, lv)
         } else {
-            return Err("fold expects 3 arguments (fn, init, list)".toString());
+            return Err("fold expects 3 arguments (fn, init, list)".to_string());
         };
 
         let fn_ptr = match fn_ptr {
             TypedValue::Fn(p, _) => p,
-            _ => return Err("fold: first argument must be a function".toString()),
+            _ => return Err("fold: first argument must be a function".to_string()),
         };
         let list_ptr = match list_val {
             TypedValue::List(p) => p,
-            _ => return Err("fold: third argument must be a list".toString()),
+            _ => return Err("fold: third argument must be a list".to_string()),
         };
         let init_i64 = match init_val {
             TypedValue::Int(v) => v,
-            _ => return Err("fold: init must be an integer".toString()),
+            _ => return Err("fold: init must be an integer".to_string()),
         };
 
         let list_struct = self.load_list(list_ptr)?;
@@ -6732,7 +6732,7 @@ impl<'ctx> CodeGen<'ctx> {
                 self.builder.build_store(alloca, result).map_err(llvm_err)?;
                 Ok(TypedValue::List(alloca))
             }
-            _ => Err("flatMap: map result must be a list".toString()),
+            _ => Err("flatMap: map result must be a list".to_string()),
         }
     }
 
@@ -8076,7 +8076,7 @@ impl<'ctx> CodeGen<'ctx> {
         let (fn_expr, list_expr, init_expr) = if let Some(lam) = trailing {
             if args.len() != 2 {
                 return Err(
-                    "foldRight with trailing lambda expects 2 arguments (init, list)".toString(),
+                    "foldRight with trailing lambda expects 2 arguments (init, list)".to_string(),
                 );
             }
             let iv = self.compile_expr(&args[0])?;
@@ -8089,19 +8089,19 @@ impl<'ctx> CodeGen<'ctx> {
             let lv = self.compile_expr(&args[2])?;
             (fv, lv, iv)
         } else {
-            return Err("foldRight expects 3 arguments (fn, init, list)".toString());
+            return Err("foldRight expects 3 arguments (fn, init, list)".to_string());
         };
         let fn_ptr = match fn_expr {
             TypedValue::Fn(p, _) => p,
-            _ => return Err("foldRight: first argument must be a function".toString()),
+            _ => return Err("foldRight: first argument must be a function".to_string()),
         };
         let list_ptr = match list_expr {
             TypedValue::List(p) => p,
-            _ => return Err("foldRight: last argument must be a list".toString()),
+            _ => return Err("foldRight: last argument must be a list".to_string()),
         };
         let init_val = match init_expr {
             TypedValue::Int(v) => v,
-            _ => return Err("foldRight: init must be an integer".toString()),
+            _ => return Err("foldRight: init must be an integer".to_string()),
         };
         Ok((fn_ptr, list_ptr, init_val))
     }
@@ -8130,7 +8130,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<TypedValue<'ctx>, String> {
         let (fn_ptr, map_ptr) = if let Some(lam) = trailing {
             if args.len() != 1 {
-                return Err("mapFilter with trailing lambda expects 1 argument (map)".toString());
+                return Err("mapFilter with trailing lambda expects 1 argument (map)".to_string());
             }
             let mv = self.compile_expr(&args[0])?;
             let fv = self.compile_expr(lam)?;
@@ -8145,16 +8145,16 @@ impl<'ctx> CodeGen<'ctx> {
                 (a0, a1)
             }
         } else {
-            return Err("mapFilter expects 2 arguments (map, predicate)".toString());
+            return Err("mapFilter expects 2 arguments (map, predicate)".to_string());
         };
 
         let fn_ptr = match fn_ptr {
             TypedValue::Fn(p, _) => p,
-            _ => return Err("mapFilter: predicate must be a function".toString()),
+            _ => return Err("mapFilter: predicate must be a function".to_string()),
         };
         let map_ptr = match map_ptr {
             TypedValue::Map(p) => p,
-            _ => return Err("mapFilter: first argument must be a map".toString()),
+            _ => return Err("mapFilter: first argument must be a map".to_string()),
         };
 
         let map_struct = self.load_list(map_ptr)?;
@@ -8378,7 +8378,7 @@ impl<'ctx> CodeGen<'ctx> {
         let (fn_ptr, map_ptr) = if let Some(lam) = trailing {
             if args.len() != 1 {
                 return Err(
-                    "mapMapValues with trailing lambda expects 1 argument (map)".toString(),
+                    "mapMapValues with trailing lambda expects 1 argument (map)".to_string(),
                 );
             }
             let mv = self.compile_expr(&args[0])?;
@@ -8393,16 +8393,16 @@ impl<'ctx> CodeGen<'ctx> {
                 (a0, a1)
             }
         } else {
-            return Err("mapMapValues expects 2 arguments (map, transform)".toString());
+            return Err("mapMapValues expects 2 arguments (map, transform)".to_string());
         };
 
         let fn_ptr = match fn_ptr {
             TypedValue::Fn(p, _) => p,
-            _ => return Err("mapMapValues: transform must be a function".toString()),
+            _ => return Err("mapMapValues: transform must be a function".to_string()),
         };
         let map_ptr = match map_ptr {
             TypedValue::Map(p) => p,
-            _ => return Err("mapMapValues: first argument must be a map".toString()),
+            _ => return Err("mapMapValues: first argument must be a map".to_string()),
         };
 
         let map_struct = self.load_list(map_ptr)?;
@@ -8605,7 +8605,7 @@ impl<'ctx> CodeGen<'ctx> {
         let (fn_ptr, init_val, map_ptr) = if let Some(lam) = trailing {
             if args.len() != 2 {
                 return Err(
-                    "mapFold with trailing lambda expects 2 arguments (map, init)".toString(),
+                    "mapFold with trailing lambda expects 2 arguments (map, init)".to_string(),
                 );
             }
             let a0 = self.compile_expr(&args[0])?;
@@ -8634,23 +8634,23 @@ impl<'ctx> CodeGen<'ctx> {
             } else if matches!(a0, TypedValue::Map(_)) {
                 (a1, a2, a0) // fn(a1), init(a2), map(a0)
             } else {
-                return Err("mapFold: one argument must be a map".toString());
+                return Err("mapFold: one argument must be a map".to_string());
             }
         } else {
-            return Err("mapFold expects 3 arguments (map, init, folder)".toString());
+            return Err("mapFold expects 3 arguments (map, init, folder)".to_string());
         };
 
         let fn_ptr = match fn_ptr {
             TypedValue::Fn(p, _) => p,
-            _ => return Err("mapFold: folder must be a function".toString()),
+            _ => return Err("mapFold: folder must be a function".to_string()),
         };
         let map_ptr = match map_ptr {
             TypedValue::Map(p) => p,
-            _ => return Err("mapFold: map argument must be a map".toString()),
+            _ => return Err("mapFold: map argument must be a map".to_string()),
         };
         let init_i64 = match init_val {
             TypedValue::Int(v) => v,
-            _ => return Err("mapFold: init must be an integer".toString()),
+            _ => return Err("mapFold: init must be an integer".to_string()),
         };
 
         let map_struct = self.load_list(map_ptr)?;
@@ -9298,7 +9298,7 @@ impl<'ctx> CodeGen<'ctx> {
         // map(enum_val, fn) or map(enum_val) { lambda }
         let (enum_val, callback) = if let Some(lam) = trailing {
             if args.len() != 1 {
-                return Err("map on enum with trailing lambda expects 1 argument".toString());
+                return Err("map on enum with trailing lambda expects 1 argument".to_string());
             }
             let ev = self.compile_expr(&args[0])?;
             let cb = self.compile_expr(lam)?;
@@ -9308,17 +9308,17 @@ impl<'ctx> CodeGen<'ctx> {
             let cb = self.compile_expr(&args[1])?;
             (ev, cb)
         } else {
-            return Err("map expects 2 arguments (enum, fn)".toString());
+            return Err("map expects 2 arguments (enum, fn)".to_string());
         };
 
         let (fn_ptr, fn_type) = match callback {
             TypedValue::Fn(p, ft) => (p, ft),
-            _ => return Err("map: second argument must be a function".toString()),
+            _ => return Err("map: second argument must be a function".to_string()),
         };
 
         let (enum_ptr, enum_ty, inner_type) = match enum_val {
             TypedValue::Enum(p, t, inner_type, ..) => (p, t, inner_type),
-            _ => return Err("map: first argument must be an Option or Result".toString()),
+            _ => return Err("map: first argument must be an Option or Result".to_string()),
         };
 
         let current_fn = self
@@ -9474,13 +9474,13 @@ impl<'ctx> CodeGen<'ctx> {
         match name {
             "to" => {
                 if args.len() != 2 {
-                    return Err("to expects 2 arguments".toString());
+                    return Err("to expects 2 arguments".to_string());
                 }
                 self.compile_tuple(&[(None, args[0].clone()), (None, args[1].clone())])
             }
             "len" => {
                 if args.len() != 1 {
-                    return Err("len expects 1 argument".toString());
+                    return Err("len expects 1 argument".to_string());
                 }
                 let val = self.compile_expr(&args[0])?;
                 match val {
@@ -9538,13 +9538,13 @@ impl<'ctx> CodeGen<'ctx> {
                         Ok(TypedValue::Int(len))
                     }
                     _ => Err(
-                        "len: argument must be a list, string, map, set, or lazy list".toString(),
+                        "len: argument must be a list, string, map, set, or lazy list".to_string(),
                     ),
                 }
             }
             "isEmpty" => {
                 if args.len() != 1 {
-                    return Err("isEmpty expects 1 argument".toString());
+                    return Err("isEmpty expects 1 argument".to_string());
                 }
                 let val = self.compile_expr(&args[0])?;
                 let len = match val {
@@ -9576,7 +9576,7 @@ impl<'ctx> CodeGen<'ctx> {
                     _ => {
                         return Err(
                             "isEmpty: argument must be a list, string, map, set, or lazy list"
-                                .toString(),
+                                .to_string(),
                         )
                     }
                 };
@@ -9589,12 +9589,12 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "append" => {
                 if args.len() != 2 {
-                    return Err("append expects 2 arguments (list, element)".toString());
+                    return Err("append expects 2 arguments (list, element)".to_string());
                 }
                 let list_val = self.compile_expr(&args[0])?;
                 let list_ptr = match list_val {
                     TypedValue::List(p) => p,
-                    _ => return Err("append: first argument must be a list".toString()),
+                    _ => return Err("append: first argument must be a list".to_string()),
                 };
                 let elem_val = self.compile_expr(&args[1])?;
                 let elem_fat = self.to_fat_struct(&elem_val)?;
@@ -9612,7 +9612,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "concat" => {
                 if args.len() != 2 {
-                    return Err("concat expects 2 arguments".toString());
+                    return Err("concat expects 2 arguments".to_string());
                 }
                 let v1 = self.compile_expr(&args[0])?;
                 let v2 = self.compile_expr(&args[1])?;
@@ -9632,12 +9632,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::Str(alloca))
                     }
-                    _ => Err("concat: arguments must be strings".toString()),
+                    _ => Err("concat: arguments must be strings".to_string()),
                 }
             }
             "toUpper" => {
                 if args.len() != 1 {
-                    return Err("toUpper expects 1 argument".toString());
+                    return Err("toUpper expects 1 argument".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 match v {
@@ -9652,12 +9652,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::Str(alloca))
                     }
-                    _ => Err("toUpper: argument must be a string".toString()),
+                    _ => Err("toUpper: argument must be a string".to_string()),
                 }
             }
             "toLower" => {
                 if args.len() != 1 {
-                    return Err("toLower expects 1 argument".toString());
+                    return Err("toLower expects 1 argument".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 match v {
@@ -9672,12 +9672,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::Str(alloca))
                     }
-                    _ => Err("toLower: argument must be a string".toString()),
+                    _ => Err("toLower: argument must be a string".to_string()),
                 }
             }
             "trim" => {
                 if args.len() != 1 {
-                    return Err("trim expects 1 argument".toString());
+                    return Err("trim expects 1 argument".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 match v {
@@ -9692,12 +9692,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::Str(alloca))
                     }
-                    _ => Err("trim: argument must be a string".toString()),
+                    _ => Err("trim: argument must be a string".to_string()),
                 }
             }
             "readLine" => {
                 if !args.isEmpty() {
-                    return Err("readLine expects no arguments".toString());
+                    return Err("readLine expects no arguments".to_string());
                 }
                 if self.module.get_function("action_read_line").isNone() {
                     self.emit_read_line_runtime()?;
@@ -9752,7 +9752,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "startsWith" => {
                 if args.len() != 2 {
-                    return Err("startsWith expects 2 arguments".toString());
+                    return Err("startsWith expects 2 arguments".to_string());
                 }
                 let s = self.compile_expr(&args[0])?;
                 let prefix = self.compile_expr(&args[1])?;
@@ -9769,12 +9769,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_int_value();
                         Ok(TypedValue::Bool(result))
                     }
-                    _ => Err("startsWith: arguments must be strings".toString()),
+                    _ => Err("startsWith: arguments must be strings".to_string()),
                 }
             }
             "endsWith" => {
                 if args.len() != 2 {
-                    return Err("endsWith expects 2 arguments".toString());
+                    return Err("endsWith expects 2 arguments".to_string());
                 }
                 let s = self.compile_expr(&args[0])?;
                 let suffix = self.compile_expr(&args[1])?;
@@ -9791,12 +9791,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_int_value();
                         Ok(TypedValue::Bool(result))
                     }
-                    _ => Err("endsWith: arguments must be strings".toString()),
+                    _ => Err("endsWith: arguments must be strings".to_string()),
                 }
             }
             "substring" => {
                 if args.len() != 3 {
-                    return Err("substring expects 3 arguments (str, start, len)".toString());
+                    return Err("substring expects 3 arguments (str, start, len)".to_string());
                 }
                 let s = self.compile_expr(&args[0])?;
                 let start = self.compile_expr(&args[1])?;
@@ -9818,12 +9818,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::Str(alloca))
                     }
-                    _ => Err("substring: first argument must be a string".toString()),
+                    _ => Err("substring: first argument must be a string".to_string()),
                 }
             }
             "parseInt" => {
                 if args.len() != 1 {
-                    return Err("parseInt expects 1 argument".toString());
+                    return Err("parseInt expects 1 argument".to_string());
                 }
                 let s = self.compile_expr(&args[0])?;
                 match s {
@@ -9847,12 +9847,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_int_value();
                         self.build_option_int(val, ok)
                     }
-                    _ => Err("parseInt: argument must be a string".toString()),
+                    _ => Err("parseInt: argument must be a string".to_string()),
                 }
             }
             "readFile" => {
                 if args.len() != 1 {
-                    return Err("readFile expects 1 argument (path)".toString());
+                    return Err("readFile expects 1 argument (path)".to_string());
                 }
                 let path = self.compile_expr(&args[0])?;
                 match path {
@@ -9867,12 +9867,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::Str(alloca))
                     }
-                    _ => Err("readFile: argument must be a string".toString()),
+                    _ => Err("readFile: argument must be a string".to_string()),
                 }
             }
             "writeFile" => {
                 if args.len() != 2 {
-                    return Err("writeFile expects 2 arguments (path, content)".toString());
+                    return Err("writeFile expects 2 arguments (path, content)".to_string());
                 }
                 let path = self.compile_expr(&args[0])?;
                 let content = self.compile_expr(&args[1])?;
@@ -9888,12 +9888,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_int_value();
                         Ok(TypedValue::Bool(result))
                     }
-                    _ => Err("writeFile: arguments must be strings".toString()),
+                    _ => Err("writeFile: arguments must be strings".to_string()),
                 }
             }
             "appendFile" => {
                 if args.len() != 2 {
-                    return Err("appendFile expects 2 arguments (path, content)".toString());
+                    return Err("appendFile expects 2 arguments (path, content)".to_string());
                 }
                 let path = self.compile_expr(&args[0])?;
                 let content = self.compile_expr(&args[1])?;
@@ -9909,12 +9909,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_int_value();
                         Ok(TypedValue::Bool(result))
                     }
-                    _ => Err("appendFile: arguments must be strings".toString()),
+                    _ => Err("appendFile: arguments must be strings".to_string()),
                 }
             }
             "exists" => {
                 if args.len() != 1 {
-                    return Err("exists expects 1 argument (path)".toString());
+                    return Err("exists expects 1 argument (path)".to_string());
                 }
                 let path = self.compile_expr(&args[0])?;
                 match path {
@@ -9928,12 +9928,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_int_value();
                         Ok(TypedValue::Bool(result))
                     }
-                    _ => Err("exists: argument must be a string".toString()),
+                    _ => Err("exists: argument must be a string".to_string()),
                 }
             }
             "deleteFile" => {
                 if args.len() != 1 {
-                    return Err("deleteFile expects 1 argument (path)".toString());
+                    return Err("deleteFile expects 1 argument (path)".to_string());
                 }
                 let path = self.compile_expr(&args[0])?;
                 match path {
@@ -9947,13 +9947,13 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_int_value();
                         Ok(TypedValue::Bool(result))
                     }
-                    _ => Err("deleteFile: argument must be a string".toString()),
+                    _ => Err("deleteFile: argument must be a string".to_string()),
                 }
             }
             // ---- Streaming File I/O ----
             "openFile" => {
                 if args.len() != 2 {
-                    return Err("openFile expects 2 arguments (path, mode)".toString());
+                    return Err("openFile expects 2 arguments (path, mode)".to_string());
                 }
                 let path = self.compile_expr(&args[0])?;
                 let mode = self.compile_expr(&args[1])?;
@@ -9970,12 +9970,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_pointer_value();
                         Ok(TypedValue::FileHandle(file_ptr))
                     }
-                    _ => Err("openFile: arguments must be strings (path, mode)".toString()),
+                    _ => Err("openFile: arguments must be strings (path, mode)".to_string()),
                 }
             }
             "closeFile" => {
                 if args.len() != 1 {
-                    return Err("closeFile expects 1 argument (file)".toString());
+                    return Err("closeFile expects 1 argument (file)".to_string());
                 }
                 let file = self.compile_expr(&args[0])?;
                 match file {
@@ -9997,12 +9997,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .map_err(llvm_err)?;
                         Ok(TypedValue::Bool(ok))
                     }
-                    _ => Err("closeFile: argument must be a FileHandle".toString()),
+                    _ => Err("closeFile: argument must be a FileHandle".to_string()),
                 }
             }
             "isEof" => {
                 if args.len() != 1 {
-                    return Err("isEof expects 1 argument (file)".toString());
+                    return Err("isEof expects 1 argument (file)".to_string());
                 }
                 let file = self.compile_expr(&args[0])?;
                 match file {
@@ -10015,12 +10015,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_int_value();
                         Ok(TypedValue::Bool(result))
                     }
-                    _ => Err("isEof: argument must be a FileHandle".toString()),
+                    _ => Err("isEof: argument must be a FileHandle".to_string()),
                 }
             }
             "fileReadLine" => {
                 if args.len() != 1 {
-                    return Err("fileReadLine expects 1 argument (file)".toString());
+                    return Err("fileReadLine expects 1 argument (file)".to_string());
                 }
                 let file = self.compile_expr(&args[0])?;
                 match file {
@@ -10057,12 +10057,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .map_err(llvm_err)?;
                         Ok(TypedValue::Str(str_alloca))
                     }
-                    _ => Err("fileReadLine: argument must be a FileHandle".toString()),
+                    _ => Err("fileReadLine: argument must be a FileHandle".to_string()),
                 }
             }
             "fileReadBytes" => {
                 if args.len() != 2 {
-                    return Err("fileReadBytes expects 2 arguments (file, size)".toString());
+                    return Err("fileReadBytes expects 2 arguments (file, size)".to_string());
                 }
                 let file = self.compile_expr(&args[0])?;
                 let size = self.compile_expr(&args[1])?;
@@ -10100,12 +10100,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .map_err(llvm_err)?;
                         Ok(TypedValue::Str(str_alloca))
                     }
-                    _ => Err("fileReadBytes: arguments must be (FileHandle, Int)".toString()),
+                    _ => Err("fileReadBytes: arguments must be (FileHandle, Int)".to_string()),
                 }
             }
             "fileWrite" => {
                 if args.len() != 2 {
-                    return Err("fileWrite expects 2 arguments (file, data)".toString());
+                    return Err("fileWrite expects 2 arguments (file, data)".to_string());
                 }
                 let file = self.compile_expr(&args[0])?;
                 let data = self.compile_expr(&args[1])?;
@@ -10133,12 +10133,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_int_value();
                         Ok(TypedValue::Bool(result))
                     }
-                    _ => Err("fileWrite: arguments must be (FileHandle, String)".toString()),
+                    _ => Err("fileWrite: arguments must be (FileHandle, String)".to_string()),
                 }
             }
             "fileWriteLine" => {
                 if args.len() != 2 {
-                    return Err("fileWriteLine expects 2 arguments (file, data)".toString());
+                    return Err("fileWriteLine expects 2 arguments (file, data)".to_string());
                 }
                 let file = self.compile_expr(&args[0])?;
                 let data = self.compile_expr(&args[1])?;
@@ -10188,12 +10188,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_int_value();
                         Ok(TypedValue::Bool(result))
                     }
-                    _ => Err("fileWriteLine: arguments must be (FileHandle, String)".toString()),
+                    _ => Err("fileWriteLine: arguments must be (FileHandle, String)".to_string()),
                 }
             }
             "fileFlush" => {
                 if args.len() != 1 {
-                    return Err("fileFlush expects 1 argument (file)".toString());
+                    return Err("fileFlush expects 1 argument (file)".to_string());
                 }
                 let file = self.compile_expr(&args[0])?;
                 match file {
@@ -10206,12 +10206,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_int_value();
                         Ok(TypedValue::Bool(result))
                     }
-                    _ => Err("fileFlush: argument must be a FileHandle".toString()),
+                    _ => Err("fileFlush: argument must be a FileHandle".to_string()),
                 }
             }
             "fileSeek" => {
                 if args.len() != 3 {
-                    return Err("fileSeek expects 3 arguments (file, offset, whence)".toString());
+                    return Err("fileSeek expects 3 arguments (file, offset, whence)".to_string());
                 }
                 let file = self.compile_expr(&args[0])?;
                 let offset = self.compile_expr(&args[1])?;
@@ -10231,12 +10231,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_int_value();
                         Ok(TypedValue::Bool(result))
                     }
-                    _ => Err("fileSeek: arguments must be (FileHandle, Int, Int)".toString()),
+                    _ => Err("fileSeek: arguments must be (FileHandle, Int, Int)".to_string()),
                 }
             }
             "fileTell" => {
                 if args.len() != 1 {
-                    return Err("fileTell expects 1 argument (file)".toString());
+                    return Err("fileTell expects 1 argument (file)".to_string());
                 }
                 let file = self.compile_expr(&args[0])?;
                 match file {
@@ -10249,12 +10249,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_int_value();
                         Ok(TypedValue::Int(result))
                     }
-                    _ => Err("fileTell: argument must be a FileHandle".toString()),
+                    _ => Err("fileTell: argument must be a FileHandle".to_string()),
                 }
             }
             "randInt" => {
                 if args.len() != 2 {
-                    return Err("randInt expects 2 arguments (min, max)".toString());
+                    return Err("randInt expects 2 arguments (min, max)".to_string());
                 }
                 let min = self.compile_expr(&args[0])?;
                 let max = self.compile_expr(&args[1])?;
@@ -10270,7 +10270,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "randFloat" => {
                 if !args.isEmpty() {
-                    return Err("randFloat expects no arguments".toString());
+                    return Err("randFloat expects no arguments".to_string());
                 }
                 let cc = self.call_rt("action_rand_float", &[])?;
                 let result = cc
@@ -10282,7 +10282,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "split" => {
                 if args.len() != 2 {
-                    return Err("split expects 2 arguments (string, delimiter)".toString());
+                    return Err("split expects 2 arguments (string, delimiter)".to_string());
                 }
                 let s = self.compile_expr(&args[0])?;
                 let delim = self.compile_expr(&args[1])?;
@@ -10299,12 +10299,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::List(alloca))
                     }
-                    _ => Err("split: arguments must be strings".toString()),
+                    _ => Err("split: arguments must be strings".to_string()),
                 }
             }
             "join" => {
                 if args.len() != 2 {
-                    return Err("join expects 2 arguments (list, delimiter)".toString());
+                    return Err("join expects 2 arguments (list, delimiter)".to_string());
                 }
                 let list_val = self.compile_expr(&args[0])?;
                 let delim = self.compile_expr(&args[1])?;
@@ -10321,12 +10321,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::Str(alloca))
                     }
-                    _ => Err("join: first argument must be a list, second a string".toString()),
+                    _ => Err("join: first argument must be a list, second a string".to_string()),
                 }
             }
             "replace" => {
                 if args.len() != 3 {
-                    return Err("replace expects 3 arguments (string, from, to)".toString());
+                    return Err("replace expects 3 arguments (string, from, to)".to_string());
                 }
                 let s = self.compile_expr(&args[0])?;
                 let from = self.compile_expr(&args[1])?;
@@ -10346,12 +10346,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::Str(alloca))
                     }
-                    _ => Err("replace: arguments must be strings".toString()),
+                    _ => Err("replace: arguments must be strings".to_string()),
                 }
             }
             "abs" => {
                 if args.len() != 1 {
-                    return Err("abs expects 1 argument".toString());
+                    return Err("abs expects 1 argument".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 match v {
@@ -10383,12 +10383,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_float_value();
                         Ok(TypedValue::Float(result))
                     }
-                    _ => Err("abs: argument must be Int or Float".toString()),
+                    _ => Err("abs: argument must be Int or Float".to_string()),
                 }
             }
             "min" => {
                 if args.len() != 2 {
-                    return Err("min expects 2 arguments".toString());
+                    return Err("min expects 2 arguments".to_string());
                 }
                 let a = self.compile_expr(&args[0])?;
                 let b = self.compile_expr(&args[1])?;
@@ -10417,12 +10417,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_float_value();
                         Ok(TypedValue::Float(result))
                     }
-                    _ => Err("min: arguments must be both Int or both Float".toString()),
+                    _ => Err("min: arguments must be both Int or both Float".to_string()),
                 }
             }
             "max" => {
                 if args.len() != 2 {
-                    return Err("max expects 2 arguments".toString());
+                    return Err("max expects 2 arguments".to_string());
                 }
                 let a = self.compile_expr(&args[0])?;
                 let b = self.compile_expr(&args[1])?;
@@ -10451,12 +10451,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_float_value();
                         Ok(TypedValue::Float(result))
                     }
-                    _ => Err("max: arguments must be both Int or both Float".toString()),
+                    _ => Err("max: arguments must be both Int or both Float".to_string()),
                 }
             }
             "sqrt" => {
                 if args.len() != 1 {
-                    return Err("sqrt expects 1 argument".toString());
+                    return Err("sqrt expects 1 argument".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 let fv = self.typed_to_float(&v)?;
@@ -10473,7 +10473,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "cbrt" => {
                 if args.len() != 1 {
-                    return Err("cbrt expects 1 argument".toString());
+                    return Err("cbrt expects 1 argument".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 let fv = self.typed_to_float(&v)?;
@@ -10490,7 +10490,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "sin" => {
                 if args.len() != 1 {
-                    return Err("sin expects 1 argument".toString());
+                    return Err("sin expects 1 argument".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 let fv = self.typed_to_float(&v)?;
@@ -10507,7 +10507,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "cos" => {
                 if args.len() != 1 {
-                    return Err("cos expects 1 argument".toString());
+                    return Err("cos expects 1 argument".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 let fv = self.typed_to_float(&v)?;
@@ -10524,7 +10524,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "tan" => {
                 if args.len() != 1 {
-                    return Err("tan expects 1 argument".toString());
+                    return Err("tan expects 1 argument".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 let fv = self.typed_to_float(&v)?;
@@ -10541,7 +10541,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "asin" => {
                 if args.len() != 1 {
-                    return Err("asin expects 1 argument".toString());
+                    return Err("asin expects 1 argument".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 let fv = self.typed_to_float(&v)?;
@@ -10558,7 +10558,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "acos" => {
                 if args.len() != 1 {
-                    return Err("acos expects 1 argument".toString());
+                    return Err("acos expects 1 argument".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 let fv = self.typed_to_float(&v)?;
@@ -10575,7 +10575,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "atan" => {
                 if args.len() != 1 {
-                    return Err("atan expects 1 argument".toString());
+                    return Err("atan expects 1 argument".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 let fv = self.typed_to_float(&v)?;
@@ -10592,7 +10592,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "atan2" => {
                 if args.len() != 2 {
-                    return Err("atan2 expects 2 arguments".toString());
+                    return Err("atan2 expects 2 arguments".to_string());
                 }
                 let y = self.compile_expr(&args[0])?;
                 let x = self.compile_expr(&args[1])?;
@@ -10611,7 +10611,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "log" => {
                 if args.len() != 1 {
-                    return Err("log expects 1 argument".toString());
+                    return Err("log expects 1 argument".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 let fv = self.typed_to_float(&v)?;
@@ -10628,7 +10628,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "log2" => {
                 if args.len() != 1 {
-                    return Err("log2 expects 1 argument".toString());
+                    return Err("log2 expects 1 argument".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 let fv = self.typed_to_float(&v)?;
@@ -10645,7 +10645,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "log10" => {
                 if args.len() != 1 {
-                    return Err("log10 expects 1 argument".toString());
+                    return Err("log10 expects 1 argument".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 let fv = self.typed_to_float(&v)?;
@@ -10662,7 +10662,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "exp" => {
                 if args.len() != 1 {
-                    return Err("exp expects 1 argument".toString());
+                    return Err("exp expects 1 argument".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 let fv = self.typed_to_float(&v)?;
@@ -10679,7 +10679,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "floor" => {
                 if args.len() != 1 {
-                    return Err("floor expects 1 argument".toString());
+                    return Err("floor expects 1 argument".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 let fv = self.typed_to_float(&v)?;
@@ -10696,7 +10696,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "ceil" => {
                 if args.len() != 1 {
-                    return Err("ceil expects 1 argument".toString());
+                    return Err("ceil expects 1 argument".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 let fv = self.typed_to_float(&v)?;
@@ -10713,7 +10713,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "round" => {
                 if args.len() != 1 {
-                    return Err("round expects 1 argument".toString());
+                    return Err("round expects 1 argument".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 let fv = self.typed_to_float(&v)?;
@@ -10730,21 +10730,21 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "pi" => {
                 if !args.isEmpty() {
-                    return Err("pi expects no arguments".toString());
+                    return Err("pi expects no arguments".to_string());
                 }
                 let pi_val = self.f64_ty().const_float(std::f64::consts::PI);
                 Ok(TypedValue::Float(pi_val))
             }
             "e" => {
                 if !args.isEmpty() {
-                    return Err("e expects no arguments".toString());
+                    return Err("e expects no arguments".to_string());
                 }
                 let e_val = self.f64_ty().const_float(std::f64::consts::E);
                 Ok(TypedValue::Float(e_val))
             }
             "clamp" => {
                 if args.len() != 3 {
-                    return Err("clamp expects 3 arguments (value, min, max)".toString());
+                    return Err("clamp expects 3 arguments (value, min, max)".to_string());
                 }
                 let val = self.compile_expr(&args[0])?;
                 let min = self.compile_expr(&args[1])?;
@@ -10792,12 +10792,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_float_value();
                         Ok(TypedValue::Float(r2))
                     }
-                    _ => Err("clamp: arguments must be all Int or all Float".toString()),
+                    _ => Err("clamp: arguments must be all Int or all Float".to_string()),
                 }
             }
             "isNaN" => {
                 if args.len() != 1 {
-                    return Err("isNaN expects 1 argument".toString());
+                    return Err("isNaN expects 1 argument".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 let fv = self.typed_to_float(&v)?;
@@ -10809,7 +10809,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "isInfinite" => {
                 if args.len() != 1 {
-                    return Err("isInfinite expects 1 argument".toString());
+                    return Err("isInfinite expects 1 argument".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 let fv = self.typed_to_float(&v)?;
@@ -10831,7 +10831,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "panic" => {
                 if args.len() != 1 {
-                    return Err("panic expects 1 argument (message)".toString());
+                    return Err("panic expects 1 argument (message)".to_string());
                 }
                 let msg = self.compile_expr(&args[0])?;
                 match msg {
@@ -10857,17 +10857,17 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_unreachable().map_err(llvm_err)?;
                         Ok(TypedValue::Unit)
                     }
-                    _ => Err("panic: argument must be a string".toString()),
+                    _ => Err("panic: argument must be a string".to_string()),
                 }
             }
             "assert" => {
                 if args.len() != 2 {
-                    return Err("assert expects 2 arguments (condition, message)".toString());
+                    return Err("assert expects 2 arguments (condition, message)".to_string());
                 }
                 let cond = self.compile_expr(&args[0])?;
                 let cond_bool = match cond {
                     TypedValue::Bool(b) => b,
-                    _ => return Err("assert: first argument must be a Bool".toString()),
+                    _ => return Err("assert: first argument must be a Bool".to_string()),
                 };
                 let current_fn = self
                     .builder
@@ -10890,7 +10890,7 @@ impl<'ctx> CodeGen<'ctx> {
                         let prefix = self.compile_string_literal("Assertion failed: ")?;
                         let prefix_sv = match prefix {
                             TypedValue::Str(pp) => self.load_string(pp)?,
-                            _ => return Err("internal error".toString()),
+                            _ => return Err("internal error".to_string()),
                         };
                         let cc =
                             self.call_rt("action_string_concat", &[prefix_sv.into(), sv.into()])?;
@@ -10912,7 +10912,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .map_err(llvm_err)?;
                         self.builder.build_unreachable().map_err(llvm_err)?;
                     }
-                    _ => return Err("assert: second argument must be a string".toString()),
+                    _ => return Err("assert: second argument must be a string".to_string()),
                 }
                 // Ok: continue
                 self.builder.position_at_end(assert_ok_bb);
@@ -10922,7 +10922,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "toString" => {
                 if args.len() != 1 {
-                    return Err("toString expects 1 argument".toString());
+                    return Err("toString expects 1 argument".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 match v {
@@ -10957,11 +10957,11 @@ impl<'ctx> CodeGen<'ctx> {
                         let false_lit = self.compile_string_literal("false")?;
                         let true_sv = match true_lit {
                             TypedValue::Str(tp) => self.load_string(tp)?,
-                            _ => return Err("internal".toString()),
+                            _ => return Err("internal".to_string()),
                         };
                         let false_sv = match false_lit {
                             TypedValue::Str(fp) => self.load_string(fp)?,
-                            _ => return Err("internal".toString()),
+                            _ => return Err("internal".to_string()),
                         };
                         let result = self
                             .builder
@@ -10997,14 +10997,14 @@ impl<'ctx> CodeGen<'ctx> {
                                 self.builder.build_store(alloca, pv).map_err(llvm_err)?;
                                 Ok(TypedValue::Str(alloca))
                             }
-                            _ => Err("internal error".toString()),
+                            _ => Err("internal error".to_string()),
                         }
                     }
                 }
             }
             "head" => {
                 if args.len() != 1 {
-                    return Err("head expects 1 argument".toString());
+                    return Err("head expects 1 argument".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 match v {
@@ -11088,12 +11088,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .map_err(llvm_err)?;
                         Ok(TypedValue::Enum(alloca, result_ty, InnerType::Int, true))
                     }
-                    _ => Err("head: argument must be a list".toString()),
+                    _ => Err("head: argument must be a list".to_string()),
                 }
             }
             "last" => {
                 if args.len() != 1 {
-                    return Err("last expects 1 argument".toString());
+                    return Err("last expects 1 argument".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 match v {
@@ -11181,12 +11181,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .map_err(llvm_err)?;
                         Ok(TypedValue::Enum(alloca, result_ty, InnerType::Int, true))
                     }
-                    _ => Err("last: argument must be a list".toString()),
+                    _ => Err("last: argument must be a list".to_string()),
                 }
             }
             "get" => {
                 if args.len() != 2 {
-                    return Err("get expects 2 arguments (list, index)".toString());
+                    return Err("get expects 2 arguments (list, index)".to_string());
                 }
                 let list_val = self.compile_expr(&args[0])?;
                 let idx_val = self.compile_expr(&args[1])?;
@@ -11279,12 +11279,12 @@ impl<'ctx> CodeGen<'ctx> {
                             true,
                         ))
                     }
-                    _ => Err("get: first argument must be a list, second an Int".toString()),
+                    _ => Err("get: first argument must be a list, second an Int".to_string()),
                 }
             }
             "reverse" => {
                 if args.len() != 1 {
-                    return Err("reverse expects 1 argument".toString());
+                    return Err("reverse expects 1 argument".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 match v {
@@ -11299,12 +11299,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::List(alloca))
                     }
-                    _ => Err("reverse: argument must be a list".toString()),
+                    _ => Err("reverse: argument must be a list".to_string()),
                 }
             }
             "contains" => {
                 if args.len() != 2 {
-                    return Err("contains expects 2 arguments (list, element)".toString());
+                    return Err("contains expects 2 arguments (list, element)".to_string());
                 }
                 let list_val = self.compile_expr(&args[0])?;
                 let elem_val = self.compile_expr(&args[1])?;
@@ -11331,12 +11331,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_int_value();
                         Ok(TypedValue::Bool(result))
                     }
-                    _ => Err("contains: first argument must be a list or set".toString()),
+                    _ => Err("contains: first argument must be a list or set".to_string()),
                 }
             }
             "containsKey" => {
                 if args.len() != 2 {
-                    return Err("containsKey expects 2 arguments (map, key)".toString());
+                    return Err("containsKey expects 2 arguments (map, key)".to_string());
                 }
                 let map_val = self.compile_expr(&args[0])?;
                 let key_val = self.compile_expr(&args[1])?;
@@ -11353,12 +11353,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_int_value();
                         Ok(TypedValue::Bool(result))
                     }
-                    _ => Err("containsKey: first argument must be a map".toString()),
+                    _ => Err("containsKey: first argument must be a map".to_string()),
                 }
             }
             "prepend" => {
                 if args.len() != 2 {
-                    return Err("prepend expects 2 arguments (element, list)".toString());
+                    return Err("prepend expects 2 arguments (element, list)".to_string());
                 }
                 let elem_val = self.compile_expr(&args[0])?;
                 let list_val = self.compile_expr(&args[1])?;
@@ -11442,12 +11442,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.position_at_end(done_bb);
                         Ok(TypedValue::List(alloca))
                     }
-                    _ => Err("prepend: second argument must be a list".toString()),
+                    _ => Err("prepend: second argument must be a list".to_string()),
                 }
             }
             "take" => {
                 if args.len() != 2 {
-                    return Err("take expects 2 arguments (list, n)".toString());
+                    return Err("take expects 2 arguments (list, n)".to_string());
                 }
                 let list_val = self.compile_expr(&args[0])?;
                 let n_val = self.compile_expr(&args[1])?;
@@ -11463,12 +11463,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::List(alloca))
                     }
-                    _ => Err("take: first argument must be a list, second an Int".toString()),
+                    _ => Err("take: first argument must be a list, second an Int".to_string()),
                 }
             }
             "drop" => {
                 if args.len() != 2 {
-                    return Err("drop expects 2 arguments (list, n)".toString());
+                    return Err("drop expects 2 arguments (list, n)".to_string());
                 }
                 let list_val = self.compile_expr(&args[0])?;
                 let n_val = self.compile_expr(&args[1])?;
@@ -11484,12 +11484,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::List(alloca))
                     }
-                    _ => Err("drop: first argument must be a list, second an Int".toString()),
+                    _ => Err("drop: first argument must be a list, second an Int".to_string()),
                 }
             }
             "range" => {
                 if args.len() != 2 {
-                    return Err("range expects 2 arguments (start, end)".toString());
+                    return Err("range expects 2 arguments (start, end)".to_string());
                 }
                 let start = self.compile_expr(&args[0])?;
                 let end = self.compile_expr(&args[1])?;
@@ -11505,12 +11505,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::List(alloca))
                     }
-                    _ => Err("range: arguments must be Int".toString()),
+                    _ => Err("range: arguments must be Int".to_string()),
                 }
             }
             "repeat" => {
                 if args.len() != 2 {
-                    return Err("repeat expects 2 arguments (value, count)".toString());
+                    return Err("repeat expects 2 arguments (value, count)".to_string());
                 }
                 let val = self.compile_expr(&args[0])?;
                 let count = self.compile_expr(&args[1])?;
@@ -11571,12 +11571,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.position_at_end(done_bb);
                         Ok(TypedValue::List(alloca))
                     }
-                    _ => Err("repeat: second argument must be Int".toString()),
+                    _ => Err("repeat: second argument must be Int".to_string()),
                 }
             }
             "trimStart" => {
                 if args.len() != 1 {
-                    return Err("trimStart expects 1 argument".toString());
+                    return Err("trimStart expects 1 argument".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 match v {
@@ -11591,12 +11591,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::Str(alloca))
                     }
-                    _ => Err("trimStart: argument must be a string".toString()),
+                    _ => Err("trimStart: argument must be a string".to_string()),
                 }
             }
             "trimEnd" => {
                 if args.len() != 1 {
-                    return Err("trimEnd expects 1 argument".toString());
+                    return Err("trimEnd expects 1 argument".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 match v {
@@ -11611,12 +11611,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::Str(alloca))
                     }
-                    _ => Err("trimEnd: argument must be a string".toString()),
+                    _ => Err("trimEnd: argument must be a string".to_string()),
                 }
             }
             "stringContains" => {
                 if args.len() != 2 {
-                    return Err("stringContains expects 2 arguments (str, substr)".toString());
+                    return Err("stringContains expects 2 arguments (str, substr)".to_string());
                 }
                 let s = self.compile_expr(&args[0])?;
                 let sub = self.compile_expr(&args[1])?;
@@ -11633,12 +11633,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_int_value();
                         Ok(TypedValue::Bool(result))
                     }
-                    _ => Err("stringContains: arguments must be strings".toString()),
+                    _ => Err("stringContains: arguments must be strings".to_string()),
                 }
             }
             "stringRepeat" => {
                 if args.len() != 2 {
-                    return Err("stringRepeat expects 2 arguments (str, count)".toString());
+                    return Err("stringRepeat expects 2 arguments (str, count)".to_string());
                 }
                 let s = self.compile_expr(&args[0])?;
                 let count = self.compile_expr(&args[1])?;
@@ -11658,13 +11658,13 @@ impl<'ctx> CodeGen<'ctx> {
                         Ok(TypedValue::Str(alloca))
                     }
                     _ => Err(
-                        "stringRepeat: first argument must be a string, second an Int".toString(),
+                        "stringRepeat: first argument must be a string, second an Int".to_string(),
                     ),
                 }
             }
             "tail" => {
                 if args.len() != 1 {
-                    return Err("tail expects 1 argument (list)".toString());
+                    return Err("tail expects 1 argument (list)".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 match v {
@@ -11692,12 +11692,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_struct_value();
                         self.build_option_list(result, isEmpty)
                     }
-                    _ => Err("tail: argument must be a list".toString()),
+                    _ => Err("tail: argument must be a list".to_string()),
                 }
             }
             "zip" => {
                 if args.len() != 2 {
-                    return Err("zip expects 2 arguments (list1, list2)".toString());
+                    return Err("zip expects 2 arguments (list1, list2)".to_string());
                 }
                 let v1 = self.compile_expr(&args[0])?;
                 let v2 = self.compile_expr(&args[1])?;
@@ -11714,12 +11714,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::List(alloca))
                     }
-                    _ => Err("zip: arguments must be lists".toString()),
+                    _ => Err("zip: arguments must be lists".to_string()),
                 }
             }
             "splitLines" => {
                 if args.len() != 1 {
-                    return Err("splitLines expects 1 argument (string)".toString());
+                    return Err("splitLines expects 1 argument (string)".to_string());
                 }
                 let s = self.compile_expr(&args[0])?;
                 match s {
@@ -11737,12 +11737,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::List(alloca))
                     }
-                    _ => Err("splitLines: argument must be a string".toString()),
+                    _ => Err("splitLines: argument must be a string".to_string()),
                 }
             }
             "indexOf" => {
                 if args.len() != 2 {
-                    return Err("indexOf expects 2 arguments".toString());
+                    return Err("indexOf expects 2 arguments".to_string());
                 }
                 let v1 = self.compile_expr(&args[0])?;
                 let v2 = self.compile_expr(&args[1])?;
@@ -11789,13 +11789,13 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     _ => Err(
                         "indexOf: first arg must be (element, list) or (substring, string)"
-                            .toString(),
+                            .to_string(),
                     ),
                 }
             }
             "init" => {
                 if args.len() != 1 {
-                    return Err("init expects 1 argument (list)".toString());
+                    return Err("init expects 1 argument (list)".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 match v {
@@ -11823,12 +11823,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_struct_value();
                         self.build_option_list(result, isEmpty)
                     }
-                    _ => Err("init: argument must be a list".toString()),
+                    _ => Err("init: argument must be a list".to_string()),
                 }
             }
             "chars" => {
                 if args.len() != 1 {
-                    return Err("chars expects 1 argument (string)".toString());
+                    return Err("chars expects 1 argument (string)".to_string());
                 }
                 let s = self.compile_expr(&args[0])?;
                 match s {
@@ -11843,49 +11843,49 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::List(alloca))
                     }
-                    _ => Err("chars: argument must be a string".toString()),
+                    _ => Err("chars: argument must be a string".to_string()),
                 }
             }
             "setToList" => {
                 if args.len() != 1 {
-                    return Err("setToList expects 1 argument (set)".toString());
+                    return Err("setToList expects 1 argument (set)".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 match v {
                     TypedValue::Set(p) => Ok(TypedValue::List(p)),
-                    _ => Err("setToList: argument must be a set".toString()),
+                    _ => Err("setToList: argument must be a set".to_string()),
                 }
             }
             "setFromList" => {
                 if args.len() != 1 {
-                    return Err("setFromList expects 1 argument (list)".toString());
+                    return Err("setFromList expects 1 argument (list)".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 match v {
                     TypedValue::List(p) => Ok(TypedValue::Set(p)),
-                    _ => Err("setFromList: argument must be a list".toString()),
+                    _ => Err("setFromList: argument must be a list".to_string()),
                 }
             }
             "fromList" => {
                 if args.len() != 1 {
-                    return Err("fromList expects 1 argument (list)".toString());
+                    return Err("fromList expects 1 argument (list)".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 match v {
                     TypedValue::List(p) => Ok(TypedValue::Set(p)),
-                    _ => Err("fromList: argument must be a list".toString()),
+                    _ => Err("fromList: argument must be a list".to_string()),
                 }
             }
             "today" => {
                 if !args.isEmpty() {
-                    return Err("today expects no arguments".toString());
+                    return Err("today expects no arguments".to_string());
                 }
                 // Call C time() and localtime_r() to get real current date
                 self.emit_today_now(false)
             }
             "now" => {
                 if !args.isEmpty() {
-                    return Err("now expects no arguments".toString());
+                    return Err("now expects no arguments".to_string());
                 }
                 self.emit_today_now(true)
             }
@@ -11904,7 +11904,7 @@ impl<'ctx> CodeGen<'ctx> {
                             "hour" => 3,
                             "minute" => 4,
                             "second" => 5,
-                            _ => return Err("bad field".toString()),
+                            _ => return Err("bad field".to_string()),
                         };
                         let fptr = self
                             .builder
@@ -11925,7 +11925,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "addDays" => {
                 if args.len() != 2 {
-                    return Err("addDays expects 2 arguments (date, days)".toString());
+                    return Err("addDays expects 2 arguments (date, days)".to_string());
                 }
                 let d = self.compile_expr(&args[0])?;
                 let days = self.compile_expr(&args[1])?;
@@ -11963,12 +11963,12 @@ impl<'ctx> CodeGen<'ctx> {
                         }
                         Ok(TypedValue::Struct(alloca, st))
                     }
-                    _ => Err("addDays: first argument must be a Date struct".toString()),
+                    _ => Err("addDays: first argument must be a Date struct".to_string()),
                 }
             }
             "addHours" => {
                 if args.len() != 2 {
-                    return Err("addHours expects 2 arguments (datetime, hours)".toString());
+                    return Err("addHours expects 2 arguments (datetime, hours)".to_string());
                 }
                 let d = self.compile_expr(&args[0])?;
                 let hours = self.compile_expr(&args[1])?;
@@ -12002,12 +12002,12 @@ impl<'ctx> CodeGen<'ctx> {
                         }
                         Ok(TypedValue::Struct(alloca, st))
                     }
-                    _ => Err("addHours: first argument must be a DateTime struct".toString()),
+                    _ => Err("addHours: first argument must be a DateTime struct".to_string()),
                 }
             }
             "randChoice" => {
                 if args.len() != 1 {
-                    return Err("randChoice expects 1 argument (list)".toString());
+                    return Err("randChoice expects 1 argument (list)".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 match v {
@@ -12133,12 +12133,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .map_err(llvm_err)?;
                         Ok(TypedValue::List(opt_alloca)) // Reuse List type for the result
                     }
-                    _ => Err("randChoice: argument must be a list".toString()),
+                    _ => Err("randChoice: argument must be a list".to_string()),
                 }
             }
             "toChar" => {
                 if args.len() != 1 {
-                    return Err("toChar expects 1 argument (int)".toString());
+                    return Err("toChar expects 1 argument (int)".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 match v {
@@ -12152,22 +12152,22 @@ impl<'ctx> CodeGen<'ctx> {
                         let valid = self.build_option_int(iv, in_range);
                         valid
                     }
-                    _ => Err("toChar: argument must be an Int".toString()),
+                    _ => Err("toChar: argument must be an Int".to_string()),
                 }
             }
             "charCode" => {
                 if args.len() != 1 {
-                    return Err("charCode expects 1 argument (char)".toString());
+                    return Err("charCode expects 1 argument (char)".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 match v {
                     TypedValue::Int(iv) => Ok(TypedValue::Int(iv)),
-                    _ => Err("charCode: argument must be a Char".toString()),
+                    _ => Err("charCode: argument must be a Char".to_string()),
                 }
             }
             "toInt" => {
                 if args.len() != 1 {
-                    return Err("toInt expects 1 argument".toString());
+                    return Err("toInt expects 1 argument".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 match v {
@@ -12201,12 +12201,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_int_value();
                         self.build_option_int(val, ok)
                     }
-                    _ => Err("toInt: cannot convert to Int".toString()),
+                    _ => Err("toInt: cannot convert to Int".to_string()),
                 }
             }
             "toFloat" => {
                 if args.len() != 1 {
-                    return Err("toFloat expects 1 argument".toString());
+                    return Err("toFloat expects 1 argument".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 let always_true = self.bool_ty().const_int(1, false);
@@ -12323,12 +12323,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_float_value();
                         self.build_option_float(result, ok)
                     }
-                    _ => Err("toFloat: cannot convert to Float".toString()),
+                    _ => Err("toFloat: cannot convert to Float".to_string()),
                 }
             }
             "withIndex" => {
                 if args.len() != 1 {
-                    return Err("withIndex expects 1 argument (list)".toString());
+                    return Err("withIndex expects 1 argument (list)".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 match v {
@@ -12343,12 +12343,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::List(alloca))
                     }
-                    _ => Err("withIndex: argument must be a list".toString()),
+                    _ => Err("withIndex: argument must be a list".to_string()),
                 }
             }
             "unique" => {
                 if args.len() != 1 {
-                    return Err("unique expects 1 argument (list)".toString());
+                    return Err("unique expects 1 argument (list)".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 match v {
@@ -12363,12 +12363,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::List(alloca))
                     }
-                    _ => Err("unique: argument must be a list".toString()),
+                    _ => Err("unique: argument must be a list".to_string()),
                 }
             }
             "slice" => {
                 if args.len() != 3 {
-                    return Err("slice expects 3 arguments (collection, start, end)".toString());
+                    return Err("slice expects 3 arguments (collection, start, end)".to_string());
                 }
                 let coll_v = self.compile_expr(&args[0])?;
                 let start_v = self.compile_expr(&args[1])?;
@@ -12410,13 +12410,13 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     _ => Err(
                         "slice: first argument must be a list or string, second and third Int"
-                            .toString(),
+                            .to_string(),
                     ),
                 }
             }
             "flatten" => {
                 if args.len() != 1 {
-                    return Err("flatten expects 1 argument (list)".toString());
+                    return Err("flatten expects 1 argument (list)".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 match v {
@@ -12431,12 +12431,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::List(alloca))
                     }
-                    _ => Err("flatten: argument must be a list".toString()),
+                    _ => Err("flatten: argument must be a list".to_string()),
                 }
             }
             "splitAt" => {
                 if args.len() != 2 {
-                    return Err("splitAt expects 2 arguments (list, index)".toString());
+                    return Err("splitAt expects 2 arguments (list, index)".to_string());
                 }
                 let list_v = self.compile_expr(&args[0])?;
                 let idx_v = self.compile_expr(&args[1])?;
@@ -12453,12 +12453,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::List(alloca))
                     }
-                    _ => Err("splitAt: first argument must be a list, second Int".toString()),
+                    _ => Err("splitAt: first argument must be a list, second Int".to_string()),
                 }
             }
             "chunks" => {
                 if args.len() != 2 {
-                    return Err("chunks expects 2 arguments (list, size)".toString());
+                    return Err("chunks expects 2 arguments (list, size)".to_string());
                 }
                 let list_v = self.compile_expr(&args[0])?;
                 let size_v = self.compile_expr(&args[1])?;
@@ -12474,12 +12474,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::List(alloca))
                     }
-                    _ => Err("chunks: first argument must be a list, second Int".toString()),
+                    _ => Err("chunks: first argument must be a list, second Int".to_string()),
                 }
             }
             "windows" => {
                 if args.len() != 2 {
-                    return Err("windows expects 2 arguments (list, size)".toString());
+                    return Err("windows expects 2 arguments (list, size)".to_string());
                 }
                 let list_v = self.compile_expr(&args[0])?;
                 let size_v = self.compile_expr(&args[1])?;
@@ -12495,12 +12495,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::List(alloca))
                     }
-                    _ => Err("windows: first argument must be a list, second Int".toString()),
+                    _ => Err("windows: first argument must be a list, second Int".to_string()),
                 }
             }
             "pow" => {
                 if args.len() != 2 {
-                    return Err("pow expects 2 arguments".toString());
+                    return Err("pow expects 2 arguments".to_string());
                 }
                 let base = self.compile_expr(&args[0])?;
                 let exp = self.compile_expr(&args[1])?;
@@ -12558,12 +12558,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_float_value();
                         Ok(TypedValue::Float(result))
                     }
-                    _ => Err("pow: arguments must be numeric".toString()),
+                    _ => Err("pow: arguments must be numeric".to_string()),
                 }
             }
             "mapKeys" => {
                 if args.len() != 1 {
-                    return Err("mapKeys expects 1 argument (map)".toString());
+                    return Err("mapKeys expects 1 argument (map)".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 match v {
@@ -12578,12 +12578,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::List(alloca))
                     }
-                    _ => Err("mapKeys: argument must be a map".toString()),
+                    _ => Err("mapKeys: argument must be a map".to_string()),
                 }
             }
             "mapValues" => {
                 if args.len() != 1 {
-                    return Err("mapValues expects 1 argument (map)".toString());
+                    return Err("mapValues expects 1 argument (map)".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 match v {
@@ -12598,12 +12598,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::List(alloca))
                     }
-                    _ => Err("mapValues: argument must be a map".toString()),
+                    _ => Err("mapValues: argument must be a map".to_string()),
                 }
             }
             "mapEntries" => {
                 if args.len() != 1 {
-                    return Err("mapEntries expects 1 argument (map)".toString());
+                    return Err("mapEntries expects 1 argument (map)".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 match v {
@@ -12621,12 +12621,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::List(alloca))
                     }
-                    _ => Err("mapEntries: argument must be a map".toString()),
+                    _ => Err("mapEntries: argument must be a map".to_string()),
                 }
             }
             "mapUnion" => {
                 if args.len() != 2 {
-                    return Err("map.union expects 2 arguments (map1, map2)".toString());
+                    return Err("map.union expects 2 arguments (map1, map2)".to_string());
                 }
                 let v1 = self.compile_expr(&args[0])?;
                 let v2 = self.compile_expr(&args[1])?;
@@ -12643,12 +12643,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::Map(alloca))
                     }
-                    _ => Err("map.union: arguments must be maps".toString()),
+                    _ => Err("map.union: arguments must be maps".to_string()),
                 }
             }
             "setUnion" => {
                 if args.len() != 2 {
-                    return Err("set.union expects 2 arguments (set1, set2)".toString());
+                    return Err("set.union expects 2 arguments (set1, set2)".to_string());
                 }
                 let v1 = self.compile_expr(&args[0])?;
                 let v2 = self.compile_expr(&args[1])?;
@@ -12665,12 +12665,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::Set(alloca))
                     }
-                    _ => Err("set.union: arguments must be sets".toString()),
+                    _ => Err("set.union: arguments must be sets".to_string()),
                 }
             }
             "setIntersection" => {
                 if args.len() != 2 {
-                    return Err("set.intersection expects 2 arguments (set1, set2)".toString());
+                    return Err("set.intersection expects 2 arguments (set1, set2)".to_string());
                 }
                 let v1 = self.compile_expr(&args[0])?;
                 let v2 = self.compile_expr(&args[1])?;
@@ -12691,12 +12691,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::Set(alloca))
                     }
-                    _ => Err("set.intersection: arguments must be sets".toString()),
+                    _ => Err("set.intersection: arguments must be sets".to_string()),
                 }
             }
             "setDifference" => {
                 if args.len() != 2 {
-                    return Err("set.difference expects 2 arguments (set1, set2)".toString());
+                    return Err("set.difference expects 2 arguments (set1, set2)".to_string());
                 }
                 let v1 = self.compile_expr(&args[0])?;
                 let v2 = self.compile_expr(&args[1])?;
@@ -12717,12 +12717,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::Set(alloca))
                     }
-                    _ => Err("set.difference: arguments must be sets".toString()),
+                    _ => Err("set.difference: arguments must be sets".to_string()),
                 }
             }
             "setIsSubset" => {
                 if args.len() != 2 {
-                    return Err("set.isSubset expects 2 arguments (set1, set2)".toString());
+                    return Err("set.isSubset expects 2 arguments (set1, set2)".to_string());
                 }
                 let v1 = self.compile_expr(&args[0])?;
                 let v2 = self.compile_expr(&args[1])?;
@@ -12738,12 +12738,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_int_value();
                         Ok(TypedValue::Bool(result))
                     }
-                    _ => Err("set.isSubset: arguments must be sets".toString()),
+                    _ => Err("set.isSubset: arguments must be sets".to_string()),
                 }
             }
             "randShuffle" => {
                 if args.len() != 1 {
-                    return Err("randShuffle expects 1 argument (list)".toString());
+                    return Err("randShuffle expects 1 argument (list)".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 match v {
@@ -12761,12 +12761,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::List(alloca))
                     }
-                    _ => Err("randShuffle: argument must be a list".toString()),
+                    _ => Err("randShuffle: argument must be a list".to_string()),
                 }
             }
             "sorted" => {
                 if args.len() != 1 {
-                    return Err("sorted expects 1 argument (list)".toString());
+                    return Err("sorted expects 1 argument (list)".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 match v {
@@ -12781,12 +12781,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::List(alloca))
                     }
-                    _ => Err("sorted: argument must be a list".toString()),
+                    _ => Err("sorted: argument must be a list".to_string()),
                 }
             }
             "readDir" => {
                 if args.len() != 1 {
-                    return Err("readDir expects 1 argument (path)".toString());
+                    return Err("readDir expects 1 argument (path)".to_string());
                 }
                 if self.module.get_function("action_read_dir").isNone() {
                     self.emit_read_dir_runtime()?;
@@ -12804,18 +12804,18 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::List(alloca))
                     }
-                    _ => Err("readDir: argument must be a string".toString()),
+                    _ => Err("readDir: argument must be a string".to_string()),
                 }
             }
             "identity" => {
                 if args.len() != 1 {
-                    return Err("identity expects 1 argument".toString());
+                    return Err("identity expects 1 argument".to_string());
                 }
                 self.compile_expr(&args[0])
             }
             "compose" => {
                 if args.len() != 3 {
-                    return Err("compose expects 3 arguments (f, g, x)".toString());
+                    return Err("compose expects 3 arguments (f, g, x)".to_string());
                 }
                 // compose(f, g, x) = f(g(x))
                 let inner = Expr::Call {
@@ -12832,17 +12832,17 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "diffDays" => {
                 if args.len() != 2 {
-                    return Err("diffDays expects 2 arguments (date1, date2)".toString());
+                    return Err("diffDays expects 2 arguments (date1, date2)".to_string());
                 }
                 let d1 = self.compile_expr(&args[0])?;
                 let d2 = self.compile_expr(&args[1])?;
                 let (p1, st1) = match d1 {
                     TypedValue::Struct(p, st) => (p, st),
-                    _ => return Err("diffDays: arguments must be Date structs".toString()),
+                    _ => return Err("diffDays: arguments must be Date structs".to_string()),
                 };
                 let (p2, st2) = match d2 {
                     TypedValue::Struct(p, st) => (p, st),
-                    _ => return Err("diffDays: arguments must be Date structs".toString()),
+                    _ => return Err("diffDays: arguments must be Date structs".to_string()),
                 };
                 let i64_ty = self.i64_ty();
                 // Julian Day Number: JDN = D + (153*m+2)/5 + 365*y + y/4 - y/100 + y/400 - 32045
@@ -13013,7 +13013,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "weekday" => {
                 if args.len() != 1 {
-                    return Err("weekday expects 1 argument (date)".toString());
+                    return Err("weekday expects 1 argument (date)".to_string());
                 }
                 let d = self.compile_expr(&args[0])?;
                 match d {
@@ -13170,17 +13170,17 @@ impl<'ctx> CodeGen<'ctx> {
                             .map_err(llvm_err)?;
                         Ok(TypedValue::Int(wd))
                     }
-                    _ => Err("weekday: argument must be a Date struct".toString()),
+                    _ => Err("weekday: argument must be a Date struct".to_string()),
                 }
             }
             "sum" => {
                 if args.len() != 1 {
-                    return Err("sum expects 1 argument (list)".toString());
+                    return Err("sum expects 1 argument (list)".to_string());
                 }
                 let list_val = self.compile_expr(&args[0])?;
                 let list_ptr = match list_val {
                     TypedValue::List(p) => p,
-                    _ => return Err("sum: argument must be a list".toString()),
+                    _ => return Err("sum: argument must be a list".to_string()),
                 };
                 let list = self.load_list(list_ptr)?;
                 let len = self.list_len_val(list)?;
@@ -13259,12 +13259,12 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "product" => {
                 if args.len() != 1 {
-                    return Err("product expects 1 argument (list)".toString());
+                    return Err("product expects 1 argument (list)".to_string());
                 }
                 let list_val = self.compile_expr(&args[0])?;
                 let list_ptr = match list_val {
                     TypedValue::List(p) => p,
-                    _ => return Err("product: argument must be a list".toString()),
+                    _ => return Err("product: argument must be a list".to_string()),
                 };
                 let list = self.load_list(list_ptr)?;
                 let len = self.list_len_val(list)?;
@@ -13346,12 +13346,12 @@ impl<'ctx> CodeGen<'ctx> {
             "digits" => {
                 // digits(n) -> List<Int>: decimal digits of abs(n), MSD first. 0 -> [0].
                 if args.len() != 1 {
-                    return Err("digits expects 1 argument (int)".toString());
+                    return Err("digits expects 1 argument (int)".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 let n = match v {
                     TypedValue::Int(iv) => iv,
-                    _ => return Err("digits: argument must be an int".toString()),
+                    _ => return Err("digits: argument must be an int".to_string()),
                 };
                 let ten = self.i64_ty().const_int(10, false);
                 let zero = self.i64_ty().const_int(0, false);
@@ -13578,17 +13578,17 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "charAt" => {
                 if args.len() != 2 {
-                    return Err("charAt expects 2 arguments (string, index)".toString());
+                    return Err("charAt expects 2 arguments (string, index)".to_string());
                 }
                 let s = self.compile_expr(&args[0])?;
                 let idx = self.compile_expr(&args[1])?;
                 let s_ptr = match s {
                     TypedValue::Str(p) => p,
-                    _ => return Err("charAt: first argument must be a string".toString()),
+                    _ => return Err("charAt: first argument must be a string".to_string()),
                 };
                 let idx_val = match idx {
                     TypedValue::Int(iv) => iv,
-                    _ => return Err("charAt: second argument must be an int".toString()),
+                    _ => return Err("charAt: second argument must be an int".to_string()),
                 };
                 let ss = self.load_string(s_ptr)?;
                 let slen = self
@@ -13684,12 +13684,12 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "isAlpha" => {
                 if args.len() != 1 {
-                    return Err("isAlpha expects 1 argument (char)".toString());
+                    return Err("isAlpha expects 1 argument (char)".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 let ch = match v {
                     TypedValue::Int(iv) => iv,
-                    _ => return Err("isAlpha: argument must be a char code (int)".toString()),
+                    _ => return Err("isAlpha: argument must be a char code (int)".to_string()),
                 };
                 let a_lower = self.i64_ty().const_int('a' as u64, false);
                 let z_lower = self.i64_ty().const_int('z' as u64, false);
@@ -13727,12 +13727,12 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "codeToChar" => {
                 if args.len() != 1 {
-                    return Err("codeToChar expects 1 argument (int)".toString());
+                    return Err("codeToChar expects 1 argument (int)".to_string());
                 }
                 let v = self.compile_expr(&args[0])?;
                 let code = match v {
                     TypedValue::Int(iv) => iv,
-                    _ => return Err("codeToChar: argument must be an int".toString()),
+                    _ => return Err("codeToChar: argument must be an int".to_string()),
                 };
                 let i64 = self.i64_ty();
                 let i8 = self.context.i8_type();
@@ -13780,7 +13780,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "nowUtc" => {
                 if !args.isEmpty() {
-                    return Err("nowUtc expects no arguments".toString());
+                    return Err("nowUtc expects no arguments".to_string());
                 }
                 let sty = self.context.struct_type(&[self.i64_ty().into(); 6], false);
                 let alloca = self
@@ -13842,17 +13842,17 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "diffSeconds" => {
                 if args.len() != 2 {
-                    return Err("diffSeconds expects 2 arguments (dt1, dt2)".toString());
+                    return Err("diffSeconds expects 2 arguments (dt1, dt2)".to_string());
                 }
                 let d1 = self.compile_expr(&args[0])?;
                 let d2 = self.compile_expr(&args[1])?;
                 let (p1, st1) = match d1 {
                     TypedValue::Struct(p, st) => (p, st),
-                    _ => return Err("diffSeconds: arguments must be DateTime structs".toString()),
+                    _ => return Err("diffSeconds: arguments must be DateTime structs".to_string()),
                 };
                 let (p2, _st2) = match d2 {
                     TypedValue::Struct(p, st) => (p, st),
-                    _ => return Err("diffSeconds: arguments must be DateTime structs".toString()),
+                    _ => return Err("diffSeconds: arguments must be DateTime structs".to_string()),
                 };
                 let i64_ty = self.i64_ty();
                 // Approximate seconds from year/month/day/hour/min/sec
@@ -13952,7 +13952,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "format" => {
                 if args.len() != 2 {
-                    return Err("format expects 2 arguments (datetime, format_str)".toString());
+                    return Err("format expects 2 arguments (datetime, format_str)".to_string());
                 }
                 let dt = self.compile_expr(&args[0])?;
                 let fmt = self.compile_expr(&args[1])?;
@@ -14129,12 +14129,12 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, r2).map_err(llvm_err)?;
                         Ok(TypedValue::Str(alloca))
                     }
-                    _ => Err("format: expects (DateTime, String)".toString()),
+                    _ => Err("format: expects (DateTime, String)".to_string()),
                 }
             }
             "parseDate" => {
                 if args.len() != 2 {
-                    return Err("parseDate expects 2 arguments (format_str, date_str)".toString());
+                    return Err("parseDate expects 2 arguments (format_str, date_str)".to_string());
                 }
                 let fmt_v = self.compile_expr(&args[0])?;
                 let date_v = self.compile_expr(&args[1])?;
@@ -14315,12 +14315,12 @@ impl<'ctx> CodeGen<'ctx> {
                             false,
                         ))
                     }
-                    _ => Err("parseDate: expects (String, String)".toString()),
+                    _ => Err("parseDate: expects (String, String)".to_string()),
                 }
             }
             "date" => {
                 if args.len() != 3 {
-                    return Err("date expects 3 arguments (year, month, day)".toString());
+                    return Err("date expects 3 arguments (year, month, day)".to_string());
                 }
                 let yv = self.compile_expr(&args[0])?;
                 let mv = self.compile_expr(&args[1])?;
@@ -14544,7 +14544,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 6 {
                     return Err(
                         "datetime expects 6 arguments (year, month, day, hour, minute, second)"
-                            .toString(),
+                            .to_string(),
                     );
                 }
                 let yv = self.compile_expr(&args[0])?;
@@ -14815,7 +14815,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "Random_new" => {
                 if args.len() != 1 {
-                    return Err("Random_new expects 1 argument (seed)".toString());
+                    return Err("Random_new expects 1 argument (seed)".to_string());
                 }
                 let seed_v = self.compile_expr(&args[0])?;
                 let seed = seed_v.to_bv().ok_or("seed must be Int")?.into_int_value();
@@ -14834,14 +14834,14 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "nextInt" => {
                 if args.len() != 3 {
-                    return Err("nextInt expects 3 arguments (random, min, max)".toString());
+                    return Err("nextInt expects 3 arguments (random, min, max)".to_string());
                 }
                 let rng_v = self.compile_expr(&args[0])?;
                 let min_v = self.compile_expr(&args[1])?;
                 let max_v = self.compile_expr(&args[2])?;
                 let (rng_ptr, rng_st) = match rng_v {
                     TypedValue::Struct(p, st) => (p, st),
-                    _ => return Err("nextInt: first argument must be a Random struct".toString()),
+                    _ => return Err("nextInt: first argument must be a Random struct".to_string()),
                 };
                 let min = min_v.to_bv().ok_or("min must be Int")?.into_int_value();
                 let max = max_v.to_bv().ok_or("max must be Int")?.into_int_value();
@@ -14949,7 +14949,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "flip" => {
                 if args.len() != 3 {
-                    return Err("flip expects 3 arguments (f, a, b)".toString());
+                    return Err("flip expects 3 arguments (f, a, b)".to_string());
                 }
                 // flip(f, a, b) = f(b, a)
                 let call = Expr::Call {
@@ -14961,14 +14961,14 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "constant" => {
                 if args.len() != 2 {
-                    return Err("constant expects 2 arguments (a, b)".toString());
+                    return Err("constant expects 2 arguments (a, b)".to_string());
                 }
                 // constant(a, b) = a (returns first argument, ignores second)
                 self.compile_expr(&args[0])
             }
             "uncurry" => {
                 if args.len() != 3 {
-                    return Err("uncurry expects 3 arguments (f, a, b)".toString());
+                    return Err("uncurry expects 3 arguments (f, a, b)".to_string());
                 }
                 // uncurry(f, a, b) = f(a)(b)
                 let inner = Expr::Call {
@@ -14985,15 +14985,15 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "curry" => {
                 if args.len() != 2 {
-                    return Err("curry expects 2 arguments (f, a)".toString());
+                    return Err("curry expects 2 arguments (f, a)".to_string());
                 }
                 // curry(f, a) → creates a lambda |b| f(a, b)
                 // We implement this by compiling the partial application as a lambda expression
                 let lambda = Expr::Lambda {
-                    params: vec!["b".toString()],
+                    params: vec!["b".to_string()],
                     body: Box::new(Expr::Call {
                         func: Box::new(args[0].clone()),
-                        args: vec![args[1].clone(), Expr::Ident("b".toString())],
+                        args: vec![args[1].clone(), Expr::Ident("b".to_string())],
                         trailing_lambda: None,
                     }),
                     implicit_it: false,
@@ -15003,128 +15003,128 @@ impl<'ctx> CodeGen<'ctx> {
             // ---- Option/Result convenience methods ----
             "isSome" => {
                 if args.len() != 1 {
-                    return Err("isSome expects 1 argument (option)".toString());
+                    return Err("isSome expects 1 argument (option)".to_string());
                 }
                 self.builtin_enum_is_tag(&args[0], 0)
             }
             "isNone" => {
                 if args.len() != 1 {
-                    return Err("isNone expects 1 argument (option)".toString());
+                    return Err("isNone expects 1 argument (option)".to_string());
                 }
                 self.builtin_enum_is_tag(&args[0], 1)
             }
             "isOk" => {
                 if args.len() != 1 {
-                    return Err("isOk expects 1 argument (result)".toString());
+                    return Err("isOk expects 1 argument (result)".to_string());
                 }
                 self.builtin_enum_is_tag(&args[0], 0)
             }
             "isErr" => {
                 if args.len() != 1 {
-                    return Err("isErr expects 1 argument (result)".toString());
+                    return Err("isErr expects 1 argument (result)".to_string());
                 }
                 self.builtin_enum_is_tag(&args[0], 1)
             }
             "unwrapOr" => {
                 if args.len() != 2 {
-                    return Err("unwrapOr expects 2 arguments (enum, default)".toString());
+                    return Err("unwrapOr expects 2 arguments (enum, default)".to_string());
                 }
                 self.builtin_unwrap_or(&args[0], &args[1])
             }
             "unwrap" => {
                 if args.len() != 1 {
-                    return Err("unwrap expects 1 argument (enum)".toString());
+                    return Err("unwrap expects 1 argument (enum)".to_string());
                 }
                 self.builtin_unwrap(&args[0])
             }
             "orElse" => {
                 if args.len() != 2 {
-                    return Err("orElse expects 2 arguments (enum, handler)".toString());
+                    return Err("orElse expects 2 arguments (enum, handler)".to_string());
                 }
                 self.builtin_or_else(&args[0], &args[1])
             }
             "ok" => {
                 if args.len() != 2 {
-                    return Err("ok expects 2 arguments (option, error_value)".toString());
+                    return Err("ok expects 2 arguments (option, error_value)".to_string());
                 }
                 self.builtin_ok(&args[0], &args[1])
             }
             // ---- LazyList operations ----
             "toList" => {
                 if args.len() != 1 {
-                    return Err("toList expects 1 argument (lazy_list or set)".toString());
+                    return Err("toList expects 1 argument (lazy_list or set)".to_string());
                 }
                 self.builtin_to_list(&args[0])
             }
             "toLazyList" => {
                 if args.len() != 1 {
-                    return Err("toLazyList expects 1 argument (list)".toString());
+                    return Err("toLazyList expects 1 argument (list)".to_string());
                 }
                 self.builtin_to_lazy_list(&args[0])
             }
             "lazyTake" => {
                 if args.len() != 2 {
-                    return Err("lazyTake expects 2 arguments (n, lazy_list)".toString());
+                    return Err("lazyTake expects 2 arguments (n, lazy_list)".to_string());
                 }
                 self.builtin_lazy_take(&args[0], &args[1])
             }
             "lazyDrop" => {
                 if args.len() != 2 {
-                    return Err("lazyDrop expects 2 arguments (n, lazy_list)".toString());
+                    return Err("lazyDrop expects 2 arguments (n, lazy_list)".to_string());
                 }
                 self.builtin_lazy_drop(&args[0], &args[1])
             }
             "lazyMap" => {
                 if args.len() != 2 {
-                    return Err("lazyMap expects 2 arguments (fn, lazy_list)".toString());
+                    return Err("lazyMap expects 2 arguments (fn, lazy_list)".to_string());
                 }
                 self.builtin_lazy_map(&args[0], &args[1])
             }
             "lazyFilter" => {
                 if args.len() != 2 {
-                    return Err("lazyFilter expects 2 arguments (fn, lazy_list)".toString());
+                    return Err("lazyFilter expects 2 arguments (fn, lazy_list)".to_string());
                 }
                 self.builtin_lazy_filter(&args[0], &args[1])
             }
             "lazyTakeWhile" => {
                 if args.len() != 2 {
-                    return Err("lazyTakeWhile expects 2 arguments (fn, lazy_list)".toString());
+                    return Err("lazyTakeWhile expects 2 arguments (fn, lazy_list)".to_string());
                 }
                 self.builtin_lazy_take_while(&args[0], &args[1])
             }
             "lazyHead" => {
                 if args.len() != 1 {
-                    return Err("lazyHead expects 1 argument (lazy_list)".toString());
+                    return Err("lazyHead expects 1 argument (lazy_list)".to_string());
                 }
                 self.builtin_lazy_head(&args[0])
             }
             "lazyZip" => {
                 if args.len() != 2 {
-                    return Err("lazy.zip expects 2 arguments (lazy1, lazy2)".toString());
+                    return Err("lazy.zip expects 2 arguments (lazy1, lazy2)".to_string());
                 }
                 self.builtin_lazy_zip(&args[0], &args[1])
             }
             "toCString" => {
                 if args.len() != 1 {
-                    return Err("toCString expects 1 argument".toString());
+                    return Err("toCString expects 1 argument".to_string());
                 }
                 self.builtin_to_cstring(&args[0])
             }
             "fromCString" => {
                 if args.len() != 1 {
-                    return Err("fromCString expects 1 argument".toString());
+                    return Err("fromCString expects 1 argument".to_string());
                 }
                 self.builtin_from_cstring(&args[0])
             }
             "isNull" => {
                 if args.len() != 1 {
-                    return Err("isNull expects 1 argument".toString());
+                    return Err("isNull expects 1 argument".to_string());
                 }
                 self.builtin_is_null(&args[0])
             }
             "deref" => {
                 if args.len() != 1 {
-                    return Err("deref expects 1 argument".toString());
+                    return Err("deref expects 1 argument".to_string());
                 }
                 self.builtin_deref(&args[0])
             }
@@ -15140,7 +15140,7 @@ impl<'ctx> CodeGen<'ctx> {
             "httpRequest" => {
                 if args.len() != 4 {
                     return Err(
-                        "httpRequest expects 4 arguments (method, url, headers, body)".toString(),
+                        "httpRequest expects 4 arguments (method, url, headers, body)".to_string(),
                     );
                 }
                 self.builtin_http_request(&args[0], &args[1], &args[2], &args[3])
@@ -15352,7 +15352,7 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     Ok(TypedValue::Struct(alloca, sty))
                 }
-                None => Err("now: DateTime type not defined".toString()),
+                None => Err("now: DateTime type not defined".to_string()),
             }
         } else {
             let date_struct = self.named_structs.get("Date").orElse(|| {
@@ -15373,7 +15373,7 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     Ok(TypedValue::Struct(alloca, sty))
                 }
-                None => Err("today: Date type not defined".toString()),
+                None => Err("today: Date type not defined".to_string()),
             }
         }
     }
@@ -15421,7 +15421,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?;
                 Ok(TypedValue::CString(cstr_ptr))
             }
-            _ => Err("toCString: argument must be a String".toString()),
+            _ => Err("toCString: argument must be a String".to_string()),
         }
     }
 
@@ -15432,7 +15432,7 @@ impl<'ctx> CodeGen<'ctx> {
             TypedValue::CString(ptr) | TypedValue::Ptr(ptr) | TypedValue::FileHandle(ptr) => {
                 // strlen - FileHandle is treated as a pointer for null check
                 if matches!(val, TypedValue::FileHandle(_)) {
-                    return Err("fromCString: cannot convert FileHandle to string".toString());
+                    return Err("fromCString: cannot convert FileHandle to string".to_string());
                 }
                 // strlen
                 let len_val = self.call_rt("strlen", &[ptr.into()])?;
@@ -15456,14 +15456,14 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?;
                 Ok(TypedValue::Str(alloca))
             }
-            _ => Err("fromCString: argument must be a CString or Ptr".toString()),
+            _ => Err("fromCString: argument must be a CString or Ptr".to_string()),
         }
     }
 
     /// isNull(ptr) -> Bool: check if a Ptr or CString is null
     pub(super) fn builtin_is_null(&mut self, expr: &Expr) -> Result<TypedValue<'ctx>, String> {
         if !self.in_unsafe {
-            return Err("isNull can only be used inside an unsafe block".toString());
+            return Err("isNull can only be used inside an unsafe block".to_string());
         }
         let val = self.compile_expr(expr)?;
         match val {
@@ -15478,14 +15478,14 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?;
                 Ok(TypedValue::Bool(isNull))
             }
-            _ => Err("isNull: argument must be a Ptr, CString, or FileHandle".toString()),
+            _ => Err("isNull: argument must be a Ptr, CString, or FileHandle".to_string()),
         }
     }
 
     /// deref(ptr) -> T: dereference a typed pointer (unsafe)
     pub(super) fn builtin_deref(&mut self, expr: &Expr) -> Result<TypedValue<'ctx>, String> {
         if !self.in_unsafe {
-            return Err("deref can only be used inside an unsafe block".toString());
+            return Err("deref can only be used inside an unsafe block".to_string());
         }
         let val = self.compile_expr(expr)?;
         match val {
@@ -15497,7 +15497,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?;
                 Ok(TypedValue::Int(loaded.into_int_value()))
             }
-            _ => Err("deref: argument must be a Ptr".toString()),
+            _ => Err("deref: argument must be a Ptr".to_string()),
         }
     }
 
@@ -15518,19 +15518,19 @@ impl<'ctx> CodeGen<'ctx> {
 
         let method_ptr = match method_cstr {
             TypedValue::CString(p) => p,
-            _ => return Err("httpRequest: method must be String".toString()),
+            _ => return Err("httpRequest: method must be String".to_string()),
         };
         let url_ptr = match url_cstr {
             TypedValue::CString(p) => p,
-            _ => return Err("httpRequest: url must be String".toString()),
+            _ => return Err("httpRequest: url must be String".to_string()),
         };
         let headers_ptr = match headers_cstr {
             TypedValue::CString(p) => p,
-            _ => return Err("httpRequest: headers must be String".toString()),
+            _ => return Err("httpRequest: headers must be String".to_string()),
         };
         let body_ptr = match body_cstr {
             TypedValue::CString(p) => p,
-            _ => return Err("httpRequest: body must be String".toString()),
+            _ => return Err("httpRequest: body must be String".to_string()),
         };
 
         // Use strlen to get body length (safe since we just null-terminated it)
