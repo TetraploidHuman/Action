@@ -874,9 +874,14 @@ impl TypeChecker {
             }
             Expr::When(w) => {
                 let arms = self.when_arms(w);
-                arms.first()
-                    .map(|a| self.infer_expr_type(&a.body))
-                    .unwrap_or(Type::Unit)
+                if !arms.is_empty() {
+                    return self.infer_expr_type(&arms[0].body);
+                }
+                // OneLine: infer from the first branch body
+                if let WhenKind::OneLine { then_expr, .. } = &w.kind {
+                    return self.infer_expr_type(then_expr);
+                }
+                Type::Unit
             }
             Expr::Continue | Expr::Break => Type::Unit,
             Expr::For(_) => Type::Unit,
