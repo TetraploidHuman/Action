@@ -15433,47 +15433,47 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_int_compare(IntPredicate::EQ, ptr, null_ptr, "is_null")
                     .map_err(llvm_err)?;
-                let is_null_bb = self
-                    .context
-                    .append_basic_block(
-                        self.builder
-                            .get_insert_block()
-                            .and_then(|b| b.get_parent())
-                            .ok_or("no function")?,
-                        "fcs_null",
-                    );
-                let ok_bb = self
-                    .context
-                    .append_basic_block(
-                        self.builder
-                            .get_insert_block()
-                            .and_then(|b| b.get_parent())
-                            .ok_or("no function")?,
-                        "fcs_ok",
-                    );
-                let merge_bb = self
-                    .context
-                    .append_basic_block(
-                        self.builder
-                            .get_insert_block()
-                            .and_then(|b| b.get_parent())
-                            .ok_or("no function")?,
-                        "fcs_merge",
-                    );
+                let is_null_bb = self.context.append_basic_block(
+                    self.builder
+                        .get_insert_block()
+                        .and_then(|b| b.get_parent())
+                        .ok_or("no function")?,
+                    "fcs_null",
+                );
+                let ok_bb = self.context.append_basic_block(
+                    self.builder
+                        .get_insert_block()
+                        .and_then(|b| b.get_parent())
+                        .ok_or("no function")?,
+                    "fcs_ok",
+                );
+                let merge_bb = self.context.append_basic_block(
+                    self.builder
+                        .get_insert_block()
+                        .and_then(|b| b.get_parent())
+                        .ok_or("no function")?,
+                    "fcs_merge",
+                );
                 let _ = self
                     .builder
                     .build_conditional_branch(is_null, is_null_bb, ok_bb);
 
                 // Null path: return empty string ""
                 self.builder.position_at_end(is_null_bb);
-                let empty_str = self.builder.build_alloca(self.string_type, "empty").map_err(llvm_err)?;
+                let empty_str = self
+                    .builder
+                    .build_alloca(self.string_type, "empty")
+                    .map_err(llvm_err)?;
                 let empty_undef = self.string_type.get_undef();
                 let e1 = self
                     .builder
                     .build_insert_value(empty_undef, self.i64_ty().const_int(0, false), 0, "e_len")
                     .map_err(llvm_err)?;
                 // Allocate a zero byte for the empty string data
-                let zero_byte = self.builder.build_alloca(self.context.i8_type(), "zero_byte").map_err(llvm_err)?;
+                let zero_byte = self
+                    .builder
+                    .build_alloca(self.context.i8_type(), "zero_byte")
+                    .map_err(llvm_err)?;
                 self.builder
                     .build_store(zero_byte, self.context.i8_type().const_int(0, false))
                     .map_err(llvm_err)?;
@@ -15481,9 +15481,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_insert_value(e1, zero_byte, 1, "e_ptr")
                     .map_err(llvm_err)?;
-                self.builder
-                    .build_store(empty_str, e2)
-                    .map_err(llvm_err)?;
+                self.builder.build_store(empty_str, e2).map_err(llvm_err)?;
                 let _ = self.builder.build_unconditional_branch(merge_bb);
 
                 // OK path: strlen + allocate
@@ -15513,8 +15511,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let phi = self
                     .builder
                     .build_phi(
-                        self.context
-                            .ptr_type(inkwell::AddressSpace::default()),
+                        self.context.ptr_type(inkwell::AddressSpace::default()),
                         "fcs_phi",
                     )
                     .map_err(llvm_err)?;
