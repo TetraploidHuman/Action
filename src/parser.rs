@@ -1188,9 +1188,14 @@ impl Parser {
                 let mut sub_lexer = Lexer::new(&expr_str);
                 let sub_tokens = sub_lexer.tokenize();
                 let mut sub_parser = Parser::new(sub_tokens);
-                let expr = sub_parser
-                    .parse_expr()
-                    .unwrap_or_else(|_| Expr::string(&expr_str));
+                let expr = match sub_parser.parse_expr() {
+                    Ok(e) => e,
+                    Err(_) => {
+                        // Keep the raw ${...} text as a literal so the error is visible
+                        let raw = format!("${{{}}}", expr_str);
+                        Expr::string(&raw)
+                    }
+                };
                 parts.push(StringPart::Expr(Box::new(expr)));
             } else {
                 current.push(chars[i]);

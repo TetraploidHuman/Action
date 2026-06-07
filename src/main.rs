@@ -431,87 +431,204 @@ fn load_module(module_name: &str, search_dirs: &[PathBuf]) -> Result<Vec<Stmt>, 
     ))
 }
 
-/// Resolve import statements by loading module files and adding their statements
+/// Resolve import statements by loading module files and adding their statements.
+/// Performs recursive resolution to handle transitive imports and detects cycles.
 fn resolve_imports(program: &Program, search_dirs: &[PathBuf]) -> Result<Vec<Stmt>, String> {
     let mut extra_stmts = Vec::new();
     let mut loaded: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // Track modules currently being resolved for cycle detection
+    let mut visiting: std::collections::HashSet<String> = std::collections::HashSet::new();
 
-    for stmt in &program.stmts {
-        if let Stmt::Import {
-            module,
-            items,
-            alias,
-            ..
-        } = stmt
-        {
-            if loaded.contains(module) {
-                continue;
-            }
-            loaded.insert(module.clone());
+    fn resolve_module(
+        module: &str,
+        items: &Option<Vec<String>>,
+        alias: &Option<String>,
+        search_dirs: &[PathBuf],
+        loaded: &mut std::collections::HashSet<String>,
+        visiting: &mut std::collections::HashSet<String>,
+        extra_stmts: &mut Vec<Stmt>,
+    ) -> Result<(), String> {
+        if loaded.contains(module) {
+            return Ok(());
+        }
+        if visiting.contains(module) {
+            return Err(format!(
+                "Circular import detected: module '{}' is part of an import cycle",
+                module
+            ));
+        }
+        visiting.insert(module.to_string());
 
-            let module_stmts = load_module(module, search_dirs)?;
-            let prefix = alias.as_ref().unwrap_or(module);
+        let module_stmts = load_module(module, search_dirs)?;
+        let prefix = alias.as_deref().unwrap_or(module);
 
-            // Check if the module has an explicit Module statement with export list
-            let exported: Option<std::collections::HashSet<String>> =
-                module_stmts.iter().find_map(|s| {
-                    if let Stmt::Module { exports, .. } = s {
-                        Some(
-                            exports
-                                .iter()
-                                .filter_map(|e| match e {
-                                    ExportItem::Function(name)
-                                    | ExportItem::Constant(name)
-                                    | ExportItem::Type(name) => Some(name.clone()),
-                                })
-                                .collect(),
-                        )
-                    } else {
-                        None
-                    }
-                });
-
-            // Collect statements to import (from module body or top-level)
-            let mut stmts_to_check: Vec<&Stmt> = Vec::new();
-            for m_stmt in &module_stmts {
-                match m_stmt {
-                    Stmt::Module { body, .. } => {
-                        for b in body {
-                            stmts_to_check.push(b);
-                        }
-                    }
-                    _ => stmts_to_check.push(m_stmt),
+        // Check if the module has an explicit Module statement with export list
+        let exported: Option<std::collections::HashSet<String>> =
+            module_stmts.iter().find_map(|s| {
+                if let Stmt::Module { exports, .. } = s {
+                    Some(
+                        exports
+                            .iter()
+                            .filter_map(|e| match e {
+                                ExportItem::Function(name)
+                                | ExportItem::Constant(name)
+                                | ExportItem::Type(name) => Some(name.clone()),
+                            })
+                            .collect(),
+                    )
+                } else {
+                    None
                 }
-            }
+            });
 
-            for m_stmt in &stmts_to_check {
-                match m_stmt {
-                    Stmt::Fun {
-                        name,
-                        params,
-                        return_type,
-                        body,
-                        is_single_expr,
-                        type_params,
-                        ..
-                    } => {
-                        // Selective import: bare names. Wildcard: prefixed.
+        // Collect statements to import (from module body or top-level)
+        let mut stmts_to_check: Vec<&Stmt> = Vec::new();
+        for m_stmt in &module_stmts {
+            match m_stmt {
+                Stmt::Module { body, .. } => {
+                    for b in body {
+                        stmts_to_check.push(b);
+                    }
+                }
+                _ => stmts_to_check.push(m_stmt),
+            }
+        }
+
+        for m_stmt in &stmts_to_check {
+            match m_stmt {
+                Stmt::Fun {
+                    name,
+                    params,
+                    return_type,
+                    body,
+                    is_single_expr,
+                    type_params,
+                    ..
+                } => {
+                    // Selective import: bare names. Wildcard: prefixed.
+                    let imported_name = if items.is_some() {
+                        name.clone()
+                    } else {
+                        format!("{}_{}", prefix, name)
+                    };
+                    // Filter by: import items list (if specified) AND module exports (if specified)
+                    let should_import = if let Some(ref its) = items {
+                        its.contains(name)
+                    } else if let Some(ref exported_set) = exported {
+                        exported_set.contains(name)
+                    } else {
+                        true
+                    };
+                    if should_import {
+                        extra_stmts.push(Stmt::Fun {
+                            name: imported_name,
+                            params: params.clone(),
+                            return_type: return_type.clone(),
+                            body: body.clone(),
+                            type_params: type_params.clone(),
+                            is_single_expr: *is_single_expr,
+                            span: Span::default(),
+                        });
+                    }
+                }
+                Stmt::Const {
+                    name,
+                    type_ann,
+                    value,
+                    ..
+                } => {
+                    let should_import = if let Some(ref its) = items {
+                        its.contains(name)
+                    } else if let Some(ref exported_set) = exported {
+                        exported_set.contains(name)
+                    } else {
+                        true
+                    };
+                    if should_import {
                         let imported_name = if items.is_some() {
                             name.clone()
                         } else {
                             format!("{}_{}", prefix, name)
                         };
-                        // Filter by: import items list (if specified) AND module exports (if specified)
-                        let should_import = if let Some(ref its) = items {
-                            its.contains(name)
-                        } else if let Some(ref exported_set) = exported {
-                            exported_set.contains(name)
+                        extra_stmts.push(Stmt::Const {
+                            name: imported_name,
+                            type_ann: type_ann.clone(),
+                            value: value.clone(),
+                            span: Span::default(),
+                        });
+                    }
+                }
+                Stmt::TypeAlias {
+                    name,
+                    type_params,
+                    definition,
+                    ..
+                } => {
+                    let should_import = if let Some(ref its) = items {
+                        its.contains(name)
+                    } else if let Some(ref exported_set) = exported {
+                        exported_set.contains(name)
+                    } else {
+                        true
+                    };
+                    if should_import {
+                        let imported_name = if items.is_some() {
+                            name.clone()
                         } else {
-                            true
+                            format!("{}_{}", prefix, name)
                         };
-                        if should_import {
+                        extra_stmts.push(Stmt::TypeAlias {
+                            name: imported_name,
+                            type_params: type_params.clone(),
+                            definition: definition.clone(),
+                            span: Span::default(),
+                        });
+                    }
+                }
+                Stmt::Enum {
+                    name,
+                    type_params,
+                    variants,
+                    ..
+                } => {
+                    let should_import = if let Some(ref its) = items {
+                        its.contains(name)
+                    } else if let Some(ref exported_set) = exported {
+                        exported_set.contains(name)
+                    } else {
+                        true
+                    };
+                    if should_import {
+                        let imported_name = if items.is_some() {
+                            name.clone()
+                        } else {
+                            format!("{}_{}", prefix, name)
+                        };
+                        extra_stmts.push(Stmt::Enum {
+                            name: imported_name,
+                            type_params: type_params.clone(),
+                            variants: variants.clone(),
+                            span: Span::default(),
+                        });
+                    }
+                }
+                Stmt::Extension {
+                    type_name, methods, ..
+                } => {
+                    for method in methods {
+                        if let Stmt::Fun {
+                            name,
+                            params,
+                            return_type,
+                            body,
+                            is_single_expr,
+                            type_params,
+                            ..
+                        } = method
+                        {
+                            let fn_name = format!("{}_{}", type_name, name);
                             extra_stmts.push(Stmt::Fun {
-                                name: imported_name,
+                                name: fn_name,
                                 params: params.clone(),
                                 return_type: return_type.clone(),
                                 body: body.clone(),
@@ -521,139 +638,56 @@ fn resolve_imports(program: &Program, search_dirs: &[PathBuf]) -> Result<Vec<Stm
                             });
                         }
                     }
-                    Stmt::Const {
-                        name,
-                        type_ann,
-                        value,
-                        ..
-                    } => {
-                        let should_import = if let Some(ref its) = items {
-                            its.contains(name)
-                        } else if let Some(ref exported_set) = exported {
-                            exported_set.contains(name)
-                        } else {
-                            true
-                        };
-                        if should_import {
-                            let imported_name = if items.is_some() {
-                                name.clone()
-                            } else {
-                                format!("{}_{}", prefix, name)
-                            };
-                            extra_stmts.push(Stmt::Const {
-                                name: imported_name,
-                                type_ann: type_ann.clone(),
-                                value: value.clone(),
-                                span: Span::default(),
-                            });
-                        }
-                    }
-                    Stmt::TypeAlias {
-                        name,
-                        type_params,
-                        definition,
-                        ..
-                    } => {
-                        let should_import = if let Some(ref its) = items {
-                            its.contains(name)
-                        } else if let Some(ref exported_set) = exported {
-                            exported_set.contains(name)
-                        } else {
-                            true
-                        };
-                        if should_import {
-                            let imported_name = if items.is_some() {
-                                name.clone()
-                            } else {
-                                format!("{}_{}", prefix, name)
-                            };
-                            extra_stmts.push(Stmt::TypeAlias {
-                                name: imported_name,
-                                type_params: type_params.clone(),
-                                definition: definition.clone(),
-                                span: Span::default(),
-                            });
-                        }
-                    }
-                    Stmt::Enum {
-                        name,
-                        type_params,
-                        variants,
-                        ..
-                    } => {
-                        let should_import = if let Some(ref its) = items {
-                            its.contains(name)
-                        } else if let Some(ref exported_set) = exported {
-                            exported_set.contains(name)
-                        } else {
-                            true
-                        };
-                        if should_import {
-                            let imported_name = if items.is_some() {
-                                name.clone()
-                            } else {
-                                format!("{}_{}", prefix, name)
-                            };
-                            extra_stmts.push(Stmt::Enum {
-                                name: imported_name,
-                                type_params: type_params.clone(),
-                                variants: variants.clone(),
-                                span: Span::default(),
-                            });
-                        }
-                    }
-                    Stmt::Extension {
-                        type_name, methods, ..
-                    } => {
-                        for method in methods {
-                            if let Stmt::Fun {
-                                name,
-                                params,
-                                return_type,
-                                body,
-                                is_single_expr,
-                                type_params,
-                                ..
-                            } = method
-                            {
-                                let fn_name = format!("{}_{}", type_name, name);
-                                extra_stmts.push(Stmt::Fun {
-                                    name: fn_name,
-                                    params: params.clone(),
-                                    return_type: return_type.clone(),
-                                    body: body.clone(),
-                                    type_params: type_params.clone(),
-                                    is_single_expr: *is_single_expr,
-                                    span: Span::default(),
-                                });
-                            }
-                        }
-                    }
-                    // External declarations are infrastructure — always import as-is
-                    Stmt::External {
-                        name,
-                        params,
-                        return_type,
-                        ..
-                    } => {
-                        extra_stmts.push(Stmt::External {
-                            name: name.clone(),
-                            params: params.clone(),
-                            return_type: return_type.clone(),
-                            span: Span::default(),
-                        });
-                    }
-                    Stmt::ExternalType { name, .. } => {
-                        extra_stmts.push(Stmt::ExternalType {
-                            name: name.clone(),
-                            span: Span::default(),
-                        });
-                    }
-                    _ => {}
                 }
+                // External declarations are infrastructure — always import as-is
+                Stmt::External {
+                    name,
+                    params,
+                    return_type,
+                    ..
+                } => {
+                    extra_stmts.push(Stmt::External {
+                        name: name.clone(),
+                        params: params.clone(),
+                        return_type: return_type.clone(),
+                        span: Span::default(),
+                    });
+                }
+                Stmt::ExternalType { name, .. } => {
+                    extra_stmts.push(Stmt::ExternalType {
+                        name: name.clone(),
+                        span: Span::default(),
+                    });
+                }
+                _ => {}
             }
         }
+
+        loaded.insert(module.to_string());
+        visiting.remove(module);
+        Ok(())
     }
+
+    for stmt in &program.stmts {
+        if let Stmt::Import {
+            module,
+            items,
+            alias,
+            ..
+        } = stmt
+        {
+            resolve_module(
+                module,
+                items,
+                alias,
+                search_dirs,
+                &mut loaded,
+                &mut visiting,
+                &mut extra_stmts,
+            )?;
+        }
+    }
+
     Ok(extra_stmts)
 }
 

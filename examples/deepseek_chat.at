@@ -1,4 +1,6 @@
-// DeepSeek AI Chat
+// DeepSeek AI Chat - using JSON library for response parsing
+import json.{jsonParse, jsonGet, jsonGetIdx, jsonAsStr, jsonFree, jsonEscape}
+
 fun main() {
     println("=== DeepSeek AI Chat ===")
     println("Type 'quit' to exit")
@@ -37,84 +39,18 @@ fun storeMessages(input: String, content: String, msgs: String): String = {
     when msgs == "" { userMsg + ", " + assistantMsg else msgs + ", " + userMsg + ", " + assistantMsg }
 }
 
+// Parse DeepSeek API response using the JSON library
 fun extractContent(raw: String): String = {
-    val nl = findChar(raw, "\n")
-    val json = substring(raw, nl + 1, len(raw) - nl - 1)
-    val start = findSubstr(json, "\"content\":\"")
-    val from = start + 11
-    val end = findQuote(json, from)
-    val content = when start >= 0 { substring(json, from, end - from) else raw }
-    jsonUnescape(content)
-}
-
-// 将 JSON 转义序列还原为实际字符
-fun jsonUnescape(s: String): String = {
-    var r = ""
-    var i = 0
-    for i < len(s) {
-        val isEsc = substring(s, i, 1) == "\\" and i + 1 < len(s)
-        val next = when isEsc { substring(s, i + 1, 1) else "" }
-        val ch = when isEsc {
-            when next {
-                "n" -> "\n"
-                "t" -> "\t"
-                "r" -> "\r"
-                "\\" -> "\\"
-                "\"" -> "\""
-                else -> "\\" + next
-            }
-            else substring(s, i, 1)
-        }
-        r = r + ch
-        i = i + when isEsc { 2 else 1 }
-    }
-    r
-}
-
-fun findChar(s: String, pat: String): Int = {
-    var pos = -1
-    var i = 0
-    for i <= len(s) - len(pat) and pos == -1 {
-        val match = substring(s, i, len(pat)) == pat
-        pos = when match { i else -1 }
-        i = i + when pos >= 0 { 0 else 1 }
-    }
-    pos
-}
-
-fun findSubstr(s: String, pat: String): Int = findChar(s, pat)
-
-fun findQuote(s: String, from: Int): Int = {
-    var pos = -1
-    var i = from
-    for i < len(s) and pos == -1 {
-        val ch = substring(s, i, 1)
-        val isQuote = ch == "\"" and !isEscaped(s, i)
-        pos = when isQuote { i else -1 }
-        i = i + 1
-    }
-    pos
-}
-
-// 检查 s[pos] 是否被奇数个反斜杠转义（即前面有 1,3,5... 个 \）
-fun isEscaped(s: String, pos: Int): Bool = {
-    var count = 0
-    var j = pos - 1
-    for j >= 0 and substring(s, j, 1) == "\\" {
-        count = count + 1
-        j = j - 1
-    }
-    count % 2 == 1
-}
-
-fun jsonEscape(s: String): String = {
-    var r = ""
-    var i = 0
-    for i < len(s) {
-        val ch = substring(s, i, 1)
-        val esc = when ch == "\"" { "\\\"" else when ch == "\\" { "\\\\" else when ch == "\n" { "\\n" else when ch == "\r" { "\\r" else when ch == "\t" { "\\t" else ch } } } } }
-        r = r + esc
-        i = i + 1
-    }
-    r
+    // Find first newline (HTTP response format: "STATUS\nBODY")
+    var nl = 0
+    for nl < len(raw) and substring(raw, nl, 1) != "\n" { nl = nl + 1 }
+    val jsonStr = substring(raw, nl + 1, len(raw) - nl - 1)
+    val root = jsonParse(jsonStr)
+    val choices = jsonGet(root, "choices")
+    val first = jsonGetIdx(choices, 0)
+    val message = jsonGet(first, "message")
+    val contentNode = jsonGet(message, "content")
+    val content = jsonAsStr(contentNode)
+    jsonFree(root)
+    substring(content, 0, len(content))
 }

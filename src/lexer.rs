@@ -644,14 +644,14 @@ impl Lexer {
         // Skip opening quote
         self.advance();
 
-        // Empty char literal: ''
+        // Empty char literal: '' — return null character as sentinel
         if self.current() == Some('\'') {
             self.advance(); // skip closing quote
-            return TokenKind::Underscore;
+            return TokenKind::CharLiteral('\0');
         }
 
         let ch = match self.current() {
-            None => return TokenKind::Underscore,
+            None => return TokenKind::CharLiteral('\0'),
             Some('\\') => {
                 self.advance();
                 match self.current() {

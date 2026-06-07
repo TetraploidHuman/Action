@@ -80,3 +80,17 @@ fun jsonAsBool(node: Ptr[JsonNode]): Bool = {
 
 // Get length of array or object. Returns -1 for other types.
 fun jsonLen(node: Ptr[JsonNode]): Int = action_json_len(node)
+
+// Escape special characters for safe inclusion in a JSON string.
+// Escapes: " \ \n \r \t
+fun jsonEscape(s: String): String = {
+    var r = ""
+    var i = 0
+    for i < len(s) {
+        val ch = substring(s, i, 1)
+        val esc = when ch == "\"" { "\\\"" else when ch == "\\" { "\\\\" else when ch == "\n" { "\\n" else when ch == "\r" { "\\r" else when ch == "\t" { "\\t" else ch } } } } }
+        r = r + esc
+        i = i + 1
+    }
+    r
+}
