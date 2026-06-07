@@ -15519,8 +15519,8 @@ impl<'ctx> CodeGen<'ctx> {
                     )
                     .map_err(llvm_err)?;
                 phi.add_incoming(&[
-                    (&empty_str.as_basic_value(), is_null_bb),
-                    (&ok_alloca.as_basic_value(), ok_bb),
+                    (&empty_str.as_basic_value_enum(), is_null_bb),
+                    (&ok_alloca.as_basic_value_enum(), ok_bb),
                 ]);
                 let result_alloca = phi.as_basic_value().into_pointer_value();
                 Ok(TypedValue::Str(result_alloca))
