@@ -11749,7 +11749,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .add_function("FindClose", i32.fn_type(&[ptr.into()], false), None);
             // WIN32_FIND_DATAA = 320 bytes; cFileName at offset 44
             let find_data_size = i64.const_int(320, false);
-            let cfile_name_offset = 44i64;
+            let cfile_name_offset = 44u64;
 
             // Build search pattern: path + "\*"
             // pattern = malloc(path_len + 3)
