@@ -11831,7 +11831,10 @@ impl<'ctx> CodeGen<'ctx> {
                 .unwrap_basic()
                 .into_pointer_value();
             // INVALID_HANDLE_VALUE = -1
-            let invalid_handle = ptr.const_int((-1i64) as u64, false);
+            let invalid_handle = self
+                .builder
+                .build_int_to_ptr(i64.const_int((-1i64) as u64, true), ptr, "invalid_handle")
+                .map_err(llvm_err)?;
             let is_invalid = self
                 .builder
                 .build_int_compare(
