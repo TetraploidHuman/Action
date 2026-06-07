@@ -62,6 +62,47 @@ fn map_host_symbols(cg: &CodeGen, engine: &inkwell::execution_engine::ExecutionE
         }
     }
 
+    // On Windows, map CRT functions that may not be visible to the JIT
+    // via default symbol resolution (e.g. __acrt_iob_func used by readLine).
+    #[cfg(target_os = "windows")]
+    {
+        // __acrt_iob_func(0) returns stdin FILE*
+        if let Some(func) = cg.module.get_function("__acrt_iob_func") {
+            type AcrtIob = unsafe extern "C" fn(std::ffi::c_int) -> *mut std::ffi::c_void;
+            extern "C" {
+                fn __acrt_iob_func(index: std::ffi::c_int) -> *mut std::ffi::c_void;
+            }
+            engine.add_global_mapping(&func, __acrt_iob_func as AcrtIob as usize);
+        }
+        // Kernel32 functions — always available on Windows
+        if let Some(func) = cg.module.get_function("GetStdHandle") {
+            type Gsh = unsafe extern "C" fn(std::ffi::c_int) -> *mut std::ffi::c_void;
+            extern "C" {
+                fn GetStdHandle(nStdHandle: std::ffi::c_int) -> *mut std::ffi::c_void;
+            }
+            engine.add_global_mapping(&func, GetStdHandle as Gsh as usize);
+        }
+        if let Some(func) = cg.module.get_function("ReadFile") {
+            type Rf = unsafe extern "C" fn(
+                *mut std::ffi::c_void,
+                *mut std::ffi::c_void,
+                std::ffi::c_int,
+                *mut std::ffi::c_int,
+                *mut std::ffi::c_void,
+            ) -> std::ffi::c_int;
+            extern "C" {
+                fn ReadFile(
+                    hFile: *mut std::ffi::c_void,
+                    lpBuffer: *mut std::ffi::c_void,
+                    nNumberOfBytesToRead: std::ffi::c_int,
+                    lpNumberOfBytesRead: *mut std::ffi::c_int,
+                    lpOverlapped: *mut std::ffi::c_void,
+                ) -> std::ffi::c_int;
+            }
+            engine.add_global_mapping(&func, ReadFile as Rf as usize);
+        }
+    }
+
     // Map host-provided runtime functions that the module declares as
     // external. These are defined with #[no_mangle] in Rust and need to
     // be made visible to the JIT.
