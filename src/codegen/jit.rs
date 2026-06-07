@@ -9,7 +9,7 @@ use std::io::Write;
 use super::CodeGen;
 
 impl<'ctx> CodeGen<'ctx> {
-    pub fn run_jit(&self) -> Result<(), String> {
+    pub fn run_jit(&self) -> Result<i64, String> {
         #[cfg(not(target_os = "windows"))]
         if let Err(e) = self.module.verify() {
             return Err(format!("LLVM module verification failed: {}", e));
@@ -19,7 +19,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 }
 
-fn run_via_jit(cg: &CodeGen) -> Result<(), String> {
+fn run_via_jit(cg: &CodeGen) -> Result<i64, String> {
     let opt = match cg.opt_level {
         0 => inkwell::OptimizationLevel::None,
         1 => inkwell::OptimizationLevel::Less,
@@ -37,17 +37,18 @@ fn run_via_jit(cg: &CodeGen) -> Result<(), String> {
     // exported to the dynamic symbol table.
     map_host_symbols(cg, &engine);
 
-    unsafe {
+    let exit_code = unsafe {
         let main: inkwell::execution_engine::JitFunction<unsafe extern "C" fn() -> u64> =
             engine.get_function("main").map_err(|e| e.to_string())?;
-        let _exit_code = main.call();
+        let code = main.call();
         extern "C" {
             fn fflush(stream: *mut std::ffi::c_void) -> std::ffi::c_int;
         }
         fflush(std::ptr::null_mut());
-    }
+        code
+    };
     std::io::stdout().flush().ok();
-    Ok(())
+    Ok(exit_code as i64)
 }
 
 fn map_host_symbols(cg: &CodeGen, engine: &inkwell::execution_engine::ExecutionEngine) {

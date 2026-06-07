@@ -1112,13 +1112,7 @@ impl<'ctx> CodeGen<'ctx> {
                 |b, l, r| b.build_int_mul(l, r, "mul"),
                 |b, l, r| b.build_float_mul(l, r, "mul"),
             ),
-            BinaryOp::Div => self.bin_arith(
-                &left,
-                &right,
-                "div",
-                |b, l, r| b.build_int_signed_div(l, r, "div"),
-                |b, l, r| b.build_float_div(l, r, "div"),
-            ),
+            BinaryOp::Div => self.bin_div(&left, &right),
             BinaryOp::Mod => self.bin_mod(&left, &right),
             BinaryOp::Pow => self.bin_pow(&left, &right),
             BinaryOp::Eq => self.compare_eq(&left, &right),
@@ -1375,17 +1369,73 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    pub(super) fn bin_div(
+        &mut self,
+        l: &TypedValue<'ctx>,
+        r: &TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        match (l, r) {
+            (TypedValue::Int(a), TypedValue::Int(b)) => {
+                let zero = self.i64_ty().const_int(0, false);
+                let is_zero = self
+                    .builder
+                    .build_int_compare(inkwell::IntPredicate::EQ, *b, zero, "div_zero")
+                    .map_err(llvm_err)?;
+                let one = self.i64_ty().const_int(1, false);
+                let safe_divisor = self
+                    .builder
+                    .build_select(is_zero, one, *b, "safe_div")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                Ok(TypedValue::Int(
+                    self.builder
+                        .build_int_signed_div(*a, safe_divisor, "div")
+                        .map_err(llvm_err)?,
+                ))
+            }
+            (TypedValue::Float(a), TypedValue::Float(b)) => Ok(TypedValue::Float(
+                self.builder
+                    .build_float_div(*a, *b, "div")
+                    .map_err(llvm_err)?,
+            )),
+            (TypedValue::Float(_), _) | (_, TypedValue::Float(_)) => {
+                let fa = self.promote_to_float(l)?;
+                let fb = self.promote_to_float(r)?;
+                Ok(TypedValue::Float(
+                    self.builder
+                        .build_float_div(fa, fb, "div")
+                        .map_err(llvm_err)?,
+                ))
+            }
+            _ => Err("Cannot perform division on these types".to_string()),
+        }
+    }
+
     pub(super) fn bin_mod(
         &mut self,
         l: &TypedValue<'ctx>,
         r: &TypedValue<'ctx>,
     ) -> Result<TypedValue<'ctx>, String> {
         match (l, r) {
-            (TypedValue::Int(a), TypedValue::Int(b)) => Ok(TypedValue::Int(
-                self.builder
-                    .build_int_signed_rem(*a, *b, "mod")
-                    .map_err(llvm_err)?,
-            )),
+            (TypedValue::Int(a), TypedValue::Int(b)) => {
+                // Guard against modulo by zero
+                let zero = self.i64_ty().const_int(0, false);
+                let is_zero = self
+                    .builder
+                    .build_int_compare(inkwell::IntPredicate::EQ, *b, zero, "mod_zero")
+                    .map_err(llvm_err)?;
+                let one = self.i64_ty().const_int(1, false);
+                let safe_divisor = self
+                    .builder
+                    .build_select(is_zero, one, *b, "safe_mod")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                Ok(TypedValue::Int(
+                    self.builder
+                        .build_int_signed_rem(*a, safe_divisor, "mod")
+                        .map_err(llvm_err)?,
+                ))
+            }
             _ => Err("Modulo requires integer operands".to_string()),
         }
     }

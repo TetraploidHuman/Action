@@ -580,7 +580,7 @@ pub fn handle_code_actions(
     params: CodeActionParams,
 ) -> Option<CodeActionResponse> {
     let uri = &params.text_document.uri;
-    let _doc = state.project.documents.get(uri)?;
+    let doc = state.project.documents.get(uri)?;
 
     let mut actions = Vec::new();
 
@@ -591,16 +591,30 @@ pub fn handle_code_actions(
                 lsp_types::NumberOrString::String(s) => s.as_str(),
                 _ => "",
             };
-            if code_str == "type-error" && diag.message.contains("non-exhaustive") {
-                actions.push(lsp_types::CodeActionOrCommand::CodeAction(CodeAction {
-                    title: "Add else branch".to_string(),
-                    kind: Some(CodeActionKind::QUICKFIX),
-                    diagnostics: Some(vec![diag.clone()]),
-                    edit: None,
-                    command: None,
-                    is_preferred: Some(true),
-                    ..Default::default()
-                }));
+            if code_str == "type-error"
+                && (diag.message.contains("non-exhaustive")
+                    || diag.message.contains("Non-exhaustive"))
+            {
+                // Find the closing brace of the when expression and insert else branch
+                if let Some(edit) = make_add_else_edit(&doc.source, &diag.range) {
+                    let uri_clone = uri.clone();
+                    actions.push(lsp_types::CodeActionOrCommand::CodeAction(CodeAction {
+                        title: "Add else branch".to_string(),
+                        kind: Some(CodeActionKind::QUICKFIX),
+                        diagnostics: Some(vec![diag.clone()]),
+                        edit: Some(WorkspaceEdit {
+                            changes: Some(
+                                vec![(uri_clone, vec![edit])]
+                                    .into_iter()
+                                    .collect(),
+                            ),
+                            ..Default::default()
+                        }),
+                        command: None,
+                        is_preferred: Some(true),
+                        ..Default::default()
+                    }));
+                }
             }
         }
     }
@@ -610,6 +624,72 @@ pub fn handle_code_actions(
     } else {
         Some(actions)
     }
+}
+
+/// Create a TextEdit that inserts `else { ... }` before the closing `}` of a when block.
+/// Searches from the diagnostic position to find the when expression's end.
+fn make_add_else_edit(source: &str, range: &Range) -> Option<TextEdit> {
+    let offset = position::lsp_position_to_offset(
+        source,
+        &Position {
+            line: range.end.line,
+            character: range.end.character,
+        },
+    );
+
+    // Search forward from the diagnostic position to find the closing `}` of the when block.
+    // We need to match braces starting from the when body's opening `{`.
+    // Strategy: find `when` keyword before the offset, then find its matching `}`.
+    let before = &source[..offset.min(source.len())];
+    let when_pos = before.rfind("when")?;
+
+    // Find the opening `{` of the when body (first `{` after `when` keyword)
+    let after_when = &source[when_pos..];
+    let open_brace = after_when.find('{')?;
+    let open_pos = when_pos + open_brace;
+
+    // Find matching closing `}`
+    let close_pos = find_matching_brace(source, open_pos)?;
+
+    // Insert `else { ... }` just before the closing `}`
+    // Preserve indentation: use the indentation of the closing brace line
+    let line_start = source[..close_pos].rfind('\n').map(|p| p + 1).unwrap_or(0);
+    let indent = &source[line_start..close_pos];
+    let indent_str = if indent.chars().all(|c| c == ' ' || c == '\t') {
+        indent.to_string()
+    } else {
+        "    ".to_string()
+    };
+
+    let insert_text = format!("{}else {{\n{0}    ...\n{0}}}\n{0}", indent_str);
+
+    let lsp_pos = position::offset_to_lsp_position(source, close_pos);
+
+    Some(TextEdit {
+        range: Range {
+            start: lsp_pos.clone(),
+            end: lsp_pos,
+        },
+        new_text: insert_text,
+    })
+}
+
+/// Find the matching `}` for the `{` at open_pos. Returns the byte offset of the `}`.
+fn find_matching_brace(source: &str, open_pos: usize) -> Option<usize> {
+    let mut depth = 0u32;
+    for (i, ch) in source[open_pos..].char_indices() {
+        match ch {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(open_pos + i);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 pub fn handle_workspace_symbol(

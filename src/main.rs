@@ -1134,7 +1134,10 @@ fn run_file(
             emit_output(&cg, path, "obj", target)?;
         }
     } else if !is_exe {
-        cg.run_jit()?;
+        let exit_code = cg.run_jit()?;
+        if exit_code != 0 {
+            std::process::exit(exit_code as i32);
+        }
     } else {
         // Run the compiled executable
         let exe_path = path.with_extension("");
