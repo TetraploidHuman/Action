@@ -378,12 +378,37 @@ fn builtin_types(program: &Program) -> Vec<Stmt> {
     builtins
 }
 
+/// Validate that a module name does not contain directory traversal or other
+/// path-injection characters (defense-in-depth: module names come from parsed source).
+fn validate_module_name(name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        return Err("Module name is empty".to_string());
+    }
+    if name.contains("..") || name.contains('/') || name.contains('\\') || name.contains('\0') {
+        return Err(format!(
+            "Invalid module name '{}': must not contain path separators or traversal",
+            name
+        ));
+    }
+    Ok(())
+}
+
 /// Load a single module file and return its statements
 fn load_module(module_name: &str, search_dirs: &[PathBuf]) -> Result<Vec<Stmt>, String> {
+    validate_module_name(module_name)?;
+
     for ext in &["atom", "at"] {
         let file_name = format!("{}.{}", module_name, ext);
         for dir in search_dirs {
             let path = dir.join(&file_name);
+            // Canonicalize to ensure the resolved path stays within the search directory
+            if let Ok(canon) = path.canonicalize() {
+                if let Ok(dir_canon) = dir.canonicalize() {
+                    if !canon.starts_with(&dir_canon) {
+                        continue; // path traversal attempt, skip this directory
+                    }
+                }
+            }
             if path.exists() {
                 let source = fs::read_to_string(&path)
                     .map_err(|e| format!("Cannot read '{}': {}", path.display(), e))?;
