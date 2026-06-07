@@ -2335,11 +2335,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?;
                 let buf_f64 = self
                     .builder
-                    .build_pointer_cast(
-                        buf,
-                        self.ptr_ty(),
-                        "ok_buf_f",
-                    )
+                    .build_pointer_cast(buf, self.ptr_ty(), "ok_buf_f")
                     .map_err(llvm_err)?;
                 self.builder
                     .build_store(buf_f64, inner_val)

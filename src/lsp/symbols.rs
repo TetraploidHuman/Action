@@ -289,9 +289,9 @@ fn stmt_to_document_symbol(stmt: &Stmt, source: &str) -> Option<DocumentSymbol> 
                         selection_range: position::span_to_lsp_range(span, source),
                         children: None,
                         tags: None,
-                #[allow(deprecated)]
-                deprecated: None,
-                            }
+                        #[allow(deprecated)]
+                        deprecated: None,
+                    }
                 })
                 .collect();
             Some(DocumentSymbol {
