@@ -8875,7 +8875,7 @@ impl<'ctx> CodeGen<'ctx> {
     pub(super) fn build_option_int(
         &mut self,
         val: IntValue<'ctx>,
-        isSome: IntValue<'ctx>,
+        is_some: IntValue<'ctx>,
     ) -> Result<TypedValue<'ctx>, String> {
         let i64_ty = self.i64_ty();
         let ptr_ty = self.ptr_ty();
@@ -8894,7 +8894,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(
                 IntPredicate::NE,
-                isSome,
+                is_some,
                 self.bool_ty().const_zero(),
                 "is_some_cond",
             )
@@ -8958,7 +8958,7 @@ impl<'ctx> CodeGen<'ctx> {
     pub(super) fn build_option_float(
         &mut self,
         val: FloatValue<'ctx>,
-        isSome: IntValue<'ctx>,
+        is_some: IntValue<'ctx>,
     ) -> Result<TypedValue<'ctx>, String> {
         let i64_ty = self.i64_ty();
         let ptr_ty = self.ptr_ty();
@@ -8977,7 +8977,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(
                 IntPredicate::NE,
-                isSome,
+                is_some,
                 self.bool_ty().const_zero(),
                 "is_some_cond",
             )
