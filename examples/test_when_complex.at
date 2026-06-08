@@ -14,8 +14,8 @@ fun main() {
     // Test 2: Or-patterns
     val y = 2
     val r2 = when y {
-        0 | 1 | 2 -> 100
-        3 | 4 | 5 -> 200
+        0, 1, 2 -> 100
+        3, 4, 5 -> 200
         else -> 300
     }
     print(r2)

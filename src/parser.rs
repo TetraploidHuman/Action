@@ -1590,7 +1590,6 @@ impl Parser {
             let mut arms = Vec::new();
             while self.current_kind() != TokenKind::RBrace {
                 if !arms.is_empty() {
-                    self.skip(TokenKind::Comma);
                     self.skip(TokenKind::Semicolon);
                 }
                 // Handle `else -> body` as wildcard (always matches)
@@ -1617,7 +1616,6 @@ impl Parser {
                     guard,
                     body: Box::new(body),
                 });
-                self.skip(TokenKind::Comma);
                 self.skip(TokenKind::Semicolon);
             }
             self.expect(TokenKind::RBrace)?;
@@ -1638,6 +1636,13 @@ impl Parser {
             // Also handle optional `and guard` between pattern and ->.
             let saved_pos = self.pos;
             let is_value_match = self.parse_pattern().ok().map_or(false, |_| {
+                // Skip comma-separated or-patterns: 0, 1, 2 -> ...
+                while self.current_kind() == TokenKind::Comma {
+                    self.advance();
+                    if self.parse_pattern().is_err() {
+                        return false;
+                    }
+                }
                 // Skip optional and guard
                 if self.current_kind() == TokenKind::And {
                     self.advance();
@@ -1652,10 +1657,19 @@ impl Parser {
                 let mut arms = Vec::new();
                 while self.current_kind() != TokenKind::RBrace {
                     if !arms.is_empty() {
-                        self.skip(TokenKind::Comma);
                         self.skip(TokenKind::Semicolon);
                     }
-                    let pattern = self.parse_pattern()?;
+                    let first_pat = self.parse_pattern()?;
+                    let pattern = if self.current_kind() == TokenKind::Comma {
+                        let mut patterns = vec![first_pat];
+                        while self.current_kind() == TokenKind::Comma {
+                            self.advance();
+                            patterns.push(self.parse_pattern()?);
+                        }
+                        Pattern::Or(patterns)
+                    } else {
+                        first_pat
+                    };
                     let guard = if self.current_kind() == TokenKind::And {
                         self.advance();
                         Some(Box::new(self.parse_expr()?))
@@ -1669,7 +1683,6 @@ impl Parser {
                         guard,
                         body: Box::new(body),
                     });
-                    self.skip(TokenKind::Comma);
                     self.skip(TokenKind::Semicolon);
                 }
                 self.expect(TokenKind::RBrace)?;
@@ -1719,18 +1732,7 @@ impl Parser {
     }
 
     fn parse_pattern(&mut self) -> Result<Pattern, ParseError> {
-        let first = self.parse_single_pattern()?;
-        // Or-patterns: 0 | 1 | 2
-        if self.current_kind() == TokenKind::Pipe {
-            let mut patterns = vec![first];
-            while self.current_kind() == TokenKind::Pipe {
-                self.advance(); // skip '|'
-                patterns.push(self.parse_single_pattern()?);
-            }
-            Ok(Pattern::Or(patterns))
-        } else {
-            Ok(first)
-        }
+        self.parse_single_pattern()
     }
 
     fn parse_single_pattern(&mut self) -> Result<Pattern, ParseError> {
