@@ -867,9 +867,12 @@ impl TypeChecker {
                             ))
                             .with_span(self.current_span));
                         }
-                        for (i, (arg, param_ty)) in
-                            args.iter().zip(param_tys.iter()).enumerate()
-                        {
+                        for (i, (arg, param_ty)) in args.iter().zip(param_tys.iter()).enumerate() {
+                            // Skip check for untyped parameters (Int is the fallback sentinel).
+                            // Without this, functions like `f(cb, x)` would reject lambdas.
+                            if matches!(param_ty, Type::Named(n) if n == "Int") {
+                                continue;
+                            }
                             let arg_ty = self.infer_expr_type(arg);
                             if !self.types_compatible(param_ty, &arg_ty) {
                                 let msg = if let Some(hint) =
@@ -885,8 +888,7 @@ impl TypeChecker {
                                         arg_ty
                                     )
                                 };
-                                return Err(CompilerError::new(msg)
-                                    .with_span(self.current_span));
+                                return Err(CompilerError::new(msg).with_span(self.current_span));
                             }
                         }
                     }
