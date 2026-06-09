@@ -812,7 +812,10 @@ fn test_error_standalone_question() {
 
 #[test]
 fn test_error_null_arg_nonnull_param() {
-    assert_compile_error("test_error_null_arg_nonnull_param.at", "cannot use nullable");
+    assert_compile_error(
+        "test_error_null_arg_nonnull_param.at",
+        "cannot use nullable",
+    );
 }
 
 #[test]
