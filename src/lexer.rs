@@ -66,6 +66,7 @@ pub enum TokenKind {
     Lazy,
     Unsafe,
     External,
+    Null,
     Task,
 
     // Literals
@@ -109,7 +110,6 @@ pub enum TokenKind {
     DotDot,     // ..
     DotDotLt,   // ..<
     DotDotDot,  // ...
-    SafeDot,    // ?.
     Colon,      // :
     ColonColon, // ::
     Comma,      // ,
@@ -156,6 +156,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Lazy => write!(f, "lazy"),
             TokenKind::Unsafe => write!(f, "unsafe"),
             TokenKind::External => write!(f, "external"),
+            TokenKind::Null => write!(f, "null"),
             TokenKind::Task => write!(f, "Task"),
             TokenKind::IntLiteral(n) => write!(f, "{}", n),
             TokenKind::FloatLiteral(n) => write!(f, "{}", n),
@@ -193,7 +194,6 @@ impl fmt::Display for TokenKind {
             TokenKind::DotDot => write!(f, ".."),
             TokenKind::DotDotLt => write!(f, "..<"),
             TokenKind::DotDotDot => write!(f, "..."),
-            TokenKind::SafeDot => write!(f, "?."),
             TokenKind::Colon => write!(f, ":"),
             TokenKind::ColonColon => write!(f, "::"),
             TokenKind::Comma => write!(f, ","),
@@ -796,6 +796,7 @@ impl Lexer {
             "lazy" => TokenKind::Lazy,
             "unsafe" => TokenKind::Unsafe,
             "external" => TokenKind::External,
+            "null" => TokenKind::Null,
             "Task" => TokenKind::Task,
             _ => TokenKind::Ident(ident),
         }
@@ -900,13 +901,7 @@ impl Lexer {
                 }
                 _ => TokenKind::Gt,
             },
-            '?' => match self.current() {
-                Some('.') => {
-                    self.advance();
-                    TokenKind::SafeDot
-                }
-                _ => TokenKind::Question,
-            },
+            '?' => TokenKind::Question,
             '&' => match self.current() {
                 Some('&') => {
                     self.advance();
@@ -1133,7 +1128,7 @@ mod tests {
 
     #[test]
     fn test_delimiters() {
-        let tokens = tokenize("(){}[];:,.? .. ?.");
+        let tokens = tokenize("(){}[];:,.? .. ? a?.b");
         assert_eq!(tokens[0], TokenKind::LParen);
         assert_eq!(tokens[1], TokenKind::RParen);
         assert_eq!(tokens[2], TokenKind::LBrace);
@@ -1146,7 +1141,11 @@ mod tests {
         assert_eq!(tokens[9], TokenKind::Dot);
         assert_eq!(tokens[10], TokenKind::Question);
         assert_eq!(tokens[11], TokenKind::DotDot);
-        assert_eq!(tokens[12], TokenKind::SafeDot);
+        // ?. => Question + Dot (two separate tokens, no more SafeDot)
+        assert_eq!(tokens[12], TokenKind::Question);
+        assert_eq!(tokens[13], TokenKind::Ident("a".to_string()));
+        assert_eq!(tokens[14], TokenKind::Question);
+        assert_eq!(tokens[15], TokenKind::Dot);
     }
 
     #[test]

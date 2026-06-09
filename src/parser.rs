@@ -354,16 +354,12 @@ impl Parser {
             }
             self.expect(TokenKind::RParen)?;
 
-            // Optional error propagation
-            let propagate = self.skip(TokenKind::Question);
-
             // Assignment
             self.expect(TokenKind::Eq)?;
             let value = self.parse_expr()?;
 
             return Ok(Stmt::Destructure {
                 mutable,
-                propagate,
                 names,
                 renames: vec![],
                 rest: None,
@@ -417,16 +413,12 @@ impl Parser {
             }
             self.expect(TokenKind::RBracket)?;
 
-            // Optional error propagation
-            let propagate = self.skip(TokenKind::Question);
-
             // Assignment
             self.expect(TokenKind::Eq)?;
             let value = self.parse_expr()?;
 
             return Ok(Stmt::Destructure {
                 mutable,
-                propagate,
                 names,
                 renames: vec![],
                 rest,
@@ -474,16 +466,12 @@ impl Parser {
             }
             self.expect(TokenKind::RBrace)?;
 
-            // Optional error propagation
-            let propagate = self.skip(TokenKind::Question);
-
             // Assignment
             self.expect(TokenKind::Eq)?;
             let value = self.parse_expr()?;
 
             return Ok(Stmt::Destructure {
                 mutable,
-                propagate,
                 names,
                 renames,
                 rest: None,
@@ -501,9 +489,6 @@ impl Parser {
         };
         self.advance();
 
-        // Check for error propagation: val x? / var x?
-        let propagate = self.skip(TokenKind::Question);
-
         // Optional type annotation
         let type_ann = if self.skip(TokenKind::Colon) {
             Some(self.parse_type()?)
@@ -517,7 +502,6 @@ impl Parser {
 
         Ok(Stmt::Let {
             mutable,
-            propagate,
             lazy_init,
             name,
             type_ann,
@@ -667,6 +651,14 @@ impl Parser {
         let ty = self.parse_type_primary()?;
 
         // Function type arrow
+        // Check for nullable type: T?
+        if self.skip(TokenKind::Question) {
+            if matches!(ty, Type::Nullable(_)) {
+                return Err(self.error("Nested nullable types (T??) are not allowed"));
+            }
+            return Ok(Type::Nullable(Box::new(ty)));
+        }
+
         if self.skip(TokenKind::Arrow) {
             let params = match ty {
                 Type::Unit => vec![],
@@ -823,33 +815,6 @@ impl Parser {
                     left = Expr::FunctionRef(format!("{}.{}", type_name, method));
                     true
                 }
-                TokenKind::SafeDot => {
-                    self.advance();
-                    let field = match &self.current_kind() {
-                        TokenKind::Ident(s) => s.clone(),
-                        _ => return Err(self.error("Expected field name after '?.'")),
-                    };
-                    self.advance();
-                    if self.current_kind() == TokenKind::LParen {
-                        self.advance();
-                        let mut args = Vec::new();
-                        while self.current_kind() != TokenKind::RParen {
-                            if !args.is_empty() {
-                                self.expect(TokenKind::Comma)?;
-                            }
-                            args.push(self.parse_expr()?);
-                        }
-                        self.expect(TokenKind::RParen)?;
-                        let method = Expr::FieldAccess(Box::new(left), field);
-                        left = Expr::SafeCall {
-                            receiver: Box::new(method),
-                            args,
-                        };
-                    } else {
-                        left = Expr::SafeFieldAccess(Box::new(left), field);
-                    }
-                    true
-                }
                 TokenKind::LBracket => {
                     self.advance();
                     let idx = self.parse_expr()?;
@@ -859,15 +824,15 @@ impl Parser {
                 }
                 TokenKind::Question => {
                     self.advance();
-                    if self.skip(TokenKind::Eq) {
-                        let value = self.parse_expr()?;
-                        left = Expr::Assign {
-                            target: Box::new(left),
-                            value: Box::new(value),
-                            propagate: true,
+                    if self.skip(TokenKind::Colon) {
+                        // Elvis operator: expr ?: default
+                        let default = self.parse_expr()?;
+                        left = Expr::Elvis {
+                            condition: Box::new(left),
+                            default: Box::new(default),
                         };
                     } else {
-                        left = Expr::Try(Box::new(left));
+                        return Err(self.error("Unexpected '?'. Did you mean '?:' (Elvis operator)?"));
                     }
                     true
                 }
@@ -907,7 +872,6 @@ impl Parser {
                 left = Expr::Assign {
                     target: Box::new(left),
                     value: Box::new(Expr::Binary(Box::new(lhs_clone), base_op, Box::new(right))),
-                    propagate: false,
                 };
                 continue;
             }
@@ -923,7 +887,6 @@ impl Parser {
                     left = Expr::Assign {
                         target: Box::new(left),
                         value: Box::new(right),
-                        propagate: false,
                     };
                 } else {
                     left = Expr::Binary(Box::new(left), op, Box::new(right));
@@ -1038,6 +1001,10 @@ impl Parser {
             TokenKind::BoolLiteral(b) => {
                 self.advance();
                 Ok(Expr::bool(b))
+            }
+            TokenKind::Null => {
+                self.advance();
+                Ok(Expr::Null)
             }
             TokenKind::CharLiteral(c) => {
                 self.advance();
@@ -1761,6 +1728,10 @@ impl Parser {
             TokenKind::FloatLiteral(f) => {
                 self.advance();
                 Ok(Pattern::Literal(Literal::Float(f)))
+            }
+            TokenKind::Null => {
+                self.advance();
+                Ok(Pattern::Null)
             }
             TokenKind::Ident(ref name) => {
                 let name = name.clone();
@@ -2516,16 +2487,18 @@ mod tests {
     }
 
     #[test]
-    fn test_let_with_error_propagation() {
-        let prog = parse("val x? = parse_int(\"123\")").unwrap();
+    fn test_let_with_nullable_type() {
+        let prog = parse("val x: Int? = null").unwrap();
         match &prog.stmts[0] {
             Stmt::Let {
-                propagate, name, ..
+                name,
+                type_ann,
+                ..
             } => {
-                assert!(*propagate);
                 assert_eq!(name, "x");
+                assert_eq!(type_ann, &Some(Type::Nullable(Box::new(Type::Named("Int".into())))));
             }
-            _ => panic!("Expected Let with propagation"),
+            _ => panic!("Expected Let with nullable type"),
         }
     }
 }

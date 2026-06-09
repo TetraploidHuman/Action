@@ -1,6 +1,7 @@
 use crate::ast::*;
 use crate::error::CompilerError;
 use crate::lexer::Span;
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Debug)]
@@ -238,6 +239,8 @@ pub struct TypeChecker {
     type_env: HashMap<String, Type>,
     /// Current statement span for error reporting
     current_span: Span,
+    /// Variables known to be non-null (smart cast from null checks)
+    not_null_set: RefCell<HashSet<String>>,
 }
 
 impl TypeChecker {
@@ -246,6 +249,7 @@ impl TypeChecker {
             registry,
             type_env: HashMap::new(),
             current_span: Span::default(),
+            not_null_set: RefCell::new(HashSet::new()),
         }
     }
 
@@ -388,10 +392,13 @@ impl TypeChecker {
                         if !matches!(&inferred, Type::Named(n) if n == "Int")
                             && !self.types_compatible(declared_ret, &inferred)
                         {
-                            errors.push(CompilerError::new(
+                            let msg = if let Some(hint) = Self::check_termination(declared_ret, &inferred) {
+                                hint
+                            } else {
                                 format!("Function '{}' declares return type '{}' but body has type '{}'",
                                     name, declared_ret, inferred)
-                            ).with_span(self.current_span));
+                            };
+                            errors.push(CompilerError::new(msg).with_span(self.current_span));
                         }
                     }
 
@@ -417,13 +424,15 @@ impl TypeChecker {
                     if let Some(ann) = type_ann {
                         let inferred = self.infer_expr_type(value);
                         if !self.types_compatible(ann, &inferred) {
-                            errors.push(
-                                CompilerError::new(format!(
+                            let msg = if let Some(hint) = Self::check_termination(ann, &inferred) {
+                                hint
+                            } else {
+                                format!(
                                     "Variable '{}' declared as '{}' but initialized with '{}'",
                                     name, ann, inferred
-                                ))
-                                .with_span(self.current_span),
-                            );
+                                )
+                            };
+                            errors.push(CompilerError::new(msg).with_span(self.current_span));
                         }
                     }
                 }
@@ -440,13 +449,15 @@ impl TypeChecker {
                     if let Some(ann) = type_ann {
                         let inferred = self.infer_expr_type(value);
                         if !self.types_compatible(ann, &inferred) {
-                            errors.push(
-                                CompilerError::new(format!(
+                            let msg = if let Some(hint) = Self::check_termination(ann, &inferred) {
+                                hint
+                            } else {
+                                format!(
                                     "Constant '{}' declared as '{}' but initialized with '{}'",
                                     name, ann, inferred
-                                ))
-                                .with_span(self.current_span),
-                            );
+                                )
+                            };
+                            errors.push(CompilerError::new(msg).with_span(self.current_span));
                         }
                     }
                 }
@@ -484,8 +495,99 @@ impl TypeChecker {
                     if let Err(msg) = self.registry.check_when_exhaustive(arms) {
                         errors.push(CompilerError::new(msg).with_span(self.current_span));
                     }
+                    // Smart cast: for value-match when x { null -> ...; else -> ... },
+                    // inject x into not_null_set for non-null arms
+                    let smart_var: Option<String> = match &w.kind {
+                        WhenKind::ValueMatch { value, .. } => {
+                            if let Expr::Ident(name) = value.as_ref() {
+                                let ty = self.infer_expr_type(value);
+                                if matches!(ty, Type::Nullable(_)) {
+                                    Some(name.clone())
+                                } else { None }
+                            } else { None }
+                        }
+                        _ => None,
+                    };
                     for arm in arms {
+                        // Inject smart cast variable for non-null patterns
+                        let is_non_null = match &arm.pattern {
+                            Pattern::Null => false,
+                            _ => true, // any non-null pattern means value is not null
+                        };
+                        if let Some(ref var) = smart_var {
+                            if is_non_null {
+                                self.not_null_set.borrow_mut().insert(var.clone());
+                            }
+                        }
                         self.collect_expr_errors(&arm.body, errors);
+                        if let Some(ref var) = smart_var {
+                            self.not_null_set.borrow_mut().remove(var);
+                        }
+                    }
+                }
+                // Smart cast for OneLine when: when x != null { ... } [else { ... }]
+                if let WhenKind::OneLine {
+                    condition,
+                    then_expr,
+                    else_expr,
+                } = &w.kind
+                {
+                    let smart_var = match condition.as_ref() {
+                        Expr::Binary(lhs, BinaryOp::Neq, rhs) => {
+                            match (lhs.as_ref(), rhs.as_ref()) {
+                                (Expr::Ident(name), Expr::Null)
+                                | (Expr::Null, Expr::Ident(name)) => {
+                                    let ty = self.infer_expr_type(lhs);
+                                    if matches!(ty, Type::Nullable(_)) {
+                                        Some(name.clone())
+                                    } else {
+                                        None
+                                    }
+                                }
+                                _ => None,
+                            }
+                        }
+                        Expr::Binary(lhs, BinaryOp::Eq, rhs) => {
+                            // x == null means in the ELSE branch x is NOT null (smart cast)
+                            match (lhs.as_ref(), rhs.as_ref()) {
+                                (Expr::Ident(name), Expr::Null)
+                                | (Expr::Null, Expr::Ident(name)) => {
+                                    let ty = self.infer_expr_type(lhs);
+                                    if matches!(ty, Type::Nullable(_)) {
+                                        Some(name.clone())
+                                    } else {
+                                        None
+                                    }
+                                }
+                                _ => None,
+                            }
+                        }
+                        _ => None,
+                    };
+                    if let Some(ref var) = smart_var {
+                        // For x != null: then branch has non-null x
+                        // For x == null: else branch has non-null x
+                        let is_neq = matches!(
+                            condition.as_ref(),
+                            Expr::Binary(_, BinaryOp::Neq, _)
+                        );
+                        if is_neq {
+                            self.not_null_set.borrow_mut().insert(var.clone());
+                        }
+                        self.collect_expr_errors(then_expr, errors);
+                        if is_neq {
+                            self.not_null_set.borrow_mut().remove(var);
+                        }
+                        if !is_neq {
+                            self.not_null_set.borrow_mut().insert(var.clone());
+                        }
+                        self.collect_expr_errors(else_expr, errors);
+                        if !is_neq {
+                            self.not_null_set.borrow_mut().remove(var);
+                        }
+                    } else {
+                        self.collect_expr_errors(then_expr, errors);
+                        self.collect_expr_errors(else_expr, errors);
                     }
                 }
             }
@@ -547,8 +649,19 @@ impl TypeChecker {
             Expr::Unsafe(inner) => {
                 self.collect_expr_errors(inner, errors);
             }
-            Expr::Try(inner) => {
-                self.collect_expr_errors(inner, errors);
+            Expr::Null => {}
+            Expr::Elvis { condition, default } => {
+                self.collect_expr_errors(condition, errors);
+                self.collect_expr_errors(default, errors);
+                // Reject null ?: null — Elvis requires a non-nullable default
+                let _cond_ty = self.infer_expr_type(condition);
+                let def_ty = self.infer_expr_type(default);
+                if matches!(def_ty, Type::Nullable(_)) {
+                    errors.push(CompilerError::new(format!(
+                        "Elvis operator '?:' requires a non-nullable default value, got '{}'",
+                        def_ty
+                    )));
+                }
             }
             Expr::Unary(_, inner) => {
                 self.collect_expr_errors(inner, errors);
@@ -564,15 +677,6 @@ impl TypeChecker {
             Expr::Tuple(elements) => {
                 for (_, e) in elements {
                     self.collect_expr_errors(e, errors);
-                }
-            }
-            Expr::SafeFieldAccess(obj, _) => {
-                self.collect_expr_errors(obj, errors);
-            }
-            Expr::SafeCall { receiver, args, .. } => {
-                self.collect_expr_errors(receiver, errors);
-                for a in args {
-                    self.collect_expr_errors(a, errors);
                 }
             }
             Expr::Range(start, end) => {
@@ -626,6 +730,29 @@ impl TypeChecker {
     fn check_binary_op(&self, lhs: &Expr, op: BinaryOp, rhs: &Expr) -> Result<(), CompilerError> {
         let lt = self.infer_expr_type(lhs);
         let rt = self.infer_expr_type(rhs);
+
+        // Reject nullable operands in arithmetic/bitwise operations.
+        // String concatenation (Add) with nullable is allowed.
+        let is_nullable_op = matches!(lt, Type::Nullable(_)) || matches!(rt, Type::Nullable(_));
+        if is_nullable_op {
+            let is_add_string = op == BinaryOp::Add
+                && (format!("{}", lt).starts_with("Nullable<String")
+                    || format!("{}", rt).starts_with("Nullable<String")
+                    || format!("{}", lt).starts_with("String")
+                    || format!("{}", rt).starts_with("String"));
+            match op {
+                BinaryOp::Add if is_add_string => {} // allow
+                BinaryOp::Eq | BinaryOp::Neq | BinaryOp::And | BinaryOp::Or => {} // comparison/logical allow
+                BinaryOp::Lt | BinaryOp::Gt | BinaryOp::Lte | BinaryOp::Gte => {} // comparison allow
+                _ => {
+                    return Err(CompilerError::new(format!(
+                        "Arithmetic/bitwise operation '{}' does not accept nullable operands. Use '?:' to provide a default",
+                        op
+                    ))
+                    .with_span(self.current_span));
+                }
+            }
+        }
 
         match op {
             BinaryOp::Add => {
@@ -821,11 +948,11 @@ impl TypeChecker {
                         "launch" => Type::Task(Box::new(Type::Named("Int".into()))),
                         "stream" => Type::Stream(Box::new(Type::Named("Int".into()))),
                         "is_done" | "is_cancelled" => Type::Named("Bool".into()),
-                        "withTimeout" => Type::Named("Result".into()),
+                        "withTimeout" => Type::Nullable(Box::new(Type::Named("Int".into()))),
                         "coroutineScope" => Type::Named("List".into()),
                         // Callback-based list functions
                         "any" | "all" => Type::Named("Bool".into()),
-                        "find" | "findIndex" | "reduce" => Type::Named("Option".into()),
+                        "find" | "findIndex" | "reduce" => Type::Nullable(Box::new(Type::Named("Int".into()))),
                         "foldRight" => Type::Named("Int".into()),
                         "takeWhile" | "dropWhile" | "sortedBy" => Type::Named("List".into()),
                         _ => {
@@ -855,7 +982,7 @@ impl TypeChecker {
                         (Type::Map(_, _), "insert") | (Type::Set(_), "insert") => Type::Unit,
                         (Type::Map(_, _), "remove")
                         | (Type::Map(_, _), "get")
-                        | (Type::Set(_), "remove") => Type::Named("Option".into()),
+                        | (Type::Set(_), "remove") => Type::Nullable(Box::new(Type::Named("Int".into()))),
                         // Stream UFCS methods
                         (Type::Stream(_), "send") => Type::Unit,
                         (Type::Stream(_), "receive") => Type::Named("Int".into()),
@@ -896,11 +1023,21 @@ impl TypeChecker {
                 }
             }
             Expr::Copy(inner) => self.infer_expr_type(inner),
-            Expr::Try(inner) => {
-                // expr? unwraps Option/Result — the result type is the inner success type
-                // For now, use infer_expr_type which returns the enum type;
-                // the codegen handles the actual unwrapping at runtime
-                self.infer_expr_type(inner)
+            Expr::Null => Type::Nullable(Box::new(Type::Named("Nothing".into()))),
+            Expr::Elvis { condition, default } => {
+                let cond_ty = self.infer_expr_type(condition);
+                let default_ty = self.infer_expr_type(default);
+                // Elvis unwraps nullable: T? ?: U -> T | U
+                match cond_ty {
+                    Type::Nullable(inner) => {
+                        if self.types_compatible(&inner, &default_ty) {
+                            *inner
+                        } else {
+                            default_ty
+                        }
+                    }
+                    _ => cond_ty,
+                }
             }
             Expr::Unsafe(inner) => self.infer_expr_type(inner),
             Expr::Block(stmts) => stmts
@@ -924,6 +1061,12 @@ impl TypeChecker {
                         .unwrap_or_default();
                     Type::Named(enum_name)
                 } else if let Some(ty) = self.type_env.get(name) {
+                    // Smart cast: if variable is known non-null, unwrap nullable type
+                    if self.not_null_set.borrow().contains(name) {
+                        if let Type::Nullable(inner) = ty {
+                            return *inner.clone();
+                        }
+                    }
                     ty.clone()
                 } else {
                     Type::Named("Int".into())
@@ -933,14 +1076,28 @@ impl TypeChecker {
             Expr::Index(obj, _) => {
                 let obj_type = self.infer_expr_type(obj);
                 match obj_type {
-                    Type::Map(_, _) | Type::Set(_) => Type::Named("Option".into()),
+                    // Map/Set indexing returns nullable T? (was Option<T>)
+                    Type::Map(_, v) => Type::Nullable(v.clone()),
+                    Type::Set(e) => Type::Nullable(e.clone()),
                     Type::Named(ref n) if n == "String" => Type::Named("Int".into()),
+                    // If obj is nullable, indexing auto short-circuits to nullable
+                    Type::Nullable(inner) => match *inner {
+                        Type::Map(_, v) => Type::Nullable(v),
+                        Type::Set(e) => Type::Nullable(e),
+                        Type::Named(ref n) if n == "String" => Type::Named("Int".into()),
+                        _ => Type::Nullable(Box::new(Type::Named("Int".into()))),
+                    },
                     _ => Type::Named("Int".into()),
                 }
             }
             Expr::FieldAccess(obj, field) => {
                 let obj_type = self.infer_expr_type(obj);
-                if let Type::Named(type_name) = &obj_type {
+                // If obj is nullable, field access short-circuits to nullable result
+                let (inner_obj_type, is_nullable) = match &obj_type {
+                    Type::Nullable(inner) => (inner.as_ref(), true),
+                    other => (other, false),
+                };
+                let field_type = if let Type::Named(type_name) = inner_obj_type {
                     let struct_name = match type_name.as_str() {
                         "Str" => "String",
                         "Double" => "Float",
@@ -948,27 +1105,21 @@ impl TypeChecker {
                     };
                     if let Some(struct_info) = self.registry.structs.get(struct_name) {
                         if let Some(index) = struct_info.field_index.get(field) {
-                            return struct_info.fields[*index].1.clone();
+                            struct_info.fields[*index].1.clone()
+                        } else {
+                            Type::Named("Int".into())
                         }
+                    } else {
+                        Type::Named("Int".into())
                     }
+                } else {
+                    Type::Named("Int".into())
+                };
+                if is_nullable {
+                    Type::Nullable(Box::new(field_type))
+                } else {
+                    field_type
                 }
-                Type::Named("Int".into())
-            }
-            Expr::SafeFieldAccess(obj, field) => {
-                let obj_type = self.infer_expr_type(obj);
-                if let Type::Named(type_name) = &obj_type {
-                    let struct_name = match type_name.as_str() {
-                        "Str" => "String",
-                        "Double" => "Float",
-                        other => other,
-                    };
-                    if let Some(struct_info) = self.registry.structs.get(struct_name) {
-                        if let Some(index) = struct_info.field_index.get(field) {
-                            return struct_info.fields[*index].1.clone();
-                        }
-                    }
-                }
-                Type::Named("Int".into())
             }
             Expr::StructLiteral(fields) => {
                 let field_names: Vec<String> = fields.iter().map(|(n, _)| n.clone()).collect();
@@ -984,6 +1135,26 @@ impl TypeChecker {
                 UnaryOp::Neg | UnaryOp::BitNot => self.infer_expr_type(inner),
             },
             _ => Type::Named("Int".into()),
+        }
+    }
+
+    /// Check for nullable termination violation: T? used where T is expected.
+    /// Returns Some(error_suffix) if declared expects T but inferred is T?.
+    fn check_termination(declared: &Type, inferred: &Type) -> Option<String> {
+        match (declared, inferred) {
+            (Type::Nullable(_), _) => None, // declared is nullable, assignment of non-null to T? is fine
+            (_, Type::Nullable(_inner)) => {
+                // T? used where T is expected
+                if !matches!(declared, Type::Named(n) if n == "Nothing") {
+                    Some(format!(
+                        "cannot use nullable '{}' where non-nullable '{}' is expected. Use '?:' to provide a default, or check for null first",
+                        inferred, declared
+                    ))
+                } else {
+                    None
+                }
+            }
+            _ => None,
         }
     }
 
@@ -1045,6 +1216,23 @@ impl TypeChecker {
                         .zip(tb.iter())
                         .all(|(a, b)| self.types_compatible(a, b))
             }
+            // Nullable<Nothing> (from null literal) is compatible with any nullable
+            // Must check before general Nullable compatibility
+            (_declared, Type::Nullable(inner_inferred))
+                if matches!(inner_inferred.as_ref(), Type::Named(n) if n == "Nothing") =>
+            {
+                matches!(_declared, Type::Nullable(_))
+            }
+            // T can be used where T? is expected (auto-wrapping non-nullable into nullable)
+            (Type::Nullable(inner_declared), inferred)
+                if !matches!(inferred, Type::Nullable(_)) =>
+            {
+                self.types_compatible(inner_declared, inferred)
+            }
+            // Nullable<T> is compatible with Nullable<U> if T compatible with U
+            (Type::Nullable(ia), Type::Nullable(ib)) => self.types_compatible(ia, ib),
+            // T? cannot be used where T is expected (termination check needed)
+            (_, Type::Nullable(_)) => false,
             // All other combinations are type mismatches
             _ => false,
         }

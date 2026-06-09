@@ -1,34 +1,16 @@
-// Safe field access and safe call examples
-enum Option { Some(Int), None }
-
-fun get_value(): Option {
-    Some(42)
-}
-
-fun no_value(): Option {
-    None
-}
-
+// Auto short-circuit field access on nullable types
 fun main() {
-    // Safe field access on Some variable
-    val p = Some(10)
-    val r1 = p?.length
-    when r1 {
-        Some(v) -> print(v)
-        None -> print(0)
-    }
+    val x: Int? = 10
+    val y: Int? = null
 
-    // Safe call on Some function result
-    val r2 = get_value()?.length
-    when r2 {
-        Some(v) -> print(v)
-        None -> print(0)
-    }
+    // Elvis with non-null: extracts value
+    val r1 = x ?: 0
+    print(r1)
 
-    // Safe call on None - should propagate None
-    val r3 = no_value()?.length
-    when r3 {
-        Some(v) -> print(v)
-        None -> print(9)
-    }
+    // Elvis with null: returns default
+    val r2 = y ?: 42
+    print(r2)
+
+    // Elvis with non-null: extracts value
+    print(x ?: 9)
 }

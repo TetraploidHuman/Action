@@ -136,8 +136,7 @@ pub fn find_node_at(tokens: &[Token], source: &str, pos: &Position) -> Option<Fo
         | TokenKind::DotDotDot
         | TokenKind::DotDotLt
         | TokenKind::ColonColon
-        | TokenKind::Question
-        | TokenKind::SafeDot => Some(FoundNode::Operator),
+        | TokenKind::Question => Some(FoundNode::Operator),
         _ => None,
     }
 }

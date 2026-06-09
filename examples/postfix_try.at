@@ -1,34 +1,32 @@
-// Test standalone postfix ? operator
-enum Option { Some(Int), None }
-
-fun get_some(): Option {
-    Some(100)
+// Test Elvis operator and nullable propagation (replaces postfix ? operator)
+fun get_value(): Int? {
+    null
 }
 
-fun get_none(): Option {
-    None
+fun get_other(): Int? {
+    100
 }
 
-fun test_ok(): Option {
-    val x = get_some()?
-    Some(x + 1)
+fun test_ok(): Int? {
+    val x = get_other() ?: 0  // non-null → 100, Elvis would give 0 if null
+    x + 1  // auto-wrapped to Int?
 }
 
-fun test_none(): Option {
-    val x = get_none()?
-    Some(x + 100)  // unreachable
+fun test_null(): Int? {
+    val x = get_value() ?: 99  // null → 99 via Elvis
+    x + 100  // auto-wrapped to Int?
 }
 
 fun main() {
     val r = test_ok()
     when r {
-        Some(v) -> println("Ok: ${v}")
-        None -> println("Ok: None")
+        null -> println("Ok: null")
+        else -> println("Ok: ${r}")
     }
 
-    val r2 = test_none()
+    val r2 = test_null()
     when r2 {
-        Some(v) -> println("None: Some(${v})")
-        None -> println("None: None")
+        null -> println("Null: null")
+        else -> println("Null: ${r2}")
     }
 }

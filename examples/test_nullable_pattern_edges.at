@@ -1,0 +1,49 @@
+// Null pattern matching edge cases
+fun main() {
+    // 1. Null pattern with variable binding
+    val a: Int? = 42
+    when a {
+        null -> print(0)
+        v -> print(v)
+    }
+
+    // 2. Null pattern with else arm
+    val b: Int? = 99
+    when b {
+        null -> print(0)
+        else -> print(b)
+    }
+
+    // 3. When with != null condition (OneLine)
+    val c: Int? = null
+    when c != null { print(c + 1) else print(0) }
+
+    // 4. Multiple null checks in sequence (both non-null)
+    val d: Int? = 7
+    val e: Int? = 8
+    when d != null {
+        when e != null { print(d + e) else print(d) }
+        else { when e != null { print(e) else print(0) } }
+    }
+
+    // 5. Elvis combined with value match
+    val f: Int? = null
+    val g = f ?: 100
+    when g {
+        100 -> print(1)
+        else -> print(0)
+    }
+
+    // 6. Null check stored as Bool
+    val h: Int? = 5
+    val flag = h != null
+    when flag == true { print(h) else print(0) }
+
+    // 7. Print null check result
+    val n: Int? = null
+    println(n == null)
+
+    // 8. Non-null check with else branch smart cast
+    val j: Int? = 10
+    when j == null { print(0) else print(j * 2) }
+}

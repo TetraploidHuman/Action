@@ -272,70 +272,6 @@ fn report_error(source: &str, path: &str, error: &str) {
     }
 }
 
-/// Build built-in enum definitions that are injected if the user doesn't define them
-fn builtin_enums(program: &Program) -> Vec<Stmt> {
-    let has_option = program
-        .stmts
-        .iter()
-        .any(|s| matches!(s, Stmt::Enum { name, .. } if name == "Option"));
-    let has_result = program
-        .stmts
-        .iter()
-        .any(|s| matches!(s, Stmt::Enum { name, .. } if name == "Result"));
-    let has_timeout_error = program
-        .stmts
-        .iter()
-        .any(|s| matches!(s, Stmt::Enum { name, .. } if name == "TimeoutError"));
-
-    let mut builtins = Vec::new();
-    if !has_option {
-        builtins.push(Stmt::Enum {
-            name: "Option".into(),
-            type_params: vec!["T".into()],
-            variants: vec![
-                EnumVariant {
-                    name: "Some".into(),
-                    params: vec![EnumVariantParam::Positional(Type::Named("T".into()))],
-                },
-                EnumVariant {
-                    name: "None".into(),
-                    params: vec![],
-                },
-            ],
-            span: lexer::Span::default(),
-        });
-    }
-    if !has_result {
-        builtins.push(Stmt::Enum {
-            name: "Result".into(),
-            type_params: vec!["T".into(), "E".into()],
-            variants: vec![
-                EnumVariant {
-                    name: "Ok".into(),
-                    params: vec![EnumVariantParam::Positional(Type::Named("T".into()))],
-                },
-                EnumVariant {
-                    name: "Err".into(),
-                    params: vec![EnumVariantParam::Positional(Type::Named("E".into()))],
-                },
-            ],
-            span: lexer::Span::default(),
-        });
-    }
-    if !has_timeout_error {
-        builtins.push(Stmt::Enum {
-            name: "TimeoutError".into(),
-            type_params: vec![],
-            variants: vec![EnumVariant {
-                name: "Timeout".into(),
-                params: vec![],
-            }],
-            span: lexer::Span::default(),
-        });
-    }
-    builtins
-}
-
 /// Register builtin struct types (Date, DateTime, Random)
 fn builtin_types(program: &Program) -> Vec<Stmt> {
     let has_date = program
@@ -879,18 +815,6 @@ fn transform_module_access(program: &mut Program) {
                     }
                 }
             }
-            Expr::SafeFieldAccess(ref mut base, _) => {
-                transform_expr(base, prefixes);
-            }
-            Expr::SafeCall {
-                ref mut receiver,
-                ref mut args,
-            } => {
-                transform_expr(receiver, prefixes);
-                for arg in args.iter_mut() {
-                    transform_expr(arg, prefixes);
-                }
-            }
             Expr::Assign {
                 ref mut target,
                 ref mut value,
@@ -905,8 +829,13 @@ fn transform_module_access(program: &mut Program) {
             Expr::Copy(ref mut inner) => {
                 transform_expr(inner, prefixes);
             }
-            Expr::Try(ref mut inner) => {
-                transform_expr(inner, prefixes);
+            Expr::Null => {}
+            Expr::Elvis {
+                ref mut condition,
+                ref mut default,
+            } => {
+                transform_expr(condition, prefixes);
+                transform_expr(default, prefixes);
             }
             Expr::StringInterpolate(ref mut parts) => {
                 for part in parts.iter_mut() {
@@ -983,7 +912,10 @@ fn load_stdlib() -> Result<Vec<Stmt>, String> {
         .map_err(|e| format!("Cannot get current dir: {}", e))?
         .join("lib");
 
-    for file_name in &["option.at", "result.at"] {
+    // Option/Result have been replaced by built-in nullable types.
+    // No built-in enum stdlib files to load.
+    let _ = &exe_lib; // silence unused warning
+    for file_name in &[] as &[&str] {
         let path = [&exe_lib, &cwd_lib]
             .iter()
             .map(|d| d.join(file_name))
@@ -1040,7 +972,6 @@ fn load_program(
         ))]
     })?;
 
-    let builtins = builtin_enums(&program);
     let builtins_types = builtin_types(&program);
     let stdlib = load_stdlib().map_err(|e| vec![CompilerError::new(e)])?;
 
@@ -1063,7 +994,6 @@ fn load_program(
         .map_err(|e| vec![CompilerError::new(format!("Import error: {}", e))])?;
 
     let mut all_stmts: Vec<Stmt> = Vec::new();
-    all_stmts.extend(builtins);
     all_stmts.extend(builtins_types);
     all_stmts.extend(stdlib);
     all_stmts.extend(imported);

@@ -35,6 +35,8 @@ pub enum Type {
     FileHandle,
     /// Unit type: ()
     Unit,
+    /// Nullable type: T?
+    Nullable(Box<Type>),
 }
 
 impl fmt::Display for Type {
@@ -80,6 +82,7 @@ impl fmt::Display for Type {
             Type::Ptr(t) => write!(f, "Ptr<{}>", t),
             Type::FileHandle => write!(f, "FileHandle"),
             Type::Unit => write!(f, "()"),
+            Type::Nullable(inner) => write!(f, "{}?", inner),
         }
     }
 }
@@ -220,6 +223,8 @@ pub enum Pattern {
     Or(Vec<Pattern>),
     /// Expression as condition (for when-condition chains): x < 0
     Expr(Box<Expr>),
+    /// Null literal pattern: null
+    Null,
 }
 
 impl fmt::Display for Pattern {
@@ -267,6 +272,7 @@ impl fmt::Display for Pattern {
                 Ok(())
             }
             Pattern::Expr(e) => write!(f, "{}", e),
+            Pattern::Null => write!(f, "null"),
         }
     }
 }
@@ -318,20 +324,17 @@ pub enum Expr {
     Range(Box<Expr>, Box<Expr>),
     /// Tuple: (expr, expr, ...) or named: (name: expr, ...)
     Tuple(Vec<(Option<String>, Expr)>),
-    /// Safe field access: expr?.field
-    SafeFieldAccess(Box<Expr>, String),
-    /// Safe call: expr?.method(args)
-    SafeCall {
-        receiver: Box<Expr>,
-        args: Vec<Expr>,
+    /// Null literal: null
+    Null,
+    /// Elvis operator: expr ?: default
+    Elvis {
+        condition: Box<Expr>,
+        default: Box<Expr>,
     },
-    /// Error propagation: expr? — unwraps Ok/Some, returns Err/None early
-    Try(Box<Expr>),
     /// Assignment: x = value
     Assign {
         target: Box<Expr>,
         value: Box<Expr>,
-        propagate: bool,
     },
     /// String interpolation segment (used internally)
     StringInterpolate(Vec<StringPart>),
@@ -524,23 +527,9 @@ impl fmt::Display for Expr {
                 }
                 write!(f, ")")
             }
-            Expr::SafeFieldAccess(expr, field) => write!(f, "{}?.{}", expr, field),
-            Expr::SafeCall { receiver, args } => {
-                write!(f, "{}?.(", receiver)?;
-                for (i, a) in args.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}", a)?;
-                }
-                write!(f, ")")
-            }
-            Expr::Try(inner) => write!(f, "{}?", inner),
-            Expr::Assign {
-                target,
-                value,
-                propagate: _,
-            } => write!(f, "{} = {}", target, value),
+            Expr::Null => write!(f, "null"),
+            Expr::Elvis { condition, default } => write!(f, "({} ?: {})", condition, default),
+            Expr::Assign { target, value } => write!(f, "{} = {}", target, value),
             Expr::StringInterpolate(parts) => {
                 write!(f, "\"")?;
                 for p in parts {
@@ -644,7 +633,6 @@ pub enum Stmt {
     /// val/var binding: val x = 10
     Let {
         mutable: bool,
-        propagate: bool, // val? / var? for error propagation
         lazy_init: bool, // lazy val / lazy var
         name: String,
         type_ann: Option<Type>,
@@ -654,7 +642,6 @@ pub enum Stmt {
     /// Destructuring binding: val (x, y) = expr / val [a, b] = expr / val [head, ...tail] = expr / val {x, y} = expr
     Destructure {
         mutable: bool,
-        propagate: bool,
         names: Vec<String>,
         /// Renames for struct destructuring: val {x as px, y as py} = point
         renames: Vec<(String, String)>, // (field_name, local_name)
@@ -797,7 +784,6 @@ impl fmt::Display for Stmt {
         match self {
             Stmt::Let {
                 mutable,
-                propagate,
                 lazy_init,
                 name,
                 type_ann,
@@ -806,8 +792,7 @@ impl fmt::Display for Stmt {
             } => {
                 let lazy_kw = if *lazy_init { "lazy " } else { "" };
                 let kw = if *mutable { "var" } else { "val" };
-                let propagation = if *propagate { "?" } else { "" };
-                write!(f, "{}{}{} {}", lazy_kw, kw, propagation, name)?;
+                write!(f, "{}{} {}", lazy_kw, kw, name)?;
                 if let Some(ty) = type_ann {
                     write!(f, ": {}", ty)?;
                 }
@@ -815,7 +800,6 @@ impl fmt::Display for Stmt {
             }
             Stmt::Destructure {
                 mutable,
-                propagate,
                 names,
                 renames,
                 rest,
@@ -825,13 +809,12 @@ impl fmt::Display for Stmt {
                 ..
             } => {
                 let kw = if *mutable { "var" } else { "val" };
-                let propagation = if *propagate { "?" } else { "" };
                 if *is_struct {
-                    write!(f, "{}{} {{", kw, propagation)?;
+                    write!(f, "{} {{", kw)?;
                 } else if *is_list {
-                    write!(f, "{}{} [", kw, propagation)?;
+                    write!(f, "{} [", kw)?;
                 } else {
-                    write!(f, "{}{} (", kw, propagation)?;
+                    write!(f, "{} (", kw)?;
                 }
                 for (i, n) in names.iter().enumerate() {
                     if i > 0 {
@@ -1123,7 +1106,6 @@ impl Stmt {
     pub fn val(name: &str, value: Expr) -> Self {
         Stmt::Let {
             mutable: false,
-            propagate: false,
             lazy_init: false,
             name: name.to_string(),
             type_ann: None,
@@ -1135,7 +1117,6 @@ impl Stmt {
     pub fn var(name: &str, value: Expr) -> Self {
         Stmt::Let {
             mutable: true,
-            propagate: false,
             lazy_init: false,
             name: name.to_string(),
             type_ann: None,

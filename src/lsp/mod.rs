@@ -276,14 +276,13 @@ fn load_stdlib_context() -> (TypeRegistry, HashMap<String, Type>) {
     let mut registry = TypeRegistry::new();
 
     // Always register built-in types
-    builtin_enums_for_lsp(&mut registry);
     builtin_types_for_lsp(&mut registry);
 
     let mut type_env: HashMap<String, Type> = HashMap::new();
 
     // Try to load stdlib files
     let stdlib_dir = Path::new("lib");
-    for filename in &["option.at", "result.at", "math.at"] {
+    for filename in &["math.at"] {
         let path = stdlib_dir.join(filename);
         if let Ok(source) = std::fs::read_to_string(&path) {
             let mut lexer = Lexer::new(&source);
@@ -309,58 +308,7 @@ fn load_stdlib_context() -> (TypeRegistry, HashMap<String, Type>) {
     (registry, type_env)
 }
 
-fn builtin_enums_for_lsp(registry: &mut TypeRegistry) {
-    // Register Option and Result enum types as builtins
-    use crate::ast::{EnumVariantParam, Stmt, Type};
-
-    let span = crate::lexer::Span::new(0, 1, 1).with_end(1);
-
-    let option_variants = vec![
-        crate::ast::EnumVariant {
-            name: "Some".to_string(),
-            params: vec![EnumVariantParam::Positional(Type::Named("T".to_string()))],
-        },
-        crate::ast::EnumVariant {
-            name: "None".to_string(),
-            params: vec![],
-        },
-    ];
-    let option_stmt = Stmt::Enum {
-        name: "Option".to_string(),
-        type_params: vec!["T".to_string()],
-        variants: option_variants,
-        span,
-    };
-    let _ = registry.register(&option_stmt);
-
-    let result_variants = vec![
-        crate::ast::EnumVariant {
-            name: "Ok".to_string(),
-            params: vec![EnumVariantParam::Positional(Type::Named("T".to_string()))],
-        },
-        crate::ast::EnumVariant {
-            name: "Err".to_string(),
-            params: vec![EnumVariantParam::Positional(Type::Named("E".to_string()))],
-        },
-    ];
-    let result_stmt = Stmt::Enum {
-        name: "Result".to_string(),
-        type_params: vec!["T".to_string(), "E".to_string()],
-        variants: result_variants,
-        span,
-    };
-    let _ = registry.register(&result_stmt);
-}
-
-fn builtin_types_for_lsp(registry: &mut TypeRegistry) {
-    use crate::ast::{Stmt, Type};
-    let span = crate::lexer::Span::new(0, 1, 1).with_end(1);
-    // Register TimeoutError as a type alias
-    let timeout_stmt = Stmt::TypeAlias {
-        name: "TimeoutError".to_string(),
-        type_params: vec![],
-        definition: Type::Named("TimeoutError".to_string()),
-        span,
-    };
-    let _ = registry.register(&timeout_stmt);
+fn builtin_types_for_lsp(_registry: &mut TypeRegistry) {
+    // Built-in types are now registered elsewhere; keep this function as a hook
+    // for future LSP-specific type registrations.
 }

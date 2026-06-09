@@ -22,7 +22,7 @@
 //   Lines 11545-12267 For loops: compile_for, compile_for_iterate, compile_for_yield, etc.
 //   Lines 12260-13308 Expressions: compile_range, compile_if, compile_block, compile_index,
 //          compile_field_access, compile_struct_lit, compile_tuple, compile_map_lit, compile_set_lit,
-//          compile_string_interp, compile_safe_call, compile_ufcs_call, compile_enum_construct
+//          compile_string_interp, compile_enum_construct
 //   Lines 13058-13220 Map/Set operations: builtin_map_insert, builtin_set_contains, etc.
 //   Lines 13290-13343 run_jit(), TypedValue helpers
 //
@@ -60,6 +60,7 @@ pub(super) enum ValKind {
     FileHandle,
     Struct,
     Enum,
+    Nullable,
     Unit,
 }
 
@@ -282,6 +283,9 @@ impl<'ctx> Scope<'ctx> {
     fn local_variables(&self) -> &HashMap<String, ScopeVar<'ctx>> {
         &self.variables
     }
+    pub(super) fn remove_var(&mut self, name: &str) {
+        self.variables.remove(name);
+    }
 }
 
 /// The type of value stored inside an enum variant (Some/Ok).
@@ -330,6 +334,8 @@ pub(super) enum TypedValue<'ctx> {
     Ptr(PointerValue<'ctx>),
     /// FileHandle value (wraps FILE* pointer)
     FileHandle(PointerValue<'ctx>),
+    /// Nullable value: alloca pointer to {i1 null_flag, T value}, inner LLVM type
+    Nullable(PointerValue<'ctx>, BasicTypeEnum<'ctx>),
     Unit,
 }
 
@@ -353,6 +359,7 @@ impl<'ctx> TypedValue<'ctx> {
             TypedValue::Ptr(v) => Some(v.as_basic_value_enum()),
             TypedValue::Struct(_, _) => None,
             TypedValue::Enum(..) => None,
+            TypedValue::Nullable(_, _) => None,
             TypedValue::Unit => None,
         }
     }
@@ -426,6 +433,12 @@ pub struct CodeGen<'ctx> {
     pub(super) target_triple: Option<String>,
     /// Counter for unique wrapper function names (lazy_map, lazy_filter, etc.)
     pub(super) wrapper_counter: u64,
+    /// Counter for synthetic receiver names in nullable method call short-circuit
+    pub(super) synthetic_counter: u64,
+    /// Nullable type cache: type name string → {i1, T} LLVM struct type
+    pub(super) nullable_types: HashMap<String, StructType<'ctx>>,
+    /// Smart cast: variables known to be non-null in current scope (from when matching)
+    pub(super) not_null_set: HashSet<String>,
 }
 
 pub(super) struct TcoState<'ctx> {
@@ -550,11 +563,31 @@ impl<'ctx> CodeGen<'ctx> {
             opt_level: 0,
             target_triple,
             wrapper_counter: 0,
+            synthetic_counter: 0,
+            nullable_types: HashMap::new(),
+            not_null_set: HashSet::new(),
         }
     }
 
     pub fn set_opt_level(&mut self, level: u8) {
         self.opt_level = level.min(3);
+    }
+
+    /// Get or create a nullable LLVM struct type {i1, T} for the given inner type.
+    pub(super) fn get_nullable_type(
+        &mut self,
+        inner_type: BasicTypeEnum<'ctx>,
+        name_hint: &str,
+    ) -> StructType<'ctx> {
+        if let Some(ct) = self.nullable_types.get(name_hint) {
+            return *ct;
+        }
+        let nullable_ty = self
+            .context
+            .struct_type(&[self.null_flag_ty().into(), inner_type], false);
+        self.nullable_types
+            .insert(name_hint.to_string(), nullable_ty);
+        nullable_ty
     }
 
     /// Convert Int or Float TypedValue to FloatValue (Int gets converted via sitofp).
@@ -584,6 +617,10 @@ impl<'ctx> CodeGen<'ctx> {
     pub(super) fn bool_ty(&self) -> inkwell::types::IntType<'ctx> {
         self.context.bool_type()
     }
+    /// i8 type for nullable struct flags — avoids LLVM i1-in-struct selection issues
+    pub(super) fn null_flag_ty(&self) -> inkwell::types::IntType<'ctx> {
+        self.context.i8_type()
+    }
     pub(super) fn void_ty(&self) -> inkwell::types::VoidType<'ctx> {
         self.context.void_type()
     }
@@ -602,26 +639,6 @@ impl<'ctx> CodeGen<'ctx> {
             .ok_or_else(|| format!("Runtime fn '{}' not found", name))?;
         self.builder.build_call(func, args, "").map_err(llvm_err)
     }
-
-    /// Get byte size of a BasicTypeEnum (dispatch to each variant's size_of).
-    pub(super) fn basic_type_size(
-        &self,
-        ty: BasicTypeEnum<'ctx>,
-    ) -> Result<IntValue<'ctx>, String> {
-        use inkwell::types::*;
-        match ty {
-            BasicTypeEnum::IntType(t) => Ok(t.size_of()),
-            BasicTypeEnum::FloatType(t) => Ok(t.size_of()),
-            BasicTypeEnum::StructType(t) => t.size_of().ok_or("cannot get struct size".into()),
-            BasicTypeEnum::PointerType(t) => Ok(t.size_of()),
-            BasicTypeEnum::ArrayType(t) => t.size_of().ok_or("cannot get array size".into()),
-            BasicTypeEnum::VectorType(t) => t.size_of().ok_or("cannot get vector size".into()),
-            BasicTypeEnum::ScalableVectorType(t) => {
-                t.size_of().ok_or("cannot get scalable vector size".into())
-            }
-        }
-    }
-
     /// Allocate memory with a refcount header. Returns data pointer (ptr+8).
     #[allow(dead_code)]
     pub(super) fn malloc_rc(&self, size: IntValue<'ctx>) -> Result<PointerValue<'ctx>, String> {
@@ -942,21 +959,16 @@ impl<'ctx> CodeGen<'ctx> {
                         "substring" | "unwrapOr" | "readLine" | "jsonEscape" | "httpRequest"
                         | "str" | "chatOnce" | "storeMessages" | "extractContent"
                         | "handleChat" => Type::Named("String".into()),
-                        "parseDate" | "date" => Type::Generic(
-                            Box::new(Type::Named("Option".into())),
-                            vec![Type::Named("Date".into())],
-                        ),
-                        "datetime" => Type::Generic(
-                            Box::new(Type::Named("Option".into())),
-                            vec![Type::Named("DateTime".into())],
-                        ),
+                        "parseDate" | "date" => {
+                            Type::Nullable(Box::new(Type::Named("Date".into())))
+                        }
+                        "datetime" => {
+                            Type::Nullable(Box::new(Type::Named("DateTime".into())))
+                        }
                         "format" => Type::Named("String".into()),
                         "now" => Type::Named("DateTime".into()),
                         "today" => Type::Named("Date".into()),
-                        "find" => Type::Generic(
-                            Box::new(Type::Named("Option".into())),
-                            vec![Type::Named("Int".into())],
-                        ),
+                        "find" => Type::Nullable(Box::new(Type::Named("Int".into()))),
                         "flip" | "constant" | "identity" => Type::Named("Int".into()),
                         "Random_new" => Type::Named("Random".into()),
                         "nextInt" => Type::Generic(
@@ -968,6 +980,8 @@ impl<'ctx> CodeGen<'ctx> {
                             Box::new(Type::Named("Tuple".into())),
                             vec![Type::Named("List".into()), Type::Named("List".into())],
                         ),
+                        "__list" => Type::Named("List".into()),
+                        "__set" => Type::Named("Set".into()),
                         _ => {
                             if self.registry.lookup_variant(name).is_some() {
                                 let enum_name = self
@@ -1038,6 +1052,14 @@ impl<'ctx> CodeGen<'ctx> {
                 Box::new(Type::Named("Int".into())),
             ),
             Expr::SetLiteral(_) => Type::Set(Box::new(Type::Named("Int".into()))),
+            Expr::Null => Type::Nullable(Box::new(Type::Named("Nothing".into()))),
+            Expr::Elvis { condition, default } => {
+                let cond_ty = self.infer_expr_type(condition);
+                match cond_ty {
+                    Type::Nullable(inner) => *inner,
+                    _ => self.infer_expr_type(default),
+                }
+            }
             _ => Type::Named("Int".into()),
         }
     }
@@ -1064,7 +1086,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     fn build_fn_type(
-        &self,
+        &mut self,
         ret_ast: Option<&Type>,
         name: &str,
         param_tys: &[BasicMetadataTypeEnum<'ctx>],
@@ -1077,6 +1099,8 @@ impl<'ctx> CodeGen<'ctx> {
                 "String" | "Str" => self.string_type.fn_type(param_tys, false),
                 "Unit" => self.void_ty().fn_type(param_tys, false),
                 "Int" => self.i64_ty().fn_type(param_tys, false),
+                "List" | "Set" | "Map" => self.list_type.fn_type(param_tys, false),
+                "LazyList" => self.lazylist_type.fn_type(param_tys, false),
                 name => {
                     if let Some(st) = self.named_structs.get(name) {
                         (*st).fn_type(param_tys, false)
@@ -1111,6 +1135,11 @@ impl<'ctx> CodeGen<'ctx> {
             }
             Some(Type::Ptr(_)) | Some(Type::CString) | Some(Type::FileHandle) => {
                 self.ptr_ty().fn_type(param_tys, false)
+            }
+            Some(Type::Nullable(inner)) => {
+                let bt = self.ast_type_to_basic_type(inner);
+                let nullable_st = self.get_nullable_type(bt, &format!("Nullable<{}>", inner));
+                nullable_st.fn_type(param_tys, false)
             }
             Some(Type::Generic(base, _)) => match base.as_ref() {
                 Type::Named(n) if n == "Ptr" => self.ptr_ty().fn_type(param_tys, false),
@@ -1160,6 +1189,7 @@ impl<'ctx> CodeGen<'ctx> {
             TypedValue::CString(_) => "CString".to_string(),
             TypedValue::Ptr(_) => "Ptr".to_string(),
             TypedValue::FileHandle(_) => "FileHandle".to_string(),
+            TypedValue::Nullable(_, _) => "Nullable".to_string(),
             TypedValue::Unit => "Unit".to_string(),
         }
     }
@@ -1525,6 +1555,7 @@ impl<'ctx> TypedValue<'ctx> {
             }
             TypedValue::Struct(_, ty) => (*ty).into(),
             TypedValue::Enum(_, ty, ..) => (*ty).into(),
+            TypedValue::Nullable(_, ty) => *ty,
             TypedValue::Unit => cg.i64_ty().into(),
         }
     }
@@ -1547,6 +1578,7 @@ impl<'ctx> TypedValue<'ctx> {
             TypedValue::FileHandle(_) => ValKind::FileHandle,
             TypedValue::Struct(_, _) => ValKind::Struct,
             TypedValue::Enum(..) => ValKind::Enum,
+            TypedValue::Nullable(_, _) => ValKind::Nullable,
             TypedValue::Unit => ValKind::Unit,
         }
     }

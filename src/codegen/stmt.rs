@@ -14,14 +14,10 @@ impl<'ctx> CodeGen<'ctx> {
                 name,
                 type_ann,
                 value,
-                propagate,
                 mutable,
                 lazy_init,
                 ..
             } => {
-                if *propagate {
-                    return self.compile_propagate_let(name, type_ann.as_ref(), value);
-                }
                 if *lazy_init {
                     // Lazy val: defer evaluation to first access
                     let (ty, kind) = if let Some(ann) = type_ann {
@@ -45,14 +41,57 @@ impl<'ctx> CodeGen<'ctx> {
                     self.scope
                         .set_lazy(name.clone(), alloca, ty, kind, flag, value.clone());
                 } else {
-                    let val = self.compile_expr(value)?;
+                    let raw_val = self.compile_expr(value)?;
                     let (ty, kind) = if let Some(ann) = type_ann {
                         (
                             self.ast_type_to_basic_type(ann),
                             self.param_val_kind(Some(ann)),
                         )
                     } else {
-                        (val.get_type_for_alloca(self), val.val_kind())
+                        (raw_val.get_type_for_alloca(self), raw_val.val_kind())
+                    };
+                    // Wrap non-nullable value into nullable struct when target type is nullable
+                    let val = if let Some(Type::Nullable(inner)) = type_ann {
+                        if let TypedValue::Nullable(_null_ptr, null_bt) = raw_val {
+                            // Already nullable — check if we need to reconcile types.
+                            // A generic null ({i8, i64}) needs conversion to the declared
+                            // type (e.g. {i8, list_type}).
+                            let declared_bt = self.ast_type_to_basic_type(type_ann.as_ref().unwrap());
+                            if null_bt == declared_bt {
+                                raw_val
+                            } else {
+                                // Re-wrap null with the correct inner type
+                                let inner_bt = self.ast_type_to_basic_type(inner);
+                                let name_hint = format!("Nullable<{}>", inner);
+                                let nty = self.get_nullable_type(inner_bt, &name_hint);
+                                // Create a null value of the correct nullable type
+                                let alloca = self
+                                    .builder
+                                    .build_alloca(nty, "null_retype")
+                                    .map_err(llvm_err)?;
+                                let undef = nty.get_undef();
+                                let with_flag = self
+                                    .builder
+                                    .build_insert_value(
+                                        undef,
+                                        self.null_flag_ty().const_int(1, false),
+                                        0,
+                                        "null_rf",
+                                    )
+                                    .map_err(llvm_err)?;
+                                self.builder
+                                    .build_store(alloca, with_flag)
+                                    .map_err(llvm_err)?;
+                                TypedValue::Nullable(alloca, nty.into())
+                            }
+                        } else {
+                            let inner_bt = self.ast_type_to_basic_type(inner);
+                            let name_hint = format!("Nullable<{}>", inner);
+                            let nty = self.get_nullable_type(inner_bt, &name_hint);
+                            self.wrap_in_nullable(&raw_val, nty)?
+                        }
+                    } else {
+                        raw_val
                     };
                     let alloca = self.builder.build_alloca(ty, name).map_err(llvm_err)?;
                     self.store_typed_value(&val, alloca, ty)?;
@@ -608,6 +647,15 @@ impl<'ctx> CodeGen<'ctx> {
                             let _ = self.builder.build_return(Some(&ll_val));
                             return Ok(());
                         }
+                        TypedValue::Nullable(ptr, ty) => {
+                            let bt: BasicTypeEnum = (*ty).into();
+                            let loaded = self
+                                .builder
+                                .build_load(bt, *ptr, "ret_nullable")
+                                .map_err(llvm_err)?;
+                            let _ = self.builder.build_return(Some(&loaded));
+                            return Ok(());
+                        }
                         _ => {}
                     }
                 }
@@ -1107,24 +1155,49 @@ impl<'ctx> CodeGen<'ctx> {
                             .map_err(llvm_err)?;
                         let _ = self.builder.build_return(Some(&loaded));
                     }
+                    TypedValue::List(ptr)
+                    | TypedValue::Map(ptr)
+                    | TypedValue::Set(ptr) => {
+                        let list_val = self.load_list(*ptr)?;
+                        let _ = self.builder.build_return(Some(&list_val));
+                    }
+                    TypedValue::LazyList(ptr) => {
+                        let ll_val = self
+                            .builder
+                            .build_load(self.lazylist_type, *ptr, "ret_ll")
+                            .map_err(llvm_err)?;
+                        let _ = self.builder.build_return(Some(&ll_val));
+                    }
+                    TypedValue::Nullable(ptr, ty) => {
+                        let bt: BasicTypeEnum = (*ty).into();
+                        let loaded = self
+                            .builder
+                            .build_load(bt, *ptr, "ret_nullable2")
+                            .map_err(llvm_err)?;
+                        let _ = self.builder.build_return(Some(&loaded));
+                    }
                     _ => {
                         if let Some(bv) = result.to_bv() {
-                            // If the function returns a fat {i64,ptr} struct but
+                            // If the function returns a struct (nullable, enum, fat) but
                             // the body produced a scalar, pack it into the struct.
-                            let need_pack = function
-                                .get_type()
-                                .get_return_type()
-                                .map_or(false, |rt| rt.is_struct_type());
+                            let ret_ty_opt = function.get_type().get_return_type();
+                            let need_pack = ret_ty_opt.map_or(false, |rt| rt.is_struct_type());
                             if need_pack {
-                                let struct_ty = function
-                                    .get_type()
-                                    .get_return_type()
-                                    .unwrap()
-                                    .into_struct_type();
-                                // If we have a pending fat_ret from an untyped call and
-                                // the target is NOT fat_return_type (i.e., it's an enum type),
-                                // bitcast to preserve both struct fields.
-                                if let Some((fat_alloca, _fat_ty)) = self.last_fat_ret.take() {
+                                let struct_ty = ret_ty_opt.unwrap().into_struct_type();
+                                let field_types = struct_ty.get_field_types();
+                                // Detect nullable struct: 2 fields, first is i1 (null flag)
+                                let is_nullable = field_types.len() == 2
+                                    && matches!(field_types[0], BasicTypeEnum::IntType(t) if t.get_bit_width() == 8);
+                                if is_nullable {
+                                    // Pack scalar into nullable: field 0 = 0 (not null), field 1 = value
+                                    let undef = struct_ty.get_undef();
+                                    let flag = self.null_flag_ty().const_int(0, false);
+                                    let with_flag = self.builder.build_insert_value(undef, flag, 0, "nlf")
+                                        .map_err(llvm_err)?;
+                                    let packed = self.builder.build_insert_value(with_flag, bv, 1, "nlv")
+                                        .map_err(llvm_err)?;
+                                    let _ = self.builder.build_return(Some(&packed));
+                                } else if let Some((fat_alloca, _fat_ty)) = self.last_fat_ret.take() {
                                     if struct_ty != self.fat_return_type {
                                         let ptr_ty =
                                             self.context.ptr_type(inkwell::AddressSpace::default());
@@ -1142,7 +1215,6 @@ impl<'ctx> CodeGen<'ctx> {
                                             .map_err(llvm_err)?;
                                         let _ = self.builder.build_return(Some(&val));
                                     } else {
-                                        // Pack scalar into fat_return_type as usual
                                         let alloca = self
                                             .builder
                                             .build_alloca(struct_ty, "ret_pack")
@@ -1213,7 +1285,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     pub(super) fn ast_type_to_llvm(
-        &self,
+        &mut self,
         ty: Option<&Type>,
     ) -> inkwell::types::BasicMetadataTypeEnum<'ctx> {
         match ty {
@@ -1234,16 +1306,15 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             },
             Some(Type::Function(_, _)) => self.ptr_ty().into(),
+            Some(Type::Nullable(inner)) => {
+                let inner_bt: BasicTypeEnum = self.ast_type_to_basic_type(inner);
+                let name_hint = format!("Nullable<{}>", inner);
+                let nullable_st = self.get_nullable_type(inner_bt, &name_hint);
+                nullable_st.into()
+            }
             Some(Type::Generic(base, _)) => match base.as_ref() {
                 Type::Named(n) => match n.as_str() {
                     "List" | "Set" | "Map" => self.list_type.into(),
-                    "Option" | "Result" => {
-                        if let Some(et) = self.enum_types.get(n.as_str()) {
-                            (*et).into()
-                        } else {
-                            self.i64_ty().into()
-                        }
-                    }
                     "Task" => self.task_type.into(),
                     "Stream" => self.ptr_ty().into(),
                     "LazyList" => self.lazylist_type.into(),
@@ -1256,7 +1327,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    pub(super) fn ast_type_to_basic_type(&self, ty: &Type) -> BasicTypeEnum<'ctx> {
+    pub(super) fn ast_type_to_basic_type(&mut self, ty: &Type) -> BasicTypeEnum<'ctx> {
         match ty {
             Type::Named(n) => match n.as_str() {
                 "Int" => self.i64_ty().into(),
@@ -1264,6 +1335,11 @@ impl<'ctx> CodeGen<'ctx> {
                 "Bool" => self.bool_ty().into(),
                 "String" | "Str" => self.string_type.into(),
                 "Unit" => self.i64_ty().into(),
+                "List" | "Set" | "Map" => self.list_type.into(),
+                "LazyList" => self.lazylist_type.into(),
+                "Task" => self.task_type.into(),
+                "Stream" => self.ptr_ty().into(),
+                "Ptr" | "CString" | "FileHandle" => self.ptr_ty().into(),
                 name => {
                     if let Some(st) = self.named_structs.get(name) {
                         (*st).into()
@@ -1288,17 +1364,17 @@ impl<'ctx> CodeGen<'ctx> {
             Type::Stream(_) => self.ptr_ty().into(),
             Type::LazyList(_) => self.lazylist_type.into(),
             Type::CString | Type::Ptr(_) | Type::FileHandle => self.ptr_ty().into(),
+            Type::Nullable(inner) => {
+                let inner_bt = self.ast_type_to_basic_type(inner);
+                let name_hint = format!("Nullable<{}>", inner);
+                let nullable_st = self.get_nullable_type(inner_bt, &name_hint);
+                nullable_st.into()
+            }
             Type::Generic(base, _) => match base.as_ref() {
                 Type::Named(n) => match n.as_str() {
                     "List" => return self.list_type.into(),
                     "Set" => return self.list_type.into(),
                     "Map" => return self.list_type.into(),
-                    "Option" | "Result" => {
-                        if let Some(et) = self.enum_types.get(n.as_str()) {
-                            return (*et).into();
-                        }
-                        return self.i64_ty().into();
-                    }
                     "Task" => return self.task_type.into(),
                     "Stream" => return self.ptr_ty().into(),
                     "LazyList" => return self.lazylist_type.into(),
@@ -1333,6 +1409,7 @@ impl<'ctx> CodeGen<'ctx> {
             Some(Type::Task(_)) => ValKind::Task,
             Some(Type::Stream(_)) => ValKind::Stream,
             Some(Type::LazyList(_)) => ValKind::LazyList,
+            Some(Type::Nullable(_)) => ValKind::Nullable,
             Some(Type::Generic(base, _)) => match base.as_ref() {
                 Type::Named(n) => match n.as_str() {
                     "Float" => ValKind::Float,
@@ -1341,9 +1418,6 @@ impl<'ctx> CodeGen<'ctx> {
                     "List" => ValKind::List,
                     "Set" => ValKind::Set,
                     "Map" => ValKind::Map,
-                    "Option" | "Result" if self.enum_types.contains_key(n.as_str()) => {
-                        ValKind::Enum
-                    }
                     "Task" => ValKind::Task,
                     "Stream" => ValKind::Stream,
                     "LazyList" => ValKind::LazyList,

@@ -147,6 +147,13 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?;
                 self.builder.build_store(alloca, loaded).map_err(llvm_err)?;
             }
+            TypedValue::Nullable(ptr, ty) => {
+                let loaded = self
+                    .builder
+                    .build_load(*ty, *ptr, "nullable_ld")
+                    .map_err(llvm_err)?;
+                self.builder.build_store(alloca, loaded).map_err(llvm_err)?;
+            }
             _ => {
                 if let Some(bv) = v.to_bv() {
                     self.builder.build_store(alloca, bv).map_err(llvm_err)?;

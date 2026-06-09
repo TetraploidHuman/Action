@@ -40,7 +40,8 @@ const MOD_READONLY: u32 = 1;
 fn classify_token(token: &Token, prev_kind: Option<&TokenKind>) -> Option<(u32, u32)> {
     match &token.kind {
         // Keywords
-        TokenKind::Val
+        TokenKind::Null
+        | TokenKind::Val
         | TokenKind::Var
         | TokenKind::Fun
         | TokenKind::When
@@ -116,7 +117,6 @@ fn classify_token(token: &Token, prev_kind: Option<&TokenKind>) -> Option<(u32, 
         | TokenKind::DotDot
         | TokenKind::DotDotLt
         | TokenKind::DotDotDot
-        | TokenKind::SafeDot
         | TokenKind::Colon
         | TokenKind::ColonColon
         | TokenKind::Question => Some((TYPE_OPERATOR, 0)),
@@ -391,6 +391,7 @@ fn type_to_detail(ty: &Type) -> String {
         Type::CString => "CString".to_string(),
         Type::Ptr(t) => format!("Ptr<{}>", type_to_detail(t)),
         Type::FileHandle => "FileHandle".to_string(),
+        Type::Nullable(t) => format!("{}?", type_to_detail(t)),
         Type::Unit => "()".to_string(),
     }
 }

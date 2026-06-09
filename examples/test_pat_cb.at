@@ -1,9 +1,7 @@
-// Test: pattern binding + callback in the same function
+// Test: pattern binding + callback using nullable types
 fun main() {
-    val opt = Some(21)
+    val opt: Int? = 21
     val f = { x -> x * 2 }
-    when opt {
-        Some(v) -> print(f(v))
-        None -> print(0)
-    }
+    val result = opt ?: 0
+    print(f(result))
 }

@@ -6,6 +6,7 @@ Action 是一门静态类型的多范式编程语言，编译器用 Rust 编写�
 
 ## 特性
 
+- **可空类型** — Kotlin 风格 `T?` 空安全，`?.` 短路运算，`?:` 默认值，智能转换
 - **静态类型系统** — 结构化类型，类型推断，类型别名
 - **模式匹配** — 穷尽性 `when` 表达式，支持枚举/结构体解构
 - **一等函数** — Lambda 表达式，隐式 `it` 参数，高阶函数
@@ -29,8 +30,8 @@ Action 是一门静态类型的多范式编程语言，编译器用 Rust 编写�
 | Windows x64 | `action-*-windows-x64.zip` |
 
 ```bash
-tar xzf action-0.1.0-linux-x64.tar.gz
-export PATH="$PWD/action-0.1.0-linux-x64/bin:$PATH"
+tar xzf action-0.2.0-linux-x64.tar.gz
+export PATH="$PWD/action-0.2.0-linux-x64/bin:$PATH"
 action run hello.at
 ```
 
@@ -174,28 +175,65 @@ val all_positive = all(nums) { it > 0 }
 val has_even = any(nums) { it % 2 == 0 }
 ```
 
+### 可空类型 (Nullable Types)
+
+```action
+// T? 表示可空类型，null 表示空值
+val name: String? = "Alice"
+val empty: String? = null
+
+// ?. 安全访问 — 接收者为 null 时短路返回 null
+val upper = name?.toUpper()        // "ALICE"
+val none = empty?.toUpper()        // null
+
+// ?: (Elvis) 提供默认值
+val display = empty ?: "Guest"     // "Guest"
+
+// 智能转换 — if x != null 分支内自动转换为非空类型
+if name != null {
+    println(name.toUpper())        // 不需要 ?.
+}
+
+// 可空集合方法调用，同样自动短路
+val list: List? = getList()
+val first = list?.head()           // 安全取第一个元素
+val len = list?.len()              // 安全获取长度
+```
+
+### 可空链式调用
+
+```action
+// 多层可空结构的安全访问
+val user: User? = findUser(id)
+val city = user?.address?.city    // 任一中间值为 null 则整体为 null
+
+// 与 ?: 配合
+val cityName = user?.address?.city ?: "Unknown"
+```
+
 ### 枚举
 
 ```action
-enum Option {
-    Some(Int),
-    None
+enum Color {
+    Red,
+    Green,
+    Blue
 }
 
-enum Result {
-    Ok(String),
-    Err(Int)
+enum Shape {
+    Circle(Int),       // 半径
+    Rectangle(Int, Int) // 宽, 高
 }
-
-// 构造
-val r1 = Ok("success")
-val r2 = Err(404)
 
 // 模式匹配解构
-val v = when r1 {
-    Ok(msg) -> msg,
-    Err(code) -> "Error: ${code}"
+val area = when shape {
+    Circle(r) -> 3.14 * r * r,
+    Rectangle(w, h) -> w * h
 }
+
+// 可空枚举接收者
+val s: Shape? = getShape()
+val a = s?.let { ... }    // 安全操作
 ```
 
 ### 结构体
@@ -348,17 +386,11 @@ val ok = x > 0 and y / x > 2     // 若 x > 0 为假，不计算 y / x
 val safe = a or risky()          // 若 a 为真，不调用 risky()
 ```
 
-### 安全访问
+### 错误传播 (Try 运算符)
 
 ```action
-val result = maybe?.field          // 若 maybe 有效则取字段，否则短路
-val value = obj?.method(arg)       // 安全方法调用
-```
-
-### 错误传播
-
-```action
-val x? = parseInt("123")          // ? 传播错误
+// ? 后缀运算符 — 若值为 null 则立即返回 null
+val x? = nullableValue()          // 若为 null，函数提前返回 null
 val y = result?                    // 后缀 try 运算符
 ```
 

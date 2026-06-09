@@ -3,7 +3,7 @@
 use crate::ast::*;
 use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
 use inkwell::values::{
-    BasicMetadataValueEnum, BasicValue, BasicValueEnum, FloatValue, IntValue, PointerValue,
+    BasicMetadataValueEnum, BasicValue, FloatValue, IntValue, PointerValue,
     StructValue,
 };
 use inkwell::{FloatPredicate, IntPredicate};
@@ -196,14 +196,6 @@ impl<'ctx> CodeGen<'ctx> {
                 || name == "constant"
                 || name == "uncurry"
                 || name == "curry"
-                || name == "isSome"
-                || name == "isNone"
-                || name == "isOk"
-                || name == "isErr"
-                || name == "unwrapOr"
-                || name == "unwrap"
-                || name == "orElse"
-                || name == "ok"
                 || name == "toLazyList"
                 || name == "lazyTake"
                 || name == "lazyDrop"
@@ -257,30 +249,8 @@ impl<'ctx> CodeGen<'ctx> {
                     args.len()
                 ));
             }
-            // Handle flatMap/flatMapResult for Option/Result inline (avoids untyped callback issues)
-            if name == "flatMap" || name == "flatMapResult" || name == "flatMap" {
-                let is_enum_op = if (trailing.is_some() && !args.is_empty()) || args.len() >= 2 {
-                    let enum_arg = if trailing.is_some() {
-                        &args[0]
-                    } else {
-                        &args[1]
-                    };
-                    matches!(
-                        self.compile_expr(enum_arg),
-                        Ok(TypedValue::Enum(_, _, InnerType::Int, false))
-                    )
-                } else {
-                    false
-                };
-                if is_enum_op {
-                    if name == "flatMap" {
-                        return self.builtin_flat_map(args, trailing);
-                    } else {
-                        return self.builtin_flat_map_result(args, trailing);
-                    }
-                }
-                // Not an enum op — fall through to module function lookup (stdlib)
-            }
+            // flatMap/flatMapResult no longer handle Option/Result enums
+            // (nullable types replace Option/Result)
             if name == "map" || name == "filter" || name == "fold" {
                 let list_arg_idx: Option<usize> = if name == "map" || name == "filter" {
                     if trailing.is_some() {
@@ -314,25 +284,7 @@ impl<'ctx> CodeGen<'ctx> {
                         return self.builtin_fold(args, trailing);
                     }
                 }
-                // Also check if it's an enum op (Option/Result map)
-                if name == "map" {
-                    let is_enum_op = if trailing.is_some() || args.len() >= 2 {
-                        let enum_arg = if trailing.is_some() {
-                            &args[0]
-                        } else {
-                            &args[1]
-                        };
-                        matches!(
-                            self.compile_expr(enum_arg),
-                            Ok(TypedValue::Enum(_, _, InnerType::Int, false))
-                        )
-                    } else {
-                        false
-                    };
-                    if is_enum_op {
-                        return self.builtin_enum_map(args, trailing);
-                    }
-                }
+                // enum map (Option/Result) has been removed — nullable types replace them
             }
             // flatMap for lists: flatMap(fn, list) or flatMap(list) { lambda }
             if name == "flatMap" {
@@ -600,6 +552,20 @@ impl<'ctx> CodeGen<'ctx> {
         // UFCS method call: receiver.method(args) → TypeName_method(receiver, args)
         if let Expr::FieldAccess(receiver, method) = func {
             let recv_val = self.compile_expr(receiver)?;
+
+            // Auto short-circuit: nullable receiver — branch on null,
+            // extract inner, and dispatch method on the non-null inner value.
+            if let TypedValue::Nullable(nullable_ptr, inner_bt) = recv_val {
+                return self.compile_nullable_method_call(
+                    nullable_ptr,
+                    inner_bt,
+                    receiver,
+                    method,
+                    args,
+                    trailing,
+                );
+            }
+
             let type_name = self.type_name_from_typed_value(&recv_val);
 
             // Handle Map builtin methods inline
@@ -743,59 +709,8 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                 }
             }
-            // Handle Option/Result builtin methods inline
-            if matches!(recv_val, TypedValue::Enum(..)) {
-                match method.as_str() {
-                    "isSome" | "isNone" | "isOk" | "isErr" => {
-                        let new_func = Expr::Ident(method.to_string());
-                        return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
-                    }
-                    "unwrapOr" => {
-                        if args.len() != 1 {
-                            return Err("unwrapOr expects 1 argument".to_string());
-                        }
-                        let new_func = Expr::Ident("unwrapOr".to_string());
-                        return self.compile_call(
-                            &new_func,
-                            &[receiver.as_ref().clone(), args[0].clone()],
-                            &None,
-                        );
-                    }
-                    "unwrap" => {
-                        let new_func = Expr::Ident("unwrap".to_string());
-                        return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
-                    }
-                    "orElse" => {
-                        if args.len() != 1 {
-                            return Err("orElse expects 1 argument".to_string());
-                        }
-                        let new_func = Expr::Ident("orElse".to_string());
-                        return self.compile_call(
-                            &new_func,
-                            &[receiver.as_ref().clone(), args[0].clone()],
-                            &None,
-                        );
-                    }
-                    "ok" => {
-                        if args.len() != 1 {
-                            return Err("ok expects 1 argument (error value)".to_string());
-                        }
-                        let new_func = Expr::Ident("ok".to_string());
-                        return self.compile_call(
-                            &new_func,
-                            &[receiver.as_ref().clone(), args[0].clone()],
-                            &None,
-                        );
-                    }
-                    "map" | "flatMap" => {
-                        let new_func = Expr::Ident(method.to_string());
-                        let mut new_args = vec![receiver.as_ref().clone()];
-                        new_args.extend(args.iter().cloned());
-                        return self.compile_call(&new_func, &new_args, trailing);
-                    }
-                    _ => return Err(format!("Method '{}' not found on Option/Result", method)),
-                }
-            }
+            // Option/Result enum builtins have been removed — nullable types replace them
+            // Enum dispatch for user-defined enums only
             // Handle LazyList builtin methods inline
             if matches!(recv_val, TypedValue::LazyList(_)) {
                 match method.as_str() {
@@ -1646,6 +1561,93 @@ impl<'ctx> CodeGen<'ctx> {
                     let _ = self.call_rt("action_print_enum", &[loaded.into()]);
                 }
             }
+            TypedValue::Nullable(ptr, inner_bt) => {
+                // Print nullable: check null flag, print "null" or inner value
+                let loaded = self
+                    .builder
+                    .build_load(*inner_bt, *ptr, "print_null_ld")
+                    .map_err(llvm_err)?;
+                let nullable_struct = loaded.into_struct_value();
+                let null_flag = self
+                    .builder
+                    .build_extract_value(nullable_struct, 0, "print_null_flag")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+
+                let current_fn = self
+                    .builder
+                    .get_insert_block()
+                    .and_then(|b| b.get_parent())
+                    .ok_or("Cannot print outside function")?;
+                let is_null = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::EQ,
+                        null_flag,
+                        self.null_flag_ty().const_int(1, false),
+                        "print_is_null",
+                    )
+                    .map_err(llvm_err)?;
+
+                let null_block = self.context.append_basic_block(current_fn, "print_null");
+                let val_block = self.context.append_basic_block(current_fn, "print_val");
+                let merge_block = self.context.append_basic_block(current_fn, "print_merge");
+
+                self.builder
+                    .build_conditional_branch(is_null, null_block, val_block)
+                    .map_err(llvm_err)?;
+
+                // Print "null" using printf
+                self.builder.position_at_end(null_block);
+                if let Some(printf_fn) = self.module.get_function("printf") {
+                    let null_str = self
+                        .builder
+                        .build_global_string_ptr("null", "null_str")
+                        .map_err(llvm_err)?
+                        .as_pointer_value();
+                    let _ = self.builder.build_call(
+                        printf_fn,
+                        &[null_str.into()],
+                        "print_null_call",
+                    );
+                }
+                self.builder
+                    .build_unconditional_branch(merge_block)
+                    .map_err(llvm_err)?;
+
+                // Print inner value
+                self.builder.position_at_end(val_block);
+                let inner = self
+                    .builder
+                    .build_extract_value(nullable_struct, 1, "print_inner")
+                    .map_err(llvm_err)?;
+                let inner_typed = self.bv_to_typed(inner)?;
+                match &inner_typed {
+                    TypedValue::Int(v) => {
+                        let _ = self.call_rt("action_print_int", &[v.as_basic_value_enum().into()]);
+                    }
+                    TypedValue::Float(v) => {
+                        let _ = self.call_rt("action_print_float", &[v.as_basic_value_enum().into()]);
+                    }
+                    TypedValue::Bool(v) => {
+                        let _ = self.call_rt("action_print_bool", &[v.as_basic_value_enum().into()]);
+                    }
+                    TypedValue::Str(v) => {
+                        let _ = self.call_rt_with_str("action_print_string", *v);
+                    }
+                    _ => {
+                        let bv = inner_typed.to_bv().unwrap_or_else(|| {
+                            self.i64_ty().const_int(0, false).into()
+                        });
+                        let _ = self.call_rt("action_print_int", &[bv.into()]);
+                    }
+                }
+                self.builder
+                    .build_unconditional_branch(merge_block)
+                    .map_err(llvm_err)?;
+
+                self.builder.position_at_end(merge_block);
+            }
             TypedValue::Unit => {}
         }
         if name == "println" {
@@ -1771,650 +1773,6 @@ impl<'ctx> CodeGen<'ctx> {
             }
             _ => Err("lazy_list: expected lambda body".to_string()),
         }
-    }
-
-    // ---- Option/Result convenience methods ----
-
-    /// Check if an enum has a specific tag value (used by isSome/isNone/isOk/isErr)
-    pub(super) fn builtin_enum_is_tag(
-        &mut self,
-        expr: &Expr,
-        expected_tag: u64,
-    ) -> Result<TypedValue<'ctx>, String> {
-        let val = self.compile_expr(expr)?;
-        let (enum_ptr, enum_ty) = match val {
-            TypedValue::Enum(p, t, ..) => (p, t),
-            _ => {
-                return Err(
-                    "isSome/isNone/isOk/isErr: argument must be an enum (Option or Result)"
-                        .to_string(),
-                )
-            }
-        };
-        let i64 = self.i64_ty();
-        let enum_bt: BasicTypeEnum = enum_ty.into();
-        let loaded = self
-            .builder
-            .build_load(enum_bt, enum_ptr, "chk_enum")
-            .map_err(llvm_err)?;
-        let tag = self
-            .builder
-            .build_extract_value(loaded.into_struct_value(), 0, "chk_tag")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let is_match = self
-            .builder
-            .build_int_compare(
-                IntPredicate::EQ,
-                tag,
-                i64.const_int(expected_tag, false),
-                "is_match",
-            )
-            .map_err(llvm_err)?;
-        Ok(TypedValue::Bool(is_match))
-    }
-
-    /// unwrapOr(enum, default) - extract value from Some/Ok, or return default
-    pub(super) fn builtin_unwrap_or(
-        &mut self,
-        enum_expr: &Expr,
-        default_expr: &Expr,
-    ) -> Result<TypedValue<'ctx>, String> {
-        let val = self.compile_expr(enum_expr)?;
-        let (enum_ptr, enum_ty, inner_type) = match val {
-            TypedValue::Enum(p, t, it, _) => (p, t, it),
-            _ => {
-                return Err(
-                    "unwrapOr: first argument must be an enum (Option or Result)".to_string(),
-                )
-            }
-        };
-        let i64 = self.i64_ty();
-        let current_fn = self
-            .builder
-            .get_insert_block()
-            .and_then(|b| b.get_parent())
-            .ok_or("Cannot compile unwrapOr outside function")?;
-
-        let enum_bt: BasicTypeEnum = enum_ty.into();
-        let loaded = self
-            .builder
-            .build_load(enum_bt, enum_ptr, "uwo_enum")
-            .map_err(llvm_err)?;
-        let enum_sv = loaded.into_struct_value();
-        let tag = self
-            .builder
-            .build_extract_value(enum_sv, 0, "uwo_tag")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let is_some = self
-            .builder
-            .build_int_compare(
-                IntPredicate::EQ,
-                tag,
-                i64.const_int(0, false),
-                "uwo_is_some",
-            )
-            .map_err(llvm_err)?;
-
-        let merge_block = self.context.append_basic_block(current_fn, "uwo_merge");
-        let some_block = self.context.append_basic_block(current_fn, "uwo_some");
-        let none_block = self.context.append_basic_block(current_fn, "uwo_none");
-
-        let _ = self
-            .builder
-            .build_conditional_branch(is_some, some_block, none_block);
-
-        // Some/Ok branch: extract value based on inner type
-        self.builder.position_at_end(some_block);
-        let data_ptr = self
-            .builder
-            .build_extract_value(enum_sv, 1, "uwo_data")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let inner_ptr = self
-            .builder
-            .build_pointer_cast(data_ptr, self.ptr_ty(), "uwo_inner")
-            .map_err(llvm_err)?;
-
-        match inner_type {
-            InnerType::Int => {
-                let inner_val = self
-                    .builder
-                    .build_load(i64, inner_ptr, "uwo_v")
-                    .map_err(llvm_err)?
-                    .into_int_value();
-                let _ = self.builder.build_unconditional_branch(merge_block);
-                // None/Err branch: compute default
-                self.builder.position_at_end(none_block);
-                let default_val = self.compile_expr(default_expr)?;
-                let default_bv = default_val
-                    .to_bv()
-                    .unwrap_or_else(|| i64.const_int(0, false).as_basic_value_enum());
-                let _ = self.builder.build_unconditional_branch(merge_block);
-                // Merge
-                self.builder.position_at_end(merge_block);
-                let phi = self.builder.build_phi(i64, "uwo_phi").map_err(llvm_err)?;
-                phi.add_incoming(&[
-                    (&inner_val, some_block),
-                    (&default_bv.into_int_value(), none_block),
-                ]);
-                Ok(TypedValue::Int(phi.as_basic_value().into_int_value()))
-            }
-            InnerType::Float => {
-                let f64_ty = self.context.f64_type();
-                let inner_val = self
-                    .builder
-                    .build_load(f64_ty, inner_ptr, "uwo_fv")
-                    .map_err(llvm_err)?
-                    .into_float_value();
-                let _ = self.builder.build_unconditional_branch(merge_block);
-                self.builder.position_at_end(none_block);
-                let default_val = self.compile_expr(default_expr)?;
-                let default_fv = match default_val {
-                    TypedValue::Float(f) => f,
-                    TypedValue::Int(i) => self
-                        .builder
-                        .build_signed_int_to_float(i, f64_ty, "int_to_f")
-                        .map_err(llvm_err)?,
-                    _ => {
-                        return Err(
-                            "unwrapOr: default must be numeric for Option<Float>".to_string()
-                        )
-                    }
-                };
-                let _ = self.builder.build_unconditional_branch(merge_block);
-                self.builder.position_at_end(merge_block);
-                let phi = self
-                    .builder
-                    .build_phi(f64_ty, "uwo_fphi")
-                    .map_err(llvm_err)?;
-                phi.add_incoming(&[(&inner_val, some_block), (&default_fv, none_block)]);
-                Ok(TypedValue::Float(phi.as_basic_value().into_float_value()))
-            }
-            InnerType::Str => {
-                let str_val = self
-                    .builder
-                    .build_load(self.string_type, inner_ptr, "uwo_str")
-                    .map_err(llvm_err)?;
-                let _ = self.builder.build_unconditional_branch(merge_block);
-                self.builder.position_at_end(none_block);
-                let default_val = self.compile_expr(default_expr)?;
-                let default_ptr = match default_val {
-                    TypedValue::Str(p) => p,
-                    _ => {
-                        return Err(
-                            "unwrapOr: default must be a string for Option<String>".to_string()
-                        )
-                    }
-                };
-                let dv = self
-                    .builder
-                    .build_load(self.string_type, default_ptr, "uwo_dv")
-                    .map_err(llvm_err)?;
-                let _ = self.builder.build_unconditional_branch(merge_block);
-                self.builder.position_at_end(merge_block);
-                let phi = self
-                    .builder
-                    .build_phi(self.string_type, "uwo_sphi")
-                    .map_err(llvm_err)?;
-                phi.add_incoming(&[(&str_val, some_block), (&dv, none_block)]);
-                let result_alloca = self
-                    .builder
-                    .build_alloca(self.string_type, "uwo_str_res")
-                    .map_err(llvm_err)?;
-                self.builder
-                    .build_store(result_alloca, phi.as_basic_value())
-                    .map_err(llvm_err)?;
-                Ok(TypedValue::Str(result_alloca))
-            }
-        }
-    }
-
-    /// unwrap(enum) - extract value from Some/Ok, return 0 on None/Err (debug builds can panic)
-    pub(super) fn builtin_unwrap(&mut self, enum_expr: &Expr) -> Result<TypedValue<'ctx>, String> {
-        let val = self.compile_expr(enum_expr)?;
-        let (enum_ptr, enum_ty, inner_type) = match val {
-            TypedValue::Enum(p, t, inner_type, ..) => (p, t, inner_type),
-            _ => return Err("unwrap: argument must be an enum (Option or Result)".to_string()),
-        };
-        let i64 = self.i64_ty();
-        let current_fn = self
-            .builder
-            .get_insert_block()
-            .and_then(|b| b.get_parent())
-            .ok_or("Cannot compile unwrap outside function")?;
-
-        let enum_bt: BasicTypeEnum = enum_ty.into();
-        let loaded = self
-            .builder
-            .build_load(enum_bt, enum_ptr, "uw_enum")
-            .map_err(llvm_err)?;
-        let enum_sv = loaded.into_struct_value();
-        let tag = self
-            .builder
-            .build_extract_value(enum_sv, 0, "uw_tag")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let is_some = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, tag, i64.const_int(0, false), "uw_is_some")
-            .map_err(llvm_err)?;
-
-        let merge_block = self.context.append_basic_block(current_fn, "uw_merge");
-        let some_block = self.context.append_basic_block(current_fn, "uw_some");
-        let none_block = self.context.append_basic_block(current_fn, "uw_none");
-
-        let _ = self
-            .builder
-            .build_conditional_branch(is_some, some_block, none_block);
-
-        // Some/Ok branch: extract value
-        self.builder.position_at_end(some_block);
-        let data_ptr = self
-            .builder
-            .build_extract_value(enum_sv, 1, "uw_data")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let inner_ptr = self
-            .builder
-            .build_pointer_cast(data_ptr, self.ptr_ty(), "uw_inner")
-            .map_err(llvm_err)?;
-        match inner_type {
-            InnerType::Int => {
-                let inner_val = self
-                    .builder
-                    .build_load(i64, inner_ptr, "uw_v")
-                    .map_err(llvm_err)?;
-                let _ = self.builder.build_unconditional_branch(merge_block);
-                self.builder.position_at_end(none_block);
-                let _ = self.builder.build_unconditional_branch(merge_block);
-                self.builder.position_at_end(merge_block);
-                let phi = self.builder.build_phi(i64, "uw_phi").map_err(llvm_err)?;
-                phi.add_incoming(&[
-                    (&inner_val, some_block),
-                    (&i64.const_int(0, false), none_block),
-                ]);
-                Ok(TypedValue::Int(phi.as_basic_value().into_int_value()))
-            }
-            InnerType::Float => {
-                let f64_ty = self.f64_ty();
-                let inner_val = self
-                    .builder
-                    .build_load(f64_ty, inner_ptr, "uw_fv")
-                    .map_err(llvm_err)?;
-                let _ = self.builder.build_unconditional_branch(merge_block);
-                self.builder.position_at_end(none_block);
-                let _ = self.builder.build_unconditional_branch(merge_block);
-                self.builder.position_at_end(merge_block);
-                let phi = self
-                    .builder
-                    .build_phi(f64_ty, "uw_fphi")
-                    .map_err(llvm_err)?;
-                phi.add_incoming(&[
-                    (&inner_val, some_block),
-                    (&f64_ty.const_float(0.0), none_block),
-                ]);
-                Ok(TypedValue::Float(phi.as_basic_value().into_float_value()))
-            }
-            InnerType::Str => {
-                let str_ptr_ty = self.ptr_ty();
-                let str_ptr = self
-                    .builder
-                    .build_pointer_cast(inner_ptr, str_ptr_ty, "uw_str_ptr")
-                    .map_err(llvm_err)?;
-                let loaded = self
-                    .builder
-                    .build_load(self.string_type, str_ptr, "uw_str_val")
-                    .map_err(llvm_err)?;
-                let alloca = self
-                    .builder
-                    .build_alloca(self.string_type, "uw_str")
-                    .map_err(llvm_err)?;
-                self.builder.build_store(alloca, loaded).map_err(llvm_err)?;
-                let _ = self.builder.build_unconditional_branch(merge_block);
-                self.builder.position_at_end(none_block);
-                let _ = self.builder.build_unconditional_branch(merge_block);
-                self.builder.position_at_end(merge_block);
-                Ok(TypedValue::Str(alloca))
-            }
-        }
-    }
-
-    /// orElse(enum, handler_or_default) - for Result: extract value or call handler with error
-    /// For Option: extract value or return default
-    pub(super) fn builtin_or_else(
-        &mut self,
-        enum_expr: &Expr,
-        handler_expr: &Expr,
-    ) -> Result<TypedValue<'ctx>, String> {
-        let val = self.compile_expr(enum_expr)?;
-        let (enum_ptr, enum_ty, inner_type) = match val {
-            TypedValue::Enum(p, t, inner_type, ..) => (p, t, inner_type),
-            _ => {
-                return Err("orElse: first argument must be an enum (Option or Result)".to_string())
-            }
-        };
-        let i64 = self.i64_ty();
-        let current_fn = self
-            .builder
-            .get_insert_block()
-            .and_then(|b| b.get_parent())
-            .ok_or("Cannot compile orElse outside function")?;
-
-        let enum_bt: BasicTypeEnum = enum_ty.into();
-        let loaded = self
-            .builder
-            .build_load(enum_bt, enum_ptr, "oe_enum")
-            .map_err(llvm_err)?;
-        let enum_sv = loaded.into_struct_value();
-        let tag = self
-            .builder
-            .build_extract_value(enum_sv, 0, "oe_tag")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let is_some = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, tag, i64.const_int(0, false), "oe_is_some")
-            .map_err(llvm_err)?;
-
-        let merge_block = self.context.append_basic_block(current_fn, "oe_merge");
-        let some_block = self.context.append_basic_block(current_fn, "oe_some");
-        let none_block = self.context.append_basic_block(current_fn, "oe_none");
-
-        let _ = self
-            .builder
-            .build_conditional_branch(is_some, some_block, none_block);
-
-        // Some/Ok branch: extract and return the value
-        self.builder.position_at_end(some_block);
-        let data_ptr = self
-            .builder
-            .build_extract_value(enum_sv, 1, "oe_data")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let inner_ptr = self
-            .builder
-            .build_pointer_cast(data_ptr, self.ptr_ty(), "oe_inner")
-            .map_err(llvm_err)?;
-        match inner_type {
-            InnerType::Int => {
-                let inner_val = self
-                    .builder
-                    .build_load(i64, inner_ptr, "oe_v")
-                    .map_err(llvm_err)?;
-                let _ = self.builder.build_unconditional_branch(merge_block);
-                self.builder.position_at_end(none_block);
-                let handler_val = self.compile_expr(handler_expr)?;
-                let handler_bv = handler_val
-                    .to_bv()
-                    .unwrap_or_else(|| i64.const_int(0, false).as_basic_value_enum());
-                let _ = self.builder.build_unconditional_branch(merge_block);
-                self.builder.position_at_end(merge_block);
-                let phi = self.builder.build_phi(i64, "oe_phi").map_err(llvm_err)?;
-                phi.add_incoming(&[
-                    (&inner_val, some_block),
-                    (&handler_bv.into_int_value(), none_block),
-                ]);
-                Ok(TypedValue::Int(phi.as_basic_value().into_int_value()))
-            }
-            InnerType::Float => {
-                let f64_ty = self.f64_ty();
-                let inner_val = self
-                    .builder
-                    .build_load(f64_ty, inner_ptr, "oe_fv")
-                    .map_err(llvm_err)?;
-                let _ = self.builder.build_unconditional_branch(merge_block);
-                self.builder.position_at_end(none_block);
-                let handler_val = self.compile_expr(handler_expr)?;
-                let handler_fv = match handler_val {
-                    TypedValue::Float(f) => f,
-                    TypedValue::Int(i) => self
-                        .builder
-                        .build_signed_int_to_float(i, f64_ty, "oe_i2f")
-                        .map_err(llvm_err)?,
-                    _ => {
-                        return Err("orElse: default must be numeric for Option<Float>".to_string())
-                    }
-                };
-                let _ = self.builder.build_unconditional_branch(merge_block);
-                self.builder.position_at_end(merge_block);
-                let phi = self
-                    .builder
-                    .build_phi(f64_ty, "oe_fphi")
-                    .map_err(llvm_err)?;
-                phi.add_incoming(&[(&inner_val, some_block), (&handler_fv, none_block)]);
-                Ok(TypedValue::Float(phi.as_basic_value().into_float_value()))
-            }
-            InnerType::Str => {
-                let str_ptr_ty = self.ptr_ty();
-                let str_ptr = self
-                    .builder
-                    .build_pointer_cast(inner_ptr, str_ptr_ty, "oe_str_ptr")
-                    .map_err(llvm_err)?;
-                let str_val = self
-                    .builder
-                    .build_load(self.string_type, str_ptr, "oe_str")
-                    .map_err(llvm_err)?;
-                let _ = self.builder.build_unconditional_branch(merge_block);
-                self.builder.position_at_end(none_block);
-                let handler_val = self.compile_expr(handler_expr)?;
-                let handler_ptr = match handler_val {
-                    TypedValue::Str(p) => p,
-                    _ => {
-                        return Err(
-                            "orElse: default must be a string for Option<String>".to_string()
-                        )
-                    }
-                };
-                let hv = self
-                    .builder
-                    .build_load(self.string_type, handler_ptr, "oe_hv")
-                    .map_err(llvm_err)?;
-                let _ = self.builder.build_unconditional_branch(merge_block);
-                self.builder.position_at_end(merge_block);
-                let phi = self
-                    .builder
-                    .build_phi(self.string_type, "oe_sphi")
-                    .map_err(llvm_err)?;
-                phi.add_incoming(&[(&str_val, some_block), (&hv, none_block)]);
-                let result_alloca = self
-                    .builder
-                    .build_alloca(self.string_type, "oe_str_res")
-                    .map_err(llvm_err)?;
-                self.builder
-                    .build_store(result_alloca, phi.as_basic_value())
-                    .map_err(llvm_err)?;
-                Ok(TypedValue::Str(result_alloca))
-            }
-        }
-    }
-
-    /// ok(option, err_val) - convert Option<T> to Result<T, E>
-    /// Some(v) → Ok(v), None → Err(err_val)
-    pub(super) fn builtin_ok(
-        &mut self,
-        opt_expr: &Expr,
-        err_expr: &Expr,
-    ) -> Result<TypedValue<'ctx>, String> {
-        let val = self.compile_expr(opt_expr)?;
-        let (opt_ptr, opt_ty, opt_inner_type) = match val {
-            TypedValue::Enum(p, t, inner_type, ..) => (p, t, inner_type),
-            _ => return Err("ok: first argument must be an Option enum".to_string()),
-        };
-        let i64 = self.i64_ty();
-        let current_fn = self
-            .builder
-            .get_insert_block()
-            .and_then(|b| b.get_parent())
-            .ok_or("Cannot compile ok outside function")?;
-
-        // Look up the Result enum type
-        let result_ty = *self
-            .enum_types
-            .get("Result")
-            .ok_or("ok: Result enum type not found")?;
-
-        let opt_bt: BasicTypeEnum = opt_ty.into();
-        let loaded = self
-            .builder
-            .build_load(opt_bt, opt_ptr, "ok_opt")
-            .map_err(llvm_err)?;
-        let opt_sv = loaded.into_struct_value();
-        let tag = self
-            .builder
-            .build_extract_value(opt_sv, 0, "ok_tag")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let is_some = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, tag, i64.const_int(0, false), "ok_is_some")
-            .map_err(llvm_err)?;
-
-        let merge_block = self.context.append_basic_block(current_fn, "ok_merge");
-        let some_block = self.context.append_basic_block(current_fn, "ok_some");
-        let none_block = self.context.append_basic_block(current_fn, "ok_none");
-
-        // Allocate result on entry
-        let result_bt: BasicTypeEnum = result_ty.into();
-        let entry = current_fn.get_first_basic_block().unwrap();
-        let saved_pos = self.builder.get_insert_block();
-        match entry.get_first_instruction() {
-            Some(instr) => {
-                let _ = self.builder.position_before(&instr);
-            }
-            None => self.builder.position_at_end(entry),
-        }
-        let result_alloca = self
-            .builder
-            .build_alloca(result_bt, "ok_result")
-            .map_err(llvm_err)?;
-        let zero = result_bt.const_zero();
-        self.builder
-            .build_store(result_alloca, zero)
-            .map_err(llvm_err)?;
-        if let Some(block) = saved_pos {
-            self.builder.position_at_end(block);
-        }
-
-        let _ = self
-            .builder
-            .build_conditional_branch(is_some, some_block, none_block);
-
-        // Some branch: extract value with correct type, create Ok(result)
-        self.builder.position_at_end(some_block);
-        let data_ptr = self
-            .builder
-            .build_extract_value(opt_sv, 1, "ok_data")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let inner_ptr = self
-            .builder
-            .build_pointer_cast(data_ptr, self.ptr_ty(), "ok_inner")
-            .map_err(llvm_err)?;
-        let buf = self.malloc_rc(i64.const_int(8, false))?;
-        match opt_inner_type {
-            InnerType::Int => {
-                let inner_val = self
-                    .builder
-                    .build_load(i64, inner_ptr, "ok_v")
-                    .map_err(llvm_err)?;
-                let buf_i64 = self
-                    .builder
-                    .build_pointer_cast(buf, self.ptr_ty(), "ok_buf_p")
-                    .map_err(llvm_err)?;
-                self.builder
-                    .build_store(buf_i64, inner_val)
-                    .map_err(llvm_err)?;
-            }
-            InnerType::Float => {
-                let f64_ty = self.f64_ty();
-                let inner_val = self
-                    .builder
-                    .build_load(f64_ty, inner_ptr, "ok_fv")
-                    .map_err(llvm_err)?;
-                let buf_f64 = self
-                    .builder
-                    .build_pointer_cast(buf, self.ptr_ty(), "ok_buf_f")
-                    .map_err(llvm_err)?;
-                self.builder
-                    .build_store(buf_f64, inner_val)
-                    .map_err(llvm_err)?;
-            }
-            InnerType::Str => {
-                let str_ptr_ty = self.ptr_ty();
-                let str_ptr = self
-                    .builder
-                    .build_pointer_cast(inner_ptr, str_ptr_ty, "ok_str_ptr")
-                    .map_err(llvm_err)?;
-                let str_val = self
-                    .builder
-                    .build_load(self.string_type, str_ptr, "ok_str")
-                    .map_err(llvm_err)?;
-                let buf_str = self
-                    .builder
-                    .build_pointer_cast(buf, str_ptr_ty, "ok_buf_s")
-                    .map_err(llvm_err)?;
-                self.builder
-                    .build_store(buf_str, str_val)
-                    .map_err(llvm_err)?;
-            }
-        }
-        self.rc_inc(buf)?;
-
-        let undef = result_ty.get_undef();
-        let r1 = self
-            .builder
-            .build_insert_value(undef, i64.const_int(0, false), 0, "ok_tag")
-            .map_err(llvm_err)?;
-        let r2 = self
-            .builder
-            .build_insert_value(r1, buf, 1, "ok_data")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(result_alloca, r2)
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(merge_block);
-
-        // None branch: create Err(err_val)
-        self.builder.position_at_end(none_block);
-        let err_val = self.compile_expr(err_expr)?;
-        // Store err_val in heap
-        let err_buf = self.malloc_rc(i64.const_int(8, false))?;
-        let err_bv = err_val
-            .to_bv()
-            .unwrap_or_else(|| i64.const_int(0, false).as_basic_value_enum());
-        let err_ptr = self
-            .builder
-            .build_pointer_cast(err_buf, self.ptr_ty(), "ok_err_p")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(err_ptr, err_bv)
-            .map_err(llvm_err)?;
-        self.rc_inc(err_buf)?;
-
-        let undef2 = result_ty.get_undef();
-        let e1 = self
-            .builder
-            .build_insert_value(undef2, i64.const_int(1, false), 0, "ok_err_tag")
-            .map_err(llvm_err)?;
-        let e2 = self
-            .builder
-            .build_insert_value(e1, err_buf, 1, "ok_err_data")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(result_alloca, e2)
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(merge_block);
-
-        // Merge
-        self.builder.position_at_end(merge_block);
-        Ok(TypedValue::Enum(
-            result_alloca,
-            result_ty,
-            opt_inner_type,
-            true,
-        ))
     }
 
     // ---- LazyList operations ----
@@ -4319,8 +3677,22 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_extract_value(ll_sv, 0, "head_h")
                     .map_err(llvm_err)?;
-                // A LazyList always has a head, so is_empty = false (i1)
-                (h, self.bool_ty().const_int(0, false))
+                // Check take_count (field 3): 0 = empty, != 0 = has elements
+                let take_count = self
+                    .builder
+                    .build_extract_value(ll_sv, 3, "head_tc")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                let is_empty = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::EQ,
+                        take_count,
+                        self.i64_ty().const_int(0, false),
+                        "ll_is_empty",
+                    )
+                    .map_err(llvm_err)?;
+                (h, is_empty)
             }
             TypedValue::List(ptr) => {
                 let list = self.load_list(*ptr)?;
@@ -4361,12 +3733,9 @@ impl<'ctx> CodeGen<'ctx> {
 
         let i64 = self.i64_ty();
 
-        // Get the Option enum type
-        let option_ty = *self
-            .enum_types
-            .get("Option")
-            .ok_or("lazyHead: Option type not found")?;
-        let option_bt: BasicTypeEnum = option_ty.into();
+        // Create nullable {i1, i64} for nullable Int
+        let nullable_ty = self.get_nullable_type(i64.into(), "Nullable<Int>");
+        let null_bt: BasicTypeEnum = nullable_ty.into();
 
         let current_fn = self
             .builder
@@ -4376,7 +3745,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let result_alloca = self
             .builder
-            .build_alloca(option_bt, "lh_result")
+            .build_alloca(nullable_ty, "lh_result")
             .map_err(llvm_err)?;
 
         let merge_block = self.context.append_basic_block(current_fn, "lh_merge");
@@ -4389,56 +3758,39 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Some branch: head_val contains the i64 value
         self.builder.position_at_end(some_block);
-        // Extract i64 value from head_val (which is either IntValue or BasicValueEnum)
         let head_i64 = head_val.into_int_value();
 
-        // Store head on heap and create Some(head)
-        let buf = self.malloc_rc(i64.const_int(8, false))?;
-        let buf_ptr = self
-            .builder
-            .build_pointer_cast(buf, self.ptr_ty(), "lh_bp")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(buf_ptr, head_i64)
-            .map_err(llvm_err)?;
-        self.rc_inc(buf)?;
-
-        let undef = option_ty.get_undef();
+        // Build nullable {flag=0, value} — inline, no heap allocation
+        let undef = nullable_ty.get_undef();
         let r1 = self
             .builder
-            .build_insert_value(undef, i64.const_int(0, false), 0, "lh_ok_tag")
+            .build_insert_value(undef, self.null_flag_ty().const_int(0, false), 0, "lh_some_flag")
             .map_err(llvm_err)?;
         let r2 = self
             .builder
-            .build_insert_value(r1, buf, 1, "lh_ok_data")
+            .build_insert_value(r1, head_i64, 1, "lh_some_val")
             .map_err(llvm_err)?;
         self.builder
             .build_store(result_alloca, r2)
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(merge_block);
 
-        // None branch
+        // None branch: nullable {flag=1, undef}
         self.builder.position_at_end(none_block);
-        let undef2 = option_ty.get_undef();
+        let undef2 = nullable_ty.get_undef();
         let n1 = self
             .builder
-            .build_insert_value(undef2, i64.const_int(1, false), 0, "lh_none_tag")
-            .map_err(llvm_err)?;
-        let n2 = self
-            .builder
-            .build_insert_value(n1, self.ptr_ty().const_zero(), 1, "lh_none_data")
+            .build_insert_value(undef2, self.null_flag_ty().const_int(1, false), 0, "lh_none_flag")
             .map_err(llvm_err)?;
         self.builder
-            .build_store(result_alloca, n2)
+            .build_store(result_alloca, n1)
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(merge_block);
 
         self.builder.position_at_end(merge_block);
-        Ok(TypedValue::Enum(
+        Ok(TypedValue::Nullable(
             result_alloca,
-            option_ty,
-            InnerType::Int,
-            true,
+            null_bt,
         ))
     }
 
@@ -5468,6 +4820,14 @@ impl<'ctx> CodeGen<'ctx> {
         let poll_timeout = self
             .context
             .append_basic_block(current_fn, "wt_poll_timeout");
+        let wt_return = self
+            .context
+            .append_basic_block(current_fn, "wt_return");
+        let wt_nullable_ty = self.get_nullable_type(self.string_type.into(), "Nullable");
+        let wt_result_alloca = self
+            .builder
+            .build_alloca(wt_nullable_ty, "wt_res")
+            .map_err(llvm_err)?;
 
         let _ = self.builder.build_unconditional_branch(poll_hdr);
         self.builder.position_at_end(poll_hdr);
@@ -5526,7 +4886,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_conditional_branch(is_done, poll_done, poll_hdr);
 
-        // Timeout: cancel thread and return Err(Timeout)
+        // Timeout: cancel thread, join, return null (nullable {i1=1, undef})
         self.builder.position_at_end(poll_timeout);
         let pthread_cancel_fn = self
             .module
@@ -5553,59 +4913,22 @@ impl<'ctx> CodeGen<'ctx> {
                 "",
             )
             .map_err(llvm_err)?;
-        // Return Err(Timeout)
-        let (timeout_enum, timeout_variant) = self
-            .registry
-            .lookup_variant("Timeout")
-            .map(|(ei, vi)| (ei.clone(), vi.clone()))
-            .ok_or("TimeoutError enum with Timeout variant required for withTimeout")?;
-        let timeout_err = self.compile_enum_construct(&timeout_enum, &timeout_variant, &[])?;
-        let err_val = self.to_fat_struct(&timeout_err)?;
-        let err_alloca = self
+        // Build nullable {i8=1, undef} for timeout (null)
+        let null_undef = wt_nullable_ty.get_undef();
+        let null_flag = self.null_flag_ty().const_int(1, false);
+        let with_flag = self
             .builder
-            .build_alloca(self.string_type, "wt_err")
+            .build_insert_value(null_undef, null_flag, 0, "nul_f")
+            .map_err(llvm_err)?;
+        let inner_undef = self.string_type.get_undef();
+        let null_full = self
+            .builder
+            .build_insert_value(with_flag, inner_undef, 1, "nul_v")
             .map_err(llvm_err)?;
         self.builder
-            .build_store(err_alloca, err_val)
+            .build_store(wt_result_alloca, null_full)
             .map_err(llvm_err)?;
-        let (result_enum, err_variant) = self
-            .registry
-            .lookup_variant("Err")
-            .map(|(ei, vi)| (ei.clone(), vi.clone()))
-            .ok_or("Result enum with Err variant required for withTimeout")?;
-        let err_enum = self.compile_enum_construct(&result_enum, &err_variant, &[])?;
-        // Store the timeout error payload into the Err
-        let err_enum_ptr = match &err_enum {
-            TypedValue::Enum(p, _, ..) => *p,
-            _ => return Err("withTimeout: failed to construct Err".to_string()),
-        };
-        let err_bt: BasicTypeEnum = self.string_type.into();
-        let err_loaded = self
-            .builder
-            .build_load(err_bt, err_alloca, "wt_err_ld")
-            .map_err(llvm_err)?;
-        let err_sv = err_loaded.into_struct_value();
-        let err_tag = self
-            .builder
-            .build_extract_value(err_sv, 0, "wt_etag")
-            .map_err(llvm_err)?;
-        let err_data = self
-            .builder
-            .build_extract_value(err_sv, 1, "wt_edata")
-            .map_err(llvm_err)?;
-        let undef_err = self.string_type.get_undef();
-        let e1 = self
-            .builder
-            .build_insert_value(undef_err, err_tag, 0, "e1")
-            .map_err(llvm_err)?;
-        let e2 = self
-            .builder
-            .build_insert_value(e1, err_data, 1, "e2")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(err_enum_ptr, e2)
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(poll_done); // reuse done block to load result
+        let _ = self.builder.build_unconditional_branch(wt_return);
 
         // Done: pthread_join and return Ok(result)
         self.builder.position_at_end(poll_done);
@@ -5676,94 +4999,27 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(free_fn, &[task_heap.into()], "")
             .map_err(llvm_err)?;
 
-        // Wrap result in Ok(result)
-        let (_ok_enum, _ok_variant) = self
-            .registry
-            .lookup_variant("Ok")
-            .map(|(ei, vi)| (ei.clone(), vi.clone()))
-            .ok_or("Result enum with Ok variant required for withTimeout")?;
-        let result_struct = self.string_type.get_undef();
-        let r1 = self
+        // Wrap result in nullable {i8=0, fat} (non-null)
+        let ok_undef = wt_nullable_ty.get_undef();
+        let ok_flag = self.null_flag_ty().const_int(0, false);
+        let ok_with_flag = self
             .builder
-            .build_insert_value(result_struct, fat, 0, "r1")
+            .build_insert_value(ok_undef, ok_flag, 0, "ok_f")
             .map_err(llvm_err)?;
-        let r2 = self
+        let ok_full = self
             .builder
-            .build_insert_value(r1, self.ptr_ty().const_null(), 1, "r2")
-            .map_err(llvm_err)?;
-        let fat_alloca = self
-            .builder
-            .build_alloca(self.string_type, "wt_fat")
-            .map_err(llvm_err)?;
-        self.builder.build_store(fat_alloca, r2).map_err(llvm_err)?;
-        let ok_bt: BasicTypeEnum = self.string_type.into();
-        // Create Some/Ok wrapper: {tag: 0, data: ptr to fat struct copy}
-        let fat_loaded = self
-            .builder
-            .build_load(ok_bt, fat_alloca, "wt_fl")
-            .map_err(llvm_err)?
-            .into_struct_value();
-        let ok_val_i64 = self
-            .builder
-            .build_extract_value(fat_loaded, 0, "wt_ovi")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let ok_val_ptr = self
-            .builder
-            .build_extract_value(fat_loaded, 1, "wt_ovp")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        // Allocate heap copy of the fat struct data
-        let heap_copy = self
-            .builder
-            .build_call(
-                malloc_fn,
-                &[self.i64_ty().const_int(16, false).into()],
-                "wt_hc",
-            )
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .unwrap_basic()
-            .into_pointer_value();
-        let _ = self
-            .builder
-            .build_store(heap_copy, ok_val_i64)
-            .map_err(llvm_err)?;
-        let data_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    self.i64_ty(),
-                    heap_copy,
-                    &[self.i64_ty().const_int(1, false)],
-                    "wt_dp",
-                )
-                .map_err(llvm_err)
-        }?;
-        let _ = self
-            .builder
-            .build_store(data_ptr, ok_val_ptr)
-            .map_err(llvm_err)?;
-        let ok_alloca = self
-            .builder
-            .build_alloca(self.string_type, "wt_ok")
-            .map_err(llvm_err)?;
-        let ok_undef = self.string_type.get_undef();
-        let ok_t = self
-            .builder
-            .build_insert_value(ok_undef, self.i64_ty().const_int(0, false), 0, "ok_t")
-            .map_err(llvm_err)?;
-        let ok_d = self
-            .builder
-            .build_insert_value(ok_t, heap_copy, 1, "ok_d")
+            .build_insert_value(ok_with_flag, fat, 1, "ok_v")
             .map_err(llvm_err)?;
         self.builder
-            .build_store(ok_alloca, ok_d)
+            .build_store(wt_result_alloca, ok_full)
             .map_err(llvm_err)?;
-        Ok(TypedValue::Enum(
-            ok_alloca,
-            self.string_type,
-            InnerType::Int,
-            true,
+        let _ = self.builder.build_unconditional_branch(wt_return);
+
+        // Return: load nullable from alloca
+        self.builder.position_at_end(wt_return);
+        Ok(TypedValue::Nullable(
+            wt_result_alloca,
+            wt_nullable_ty.into(),
         ))
     }
 
@@ -7039,11 +6295,11 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(ext);
         self.builder.position_at_end(ext);
-        // Build Option enum: Some(found) or None.
+        // Build nullable String: set flag 0 + found value, or flag 1 (null).
         // InnerType defaults to Int — list elements are fat structs whose type
         // is only known at runtime. Fixing this requires adding element type info
         // to List/Map/Set TypedValue variants.
-        self.build_option_from_fat_struct(found_a, found_flag_a, InnerType::Int)
+        self.build_nullable_str(found_a, found_flag_a)
     }
 
     /// findIndex(list, fn) or findIndex(list) { lambda } -> Option<Int>
@@ -7136,8 +6392,8 @@ impl<'ctx> CodeGen<'ctx> {
                 "is_found",
             )
             .map_err(llvm_err)?;
-        // Build Option<Int>: Some(idx) or None
-        self.build_option_int(found_idx, is_found)
+        // Build nullable Int: set flag 0 + found_idx, or flag 1 (null)
+        self.build_nullable_int(found_idx, is_found)
     }
 
     /// reduce(list, fn) or reduce(list) { lambda } -> Option<T>
@@ -7284,7 +6540,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         // InnerType defaults to Int — accumulator is a fat struct whose type
         // is only known at runtime. See comment at builtin_find for details.
-        self.build_option_from_fat_struct(acc_alloca, found_flag_a, InnerType::Int)
+        self.build_nullable_str(acc_alloca, found_flag_a)
     }
 
     /// foldRight(list, init, fn) or foldRight(list, init) { lambda } -> T
@@ -8783,33 +8039,27 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::Int(final_acc.into_int_value()))
     }
 
-    /// Build Option<T> from fat struct alloca + found flag -> TypedValue::Enum
-    /// Layout: {i64, i8*} where tag=1(data_ptr) for Some, tag=0(null) for None
-    pub(super) fn build_option_from_fat_struct(
+    /// Build nullable String? ({i1, {i64, ptr}}): flag=0 valid(fat_struct), flag=1 null(undef)
+    /// The fat string struct is inlined — no heap allocation needed.
+    pub(super) fn build_nullable_str(
         &mut self,
         fat_alloca: PointerValue<'ctx>,
         found_flag_a: PointerValue<'ctx>,
-        inner_type: InnerType,
     ) -> Result<TypedValue<'ctx>, String> {
         let is_found = self
             .builder
             .build_load(self.bool_ty(), found_flag_a, "is_found")
             .map_err(llvm_err)?
             .into_int_value();
-        let i64_ty = self.i64_ty();
-        let ptr_ty = self.ptr_ty();
-        let enum_ty = self
-            .context
-            .struct_type(&[i64_ty.into(), ptr_ty.into()], false);
-        // Clone fat struct into heap for Some variant
+        let nullable_ty = self.get_nullable_type(self.string_type.into(), "Nullable<Str>");
         let current_fn = self
             .builder
             .get_insert_block()
             .and_then(|b| b.get_parent())
             .ok_or("no function")?;
-        let some_bb = self.context.append_basic_block(current_fn, "opt_some");
-        let none_bb = self.context.append_basic_block(current_fn, "opt_none");
-        let merge_bb = self.context.append_basic_block(current_fn, "opt_merge");
+        let some_bb = self.context.append_basic_block(current_fn, "nls_some");
+        let none_bb = self.context.append_basic_block(current_fn, "nls_none");
+        let merge_bb = self.context.append_basic_block(current_fn, "nls_merge");
         let is_found_cond = self
             .builder
             .build_int_compare(
@@ -8822,74 +8072,63 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self
             .builder
             .build_conditional_branch(is_found_cond, some_bb, none_bb);
-        // Some: malloc_rc(16), store fat struct, build {1, ptr}
+        // Some: {flag=0, fat_val} — value inlined
         self.builder.position_at_end(some_bb);
         let fat_val = self
             .builder
             .build_load(self.string_type, fat_alloca, "fat_val")
-            .map_err(llvm_err)?;
-        let buf = self.malloc_rc(i64_ty.const_int(16, false))?;
-        self.builder.build_store(buf, fat_val).map_err(llvm_err)?;
-        self.rc_inc(buf)?;
-        let some_undef = enum_ty.get_undef();
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let some_undef = nullable_ty.get_undef();
         let s1 = self
             .builder
-            .build_insert_value(some_undef, i64_ty.const_int(0, false), 0, "s_tag")
+            .build_insert_value(some_undef, self.null_flag_ty().const_int(0, false), 0, "s_flag")
             .map_err(llvm_err)?;
         let some_val = self
             .builder
-            .build_insert_value(s1, buf, 1, "s_ptr")
+            .build_insert_value(s1, fat_val, 1, "s_val")
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(merge_bb);
-        // None: build {0, null}
+        // None: {flag=1, undef}
         self.builder.position_at_end(none_bb);
-        let none_undef = enum_ty.get_undef();
-        let n1 = self
-            .builder
-            .build_insert_value(none_undef, i64_ty.const_int(1, false), 0, "n_tag")
-            .map_err(llvm_err)?;
+        let none_undef = nullable_ty.get_undef();
         let none_val = self
             .builder
-            .build_insert_value(n1, ptr_ty.const_zero(), 1, "n_ptr")
+            .build_insert_value(none_undef, self.null_flag_ty().const_int(1, false), 0, "n_flag")
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(merge_bb);
         // Merge
         self.builder.position_at_end(merge_bb);
         let phi = self
             .builder
-            .build_phi(enum_ty, "opt_phi")
+            .build_phi(nullable_ty, "nls_phi")
             .map_err(llvm_err)?;
         phi.add_incoming(&[(&some_val, some_bb), (&none_val, none_bb)]);
         let alloca = self
             .builder
-            .build_alloca(enum_ty, "opt_alloca")
+            .build_alloca(nullable_ty, "nls_alloca")
             .map_err(llvm_err)?;
         self.builder
             .build_store(alloca, phi.as_basic_value())
             .map_err(llvm_err)?;
-        Ok(TypedValue::Enum(alloca, enum_ty, inner_type, true))
+        Ok(TypedValue::Nullable(alloca, nullable_ty.into()))
     }
 
-    /// Build Option<Int>: Some(idx) or None
-    /// Layout: {i64, i8*} where tag=1(data_ptr) for Some, tag=0(null) for None
-    pub(super) fn build_option_int(
+    /// Build nullable Int? ({i1, i64}): flag=0 valid(val), flag=1 null(undef)
+    pub(super) fn build_nullable_int(
         &mut self,
         val: IntValue<'ctx>,
         is_some: IntValue<'ctx>,
     ) -> Result<TypedValue<'ctx>, String> {
-        let i64_ty = self.i64_ty();
-        let ptr_ty = self.ptr_ty();
-        let enum_ty = self
-            .context
-            .struct_type(&[i64_ty.into(), ptr_ty.into()], false);
+        let nullable_ty = self.get_nullable_type(self.i64_ty().into(), "Nullable<Int>");
         let current_fn = self
             .builder
             .get_insert_block()
             .and_then(|b| b.get_parent())
             .ok_or("no function")?;
-        let some_bb = self.context.append_basic_block(current_fn, "opti_some");
-        let none_bb = self.context.append_basic_block(current_fn, "opti_none");
-        let merge_bb = self.context.append_basic_block(current_fn, "opti_merge");
+        let some_bb = self.context.append_basic_block(current_fn, "nli_some");
+        let none_bb = self.context.append_basic_block(current_fn, "nli_none");
+        let merge_bb = self.context.append_basic_block(current_fn, "nli_merge");
         let is_some_cond = self
             .builder
             .build_int_compare(
@@ -8902,77 +8141,58 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self
             .builder
             .build_conditional_branch(is_some_cond, some_bb, none_bb);
-        // Some: malloc_rc(8), store i64, build {1, ptr}
+        // Some: {flag=0, val}
         self.builder.position_at_end(some_bb);
-        let buf = self.malloc_rc(i64_ty.const_int(8, false))?;
-        let i8_ptr = self
-            .builder
-            .build_pointer_cast(buf, ptr_ty, "i8p")
-            .map_err(llvm_err)?;
-        let val_ptr = self
-            .builder
-            .build_pointer_cast(i8_ptr, self.context.ptr_type(Default::default()), "val_ptr")
-            .map_err(llvm_err)?;
-        self.builder.build_store(val_ptr, val).map_err(llvm_err)?;
-        self.rc_inc(buf)?;
-        let some_undef = enum_ty.get_undef();
+        let some_undef = nullable_ty.get_undef();
         let s1 = self
             .builder
-            .build_insert_value(some_undef, i64_ty.const_int(0, false), 0, "s_tag")
+            .build_insert_value(some_undef, self.null_flag_ty().const_int(0, false), 0, "s_flag")
             .map_err(llvm_err)?;
         let some_val = self
             .builder
-            .build_insert_value(s1, buf, 1, "s_ptr")
+            .build_insert_value(s1, val, 1, "s_val")
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(merge_bb);
-        // None: build {0, null}
+        // None: {flag=1, undef}
         self.builder.position_at_end(none_bb);
-        let none_undef = enum_ty.get_undef();
-        let n1 = self
-            .builder
-            .build_insert_value(none_undef, i64_ty.const_int(1, false), 0, "n_tag")
-            .map_err(llvm_err)?;
+        let none_undef = nullable_ty.get_undef();
         let none_val = self
             .builder
-            .build_insert_value(n1, ptr_ty.const_zero(), 1, "n_ptr")
+            .build_insert_value(none_undef, self.null_flag_ty().const_int(1, false), 0, "n_flag")
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(merge_bb);
         // Merge
         self.builder.position_at_end(merge_bb);
         let phi = self
             .builder
-            .build_phi(enum_ty, "opti_phi")
+            .build_phi(nullable_ty, "nli_phi")
             .map_err(llvm_err)?;
         phi.add_incoming(&[(&some_val, some_bb), (&none_val, none_bb)]);
         let alloca = self
             .builder
-            .build_alloca(enum_ty, "opti_alloca")
+            .build_alloca(nullable_ty, "nli_alloca")
             .map_err(llvm_err)?;
         self.builder
             .build_store(alloca, phi.as_basic_value())
             .map_err(llvm_err)?;
-        Ok(TypedValue::Enum(alloca, enum_ty, InnerType::Int, true))
+        Ok(TypedValue::Nullable(alloca, nullable_ty.into()))
     }
 
-    /// Build Option<Float>: Some(val) or None
-    pub(super) fn build_option_float(
+    /// Build nullable Float? ({i1, f64}): flag=0 valid(val), flag=1 null(undef)
+    pub(super) fn build_nullable_float(
         &mut self,
         val: FloatValue<'ctx>,
         is_some: IntValue<'ctx>,
     ) -> Result<TypedValue<'ctx>, String> {
-        let i64_ty = self.i64_ty();
-        let ptr_ty = self.ptr_ty();
-        let enum_ty = self
-            .context
-            .struct_type(&[i64_ty.into(), ptr_ty.into()], false);
+        let nullable_ty = self.get_nullable_type(self.f64_ty().into(), "Nullable<Float>");
         let current_fn = self
             .builder
             .get_insert_block()
             .and_then(|b| b.get_parent())
             .ok_or("no function")?;
-        let some_bb = self.context.append_basic_block(current_fn, "optf_some");
-        let none_bb = self.context.append_basic_block(current_fn, "optf_none");
-        let merge_bb = self.context.append_basic_block(current_fn, "optf_merge");
+        let some_bb = self.context.append_basic_block(current_fn, "nlf_some");
+        let none_bb = self.context.append_basic_block(current_fn, "nlf_none");
+        let merge_bb = self.context.append_basic_block(current_fn, "nlf_merge");
         let is_some_cond = self
             .builder
             .build_int_compare(
@@ -8985,71 +8205,58 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self
             .builder
             .build_conditional_branch(is_some_cond, some_bb, none_bb);
-        // Some: malloc_rc(8), store f64, build {tag:0, ptr}
+        // Some: {flag=0, val}
         self.builder.position_at_end(some_bb);
-        let buf = self.malloc_rc(i64_ty.const_int(8, false))?;
-        let f64_ptr = self
-            .builder
-            .build_pointer_cast(buf, self.context.ptr_type(Default::default()), "f64_ptr")
-            .map_err(llvm_err)?;
-        self.builder.build_store(f64_ptr, val).map_err(llvm_err)?;
-        self.rc_inc(buf)?;
-        let some_undef = enum_ty.get_undef();
+        let some_undef = nullable_ty.get_undef();
         let s1 = self
             .builder
-            .build_insert_value(some_undef, i64_ty.const_int(0, false), 0, "s_tag")
+            .build_insert_value(some_undef, self.null_flag_ty().const_int(0, false), 0, "s_flag")
             .map_err(llvm_err)?;
         let some_val = self
             .builder
-            .build_insert_value(s1, buf, 1, "s_ptr")
+            .build_insert_value(s1, val, 1, "s_val")
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(merge_bb);
-        // None: build {tag:1, null}
+        // None: {flag=1, undef}
         self.builder.position_at_end(none_bb);
-        let none_undef = enum_ty.get_undef();
-        let n1 = self
-            .builder
-            .build_insert_value(none_undef, i64_ty.const_int(1, false), 0, "n_tag")
-            .map_err(llvm_err)?;
+        let none_undef = nullable_ty.get_undef();
         let none_val = self
             .builder
-            .build_insert_value(n1, ptr_ty.const_zero(), 1, "n_ptr")
+            .build_insert_value(none_undef, self.null_flag_ty().const_int(1, false), 0, "n_flag")
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(merge_bb);
         // Merge
         self.builder.position_at_end(merge_bb);
         let phi = self
             .builder
-            .build_phi(enum_ty, "optf_phi")
+            .build_phi(nullable_ty, "nlf_phi")
             .map_err(llvm_err)?;
         phi.add_incoming(&[(&some_val, some_bb), (&none_val, none_bb)]);
         let alloca = self
             .builder
-            .build_alloca(enum_ty, "optf_alloca")
+            .build_alloca(nullable_ty, "nlf_alloca")
             .map_err(llvm_err)?;
         self.builder
             .build_store(alloca, phi.as_basic_value())
             .map_err(llvm_err)?;
-        Ok(TypedValue::Enum(alloca, enum_ty, InnerType::Float, true))
+        Ok(TypedValue::Nullable(alloca, nullable_ty.into()))
     }
 
-    /// Build Option<List<T>>: Some(list) or None based on is_empty condition
-    pub(super) fn build_option_list(
+    /// Build nullable List? ({i1, list_struct}): flag=0 valid(list_val), flag=1 null(undef)
+    pub(super) fn build_nullable_list(
         &mut self,
         list_val: StructValue<'ctx>,
         is_empty_value: IntValue<'ctx>,
     ) -> Result<TypedValue<'ctx>, String> {
+        let nullable_ty = self.get_nullable_type(self.list_type.into(), "Nullable<List>");
         let current_fn = self
             .builder
             .get_insert_block()
             .and_then(|b| b.get_parent())
             .ok_or("no function")?;
-        let enum_ty = self
-            .context
-            .struct_type(&[self.i64_ty().into(), self.ptr_ty().into()], false);
-        let some_bb = self.context.append_basic_block(current_fn, "optl_some");
-        let none_bb = self.context.append_basic_block(current_fn, "optl_none");
-        let merge_bb = self.context.append_basic_block(current_fn, "optl_merge");
+        let some_bb = self.context.append_basic_block(current_fn, "nll_some");
+        let none_bb = self.context.append_basic_block(current_fn, "nll_none");
+        let merge_bb = self.context.append_basic_block(current_fn, "nll_merge");
         let is_empty_cond = self
             .builder
             .build_int_compare(
@@ -9062,407 +8269,41 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self
             .builder
             .build_conditional_branch(is_empty_cond, none_bb, some_bb);
-        // Some: malloc_rc(24), copy list, build {tag:0, ptr}
+        // Some: {flag=0, list_val} — value inlined, no heap allocation
         self.builder.position_at_end(some_bb);
-        let buf = self.malloc_rc(self.i64_ty().const_int(24, false))?;
-        self.builder.build_store(buf, list_val).map_err(llvm_err)?;
-        self.rc_inc(buf)?;
-        let some_undef = enum_ty.get_undef();
+        let some_undef = nullable_ty.get_undef();
         let s1 = self
             .builder
-            .build_insert_value(some_undef, self.i64_ty().const_int(0, false), 0, "s_tag")
+            .build_insert_value(some_undef, self.null_flag_ty().const_int(0, false), 0, "s_flag")
             .map_err(llvm_err)?;
         let some_val = self
             .builder
-            .build_insert_value(s1, buf, 1, "s_ptr")
+            .build_insert_value(s1, list_val, 1, "s_val")
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(merge_bb);
-        // None: build {tag:1, null}
+        // None: {flag=1, undef}
         self.builder.position_at_end(none_bb);
-        let none_undef = enum_ty.get_undef();
-        let n1 = self
-            .builder
-            .build_insert_value(none_undef, self.i64_ty().const_int(1, false), 0, "n_tag")
-            .map_err(llvm_err)?;
+        let none_undef = nullable_ty.get_undef();
         let none_val = self
             .builder
-            .build_insert_value(n1, self.ptr_ty().const_zero(), 1, "n_ptr")
+            .build_insert_value(none_undef, self.null_flag_ty().const_int(1, false), 0, "n_flag")
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(merge_bb);
         // Merge
         self.builder.position_at_end(merge_bb);
         let phi = self
             .builder
-            .build_phi(enum_ty, "optl_phi")
+            .build_phi(nullable_ty, "nll_phi")
             .map_err(llvm_err)?;
         phi.add_incoming(&[(&some_val, some_bb), (&none_val, none_bb)]);
         let alloca = self
             .builder
-            .build_alloca(enum_ty, "optl_alloca")
+            .build_alloca(nullable_ty, "nll_alloca")
             .map_err(llvm_err)?;
         self.builder
             .build_store(alloca, phi.as_basic_value())
             .map_err(llvm_err)?;
-        Ok(TypedValue::Enum(alloca, enum_ty, InnerType::Int, true))
-    }
-
-    /// Inline flatMap for Option: pattern match on opt, call callback with unwrapped value,
-    /// return the callback's result directly. This avoids the untyped callback i64 round-trip.
-    pub(super) fn builtin_flat_map(
-        &mut self,
-        args: &[Expr],
-        trailing: &Option<Box<Expr>>,
-    ) -> Result<TypedValue<'ctx>, String> {
-        self.builtin_flat_map_impl(args, trailing, "Option")
-    }
-
-    /// Inline flatMapResult for Result: pattern match on res, call callback with unwrapped value,
-    /// return the callback's result directly.
-    pub(super) fn builtin_flat_map_result(
-        &mut self,
-        args: &[Expr],
-        trailing: &Option<Box<Expr>>,
-    ) -> Result<TypedValue<'ctx>, String> {
-        self.builtin_flat_map_impl(args, trailing, "Result")
-    }
-
-    pub(super) fn builtin_flat_map_impl(
-        &mut self,
-        args: &[Expr],
-        trailing: &Option<Box<Expr>>,
-        enum_name: &str,
-    ) -> Result<TypedValue<'ctx>, String> {
-        // flatMap(enum_val, fn) or flatMap(enum_val) { lambda }
-        let (enum_val, callback) = if let Some(lam) = trailing {
-            if args.len() != 1 {
-                return Err(format!(
-                    "{} with trailing lambda expects 1 argument",
-                    enum_name
-                ));
-            }
-            let ev = self.compile_expr(&args[0])?;
-            let cb = self.compile_expr(lam)?;
-            (ev, cb)
-        } else if args.len() == 2 {
-            let ev = self.compile_expr(&args[0])?;
-            let cb = self.compile_expr(&args[1])?;
-            (ev, cb)
-        } else {
-            return Err(format!("flatMap expects 2 arguments (enum, fn)"));
-        };
-
-        // Extract the callback's function pointer and type
-        let (fn_ptr, fn_type) = match callback {
-            TypedValue::Fn(p, ft) => (p, ft),
-            _ => return Err(format!("{}: second argument must be a function", enum_name)),
-        };
-
-        // Get the enum value (as an alloca pointer to {i64, ptr})
-        let (enum_ptr, enum_ty, inner_type) = match enum_val {
-            TypedValue::Enum(p, t, inner_type, ..) => (p, t, inner_type),
-            _ => {
-                return Err(format!(
-                    "{}: first argument must be an {}",
-                    enum_name, enum_name
-                ))
-            }
-        };
-
-        let current_fn = self
-            .builder
-            .get_insert_block()
-            .and_then(|b| b.get_parent())
-            .ok_or("Cannot compile flatMap outside function")?;
-
-        let i64 = self.i64_ty();
-
-        // Allocate result at entry
-        let result_bt: BasicTypeEnum = enum_ty.into();
-        let entry = current_fn.get_first_basic_block().unwrap();
-        let saved_pos = self.builder.get_insert_block();
-        match entry.get_first_instruction() {
-            Some(instr) => {
-                let _ = self.builder.position_before(&instr);
-            }
-            None => self.builder.position_at_end(entry),
-        }
-        let result_alloca = self
-            .builder
-            .build_alloca(result_bt, "fm_result")
-            .map_err(llvm_err)?;
-        let zero = result_bt.const_zero();
-        self.builder
-            .build_store(result_alloca, zero)
-            .map_err(llvm_err)?;
-        if let Some(block) = saved_pos {
-            self.builder.position_at_end(block);
-        }
-
-        // Build match: check tag (0 = Some/Ok, 1 = None/Err)
-        let merge_block = self.context.append_basic_block(current_fn, "fm_merge");
-        let some_block = self.context.append_basic_block(current_fn, "fm_some");
-        let none_block = self.context.append_basic_block(current_fn, "fm_none");
-
-        let enum_bt: BasicTypeEnum = enum_ty.into();
-        let enum_raw = self
-            .builder
-            .build_load(enum_bt, enum_ptr, "fm_enum")
-            .map_err(llvm_err)?;
-        let enum_loaded = enum_raw.into_struct_value();
-        let tag = self
-            .builder
-            .build_extract_value(enum_loaded, 0, "fm_tag")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let is_some = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, tag, i64.const_int(0, false), "fm_is_some")
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(is_some, some_block, none_block);
-
-        // Some/Ok branch: extract inner value, call callback, store result
-        self.builder.position_at_end(some_block);
-        let data_ptr = self
-            .builder
-            .build_extract_value(enum_loaded, 1, "fm_data")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let inner_ptr = self
-            .builder
-            .build_pointer_cast(data_ptr, self.ptr_ty(), "fm_inner")
-            .map_err(llvm_err)?;
-        let inner_bv: BasicValueEnum = match inner_type {
-            InnerType::Int => self
-                .builder
-                .build_load(i64, inner_ptr, "fm_v")
-                .map_err(llvm_err)?
-                .as_basic_value_enum(),
-            InnerType::Float => self
-                .builder
-                .build_load(self.f64_ty(), inner_ptr, "fm_fv")
-                .map_err(llvm_err)?
-                .as_basic_value_enum(),
-            InnerType::Str => {
-                let str_ptr_ty = self.ptr_ty();
-                let str_ptr = self
-                    .builder
-                    .build_pointer_cast(inner_ptr, str_ptr_ty, "fm_str_ptr")
-                    .map_err(llvm_err)?;
-                self.builder
-                    .build_load(self.string_type, str_ptr, "fm_str")
-                    .map_err(llvm_err)?
-                    .as_basic_value_enum()
-            }
-        };
-
-        // Call the callback with its actual function type (not i64->i64!)
-        let cc = self
-            .builder
-            .build_indirect_call(fn_type, fn_ptr, &[inner_bv.into()], "fm_call")
-            .map_err(llvm_err)?;
-        match cc.try_as_basic_value().basic() {
-            Some(bv) => {
-                self.builder
-                    .build_store(result_alloca, bv)
-                    .map_err(llvm_err)?;
-            }
-            None => {} // void return, leave result as zero-init
-        };
-        let _ = self.builder.build_unconditional_branch(merge_block);
-
-        // None/Err branch: store the original enum value
-        self.builder.position_at_end(none_block);
-        self.builder
-            .build_store(result_alloca, enum_loaded)
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(merge_block);
-
-        // Merge
-        self.builder.position_at_end(merge_block);
-        let result = self
-            .builder
-            .build_load(result_bt, result_alloca, "fm_result_ld")
-            .map_err(llvm_err)?;
-        self.bv_to_typed(result)
-    }
-
-    /// Inline map for Option/Result: pattern match on enum, call callback with unwrapped value,
-    /// wrap the result back in Some/Ok.
-    pub(super) fn builtin_enum_map(
-        &mut self,
-        args: &[Expr],
-        trailing: &Option<Box<Expr>>,
-    ) -> Result<TypedValue<'ctx>, String> {
-        // map(enum_val, fn) or map(enum_val) { lambda }
-        let (enum_val, callback) = if let Some(lam) = trailing {
-            if args.len() != 1 {
-                return Err("map on enum with trailing lambda expects 1 argument".to_string());
-            }
-            let ev = self.compile_expr(&args[0])?;
-            let cb = self.compile_expr(lam)?;
-            (ev, cb)
-        } else if args.len() == 2 {
-            let ev = self.compile_expr(&args[0])?;
-            let cb = self.compile_expr(&args[1])?;
-            (ev, cb)
-        } else {
-            return Err("map expects 2 arguments (enum, fn)".to_string());
-        };
-
-        let (fn_ptr, fn_type) = match callback {
-            TypedValue::Fn(p, ft) => (p, ft),
-            _ => return Err("map: second argument must be a function".to_string()),
-        };
-
-        let (enum_ptr, enum_ty, inner_type) = match enum_val {
-            TypedValue::Enum(p, t, inner_type, ..) => (p, t, inner_type),
-            _ => return Err("map: first argument must be an Option or Result".to_string()),
-        };
-
-        let current_fn = self
-            .builder
-            .get_insert_block()
-            .and_then(|b| b.get_parent())
-            .ok_or("Cannot compile map outside function")?;
-
-        let i64 = self.i64_ty();
-        let ptr = self.ptr_ty();
-
-        // Allocate result at entry
-        let result_bt: BasicTypeEnum = enum_ty.into();
-        let entry = current_fn.get_first_basic_block().unwrap();
-        let saved_pos = self.builder.get_insert_block();
-        match entry.get_first_instruction() {
-            Some(instr) => {
-                let _ = self.builder.position_before(&instr);
-            }
-            None => self.builder.position_at_end(entry),
-        }
-        let result_alloca = self
-            .builder
-            .build_alloca(result_bt, "em_result")
-            .map_err(llvm_err)?;
-        let zero = result_bt.const_zero();
-        self.builder
-            .build_store(result_alloca, zero)
-            .map_err(llvm_err)?;
-        let heap_alloca = self
-            .builder
-            .build_alloca(result_bt, "em_heap")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(heap_alloca, zero)
-            .map_err(llvm_err)?;
-        if let Some(block) = saved_pos {
-            self.builder.position_at_end(block);
-        }
-
-        let merge_block = self.context.append_basic_block(current_fn, "em_merge");
-        let some_block = self.context.append_basic_block(current_fn, "em_some");
-        let none_block = self.context.append_basic_block(current_fn, "em_none");
-
-        let enum_bt: BasicTypeEnum = enum_ty.into();
-        let enum_raw = self
-            .builder
-            .build_load(enum_bt, enum_ptr, "em_enum")
-            .map_err(llvm_err)?;
-        let enum_loaded = enum_raw.into_struct_value();
-        let tag = self
-            .builder
-            .build_extract_value(enum_loaded, 0, "em_tag")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let is_some = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, tag, i64.const_int(0, false), "em_is_some")
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(is_some, some_block, none_block);
-
-        // Some/Ok branch: extract inner value, call callback, wrap result in Some/Ok
-        self.builder.position_at_end(some_block);
-        let data_ptr = self
-            .builder
-            .build_extract_value(enum_loaded, 1, "em_data")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let inner_ptr = self
-            .builder
-            .build_pointer_cast(data_ptr, ptr, "em_inner")
-            .map_err(llvm_err)?;
-        let inner_bv: BasicValueEnum = match inner_type {
-            InnerType::Int => self
-                .builder
-                .build_load(i64, inner_ptr, "em_v")
-                .map_err(llvm_err)?
-                .as_basic_value_enum(),
-            InnerType::Float => self
-                .builder
-                .build_load(self.f64_ty(), inner_ptr, "em_fv")
-                .map_err(llvm_err)?
-                .as_basic_value_enum(),
-            InnerType::Str => {
-                let str_ptr_ty = self.ptr_ty();
-                let str_ptr = self
-                    .builder
-                    .build_pointer_cast(inner_ptr, str_ptr_ty, "em_str_ptr")
-                    .map_err(llvm_err)?;
-                self.builder
-                    .build_load(self.string_type, str_ptr, "em_str")
-                    .map_err(llvm_err)?
-                    .as_basic_value_enum()
-            }
-        };
-
-        // Call the callback with the inner value
-        let cc = self
-            .builder
-            .build_indirect_call(fn_type, fn_ptr, &[inner_bv.into()], "em_call")
-            .map_err(llvm_err)?;
-        let cb_result = cc.try_as_basic_value().basic().ok_or("em call failed")?;
-
-        // Wrap the callback result in Some/Ok (tag = 0) on the heap
-        let buf = self.malloc_rc(i64.const_int(8, false))?;
-        let buf_ptr = self
-            .builder
-            .build_pointer_cast(buf, ptr, "em_bp")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(buf_ptr, cb_result)
-            .map_err(llvm_err)?;
-        self.rc_inc(buf)?;
-
-        let undef = enum_ty.get_undef();
-        let r1 = self
-            .builder
-            .build_insert_value(undef, i64.const_int(0, false), 0, "em_ok_tag")
-            .map_err(llvm_err)?;
-        let r2 = self
-            .builder
-            .build_insert_value(r1, buf, 1, "em_ok_data")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(result_alloca, r2)
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(merge_block);
-
-        // None/Err branch: store original enum unchanged
-        self.builder.position_at_end(none_block);
-        self.builder
-            .build_store(result_alloca, enum_loaded)
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(merge_block);
-
-        // Merge
-        self.builder.position_at_end(merge_block);
-        let result = self
-            .builder
-            .build_load(result_bt, result_alloca, "em_result_ld")
-            .map_err(llvm_err)?;
-        self.bv_to_typed(result)
+        Ok(TypedValue::Nullable(alloca, nullable_ty.into()))
     }
 
     /// Builtin stdlib functions: len, is_empty, append, concat
@@ -9748,7 +8589,7 @@ impl<'ctx> CodeGen<'ctx> {
                 self.builder
                     .build_store(flag_alloca, ok)
                     .map_err(llvm_err)?;
-                self.build_option_from_fat_struct(fat_alloca, flag_alloca, InnerType::Str)
+                self.build_nullable_str(fat_alloca, flag_alloca)
             }
             "startsWith" => {
                 if args.len() != 2 {
@@ -9845,7 +8686,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .build_extract_value(result_struct, 1, "ok")
                             .map_err(llvm_err)?
                             .into_int_value();
-                        self.build_option_int(val, ok)
+                        self.build_nullable_int(val, ok)
                     }
                     _ => Err("parseInt: argument must be a string".to_string()),
                 }
@@ -11020,7 +9861,8 @@ impl<'ctx> CodeGen<'ctx> {
                             .builder
                             .build_int_compare(IntPredicate::EQ, len, zero, "empty")
                             .map_err(llvm_err)?;
-                        let result_ty = self.string_type;
+                        let nullable_ty =
+                            self.get_nullable_type(self.string_type.into(), "Nullable<Str>");
                         let current_fn = self
                             .builder
                             .get_insert_block()
@@ -11032,43 +9874,28 @@ impl<'ctx> CodeGen<'ctx> {
                         let _ = self
                             .builder
                             .build_conditional_branch(empty, none_bb, some_bb);
-                        // Some block: wrap element in Option::Some
+                        // Some: {flag=0, elem} — value inlined, no heap alloc
                         self.builder.position_at_end(some_bb);
                         let elem =
                             self.call_rt("action_list_get", &[list_val.into(), zero.into()])?;
                         let elem_bv = elem.try_as_basic_value().basic().ok_or("get failed")?;
-                        let fat_size = self.i64_ty().const_int(16, false);
-                        let fat_heap = self.malloc_rc(fat_size)?;
-                        self.builder
-                            .build_store(fat_heap, elem_bv)
-                            .map_err(llvm_err)?;
-                        self.rc_inc(fat_heap)?;
                         let some_struct = {
-                            let undef = result_ty.get_undef();
+                            let undef = nullable_ty.get_undef();
                             let r1 = self
                                 .builder
-                                .build_insert_value(undef, zero, 0, "some_tag")
+                                .build_insert_value(undef, self.null_flag_ty().const_int(0, false), 0, "s_flag")
                                 .map_err(llvm_err)?;
                             self.builder
-                                .build_insert_value(r1, fat_heap, 1, "some_data")
+                                .build_insert_value(r1, elem_bv, 1, "s_val")
                                 .map_err(llvm_err)?
                         };
                         let _ = self.builder.build_unconditional_branch(merge_bb);
-                        // None block: build None enum
+                        // None: {flag=1, undef}
                         self.builder.position_at_end(none_bb);
                         let none_struct = {
-                            let undef = result_ty.get_undef();
-                            let r1 = self
-                                .builder
-                                .build_insert_value(
-                                    undef,
-                                    self.i64_ty().const_int(1, false),
-                                    0,
-                                    "none_tag",
-                                )
-                                .map_err(llvm_err)?;
+                            let undef = nullable_ty.get_undef();
                             self.builder
-                                .build_insert_value(r1, self.ptr_ty().const_zero(), 1, "none_data")
+                                .build_insert_value(undef, self.null_flag_ty().const_int(1, false), 0, "n_flag")
                                 .map_err(llvm_err)?
                         };
                         let _ = self.builder.build_unconditional_branch(merge_bb);
@@ -11076,17 +9903,17 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.position_at_end(merge_bb);
                         let phi = self
                             .builder
-                            .build_phi(result_ty, "head_result")
+                            .build_phi(nullable_ty, "head_result")
                             .map_err(llvm_err)?;
                         phi.add_incoming(&[(&some_struct, some_bb), (&none_struct, none_bb)]);
                         let alloca = self
                             .builder
-                            .build_alloca(result_ty, "head")
+                            .build_alloca(nullable_ty, "head")
                             .map_err(llvm_err)?;
                         self.builder
                             .build_store(alloca, phi.as_basic_value())
                             .map_err(llvm_err)?;
-                        Ok(TypedValue::Enum(alloca, result_ty, InnerType::Int, true))
+                        Ok(TypedValue::Nullable(alloca, nullable_ty.into()))
                     }
                     _ => Err("head: argument must be a list".to_string()),
                 }
@@ -11113,7 +9940,8 @@ impl<'ctx> CodeGen<'ctx> {
                             .builder
                             .build_int_sub(len, self.i64_ty().const_int(1, false), "last_idx")
                             .map_err(llvm_err)?;
-                        let result_ty = self.string_type;
+                        let nullable_ty =
+                            self.get_nullable_type(self.string_type.into(), "Nullable<Str>");
                         let current_fn = self
                             .builder
                             .get_insert_block()
@@ -11125,43 +9953,28 @@ impl<'ctx> CodeGen<'ctx> {
                         let _ = self
                             .builder
                             .build_conditional_branch(empty, none_bb, some_bb);
-                        // Some block: wrap element in Option::Some
+                        // Some: {flag=0, elem} — value inlined, no heap alloc
                         self.builder.position_at_end(some_bb);
                         let elem =
                             self.call_rt("action_list_get", &[list_val.into(), last_idx.into()])?;
                         let elem_bv = elem.try_as_basic_value().basic().ok_or("get failed")?;
-                        let fat_size = self.i64_ty().const_int(16, false);
-                        let fat_heap = self.malloc_rc(fat_size)?;
-                        self.builder
-                            .build_store(fat_heap, elem_bv)
-                            .map_err(llvm_err)?;
-                        self.rc_inc(fat_heap)?;
                         let some_struct = {
-                            let undef = result_ty.get_undef();
+                            let undef = nullable_ty.get_undef();
                             let r1 = self
                                 .builder
-                                .build_insert_value(undef, zero, 0, "some_tag")
+                                .build_insert_value(undef, self.null_flag_ty().const_int(0, false), 0, "s_flag")
                                 .map_err(llvm_err)?;
                             self.builder
-                                .build_insert_value(r1, fat_heap, 1, "some_data")
+                                .build_insert_value(r1, elem_bv, 1, "s_val")
                                 .map_err(llvm_err)?
                         };
                         let _ = self.builder.build_unconditional_branch(merge_bb);
-                        // None block: build None enum
+                        // None: {flag=1, undef}
                         self.builder.position_at_end(none_bb);
                         let none_struct = {
-                            let undef = result_ty.get_undef();
-                            let r1 = self
-                                .builder
-                                .build_insert_value(
-                                    undef,
-                                    self.i64_ty().const_int(1, false),
-                                    0,
-                                    "none_tag",
-                                )
-                                .map_err(llvm_err)?;
+                            let undef = nullable_ty.get_undef();
                             self.builder
-                                .build_insert_value(r1, self.ptr_ty().const_zero(), 1, "none_data")
+                                .build_insert_value(undef, self.null_flag_ty().const_int(1, false), 0, "n_flag")
                                 .map_err(llvm_err)?
                         };
                         let _ = self.builder.build_unconditional_branch(merge_bb);
@@ -11169,17 +9982,17 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.position_at_end(merge_bb);
                         let phi = self
                             .builder
-                            .build_phi(result_ty, "last_result")
+                            .build_phi(nullable_ty, "last_result")
                             .map_err(llvm_err)?;
                         phi.add_incoming(&[(&some_struct, some_bb), (&none_struct, none_bb)]);
                         let alloca = self
                             .builder
-                            .build_alloca(result_ty, "last")
+                            .build_alloca(nullable_ty, "last")
                             .map_err(llvm_err)?;
                         self.builder
                             .build_store(alloca, phi.as_basic_value())
                             .map_err(llvm_err)?;
-                        Ok(TypedValue::Enum(alloca, result_ty, InnerType::Int, true))
+                        Ok(TypedValue::Nullable(alloca, nullable_ty.into()))
                     }
                     _ => Err("last: argument must be a list".to_string()),
                 }
@@ -11220,41 +10033,29 @@ impl<'ctx> CodeGen<'ctx> {
                         let none_bb = self.context.append_basic_block(current_fn, "get_none");
                         let merge_bb = self.context.append_basic_block(current_fn, "get_merge");
                         let _ = self.builder.build_conditional_branch(oob, none_bb, some_bb);
-                        // Some block: wrap element in Option::Some
+                        // Some: {flag=0, elem} — value inlined, no heap alloc
                         self.builder.position_at_end(some_bb);
                         let elem = self.call_rt("action_list_get", &[lv.into(), (*iv).into()])?;
                         let elem_bv = elem.try_as_basic_value().basic().ok_or("get failed")?;
-                        // Allocate heap memory for the fat value and store it
-                        let fat_size = self.i64_ty().const_int(16, false);
-                        let fat_heap = self.malloc_rc(fat_size)?;
-                        self.builder
-                            .build_store(fat_heap, elem_bv)
-                            .map_err(llvm_err)?;
-                        self.rc_inc(fat_heap)?;
-                        // Build Some enum: {tag: 0, data: fat_heap}
+                        let nullable_ty =
+                            self.get_nullable_type(self.string_type.into(), "Nullable<Str>");
                         let some_struct = {
-                            let undef = self.string_type.get_undef();
-                            let tag = self.i64_ty().const_int(0, false);
+                            let undef = nullable_ty.get_undef();
                             let r1 = self
                                 .builder
-                                .build_insert_value(undef, tag, 0, "some_tag")
+                                .build_insert_value(undef, self.null_flag_ty().const_int(0, false), 0, "s_flag")
                                 .map_err(llvm_err)?;
                             self.builder
-                                .build_insert_value(r1, fat_heap, 1, "some_data")
+                                .build_insert_value(r1, elem_bv, 1, "s_val")
                                 .map_err(llvm_err)?
                         };
                         let _ = self.builder.build_unconditional_branch(merge_bb);
-                        // None block: build None enum {tag: 1, data: null}
+                        // None: {flag=1, undef}
                         self.builder.position_at_end(none_bb);
                         let none_struct = {
-                            let undef = self.string_type.get_undef();
-                            let tag = self.i64_ty().const_int(1, false);
-                            let r1 = self
-                                .builder
-                                .build_insert_value(undef, tag, 0, "none_tag")
-                                .map_err(llvm_err)?;
+                            let undef = nullable_ty.get_undef();
                             self.builder
-                                .build_insert_value(r1, self.ptr_ty().const_zero(), 1, "none_data")
+                                .build_insert_value(undef, self.null_flag_ty().const_int(1, false), 0, "n_flag")
                                 .map_err(llvm_err)?
                         };
                         let _ = self.builder.build_unconditional_branch(merge_bb);
@@ -11262,22 +10063,17 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.position_at_end(merge_bb);
                         let phi = self
                             .builder
-                            .build_phi(self.string_type, "get_result")
+                            .build_phi(nullable_ty, "get_result")
                             .map_err(llvm_err)?;
                         phi.add_incoming(&[(&some_struct, some_bb), (&none_struct, none_bb)]);
                         let alloca = self
                             .builder
-                            .build_alloca(self.string_type, "get")
+                            .build_alloca(nullable_ty, "get")
                             .map_err(llvm_err)?;
                         self.builder
                             .build_store(alloca, phi.as_basic_value())
                             .map_err(llvm_err)?;
-                        Ok(TypedValue::Enum(
-                            alloca,
-                            self.string_type,
-                            InnerType::Int,
-                            true,
-                        ))
+                        Ok(TypedValue::Nullable(alloca, nullable_ty.into()))
                     }
                     _ => Err("get: first argument must be a list, second an Int".to_string()),
                 }
@@ -11690,7 +10486,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .basic()
                             .ok_or("tail failed")?
                             .into_struct_value();
-                        self.build_option_list(result, is_empty)
+                        self.build_nullable_list(result, is_empty)
                     }
                     _ => Err("tail: argument must be a list".to_string()),
                 }
@@ -11763,7 +10559,7 @@ impl<'ctx> CodeGen<'ctx> {
                                 "found",
                             )
                             .map_err(llvm_err)?;
-                        self.build_option_int(result, found)
+                        self.build_nullable_int(result, found)
                     }
                     // indexOf(substring, string) -> Option<Int>
                     (TypedValue::Str(sp1), TypedValue::Str(sp2)) => {
@@ -11782,7 +10578,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .builder
                             .build_int_compare(IntPredicate::NE, result, neg_one, "found")
                             .map_err(llvm_err)?;
-                        self.build_option_int(result, found)
+                        self.build_nullable_int(result, found)
                     }
                     _ => Err(
                         "indexOf: first arg must be (element, list) or (substring, string)"
@@ -11818,7 +10614,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .basic()
                             .ok_or("init failed")?
                             .into_struct_value();
-                        self.build_option_list(result, is_empty)
+                        self.build_nullable_list(result, is_empty)
                     }
                     _ => Err("init: argument must be a list".to_string()),
                 }
@@ -12146,7 +10942,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .builder
                             .build_int_compare(IntPredicate::ULE, iv, max_cp, "valid_cp")
                             .map_err(llvm_err)?;
-                        let valid = self.build_option_int(iv, in_range);
+                        let valid = self.build_nullable_int(iv, in_range);
                         valid
                     }
                     _ => Err("toChar: argument must be an Int".to_string()),
@@ -12169,14 +10965,14 @@ impl<'ctx> CodeGen<'ctx> {
                 let v = self.compile_expr(&args[0])?;
                 match v {
                     TypedValue::Int(iv) => {
-                        self.build_option_int(iv, self.bool_ty().const_int(1, false))
+                        self.build_nullable_int(iv, self.bool_ty().const_int(1, false))
                     }
                     TypedValue::Float(fv) => {
                         let i = self
                             .builder
                             .build_float_to_signed_int(fv, self.i64_ty(), "ftoi")
                             .map_err(llvm_err)?;
-                        self.build_option_int(i, self.bool_ty().const_int(1, false))
+                        self.build_nullable_int(i, self.bool_ty().const_int(1, false))
                     }
                     TypedValue::Str(sp) => {
                         let sv = self.load_string(sp)?;
@@ -12196,7 +10992,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .build_extract_value(result_struct, 1, "ok")
                             .map_err(llvm_err)?
                             .into_int_value();
-                        self.build_option_int(val, ok)
+                        self.build_nullable_int(val, ok)
                     }
                     _ => Err("toInt: cannot convert to Int".to_string()),
                 }
@@ -12208,13 +11004,13 @@ impl<'ctx> CodeGen<'ctx> {
                 let v = self.compile_expr(&args[0])?;
                 let always_true = self.bool_ty().const_int(1, false);
                 match v {
-                    TypedValue::Float(fv) => self.build_option_float(fv, always_true),
+                    TypedValue::Float(fv) => self.build_nullable_float(fv, always_true),
                     TypedValue::Int(iv) => {
                         let f = self
                             .builder
                             .build_signed_int_to_float(iv, self.f64_ty(), "itof")
                             .map_err(llvm_err)?;
-                        self.build_option_float(f, always_true)
+                        self.build_nullable_float(f, always_true)
                     }
                     TypedValue::Str(sp) => {
                         let sv = self.load_string(sp)?;
@@ -12318,7 +11114,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .basic()
                             .ok_or("strtod failed")?
                             .into_float_value();
-                        self.build_option_float(result, ok)
+                        self.build_nullable_float(result, ok)
                     }
                     _ => Err("toFloat: cannot convert to Float".to_string()),
                 }
@@ -14990,55 +13786,6 @@ impl<'ctx> CodeGen<'ctx> {
                     implicit_it: false,
                 };
                 self.compile_expr(&lambda)
-            }
-            // ---- Option/Result convenience methods ----
-            "isSome" => {
-                if args.len() != 1 {
-                    return Err("isSome expects 1 argument (option)".to_string());
-                }
-                self.builtin_enum_is_tag(&args[0], 0)
-            }
-            "isNone" => {
-                if args.len() != 1 {
-                    return Err("isNone expects 1 argument (option)".to_string());
-                }
-                self.builtin_enum_is_tag(&args[0], 1)
-            }
-            "isOk" => {
-                if args.len() != 1 {
-                    return Err("isOk expects 1 argument (result)".to_string());
-                }
-                self.builtin_enum_is_tag(&args[0], 0)
-            }
-            "isErr" => {
-                if args.len() != 1 {
-                    return Err("isErr expects 1 argument (result)".to_string());
-                }
-                self.builtin_enum_is_tag(&args[0], 1)
-            }
-            "unwrapOr" => {
-                if args.len() != 2 {
-                    return Err("unwrapOr expects 2 arguments (enum, default)".to_string());
-                }
-                self.builtin_unwrap_or(&args[0], &args[1])
-            }
-            "unwrap" => {
-                if args.len() != 1 {
-                    return Err("unwrap expects 1 argument (enum)".to_string());
-                }
-                self.builtin_unwrap(&args[0])
-            }
-            "orElse" => {
-                if args.len() != 2 {
-                    return Err("orElse expects 2 arguments (enum, handler)".to_string());
-                }
-                self.builtin_or_else(&args[0], &args[1])
-            }
-            "ok" => {
-                if args.len() != 2 {
-                    return Err("ok expects 2 arguments (option, error_value)".to_string());
-                }
-                self.builtin_ok(&args[0], &args[1])
             }
             // ---- LazyList operations ----
             "toList" => {

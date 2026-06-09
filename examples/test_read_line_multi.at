@@ -1,8 +1,8 @@
-// Test readLine with multiple piped inputs
+// Test readLine with multiple piped inputs using nullable types
 fun main() {
     var running = true
     for running {
-        val input = unwrapOr(readLine(), "quit")
+        val input = readLine() ?: "quit"
         running = when input == "quit" { false else true }
         when running { println("Hello, " + input) }
     }

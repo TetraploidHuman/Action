@@ -25,14 +25,7 @@ impl<'ctx> CodeGen<'ctx> {
             Expr::Assign {
                 target,
                 value,
-                propagate,
-            } => {
-                if *propagate {
-                    self.compile_propagate_assign(target, value)
-                } else {
-                    self.compile_assign(target, value)
-                }
-            }
+            } => self.compile_assign(target, value),
             Expr::For(f) => self.compile_for(f),
             Expr::StringInterpolate(parts) => self.compile_string_interp(parts),
             Expr::FieldAccess(obj, field) => self.compile_field_access(obj, field),
@@ -43,12 +36,8 @@ impl<'ctx> CodeGen<'ctx> {
             Expr::Index(obj, idx) => self.compile_index(obj, idx),
             Expr::Range(start, end) => self.compile_range(start, end),
             Expr::Tuple(exprs) => self.compile_tuple(exprs),
-            Expr::SafeFieldAccess(obj, field) => self.compile_safe_field_access(obj, field),
-            Expr::SafeCall { receiver, args } => self.compile_safe_call(receiver, args),
-            Expr::Try(inner) => {
-                let val = self.compile_expr(inner)?;
-                self.propagate_unwrap(&val)
-            }
+            Expr::Null => self.compile_null(),
+            Expr::Elvis { condition, default } => self.compile_elvis(condition, default),
             Expr::Continue => {
                 if let Some(target) = self.continue_target {
                     self.builder
@@ -167,6 +156,20 @@ impl<'ctx> CodeGen<'ctx> {
                     TypedValue::Task(ptr) => {
                         // Task is a heap pointer; just copy the reference
                         Ok(TypedValue::Task(*ptr))
+                    }
+                    TypedValue::Nullable(ptr, inner_ty) => {
+                        let loaded = self
+                            .builder
+                            .build_load(*inner_ty, *ptr, "nullable_copy_ld")
+                            .map_err(llvm_err)?;
+                        let new_alloca = self
+                            .builder
+                            .build_alloca(*inner_ty, "nullable_copy")
+                            .map_err(llvm_err)?;
+                        self.builder
+                            .build_store(new_alloca, loaded)
+                            .map_err(llvm_err)?;
+                        Ok(TypedValue::Nullable(new_alloca, *inner_ty))
                     }
                     TypedValue::Stream(ptr) => {
                         // Stream is a heap pointer; just copy the reference
@@ -845,6 +848,14 @@ impl<'ctx> CodeGen<'ctx> {
                     self.last_enum_inner = Some((inner_type, rc_managed));
                     Ok(TypedValue::Enum(alloca, et, inner_type, rc_managed))
                 }
+                ValKind::Nullable => {
+                    let alloca = self
+                        .builder
+                        .build_alloca(lazy_ty, "nullable_tmp")
+                        .map_err(llvm_err)?;
+                    self.builder.build_store(alloca, val).map_err(llvm_err)?;
+                    Ok(TypedValue::Nullable(alloca, lazy_ty))
+                }
                 _ => self.bv_to_typed(val),
             };
         }
@@ -974,6 +985,21 @@ impl<'ctx> CodeGen<'ctx> {
                     let inner_type = var.enum_inner_type.unwrap_or(InnerType::Int);
                     return Ok(TypedValue::Enum(alloca, et, inner_type, false));
                 }
+                ValKind::Nullable => {
+                    if self.not_null_set.contains(name) {
+                        // Smart cast: extract inner value from nullable struct
+                        let loaded_struct = val.into_struct_value();
+                        let inner = self.builder.build_extract_value(loaded_struct, 1, "smart_inner")
+                            .map_err(llvm_err)?;
+                        return self.bv_to_typed(inner);
+                    }
+                    let alloca = self
+                        .builder
+                        .build_alloca(var.ty, "nullable_tmp")
+                        .map_err(llvm_err)?;
+                    self.builder.build_store(alloca, val).map_err(llvm_err)?;
+                    return Ok(TypedValue::Nullable(alloca, var.ty));
+                }
                 _ => {
                     if val.is_struct_value() {
                         let alloca = self
@@ -1070,6 +1096,14 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_alloca(st, "struct_tmp2")
                     .map_err(llvm_err)?;
                 self.builder.build_store(alloca, v).map_err(llvm_err)?;
+                // Detect nullable struct: 2 fields, first is i8 (null flag)
+                let field_types = st.get_field_types();
+                let is_nullable = field_types.len() == 2
+                    && matches!(field_types[0], BasicTypeEnum::IntType(t) if t.get_bit_width() == 8);
+                if is_nullable {
+                    let bt: BasicTypeEnum = st.into();
+                    return Ok(TypedValue::Nullable(alloca, bt));
+                }
                 if st == self.fat_return_type {
                     // Fat return from untyped lambda/function: extract field 0 as Int.
                     // Also save the full alloca for possible enum bitcast later.
@@ -1088,6 +1122,11 @@ impl<'ctx> CodeGen<'ctx> {
                     // Named __action_str type — must check before enum_types since
                     // enum types are anonymous {i64, ptr} which used to collide.
                     Ok(TypedValue::Str(alloca))
+                } else if st == self.list_type {
+                    // List, Map, Set all share list_type. Default to List.
+                    Ok(TypedValue::List(alloca))
+                } else if st == self.lazylist_type {
+                    Ok(TypedValue::LazyList(alloca))
                 } else if self.enum_types.values().any(|et| *et == st) {
                     // Matches a registered enum type (anonymous {i64,ptr})
                     let (inner_type, rc_managed) = self
@@ -1594,6 +1633,9 @@ impl<'ctx> CodeGen<'ctx> {
                         .into_int_value(),
                 ))
             }
+            (TypedValue::Nullable(l_ptr, l_ty), TypedValue::Nullable(r_ptr, _)) => {
+                return self.compare_nullable_eq(*l_ptr, *r_ptr, *l_ty);
+            }
             _ => Err("Cannot compare these types".to_string()),
         }
     }
@@ -1644,6 +1686,9 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_xor(eq, one, "strneq")
                         .map_err(llvm_err)?,
                 ))
+            }
+            (TypedValue::Nullable(l_ptr, l_ty), TypedValue::Nullable(r_ptr, _)) => {
+                return self.compare_nullable_neq(*l_ptr, *r_ptr, *l_ty);
             }
             _ => Err("Cannot compare these types".to_string()),
         }
@@ -1926,6 +1971,7 @@ impl<'ctx> CodeGen<'ctx> {
             TypedValue::CString(_) => "CString".to_string(),
             TypedValue::Ptr(_) => "Ptr".to_string(),
             TypedValue::FileHandle(_) => "FileHandle".to_string(),
+            TypedValue::Nullable(_, _) => "Nullable".to_string(),
         }
     }
 
@@ -1954,6 +2000,12 @@ impl<'ctx> CodeGen<'ctx> {
             TypedValue::Set(ptr) => Ok(self.load_list(*ptr)?.into()),
             TypedValue::CString(p) | TypedValue::Ptr(p) | TypedValue::FileHandle(p) => {
                 Ok((*p).into())
+            }
+            TypedValue::Nullable(ptr, ty) => {
+                Ok(self
+                    .builder
+                    .build_load(*ty, *ptr, "arg_nullable")
+                    .map_err(llvm_err)?)
             }
             _ => v
                 .to_bv()
@@ -2012,6 +2064,25 @@ impl<'ctx> CodeGen<'ctx> {
                 .build_float_to_signed_int(float_val, self.i64_ty(), "float2int")
                 .map_err(llvm_err)?;
             Ok(int_val.as_basic_value_enum())
+        } else if let BasicMetadataTypeEnum::StructType(expected_struct) = expected_ty {
+            // Wrap non-struct scalar into nullable struct {i1=0, T} when target is nullable.
+            // Only wrap if the value is not already a struct (which would be double-wrapping).
+            let field_types = expected_struct.get_field_types();
+            if field_types.len() == 2 && !matches!(&val, BasicValueEnum::StructValue(_)) {
+                let undef = expected_struct.get_undef();
+                let null_flag = self.null_flag_ty().const_int(0, false);
+                let with_flag = self
+                    .builder
+                    .build_insert_value(undef, null_flag, 0, "wrap_flag")
+                    .map_err(llvm_err)?;
+                let wrapped = self
+                    .builder
+                    .build_insert_value(with_flag, val, 1, "wrap_val")
+                    .map_err(llvm_err)?;
+                Ok(wrapped.as_basic_value_enum())
+            } else {
+                Ok(val)
+            }
         } else {
             Ok(val)
         }
@@ -2105,12 +2176,6 @@ impl<'ctx> CodeGen<'ctx> {
                 | ("List", "find")
                 | ("List", "reduce")
                 | ("List", "splitLines")
-                | ("Option", "map")
-                | ("Option", "flatMap")
-                | ("Option", "unwrap")
-                | ("Option", "unwrapOr")
-                | ("Option", "isSome")
-                | ("Option", "isNone")
                 | ("LazyList", _)
                 | ("Task", _)
                 | ("Stream", _)
@@ -2230,14 +2295,11 @@ fn collect_free_vars(
                 collect_free_vars(v, params, bound, free);
             }
         }
-        Expr::SafeFieldAccess(e, _) => collect_free_vars(e, params, bound, free),
-        Expr::SafeCall { receiver, args } => {
-            collect_free_vars(receiver, params, bound, free);
-            for a in args {
-                collect_free_vars(a, params, bound, free);
-            }
+        Expr::Null => {}
+        Expr::Elvis { condition, default } => {
+            collect_free_vars(condition, params, bound, free);
+            collect_free_vars(default, params, bound, free);
         }
-        Expr::Try(e) => collect_free_vars(e, params, bound, free),
         Expr::Range(start, end) => {
             collect_free_vars(start, params, bound, free);
             collect_free_vars(end, params, bound, free);
@@ -2438,6 +2500,7 @@ fn collect_pattern_vars(pat: &Pattern) -> Vec<String> {
         }
         Pattern::Or(pats) => pats.iter().flat_map(collect_pattern_vars).collect(),
         Pattern::Expr(_)
+        | Pattern::Null
         | Pattern::Wildcard
         | Pattern::Literal(_)
         | Pattern::Range(_, _)

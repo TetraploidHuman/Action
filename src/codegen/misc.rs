@@ -2,18 +2,913 @@
 
 use crate::ast::*;
 use inkwell::types::{BasicTypeEnum, StructType};
-use inkwell::values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, PointerValue};
+use inkwell::values::{BasicValue, BasicValueEnum, PointerValue};
 use inkwell::IntPredicate;
 
 use super::{llvm_err, CodeGen, InnerType, Scope, TypedValue, ValKind};
 
 impl<'ctx> CodeGen<'ctx> {
+    /// Compile null literal: returns a nullable value with null flag set to 1.
+    /// Without type context, returns a simple {i1=1, i64=0} as a generic null.
+    /// The caller should wrap this in the correct nullable type when the target is known.
+    pub(super) fn compile_null(&mut self) -> Result<TypedValue<'ctx>, String> {
+        // Create a generic nullable {i8=1, i64=undef} — i8=1 means "null"
+        let generic_nullable = self
+            .context
+            .struct_type(&[self.null_flag_ty().into(), self.i64_ty().into()], false);
+        let alloca = self
+            .builder
+            .build_alloca(generic_nullable, "null_val")
+            .map_err(llvm_err)?;
+        let undef = generic_nullable.get_undef();
+        let with_flag = self
+            .builder
+            .build_insert_value(undef, self.null_flag_ty().const_int(1, false), 0, "null_flag")
+            .map_err(llvm_err)?;
+        let null_val = self
+            .builder
+            .build_insert_value(with_flag, self.i64_ty().const_int(0, false), 1, "null_val")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(alloca, null_val)
+            .map_err(llvm_err)?;
+        Ok(TypedValue::Nullable(
+            alloca,
+            generic_nullable.into(),
+        ))
+    }
+
+    /// Compile a method call on a nullable receiver with auto short-circuit.
+    /// If the receiver is null, returns null. Otherwise, extracts the inner
+    /// non-null value and calls the method on it, wrapping the result in nullable.
+    pub(super) fn compile_nullable_method_call(
+        &mut self,
+        nullable_ptr: PointerValue<'ctx>,
+        inner_bt: BasicTypeEnum<'ctx>,
+        _receiver: &Expr,
+        method: &str,
+        args: &[Expr],
+        trailing: &Option<Box<Expr>>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("Cannot call method outside function")?;
+
+        let nullable_st = inner_bt.into_struct_type();
+        let null_bt: BasicTypeEnum = nullable_st.into();
+        let loaded = self
+            .builder
+            .build_load(null_bt, nullable_ptr, "nmc_ld")
+            .map_err(llvm_err)?;
+        let null_sv = loaded.into_struct_value();
+        let null_flag = self
+            .builder
+            .build_extract_value(null_sv, 0, "nmc_flag")
+            .map_err(llvm_err)?
+            .into_int_value();
+
+        let b1 = self.null_flag_ty();
+        let is_null = self
+            .builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                null_flag,
+                b1.const_int(1, false),
+                "nmc_is_null",
+            )
+            .map_err(llvm_err)?;
+
+        let null_block = self.context.append_basic_block(current_fn, "nmc_null");
+        let val_block = self.context.append_basic_block(current_fn, "nmc_val");
+        let merge_block = self.context.append_basic_block(current_fn, "nmc_merge");
+
+        self.builder
+            .build_conditional_branch(is_null, null_block, val_block)
+            .map_err(llvm_err)?;
+
+        // Value path: extract inner, create synthetic scope variable,
+        // call method dispatch, wrap result in nullable.
+        // Processed first so the wrapped result type informs the null path.
+        self.builder.position_at_end(val_block);
+        let inner_val = self
+            .builder
+            .build_extract_value(null_sv, 1, "nmc_inner")
+            .map_err(llvm_err)?;
+        let mut inner_typed = self.bv_to_typed(inner_val)?;
+
+        // bv_to_typed treats {ptr,i64,i64} as List by default, but the receiver
+        // may be a typed nullable (e.g. Map?, Set?).  Look up the AST type
+        // annotation to correct the ValKind before we push the synthetic scope var.
+        if let Expr::Ident(recv_name) = _receiver {
+            if let Some(sv) = self.scope.get(recv_name) {
+                if let Some(Type::Nullable(inner_ast)) = &sv.ast_type {
+                    let ptr = match &inner_typed {
+                        TypedValue::List(p) => Some(*p),
+                        _ => None,
+                    };
+                    if let Some(p) = ptr {
+                        let is_map = match inner_ast.as_ref() {
+                            Type::Map(..) => true,
+                            Type::Named(n) if n == "Map" => true,
+                            Type::Generic(b, _) => matches!(b.as_ref(), Type::Named(n) if n == "Map"),
+                            _ => false,
+                        };
+                        let is_set = match inner_ast.as_ref() {
+                            Type::Set(..) => true,
+                            Type::Named(n) if n == "Set" => true,
+                            Type::Generic(b, _) => matches!(b.as_ref(), Type::Named(n) if n == "Set"),
+                            _ => false,
+                        };
+                        if is_map {
+                            inner_typed = TypedValue::Map(p);
+                        } else if is_set {
+                            inner_typed = TypedValue::Set(p);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Determine ValKind from the inner TypedValue
+        let inner_kind = match &inner_typed {
+            TypedValue::Int(_) => ValKind::Int,
+            TypedValue::Float(_) => ValKind::Float,
+            TypedValue::Bool(_) => ValKind::Bool,
+            TypedValue::Str(_) => ValKind::Str,
+            TypedValue::List(_) => ValKind::List,
+            TypedValue::Map(_) => ValKind::Map,
+            TypedValue::Set(_) => ValKind::Set,
+            TypedValue::LazyList(_) => ValKind::LazyList,
+            TypedValue::Struct(..) => ValKind::Struct,
+            TypedValue::Enum(..) => ValKind::Enum,
+            TypedValue::Stream(_) => ValKind::Stream,
+            TypedValue::Task(_) => ValKind::Task,
+            TypedValue::Fn(..) | TypedValue::Closure { .. } => ValKind::Fn,
+            TypedValue::Ptr(_) => ValKind::Ptr,
+            TypedValue::CString(_) => ValKind::CString,
+            TypedValue::FileHandle(_) => ValKind::FileHandle,
+            TypedValue::Nullable(..) => ValKind::Nullable,
+            TypedValue::Unit => ValKind::Unit,
+        };
+
+        // inner_bt is the full nullable struct type {i8, T} — use the actual
+        // inner value's type (T) for the scope variable alloca
+        let actual_inner_bt = inner_typed.get_type_for_alloca(self);
+
+        // Create alloca and store inner value for scope lookup
+        let inner_alloca = self
+            .builder
+            .build_alloca(actual_inner_bt, "nmc_inner_a")
+            .map_err(llvm_err)?;
+        // Load the inner value properly — to_bv() returns None for complex
+        // types (Str, List, Map, etc.), so we must load from the alloca.
+        let inner_bv = match &inner_typed {
+            TypedValue::Str(ptr) => self
+                .builder
+                .build_load(self.string_type, *ptr, "nmc_ld_inner")
+                .map_err(llvm_err)?
+                .into(),
+            TypedValue::List(ptr) | TypedValue::Map(ptr) | TypedValue::Set(ptr) => self
+                .builder
+                .build_load(self.list_type, *ptr, "nmc_ld_inner")
+                .map_err(llvm_err)?
+                .into(),
+            TypedValue::LazyList(ptr) => self
+                .builder
+                .build_load(self.lazylist_type, *ptr, "nmc_ld_inner")
+                .map_err(llvm_err)?
+                .into(),
+            TypedValue::Struct(ptr, st) => {
+                let bt: BasicTypeEnum = (*st).into();
+                self.builder
+                    .build_load(bt, *ptr, "nmc_ld_inner")
+                    .map_err(llvm_err)?
+            }
+            TypedValue::Enum(ptr, et, ..) => {
+                let bt: BasicTypeEnum = (*et).into();
+                self.builder
+                    .build_load(bt, *ptr, "nmc_ld_inner")
+                    .map_err(llvm_err)?
+            }
+            _ => inner_typed
+                .to_bv()
+                .unwrap_or_else(|| self.i64_ty().const_int(0, false).into()),
+        };
+        self.builder
+            .build_store(inner_alloca, inner_bv)
+            .map_err(llvm_err)?;
+
+        // Push synthetic scope variable
+        let counter = self.synthetic_counter;
+        self.synthetic_counter += 1;
+        let synthetic_name = format!("__nmc_{}", counter);
+        self.scope.set(
+            synthetic_name.clone(),
+            inner_alloca,
+            actual_inner_bt,
+            inner_kind,
+        );
+
+        // Build synthetic FieldAccess and recurse into method dispatch.
+        // If dispatch fails (e.g., inner type is generic i64 from a null literal
+        // that lacks concrete type info), use Int(0) as a fallback result.
+        // The null path will always be taken at runtime in that case anyway.
+        let syn_func = Expr::FieldAccess(
+            Box::new(Expr::Ident(synthetic_name.clone())),
+            method.to_string(),
+        );
+        let method_result = match self.compile_call(&syn_func, args, trailing) {
+            Ok(v) => v,
+            Err(_e) => {
+                TypedValue::Int(self.i64_ty().const_int(0, false))
+            }
+        };
+        self.scope.remove_var(&synthetic_name);
+
+        // If the method already returns Nullable (e.g. head/last),
+        // don't double-wrap — use the method's result type directly.
+        // The null path creates null of the same type.
+        if let TypedValue::Nullable(method_ptr, method_bt) = &method_result {
+            let val_loaded = self
+                .builder
+                .build_load(*method_bt, *method_ptr, "nmc_val_ld")
+                .map_err(llvm_err)?;
+            let val_end_block = self
+                .builder
+                .get_insert_block()
+                .ok_or("no insert block after val path")?;
+            self.builder
+                .build_unconditional_branch(merge_block)
+                .map_err(llvm_err)?;
+
+            // Null path: create null of the same nullable type
+            self.builder.position_at_end(null_block);
+            let method_st = method_bt.into_struct_type();
+            let undef = method_st.get_undef();
+            let null_struct = self
+                .builder
+                .build_insert_value(undef, b1.const_int(1, false), 0, "nmc_null_f")
+                .map_err(llvm_err)?;
+            self.builder
+                .build_unconditional_branch(merge_block)
+                .map_err(llvm_err)?;
+
+            // Merge
+            self.builder.position_at_end(merge_block);
+            let phi = self
+                .builder
+                .build_phi(*method_bt, "nmc_merge")
+                .map_err(llvm_err)?;
+            phi.add_incoming(&[(&null_struct, null_block), (&val_loaded, val_end_block)]);
+
+            let result_alloca = self
+                .builder
+                .build_alloca(method_st, "nmc_result")
+                .map_err(llvm_err)?;
+            self.builder
+                .build_store(result_alloca, phi.as_basic_value())
+                .map_err(llvm_err)?;
+            return Ok(TypedValue::Nullable(result_alloca, *method_bt));
+        }
+
+        let result_bt = method_result.get_type_for_alloca(self);
+        let nty = self.get_nullable_type(
+            result_bt,
+            &format!("__nmc_res_{}", self.synthetic_counter),
+        );
+        let wrapped = self.wrap_in_nullable(&method_result, nty)?;
+        let (wrapped_ptr, wrapped_bt) = match &wrapped {
+            TypedValue::Nullable(p, t) => (*p, *t),
+            _ => {
+                return Err(
+                    "wrap_in_typed_nullable did not return Nullable".to_string(),
+                )
+            }
+        };
+        let val_loaded = self
+            .builder
+            .build_load(wrapped_bt, wrapped_ptr, "nmc_val_ld")
+            .map_err(llvm_err)?;
+        let val_end_block = self
+            .builder
+            .get_insert_block()
+            .ok_or("no insert block after val path")?;
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .map_err(llvm_err)?;
+
+        // Null path: produce null of the same wrapped type as the value path
+        self.builder.position_at_end(null_block);
+        let wrapped_st = wrapped_bt.into_struct_type();
+        let undef = wrapped_st.get_undef();
+        let null_struct = self
+            .builder
+            .build_insert_value(undef, b1.const_int(1, false), 0, "nmc_null_f")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .map_err(llvm_err)?;
+
+        // Merge: phi the null and value paths
+        self.builder.position_at_end(merge_block);
+        let phi = self
+            .builder
+            .build_phi(wrapped_bt, "nmc_merge")
+            .map_err(llvm_err)?;
+        phi.add_incoming(&[(&null_struct, null_block), (&val_loaded, val_end_block)]);
+
+        let result_alloca = self
+            .builder
+            .build_alloca(wrapped_st, "nmc_result")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(result_alloca, phi.as_basic_value())
+            .map_err(llvm_err)?;
+        Ok(TypedValue::Nullable(result_alloca, wrapped_bt))
+    }
+
+    /// Compile Elvis operator: condition ?: default
+    /// If condition is null (flag=1), return default; otherwise return condition inner value
+    pub(super) fn compile_elvis(
+        &mut self,
+        condition: &Expr,
+        default: &Expr,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let cond_val = self.compile_expr(condition)?;
+        let (cond_ptr, cond_ty) = match &cond_val {
+            TypedValue::Nullable(p, t) => (*p, *t),
+            _ => return Ok(cond_val), // not nullable, just return condition as-is
+        };
+
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("Cannot compile elvis outside function")?;
+
+        let loaded = self
+            .builder
+            .build_load(cond_ty, cond_ptr, "elvis_ld")
+            .map_err(llvm_err)?;
+        let nullable_struct = loaded.into_struct_value();
+        let null_flag = self
+            .builder
+            .build_extract_value(nullable_struct, 0, "elvis_flag")
+            .map_err(llvm_err)?
+            .into_int_value();
+
+        let is_null = self
+            .builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                null_flag,
+                self.null_flag_ty().const_int(1, false),
+                "is_null",
+            )
+            .map_err(llvm_err)?;
+
+        let null_block = self.context.append_basic_block(current_fn, "elvis_null");
+        let val_block = self.context.append_basic_block(current_fn, "elvis_val");
+        let merge_block = self.context.append_basic_block(current_fn, "elvis_merge");
+
+        self.builder
+            .build_conditional_branch(is_null, null_block, val_block)
+            .map_err(llvm_err)?;
+
+        // Null path: evaluate and return default
+        self.builder.position_at_end(null_block);
+        let default_val = self.compile_expr(default)?;
+        let default_ty = default_val.get_type_for_alloca(self);
+        let default_bv = match &default_val {
+            TypedValue::Str(ptr) => self
+                .builder
+                .build_load(self.string_type, *ptr, "elvis_def_ld")
+                .map_err(llvm_err)?
+                .as_basic_value_enum(),
+            TypedValue::Struct(ptr, st) => {
+                let bt: BasicTypeEnum = (*st).into();
+                self.builder
+                    .build_load(bt, *ptr, "elvis_def_ld")
+                    .map_err(llvm_err)?
+            }
+            TypedValue::Enum(ptr, et, ..) => {
+                let bt: BasicTypeEnum = (*et).into();
+                self.builder
+                    .build_load(bt, *ptr, "elvis_def_ld")
+                    .map_err(llvm_err)?
+            }
+            TypedValue::Nullable(ptr, ty) => self
+                .builder
+                .build_load(*ty, *ptr, "elvis_def_ld")
+                .map_err(llvm_err)?,
+            TypedValue::Bool(v) => {
+                // Bool values may be i64 but default_ty is i1; truncate to match.
+                if matches!(default_ty, BasicTypeEnum::IntType(t) if t.get_bit_width() == 1) {
+                    self.builder
+                        .build_int_truncate(*v, self.bool_ty(), "elvis_def_bool")
+                        .map_err(llvm_err)?
+                        .as_basic_value_enum()
+                } else {
+                    (*v).as_basic_value_enum()
+                }
+            }
+            _ => default_val
+                .to_bv()
+                .unwrap_or_else(|| self.i64_ty().const_int(0, false).into()),
+        };
+        let default_is_nullable = matches!(&default_val, TypedValue::Nullable(..));
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .map_err(llvm_err)?;
+
+        // Non-null path: extract inner value
+        self.builder.position_at_end(val_block);
+        let inner_val = self
+            .builder
+            .build_extract_value(nullable_struct, 1, "elvis_inner")
+            .map_err(llvm_err)?;
+        // When inner value is a fat return struct ({i64, ptr} aka string_type)
+        // but the default is a scalar, extract the i64 tag from the fat struct.
+        // This handles builtins like head/last that return Nullable<FatReturn>.
+        let inner_bv = if default_is_nullable {
+            let struct_ty = default_ty.into_struct_type();
+            let undef = struct_ty.get_undef();
+            let with_flag = self
+                .builder
+                .build_insert_value(undef, self.null_flag_ty().const_int(0, false), 0, "ei_flag")
+                .map_err(llvm_err)?;
+            self.builder
+                .build_insert_value(with_flag, inner_val, 1, "ei_wrapped")
+                .map_err(llvm_err)?
+                .as_basic_value_enum()
+        } else {
+            // Only extract the i64 tag from a fat-return struct when the default
+            // is a scalar (Int/Float). When the default is also a struct (e.g. String),
+            // keep the inner value as-is so the PHI types match.
+            let default_is_scalar = matches!(
+                default_ty,
+                BasicTypeEnum::IntType(_) | BasicTypeEnum::FloatType(_)
+            );
+            let val = match inner_val {
+                BasicValueEnum::StructValue(sv)
+                    if sv.get_type() == self.string_type && default_is_scalar =>
+                {
+                    self.builder
+                        .build_extract_value(sv, 0, "ei_fat_i64")
+                        .map_err(llvm_err)?
+                }
+                _ => inner_val,
+            };
+            // When the nullable inner type doesn't match the default type (e.g.
+            // inner is i64 from a failed dispatch fallback but default is i1),
+            // convert to match the PHI type.
+            match (val, default_ty) {
+                (BasicValueEnum::IntValue(iv), BasicTypeEnum::IntType(it))
+                    if iv.get_type() != it =>
+                {
+                    self.builder
+                        .build_int_truncate(iv, it, "ei_conv")
+                        .map_err(llvm_err)?
+                        .as_basic_value_enum()
+                }
+                _ => val,
+            }
+        };
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(merge_block);
+        let phi = self
+            .builder
+            .build_phi(default_ty, "elvis_res")
+            .map_err(llvm_err)?;
+        phi.add_incoming(&[
+            (&default_bv, null_block),
+            (&inner_bv, val_block),
+        ]);
+
+        self.bv_to_typed(phi.as_basic_value())
+    }
+
+    /// Wrap a non-null value in a nullable type: create {i1=0, value} struct
+    pub(super) fn wrap_in_nullable(
+        &mut self,
+        value: &TypedValue<'ctx>,
+        nullable_struct_ty: StructType<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let alloca = self
+            .builder
+            .build_alloca(nullable_struct_ty, "wrap_nullable")
+            .map_err(llvm_err)?;
+        let undef = nullable_struct_ty.get_undef();
+        let with_flag = self
+            .builder
+            .build_insert_value(undef, self.null_flag_ty().const_int(0, false), 0, "wrap_flag")
+            .map_err(llvm_err)?;
+        let value_bv = match value {
+            TypedValue::Str(ptr) => self
+                .builder
+                .build_load(self.string_type, *ptr, "wrap_ld")
+                .map_err(llvm_err)?
+                .as_basic_value_enum(),
+            TypedValue::Struct(ptr, st) => {
+                let bt: BasicTypeEnum = (*st).into();
+                self.builder
+                    .build_load(bt, *ptr, "wrap_ld")
+                    .map_err(llvm_err)?
+            }
+            TypedValue::Enum(ptr, et, ..) => {
+                let bt: BasicTypeEnum = (*et).into();
+                self.builder
+                    .build_load(bt, *ptr, "wrap_ld")
+                    .map_err(llvm_err)?
+            }
+            TypedValue::List(ptr) | TypedValue::Map(ptr) | TypedValue::Set(ptr) => {
+                self.load_list(*ptr)?.as_basic_value_enum()
+            }
+            TypedValue::Bool(v) => {
+                // Bool values may be i64 (from C functions) but the nullable struct
+                // field is i1. Truncate to match the field type.
+                self.builder
+                    .build_int_truncate(*v, self.bool_ty(), "wrap_bool")
+                    .map_err(llvm_err)?
+                    .as_basic_value_enum()
+            }
+            _ => value
+                .to_bv()
+                .unwrap_or_else(|| self.i64_ty().const_int(0, false).into()),
+        };
+        let wrapped = self
+            .builder
+            .build_insert_value(with_flag, value_bv, 1, "wrap_val")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(alloca, wrapped)
+            .map_err(llvm_err)?;
+        Ok(TypedValue::Nullable(
+            alloca,
+            nullable_struct_ty.into(),
+        ))
+    }
+
+    /// Load the null flag (field 0) from a nullable struct — 1 means null, 0 means valid.
+    pub(super) fn load_null_flag(
+        &mut self,
+        ptr: PointerValue<'ctx>,
+        ty: BasicTypeEnum<'ctx>,
+    ) -> Result<inkwell::values::IntValue<'ctx>, String> {
+        let loaded = self.builder.build_load(ty, ptr, "ld_flag")
+            .map_err(llvm_err)?;
+        Ok(self.builder.build_extract_value(loaded.into_struct_value(), 0, "null_flag")
+            .map_err(llvm_err)?
+            .into_int_value())
+    }
+
+    /// Compare two nullable values for equality using branching to avoid extracting
+    /// undefined inner values when either side is null.
+    pub(super) fn compare_nullable_eq(
+        &mut self,
+        l_ptr: PointerValue<'ctx>,
+        r_ptr: PointerValue<'ctx>,
+        ty: BasicTypeEnum<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let l_flag = self.load_null_flag(l_ptr, ty)?;
+        let r_flag = self.load_null_flag(r_ptr, ty)?;
+        let one = self.null_flag_ty().const_int(1, false);
+        let zero = self.null_flag_ty().const_int(0, false);
+        let l_is_null = self.builder.build_int_compare(IntPredicate::EQ, l_flag, one, "l_is_null")
+            .map_err(llvm_err)?;
+        let r_is_null = self.builder.build_int_compare(IntPredicate::EQ, r_flag, one, "r_is_null")
+            .map_err(llvm_err)?;
+        let both_null = self.builder.build_and(l_is_null, r_is_null, "both_null")
+            .map_err(llvm_err)?;
+        // both_valid: l_flag==0 && r_flag==0
+        let l_valid = self.builder.build_int_compare(IntPredicate::EQ, l_flag, zero, "l_valid")
+            .map_err(llvm_err)?;
+        let r_valid = self.builder.build_int_compare(IntPredicate::EQ, r_flag, zero, "r_valid")
+            .map_err(llvm_err)?;
+        let both_valid = self.builder.build_and(l_valid, r_valid, "both_valid")
+            .map_err(llvm_err)?;
+        // inner_eq: only meaningful when both valid — compare field 1 as same-typed values
+        let struct_ty = ty.into_struct_type();
+        let inner_field_ty = struct_ty.get_field_type_at_index(1)
+            .ok_or("nullable struct missing field 1")?;
+        let inner_eq = match inner_field_ty {
+            BasicTypeEnum::IntType(_) => {
+                let l_inner = self.builder.build_extract_value(
+                    self.builder.build_load(ty, l_ptr, "eq_ld_l")
+                        .map_err(llvm_err)?.into_struct_value(), 1, "l_inner"
+                ).map_err(llvm_err)?.into_int_value();
+                let r_inner = self.builder.build_extract_value(
+                    self.builder.build_load(ty, r_ptr, "eq_ld_r")
+                        .map_err(llvm_err)?.into_struct_value(), 1, "r_inner"
+                ).map_err(llvm_err)?.into_int_value();
+                self.builder.build_int_compare(IntPredicate::EQ, l_inner, r_inner, "inner_eq")
+                    .map_err(llvm_err)?
+            }
+            BasicTypeEnum::FloatType(_) => {
+                let l_inner = self.builder.build_extract_value(
+                    self.builder.build_load(ty, l_ptr, "eq_ld_l")
+                        .map_err(llvm_err)?.into_struct_value(), 1, "l_inner"
+                ).map_err(llvm_err)?.into_float_value();
+                let r_inner = self.builder.build_extract_value(
+                    self.builder.build_load(ty, r_ptr, "eq_ld_r")
+                        .map_err(llvm_err)?.into_struct_value(), 1, "r_inner"
+                ).map_err(llvm_err)?.into_float_value();
+                self.builder.build_float_compare(inkwell::FloatPredicate::OEQ, l_inner, r_inner, "inner_eq")
+                    .map_err(llvm_err)?
+            }
+            _ => {
+                // For struct types (String, etc.), fall back to ptr comparison or assume equal
+                // In practice, this path is only hit when both values are valid and neither is null
+                // For simplicity, compare the raw bytes via pointer equality (conservative)
+                let l_ptr_int = self.builder.build_ptr_to_int(l_ptr, self.i64_ty(), "l_ptr_i")
+                    .map_err(llvm_err)?;
+                let r_ptr_int = self.builder.build_ptr_to_int(r_ptr, self.i64_ty(), "r_ptr_i")
+                    .map_err(llvm_err)?;
+                self.builder.build_int_compare(IntPredicate::EQ, l_ptr_int, r_ptr_int, "ptr_eq")
+                    .map_err(llvm_err)?
+            }
+        };
+        let valid_eq = self.builder.build_and(both_valid, inner_eq, "valid_eq")
+            .map_err(llvm_err)?;
+        Ok(TypedValue::Bool(
+            self.builder.build_or(both_null, valid_eq, "nullable_eq")
+                .map_err(llvm_err)?,
+        ))
+    }
+
+    /// Compare two nullable values for inequality.
+    pub(super) fn compare_nullable_neq(
+        &mut self,
+        l_ptr: PointerValue<'ctx>,
+        r_ptr: PointerValue<'ctx>,
+        ty: BasicTypeEnum<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let l_flag = self.load_null_flag(l_ptr, ty)?;
+        let r_flag = self.load_null_flag(r_ptr, ty)?;
+        let one = self.null_flag_ty().const_int(1, false);
+        let zero = self.null_flag_ty().const_int(0, false);
+        let l_is_null = self.builder.build_int_compare(IntPredicate::EQ, l_flag, one, "l_is_null")
+            .map_err(llvm_err)?;
+        let r_is_null = self.builder.build_int_compare(IntPredicate::EQ, r_flag, one, "r_is_null")
+            .map_err(llvm_err)?;
+        // xor: exactly one is null → not equal
+        let one_null = self.builder.build_xor(l_is_null, r_is_null, "one_null")
+            .map_err(llvm_err)?;
+        // both_valid
+        let l_valid = self.builder.build_int_compare(IntPredicate::EQ, l_flag, zero, "l_valid_ne")
+            .map_err(llvm_err)?;
+        let r_valid = self.builder.build_int_compare(IntPredicate::EQ, r_flag, zero, "r_valid_ne")
+            .map_err(llvm_err)?;
+        let both_valid = self.builder.build_and(l_valid, r_valid, "both_valid_ne")
+            .map_err(llvm_err)?;
+        let struct_ty = ty.into_struct_type();
+        let inner_field_ty = struct_ty.get_field_type_at_index(1)
+            .ok_or("nullable struct missing field 1")?;
+        let inner_ne = match inner_field_ty {
+            BasicTypeEnum::IntType(_) => {
+                let l_inner = self.builder.build_extract_value(
+                    self.builder.build_load(ty, l_ptr, "ne_ld_l")
+                        .map_err(llvm_err)?.into_struct_value(), 1, "l_inner"
+                ).map_err(llvm_err)?.into_int_value();
+                let r_inner = self.builder.build_extract_value(
+                    self.builder.build_load(ty, r_ptr, "ne_ld_r")
+                        .map_err(llvm_err)?.into_struct_value(), 1, "r_inner"
+                ).map_err(llvm_err)?.into_int_value();
+                self.builder.build_int_compare(IntPredicate::NE, l_inner, r_inner, "inner_ne")
+                    .map_err(llvm_err)?
+            }
+            BasicTypeEnum::FloatType(_) => {
+                let l_inner = self.builder.build_extract_value(
+                    self.builder.build_load(ty, l_ptr, "ne_ld_l")
+                        .map_err(llvm_err)?.into_struct_value(), 1, "l_inner"
+                ).map_err(llvm_err)?.into_float_value();
+                let r_inner = self.builder.build_extract_value(
+                    self.builder.build_load(ty, r_ptr, "ne_ld_r")
+                        .map_err(llvm_err)?.into_struct_value(), 1, "r_inner"
+                ).map_err(llvm_err)?.into_float_value();
+                self.builder.build_float_compare(inkwell::FloatPredicate::ONE, l_inner, r_inner, "inner_ne")
+                    .map_err(llvm_err)?
+            }
+            _ => {
+                let l_ptr_int = self.builder.build_ptr_to_int(l_ptr, self.i64_ty(), "l_ptr_i_ne")
+                    .map_err(llvm_err)?;
+                let r_ptr_int = self.builder.build_ptr_to_int(r_ptr, self.i64_ty(), "r_ptr_i_ne")
+                    .map_err(llvm_err)?;
+                self.builder.build_int_compare(IntPredicate::NE, l_ptr_int, r_ptr_int, "ptr_ne")
+                    .map_err(llvm_err)?
+            }
+        };
+        let valid_ne = self.builder.build_and(both_valid, inner_ne, "valid_ne")
+            .map_err(llvm_err)?;
+        Ok(TypedValue::Bool(
+            self.builder.build_or(one_null, valid_ne, "nullable_ne")
+                .map_err(llvm_err)?,
+        ))
+    }
+
+    /// Access a field on an already-compiled TypedValue (non-nullable).
+    fn compile_field_access_on_typed_value(
+        &mut self,
+        val: &TypedValue<'ctx>,
+        field: &str,
+        _val_bt: BasicTypeEnum<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        if let TypedValue::Str(ptr) = val {
+            if field == "length" {
+                let gep = self
+                    .builder
+                    .build_struct_gep(self.string_type, *ptr, 0, "lenp")
+                    .map_err(llvm_err)?;
+                let len = self
+                    .builder
+                    .build_load(self.i64_ty(), gep, "len")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                return Ok(TypedValue::Int(len));
+            }
+        }
+        if let TypedValue::Struct(ptr, struct_ty) = val {
+            let bt: BasicTypeEnum = (*struct_ty).into();
+            let loaded = self
+                .builder
+                .build_load(bt, *ptr, "fa_tv_ld")
+                .map_err(llvm_err)?;
+            let struct_val = loaded.into_struct_value();
+
+            if let Ok(idx) = field.parse::<usize>() {
+                let field_val = self
+                    .builder
+                    .build_extract_value(struct_val, idx as u32, field)
+                    .map_err(llvm_err)?;
+                return self.bv_to_typed(field_val);
+            }
+
+            let field_names = self.lookup_struct_field_names(*struct_ty);
+            let idx = field_names
+                .iter()
+                .position(|n| n == field)
+                .ok_or_else(|| format!("Field '{}' not found on struct", field))?;
+            let field_val = self
+                .builder
+                .build_extract_value(struct_val, idx as u32, field)
+                .map_err(llvm_err)?;
+            return self.bv_to_typed(field_val);
+        }
+        Err(format!("Field '{}' not supported on this type", field))
+    }
+
+    /// Wrap a TypedValue in a nullable struct of matching LLVM type.
+    fn wrap_in_typed_nullable(
+        &mut self,
+        value: &TypedValue<'ctx>,
+        inner_bt: BasicTypeEnum<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let b1 = self.null_flag_ty();
+        let nullable_fields: &[BasicTypeEnum] = &[b1.into(), inner_bt];
+        let nullable_ty = self.context.struct_type(nullable_fields, false);
+
+        let alloca = self
+            .builder
+            .build_alloca(nullable_ty, "wrap_tv")
+            .map_err(llvm_err)?;
+        let undef = nullable_ty.get_undef();
+        let with_flag = self
+            .builder
+            .build_insert_value(undef, b1.const_int(0, false), 0, "wrap_tv_flag")
+            .map_err(llvm_err)?;
+        let value_bv = value
+            .to_bv()
+            .unwrap_or_else(|| self.i64_ty().const_int(0, false).into());
+        let wrapped = self
+            .builder
+            .build_insert_value(with_flag, value_bv, 1, "wrap_tv_val")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(alloca, wrapped)
+            .map_err(llvm_err)?;
+        Ok(TypedValue::Nullable(alloca, nullable_ty.into()))
+    }
+
     pub(super) fn compile_index(
         &mut self,
         obj: &Expr,
         idx: &Expr,
     ) -> Result<TypedValue<'ctx>, String> {
         let o = self.compile_expr(obj)?;
+
+        // Nullable receiver: short-circuit on null, extract inner and index that
+        if let TypedValue::Nullable(nullable_ptr, inner_bt) = o {
+            let current_fn = self
+                .builder
+                .get_insert_block()
+                .and_then(|b| b.get_parent())
+                .ok_or("Cannot index outside function")?;
+
+            let nullable_st = inner_bt.into_struct_type();
+            let null_bt: BasicTypeEnum = nullable_st.into();
+
+            let loaded = self
+                .builder
+                .build_load(null_bt, nullable_ptr, "nidx_ld")
+                .map_err(llvm_err)?;
+            let nullable_struct = loaded.into_struct_value();
+            let null_flag = self
+                .builder
+                .build_extract_value(nullable_struct, 0, "nidx_flag")
+                .map_err(llvm_err)?
+                .into_int_value();
+
+            let b1 = self.null_flag_ty();
+            let is_null = self
+                .builder
+                .build_int_compare(
+                    IntPredicate::EQ,
+                    null_flag,
+                    b1.const_int(1, false),
+                    "nidx_is_null",
+                )
+                .map_err(llvm_err)?;
+
+            let null_block = self.context.append_basic_block(current_fn, "nidx_null");
+            let val_block = self.context.append_basic_block(current_fn, "nidx_val");
+            let merge_block = self.context.append_basic_block(current_fn, "nidx_merge");
+
+            self.builder
+                .build_conditional_branch(is_null, null_block, val_block)
+                .map_err(llvm_err)?;
+
+            // Null path: return null of the same nullable type
+            self.builder.position_at_end(null_block);
+            let null_loaded = self
+                .builder
+                .build_load(null_bt, nullable_ptr, "nidx_null_ld")
+                .map_err(llvm_err)?;
+            self.builder
+                .build_unconditional_branch(merge_block)
+                .map_err(llvm_err)?;
+
+            // Value path: extract inner and index into it
+            self.builder.position_at_end(val_block);
+            let inner = self
+                .builder
+                .build_extract_value(nullable_struct, 1, "nidx_inner")
+                .map_err(llvm_err)?;
+            let inner_typed = self.bv_to_typed(inner)?;
+
+            // Directly handle indexing on the inner TypedValue
+            let idx_val = self.compile_expr(idx)?;
+            let val_result: TypedValue = match &inner_typed {
+                TypedValue::Map(map_ptr) => self.compile_map_index(*map_ptr, idx)?,
+                TypedValue::Set(set_ptr) => self.compile_set_index(*set_ptr, idx)?,
+                TypedValue::List(list_ptr) | TypedValue::LazyList(list_ptr) => {
+                    let index_val = match idx_val {
+                        TypedValue::Int(v) => v,
+                        _ => return Err("Index must be an integer".to_string()),
+                    };
+                    let list_val = self.load_list(*list_ptr)?;
+                    let cc = self.call_rt(
+                        "action_list_get",
+                        &[list_val.into(), index_val.into()],
+                    )?;
+                    match cc.try_as_basic_value().basic() {
+                        Some(bv) => {
+                            let fat = bv.into_struct_value();
+                            let alloca = self
+                                .builder
+                                .build_alloca(self.string_type, "list_elem")
+                                .map_err(llvm_err)?;
+                            self.builder.build_store(alloca, fat).map_err(llvm_err)?;
+                            TypedValue::Str(alloca)
+                        }
+                        None => return Err("list_get failed".to_string()),
+                    }
+                }
+                _ => return Err("Indexing not supported on this type".to_string()),
+            };
+
+            let val_bv = val_result
+                .to_bv()
+                .unwrap_or_else(|| self.i64_ty().const_int(0, false).into());
+            self.builder
+                .build_unconditional_branch(merge_block)
+                .map_err(llvm_err)?;
+
+            // Merge: phi the null and value paths
+            self.builder.position_at_end(merge_block);
+            let phi_type = val_bv.get_type();
+            let phi = self
+                .builder
+                .build_phi(phi_type, "nidx_merge")
+                .map_err(llvm_err)?;
+            phi.add_incoming(&[(&null_loaded, null_block), (&val_bv, val_block)]);
+
+            return self.bv_to_typed(phi.as_basic_value());
+        }
 
         // Tuple/struct indexing: requires compile-time constant integer index
         if let TypedValue::Struct(ptr, struct_ty) = &o {
@@ -144,22 +1039,15 @@ impl<'ctx> CodeGen<'ctx> {
         let key_val = self.compile_expr(idx)?;
         let key_fat = self.to_fat_struct(&key_val)?;
 
-        let option_ty = *self
-            .enum_types
-            .get("Option")
-            .ok_or("Option type not found; ensure enum Option<T> { Some(T), None } is defined")?;
-        let option_bt: BasicTypeEnum = option_ty.into();
-        let option_alloca = self
-            .builder
-            .build_alloca(option_bt, "map_idx_opt")
-            .map_err(llvm_err)?;
+        let i64 = self.i64_ty();
 
-        let (_, some_variant) = self
-            .registry
-            .lookup_variant("Some")
-            .ok_or("Some variant not found")?;
-        let some_tag = some_variant.tag as u64;
-        let none_tag = 1u64 - some_tag; // if Some=0, None=1; if Some=1, None=0
+        // Create nullable {i1, i64} — extract actual value from fat struct
+        let nullable_ty = self.get_nullable_type(i64.into(), "Nullable<Int>");
+        let null_bt: BasicTypeEnum = nullable_ty.into();
+        let null_alloca = self
+            .builder
+            .build_alloca(nullable_ty, "map_idx_null")
+            .map_err(llvm_err)?;
 
         let map_loaded = self.load_list(map_ptr)?;
         let contains_fn = self
@@ -193,14 +1081,13 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_conditional_branch(contains, some_bb, none_bb);
 
-        // Some path: get value from map, store on heap, build Some enum
+        // Some path: get fat struct from map, extract field 0 (the actual value), build {flag=0, val}
         self.builder.position_at_end(some_bb);
         let map_loaded2 = self.load_list(map_ptr)?;
         let get_fn = self
             .module
             .get_function("action_map_get")
             .ok_or("action_map_get not found")?;
-        // Need to re-compile key since we're in a different basic block
         let key_val2 = self.compile_expr(idx)?;
         let key_fat2 = self.to_fat_struct(&key_val2)?;
         let gc = self
@@ -212,73 +1099,44 @@ impl<'ctx> CodeGen<'ctx> {
             .basic()
             .ok_or("map_get failed")?
             .into_struct_value();
-        // Allocate heap space for the value (16 bytes for fat struct)
-        let sixteen = self.i64_ty().const_int(16, false);
-        let malloc_fn = self
-            .module
-            .get_function("malloc")
-            .ok_or("malloc not found")?;
-        let heap_ptr = self
+        // Extract the actual value (field 0) from the fat struct {val, ptr}
+        let actual_val = self
             .builder
-            .build_call(malloc_fn, &[sixteen.into()], "heap_val")
+            .build_extract_value(val_fat, 0, "map_val")
             .map_err(llvm_err)?
-            .try_as_basic_value()
-            .basic()
-            .ok_or("malloc failed")?
-            .into_pointer_value();
-        self.builder
-            .build_store(heap_ptr, val_fat)
-            .map_err(llvm_err)?;
-        let undef = option_ty.get_undef();
+            .into_int_value();
+        // Build nullable {flag=0, actual_val}
+        let undef = nullable_ty.get_undef();
         let r1 = self
             .builder
-            .build_insert_value(
-                undef,
-                self.i64_ty().const_int(some_tag, false),
-                0,
-                "some_tag",
-            )
+            .build_insert_value(undef, self.null_flag_ty().const_int(0, false), 0, "some_flag")
             .map_err(llvm_err)?;
         let r2 = self
             .builder
-            .build_insert_value(r1, heap_ptr, 1, "some_ptr")
+            .build_insert_value(r1, actual_val, 1, "some_val")
             .map_err(llvm_err)?;
         self.builder
-            .build_store(option_alloca, r2)
+            .build_store(null_alloca, r2)
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(merge_bb);
 
-        // None path: build None enum: {none_tag, null}
+        // None path: build nullable {flag=1, undef}
         self.builder.position_at_end(none_bb);
-        let undef2 = option_ty.get_undef();
+        let undef2 = nullable_ty.get_undef();
         let rn1 = self
             .builder
-            .build_insert_value(
-                undef2,
-                self.i64_ty().const_int(none_tag, false),
-                0,
-                "none_tag",
-            )
-            .map_err(llvm_err)?;
-        let rn2 = self
-            .builder
-            .build_insert_value(rn1, self.ptr_ty().const_zero(), 1, "none_ptr")
+            .build_insert_value(undef2, self.null_flag_ty().const_int(1, false), 0, "none_flag")
             .map_err(llvm_err)?;
         self.builder
-            .build_store(option_alloca, rn2)
+            .build_store(null_alloca, rn1)
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(merge_bb);
 
         self.builder.position_at_end(merge_bb);
-        Ok(TypedValue::Enum(
-            option_alloca,
-            option_ty,
-            InnerType::Int,
-            false,
-        ))
+        Ok(TypedValue::Nullable(null_alloca, null_bt))
     }
 
-    /// Set indexing: set[elem] -> Option<T>
+    /// Set indexing: set[elem] -> T? (nullable)
     pub(super) fn compile_set_index(
         &mut self,
         set_ptr: PointerValue<'ctx>,
@@ -287,22 +1145,15 @@ impl<'ctx> CodeGen<'ctx> {
         let elem_val = self.compile_expr(idx)?;
         let elem_fat = self.to_fat_struct(&elem_val)?;
 
-        let option_ty = *self
-            .enum_types
-            .get("Option")
-            .ok_or("Option type not found; ensure enum Option<T> { Some(T), None } is defined")?;
-        let option_bt: BasicTypeEnum = option_ty.into();
-        let option_alloca = self
-            .builder
-            .build_alloca(option_bt, "set_idx_opt")
-            .map_err(llvm_err)?;
+        let i64 = self.i64_ty();
 
-        let (_, some_variant) = self
-            .registry
-            .lookup_variant("Some")
-            .ok_or("Some variant not found")?;
-        let some_tag = some_variant.tag as u64;
-        let none_tag = 1u64 - some_tag;
+        // Create nullable {i1, i64} — extract actual value from fat struct
+        let nullable_ty = self.get_nullable_type(i64.into(), "Nullable<Int>");
+        let null_bt: BasicTypeEnum = nullable_ty.into();
+        let null_alloca = self
+            .builder
+            .build_alloca(nullable_ty, "set_idx_null")
+            .map_err(llvm_err)?;
 
         let set_loaded = self.load_list(set_ptr)?;
         let contains_fn = self
@@ -336,80 +1187,44 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_conditional_branch(contains, some_bb, none_bb);
 
-        // Some path: wrap element in Some(elem)
+        // Some path: extract field 0 from fat struct, wrap as nullable {flag=0, val}
         self.builder.position_at_end(some_bb);
-        // Re-compile elem since we're in a different basic block
         let elem_val2 = self.compile_expr(idx)?;
         let elem_fat2 = self.to_fat_struct(&elem_val2)?;
-        let sixteen = self.i64_ty().const_int(16, false);
-        let malloc_fn = self
-            .module
-            .get_function("malloc")
-            .ok_or("malloc not found")?;
-        let heap_ptr = self
+        // Extract actual value (field 0) from fat struct {val, ptr}
+        let actual_val = self
             .builder
-            .build_call(malloc_fn, &[sixteen.into()], "heap_elem")
+            .build_extract_value(elem_fat2.into_struct_value(), 0, "set_val")
             .map_err(llvm_err)?
-            .try_as_basic_value()
-            .basic()
-            .ok_or("malloc failed")?
-            .into_pointer_value();
-        self.builder
-            .build_store(heap_ptr, elem_fat2)
-            .map_err(llvm_err)?;
-        let undef = option_ty.get_undef();
+            .into_int_value();
+        let undef = nullable_ty.get_undef();
         let r1 = self
             .builder
-            .build_insert_value(
-                undef,
-                self.i64_ty().const_int(some_tag, false),
-                0,
-                "some_tag",
-            )
+            .build_insert_value(undef, self.null_flag_ty().const_int(0, false), 0, "some_flag")
             .map_err(llvm_err)?;
         let r2 = self
             .builder
-            .build_insert_value(r1, heap_ptr, 1, "some_ptr")
+            .build_insert_value(r1, actual_val, 1, "some_val")
             .map_err(llvm_err)?;
         self.builder
-            .build_store(option_alloca, r2)
+            .build_store(null_alloca, r2)
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(merge_bb);
 
-        // None path
+        // None path: nullable {flag=1, undef}
         self.builder.position_at_end(none_bb);
-        let undef2 = option_ty.get_undef();
+        let undef2 = nullable_ty.get_undef();
         let rn1 = self
             .builder
-            .build_insert_value(
-                undef2,
-                self.i64_ty().const_int(none_tag, false),
-                0,
-                "none_tag",
-            )
-            .map_err(llvm_err)?;
-        let rn2 = self
-            .builder
-            .build_insert_value(rn1, self.ptr_ty().const_zero(), 1, "none_ptr")
+            .build_insert_value(undef2, self.null_flag_ty().const_int(1, false), 0, "none_flag")
             .map_err(llvm_err)?;
         self.builder
-            .build_store(option_alloca, rn2)
+            .build_store(null_alloca, rn1)
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(merge_bb);
 
         self.builder.position_at_end(merge_bb);
-        let inner_type = match &elem_val2 {
-            TypedValue::Int(_) => InnerType::Int,
-            TypedValue::Float(_) => InnerType::Float,
-            TypedValue::Str(_) => InnerType::Str,
-            _ => InnerType::Int,
-        };
-        Ok(TypedValue::Enum(
-            option_alloca,
-            option_ty,
-            inner_type,
-            false,
-        ))
+        Ok(TypedValue::Nullable(null_alloca, null_bt))
     }
 
     pub(super) fn compile_range(
@@ -506,6 +1321,14 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     (var.ptr, var.kind, var.ty, var.enum_data_rc_managed)
                 };
+                // Wrap non-nullable value into nullable when target is nullable
+                let v = if var_kind == ValKind::Nullable && !matches!(&v, TypedValue::Nullable(..)) {
+                    let inner_bt = v.get_type_for_alloca(self);
+                    let nty = self.get_nullable_type(inner_bt, "assign_wrap");
+                    self.wrap_in_nullable(&v, nty)?
+                } else {
+                    v
+                };
                 // Decrement RC of old value before overwriting
                 self.rc_dec_at(var_ptr, var_kind, var_ty, var_rc_managed)?;
                 match &v {
@@ -554,6 +1377,15 @@ impl<'ctx> CodeGen<'ctx> {
                     | TypedValue::FileHandle(ptr) => {
                         self.builder.build_store(var_ptr, *ptr).map_err(llvm_err)?;
                     }
+                    TypedValue::Nullable(ptr, ty) => {
+                        let loaded = self
+                            .builder
+                            .build_load(*ty, *ptr, "assign_nullable_ld")
+                            .map_err(llvm_err)?;
+                        self.builder
+                            .build_store(var_ptr, loaded)
+                            .map_err(llvm_err)?;
+                    }
                     _ => {
                         if let Some(bv) = v.to_bv() {
                             self.builder.build_store(var_ptr, bv).map_err(llvm_err)?;
@@ -577,6 +1409,56 @@ impl<'ctx> CodeGen<'ctx> {
                             self.builder.build_store(field_ptr, bv).map_err(llvm_err)?;
                         }
                         Ok(v)
+                    }
+                    TypedValue::Nullable(nullable_ptr, inner_bt) => {
+                        // Extract the inner struct from the nullable wrapper
+                        let loaded = self
+                            .builder
+                            .build_load(inner_bt, nullable_ptr, "asn_nf_ld")
+                            .map_err(llvm_err)?;
+                        let nf_struct = loaded.into_struct_value();
+                        let inner = self
+                            .builder
+                            .build_extract_value(nf_struct, 1, "asn_inner")
+                            .map_err(llvm_err)?;
+                        let inner_typed = self.bv_to_typed(inner)?;
+                        match inner_typed {
+                            TypedValue::Struct(ptr, st) => {
+                                let idx = self.struct_field_index(&st, field)?;
+                                let field_ptr = self
+                                    .builder
+                                    .build_struct_gep(st, ptr, idx, "field_gep2")
+                                    .map_err(llvm_err)?;
+                                if let Some(bv) = v.to_bv() {
+                                    self.builder
+                                        .build_store(field_ptr, bv)
+                                        .map_err(llvm_err)?;
+                                }
+                                // Write back the modified inner struct into the nullable
+                                let inner_st_bt: BasicTypeEnum = st.into();
+                                let updated_inner = self
+                                    .builder
+                                    .build_load(inner_st_bt, ptr, "asn_upd")
+                                    .map_err(llvm_err)?;
+                                let updated_nf = self
+                                    .builder
+                                    .build_insert_value(
+                                        nf_struct,
+                                        updated_inner,
+                                        1,
+                                        "asn_nf_upd",
+                                    )
+                                    .map_err(llvm_err)?;
+                                self.builder
+                                    .build_store(nullable_ptr, updated_nf)
+                                    .map_err(llvm_err)?;
+                                Ok(v)
+                            }
+                            _ => Err(format!(
+                                "Cannot assign to field '{}' of non-struct inner",
+                                field
+                            )),
+                        }
                     }
                     _ => Err(format!("Cannot assign to field '{}' of non-struct", field)),
                 }
@@ -680,175 +1562,6 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
             _ => Err("Cannot extract field from non-struct value".to_string()),
-        }
-    }
-
-    /// Compile error propagation binding: val x? = Some(expr)
-    /// On Some/Ok: extract inner value, bind to variable
-    /// On None/Err: return early from the current function with the error
-    pub(super) fn compile_propagate_let(
-        &mut self,
-        name: &str,
-        type_ann: Option<&Type>,
-        value: &Expr,
-    ) -> Result<(), String> {
-        let val = self.compile_expr(value)?;
-        let inner = self.propagate_unwrap(&val)?;
-        let (ty, kind) = if let Some(ann) = type_ann {
-            (
-                self.ast_type_to_basic_type(ann),
-                self.param_val_kind(Some(ann)),
-            )
-        } else {
-            (inner.get_type_for_alloca(self), inner.val_kind())
-        };
-        let alloca = self.builder.build_alloca(ty, name).map_err(llvm_err)?;
-        self.store_typed_value(&inner, alloca, ty)?;
-        self.rc_inc_typed_value(&inner)?;
-        self.scope.set(name.to_string(), alloca, ty, kind);
-        Ok(())
-    }
-
-    /// Compile error propagation assignment: x? = Some(expr)
-    pub(super) fn compile_propagate_assign(
-        &mut self,
-        target: &Expr,
-        value: &Expr,
-    ) -> Result<TypedValue<'ctx>, String> {
-        let val = self.compile_expr(value)?;
-        let inner = self.propagate_unwrap(&val)?;
-        match target {
-            Expr::Ident(name) => {
-                if let Some(var) = self.scope.get(name) {
-                    self.store_typed_value(&inner, var.ptr, var.ty)?;
-                    return Ok(inner);
-                }
-                Err(format!("Undefined variable: {}", name))
-            }
-            Expr::FieldAccess(obj, field) => {
-                let obj_val = self.compile_expr(obj)?;
-                match obj_val {
-                    TypedValue::Struct(ptr, st) => {
-                        let struct_info = self
-                            .registry
-                            .structs
-                            .values()
-                            .find(|si| si.fields.iter().any(|(n, _)| n == field))
-                            .ok_or_else(|| format!("Field '{}' not found in struct", field))?;
-                        let field_idx = struct_info
-                            .fields
-                            .iter()
-                            .position(|(n, _)| n == field)
-                            .unwrap();
-                        let field_ty =
-                            self.ast_type_to_basic_type(&struct_info.fields[field_idx].1);
-                        let field_ptr = self
-                            .builder
-                            .build_struct_gep(st, ptr, field_idx as u32, "field_gep")
-                            .map_err(llvm_err)?;
-                        self.store_typed_value(&inner, field_ptr, field_ty)?;
-                        Ok(inner)
-                    }
-                    _ => Err("Propagation assignment target must be a struct field".to_string()),
-                }
-            }
-            _ => Err("Complex assignment not yet supported".to_string()),
-        }
-    }
-
-    /// Check if a TypedValue is an enum with tag 0 (Some/Ok).
-    /// If yes: extract inner data and continue in the current block.
-    /// If no: branch to an early return of the original enum from the current function.
-    pub(super) fn propagate_unwrap(
-        &mut self,
-        enum_val: &TypedValue<'ctx>,
-    ) -> Result<TypedValue<'ctx>, String> {
-        let (enum_ptr, enum_ty, inner_type) = match enum_val {
-            TypedValue::Enum(p, t, inner_type, ..) => (*p, *t, *inner_type),
-            _ => return Err("Error propagation (?) requires an Option or Result enum".to_string()),
-        };
-
-        let current_fn = self
-            .builder
-            .get_insert_block()
-            .and_then(|b| b.get_parent())
-            .ok_or("Cannot propagate error outside function")?;
-
-        let i64 = self.i64_ty();
-        let ptr_ty = self.ptr_ty();
-        let bt: BasicTypeEnum = enum_ty.into();
-
-        let loaded = self
-            .builder
-            .build_load(bt, enum_ptr, "prop_enum")
-            .map_err(llvm_err)?;
-        let enum_struct = loaded.into_struct_value();
-        let tag = self
-            .builder
-            .build_extract_value(enum_struct, 0, "prop_tag")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let data_ptr = self
-            .builder
-            .build_extract_value(enum_struct, 1, "prop_data")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-
-        let is_ok = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, tag, i64.const_int(0, false), "prop_is_ok")
-            .map_err(llvm_err)?;
-
-        let ok_block = self.context.append_basic_block(current_fn, "prop_ok");
-        let fail_block = self.context.append_basic_block(current_fn, "prop_fail");
-
-        self.builder
-            .build_conditional_branch(is_ok, ok_block, fail_block)
-            .map_err(llvm_err)?;
-
-        // On failure: return the original None/Err enum from the function
-        self.builder.position_at_end(fail_block);
-        let _ = self.builder.build_return(Some(&loaded));
-
-        // On success: extract the inner value with the correct type
-        self.builder.position_at_end(ok_block);
-        let inner_ptr = self
-            .builder
-            .build_pointer_cast(data_ptr, ptr_ty, "prop_inner")
-            .map_err(llvm_err)?;
-        match inner_type {
-            InnerType::Int => {
-                let inner_val = self
-                    .builder
-                    .build_load(i64, inner_ptr, "prop_inner_val")
-                    .map_err(llvm_err)?;
-                self.bv_to_typed(inner_val)
-            }
-            InnerType::Float => {
-                let f64 = self.f64_ty();
-                let inner_val = self
-                    .builder
-                    .build_load(f64, inner_ptr, "prop_inner_val")
-                    .map_err(llvm_err)?;
-                self.bv_to_typed(inner_val)
-            }
-            InnerType::Str => {
-                let str_ty = self.string_type;
-                let str_ptr = self
-                    .builder
-                    .build_pointer_cast(inner_ptr, self.ptr_ty(), "prop_inner_str")
-                    .map_err(llvm_err)?;
-                let loaded = self
-                    .builder
-                    .build_load(str_ty, str_ptr, "prop_inner_str_val")
-                    .map_err(llvm_err)?;
-                let alloca = self
-                    .builder
-                    .build_alloca(str_ty, "str_tmp")
-                    .map_err(llvm_err)?;
-                self.builder.build_store(alloca, loaded).map_err(llvm_err)?;
-                Ok(TypedValue::Str(alloca))
-            }
         }
     }
 
@@ -1025,6 +1738,103 @@ impl<'ctx> CodeGen<'ctx> {
             // Check if it's a module-qualified function call handled elsewhere (e.g., math.add)
         }
         let o = self.compile_expr(obj)?;
+
+        // If receiver is nullable, auto short-circuit on null
+        if let TypedValue::Nullable(nullable_ptr, inner_bt) = o {
+            let current_fn = self
+                .builder
+                .get_insert_block()
+                .and_then(|b| b.get_parent())
+                .ok_or("Cannot access field outside function")?;
+
+            let b1 = self.null_flag_ty();
+            let nullable_st = inner_bt.into_struct_type();
+            let null_bt: BasicTypeEnum = nullable_st.into();
+
+            let loaded = self
+                .builder
+                .build_load(null_bt, nullable_ptr, "nfa_ld")
+                .map_err(llvm_err)?;
+            let nullable_struct = loaded.into_struct_value();
+            let null_flag = self
+                .builder
+                .build_extract_value(nullable_struct, 0, "nfa_flag")
+                .map_err(llvm_err)?
+                .into_int_value();
+
+            let is_null = self
+                .builder
+                .build_int_compare(
+                    IntPredicate::EQ,
+                    null_flag,
+                    b1.const_int(1, false),
+                    "nfa_is_null",
+                )
+                .map_err(llvm_err)?;
+
+            let null_block = self.context.append_basic_block(current_fn, "nfa_null");
+            let val_block = self.context.append_basic_block(current_fn, "nfa_val");
+            let merge_block = self.context.append_basic_block(current_fn, "nfa_merge");
+
+            self.builder
+                .build_conditional_branch(is_null, null_block, val_block)
+                .map_err(llvm_err)?;
+
+            // Value path: extract inner, access field, wrap result in nullable.
+            // Processed first so the wrapped result type informs the null path.
+            self.builder.position_at_end(val_block);
+            let inner = self
+                .builder
+                .build_extract_value(nullable_struct, 1, "nfa_inner")
+                .map_err(llvm_err)?;
+            let inner_typed = self.bv_to_typed(inner)?;
+
+            let field_result =
+                self.compile_field_access_on_typed_value(&inner_typed, field, inner_bt)?;
+            let field_bt = field_result.get_type_for_alloca(self);
+            let field_wrapped = self.wrap_in_typed_nullable(&field_result, field_bt)?;
+            let (wrapped_ptr, wrapped_bt) = match &field_wrapped {
+                TypedValue::Nullable(p, t) => (*p, *t),
+                _ => return Err("wrap_in_typed_nullable did not return Nullable".to_string()),
+            };
+            let val_loaded = self
+                .builder
+                .build_load(wrapped_bt, wrapped_ptr, "nfa_val_ld")
+                .map_err(llvm_err)?;
+            self.builder
+                .build_unconditional_branch(merge_block)
+                .map_err(llvm_err)?;
+
+            // Null path: produce null of the same wrapped type as the value path
+            self.builder.position_at_end(null_block);
+            let wrapped_struct_ty = wrapped_bt.into_struct_type();
+            let undef = wrapped_struct_ty.get_undef();
+            let null_struct = self
+                .builder
+                .build_insert_value(undef, b1.const_int(1, false), 0, "nfa_null_flag")
+                .map_err(llvm_err)?;
+            self.builder
+                .build_unconditional_branch(merge_block)
+                .map_err(llvm_err)?;
+
+            // Merge: phi the null and value paths (both have the same struct type)
+            self.builder.position_at_end(merge_block);
+            let phi = self
+                .builder
+                .build_phi(wrapped_bt, "nfa_merge")
+                .map_err(llvm_err)?;
+            phi.add_incoming(&[(&null_struct, null_block), (&val_loaded, val_block)]);
+
+            let result_alloca = self
+                .builder
+                .build_alloca(wrapped_struct_ty, "nfa_result")
+                .map_err(llvm_err)?;
+            self.builder
+                .build_store(result_alloca, phi.as_basic_value())
+                .map_err(llvm_err)?;
+            return Ok(TypedValue::Nullable(result_alloca, wrapped_bt));
+        }
+
         if let TypedValue::Str(ptr) = &o {
             if field == "length" {
                 let gep = self
@@ -1068,404 +1878,6 @@ impl<'ctx> CodeGen<'ctx> {
             return self.bv_to_typed(field_val);
         }
         Err(format!("Field '{}' not supported on this type", field))
-    }
-
-    /// Compile safe field access: expr?.field
-    /// On Some/Ok: extract inner value, access field, wrap result in Some
-    /// On None/Err: return the original enum as-is
-    /// Safe field access with early return: obj?.field
-    /// If obj is None/Err, return early from the function (propagate the error).
-    /// If obj is Some(v)/Ok(v), unwrap v, access .field, and wrap the result back in Some/Ok.
-    pub(super) fn compile_safe_field_access(
-        &mut self,
-        obj: &Expr,
-        field: &str,
-    ) -> Result<TypedValue<'ctx>, String> {
-        let receiver = self.compile_expr(obj)?;
-        let (enum_ptr, enum_ty) = match &receiver {
-            TypedValue::Enum(p, t, ..) => (*p, *t),
-            _ => {
-                return Err(
-                    "Safe field access (?.field) requires an Option or Result enum receiver"
-                        .to_string(),
-                )
-            }
-        };
-
-        let current_fn = self
-            .builder
-            .get_insert_block()
-            .and_then(|b| b.get_parent())
-            .ok_or("Cannot compile safe field access outside function")?;
-
-        let i64 = self.i64_ty();
-        let ptr_ty = self.ptr_ty();
-        let bt: BasicTypeEnum = enum_ty.into();
-
-        let loaded = self
-            .builder
-            .build_load(bt, enum_ptr, "safe_enum_ld")
-            .map_err(llvm_err)?;
-        let enum_struct = loaded.into_struct_value();
-        let tag = self
-            .builder
-            .build_extract_value(enum_struct, 0, "safe_tag")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let data_ptr = self
-            .builder
-            .build_extract_value(enum_struct, 1, "safe_data")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-
-        let is_ok = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, tag, i64.const_int(0, false), "is_ok")
-            .map_err(llvm_err)?;
-
-        let ok_block = self.context.append_basic_block(current_fn, "safe_ok");
-        let fail_block = self.context.append_basic_block(current_fn, "safe_fail");
-        let merge_block = self.context.append_basic_block(current_fn, "safe_merge");
-
-        // Allocate result at entry
-        let entry = current_fn.get_first_basic_block().unwrap();
-        let saved_pos = self.builder.get_insert_block();
-        match entry.get_first_instruction() {
-            Some(instr) => {
-                let _ = self.builder.position_before(&instr);
-            }
-            None => self.builder.position_at_end(entry),
-        }
-        let result_alloca = self
-            .builder
-            .build_alloca(bt, "safe_result")
-            .map_err(llvm_err)?;
-        if let Some(block) = saved_pos {
-            self.builder.position_at_end(block);
-        }
-
-        self.builder
-            .build_conditional_branch(is_ok, ok_block, fail_block)
-            .map_err(llvm_err)?;
-
-        // On failure: if the function returns the same enum type,
-        // propagate (early-return with the error / None).
-        // Otherwise (void, i64, etc.) produce the enum value.
-        let fn_ret_ty = current_fn.get_type().get_return_type();
-        let should_propagate = fn_ret_ty == Some(bt);
-        self.builder.position_at_end(fail_block);
-        if should_propagate {
-            let _ = self.builder.build_return(Some(&loaded));
-        } else {
-            self.builder
-                .build_store(result_alloca, loaded)
-                .map_err(llvm_err)?;
-            self.builder
-                .build_unconditional_branch(merge_block)
-                .map_err(llvm_err)?;
-        }
-
-        // On success: unwrap inner value, access field, wrap in Some/Ok
-        self.builder.position_at_end(ok_block);
-        let field_val = self.try_struct_field_load(data_ptr, field)?;
-        let field_ty = field_val.get_type_for_alloca(self);
-        let size = self.basic_type_size(field_ty)?;
-        let heap_ptr = self.malloc_rc(size)?;
-        self.store_typed_value(&field_val, heap_ptr, field_ty)?;
-        let heap_ptr_i8 = self
-            .builder
-            .build_pointer_cast(heap_ptr, ptr_ty, "heap_i8")
-            .map_err(llvm_err)?;
-        let undef = enum_ty.get_undef();
-        let r1 = self
-            .builder
-            .build_insert_value(undef, i64.const_int(0, false), 0, "ok_tag")
-            .map_err(llvm_err)?;
-        let r2 = self
-            .builder
-            .build_insert_value(r1, heap_ptr_i8, 1, "ok_data")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(result_alloca, r2)
-            .map_err(llvm_err)?;
-        self.builder
-            .build_unconditional_branch(merge_block)
-            .map_err(llvm_err)?;
-
-        self.builder.position_at_end(merge_block);
-        let result_inner_type = match &field_val {
-            TypedValue::Float(_) => InnerType::Float,
-            TypedValue::Str(_) => InnerType::Str,
-            _ => InnerType::Int,
-        };
-        Ok(TypedValue::Enum(
-            result_alloca,
-            enum_ty,
-            result_inner_type,
-            false,
-        ))
-    }
-
-    /// Try to load a field from a struct-typed data pointer.
-    pub(super) fn try_struct_field_load(
-        &mut self,
-        data_ptr: PointerValue<'ctx>,
-        field: &str,
-    ) -> Result<TypedValue<'ctx>, String> {
-        // Search through named structs for one containing the field
-        for (struct_name, struct_ty) in &self.named_structs.clone() {
-            if let Some(info) = self.registry.get_struct(struct_name) {
-                if let Some((idx, (_, _field_ty))) = info
-                    .fields
-                    .iter()
-                    .enumerate()
-                    .find(|(_, (n, _))| n == field)
-                {
-                    // Cast data_ptr to struct pointer, load struct, extract field
-                    let struct_bt: BasicTypeEnum = (*struct_ty).into();
-                    let struct_ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
-                    let casted = self
-                        .builder
-                        .build_pointer_cast(data_ptr, struct_ptr_ty, "struct_ptr")
-                        .map_err(llvm_err)?;
-                    let loaded = self
-                        .builder
-                        .build_load(struct_bt, casted, "struct_val")
-                        .map_err(llvm_err)?;
-                    let struct_val = loaded.into_struct_value();
-                    let fv = self
-                        .builder
-                        .build_extract_value(struct_val, idx as u32, field)
-                        .map_err(llvm_err)?;
-                    return self.bv_to_typed(fv);
-                }
-            }
-        }
-        // Fallback: load as i64 (for simple types like Int, Bool)
-        let i64 = self.i64_ty();
-        let i64_ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
-        let casted = self
-            .builder
-            .build_pointer_cast(data_ptr, i64_ptr_ty, "i64_ptr")
-            .map_err(llvm_err)?;
-        let loaded = self
-            .builder
-            .build_load(i64, casted, field)
-            .map_err(llvm_err)?
-            .into_int_value();
-        Ok(TypedValue::Int(loaded))
-    }
-
-    /// Compile safe call: expr?.method(args)
-    /// On Some/Ok: extract inner value, call method(inner_value, ...args), wrap in Some
-    /// Safe call with early return: obj?.method(args)
-    /// If obj is None/Err, return early from the function (propagate the error).
-    /// If obj is Some(v)/Ok(v), unwrap v, call method(v, args...), and wrap result in Some/Ok.
-    pub(super) fn compile_safe_call(
-        &mut self,
-        receiver: &Expr,
-        args: &[Expr],
-    ) -> Result<TypedValue<'ctx>, String> {
-        // receiver is FieldAccess(original_expr, "method_name")
-        let (original, method_name) = match receiver {
-            Expr::FieldAccess(obj, name) => (obj.as_ref(), name.as_str()),
-            _ => return Err("Safe call (?.method()) requires a method name".to_string()),
-        };
-
-        let enum_val = self.compile_expr(original)?;
-        let (enum_ptr, enum_ty, enum_inner_type) = match &enum_val {
-            TypedValue::Enum(p, t, inner_type, ..) => (*p, *t, *inner_type),
-            _ => {
-                return Err(
-                    "Safe call (?.method()) requires an Option or Result enum receiver".to_string(),
-                )
-            }
-        };
-
-        let current_fn = self
-            .builder
-            .get_insert_block()
-            .and_then(|b| b.get_parent())
-            .ok_or("Cannot compile safe call outside function")?;
-
-        let i64 = self.i64_ty();
-        let ptr_ty = self.ptr_ty();
-        let bt: BasicTypeEnum = enum_ty.into();
-
-        let loaded = self
-            .builder
-            .build_load(bt, enum_ptr, "safe_call_ld")
-            .map_err(llvm_err)?;
-        let enum_struct = loaded.into_struct_value();
-        let tag = self
-            .builder
-            .build_extract_value(enum_struct, 0, "sc_tag")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let data_ptr = self
-            .builder
-            .build_extract_value(enum_struct, 1, "sc_data")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-
-        let is_ok = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, tag, i64.const_int(0, false), "sc_is_ok")
-            .map_err(llvm_err)?;
-
-        let ok_block = self.context.append_basic_block(current_fn, "sc_ok");
-        let fail_block = self.context.append_basic_block(current_fn, "sc_fail");
-        let merge_block = self.context.append_basic_block(current_fn, "sc_merge");
-
-        // Allocate result at entry
-        let entry = current_fn.get_first_basic_block().unwrap();
-        let saved_pos = self.builder.get_insert_block();
-        match entry.get_first_instruction() {
-            Some(instr) => {
-                let _ = self.builder.position_before(&instr);
-            }
-            None => self.builder.position_at_end(entry),
-        }
-        let result_alloca = self
-            .builder
-            .build_alloca(bt, "sc_result")
-            .map_err(llvm_err)?;
-        if let Some(block) = saved_pos {
-            self.builder.position_at_end(block);
-        }
-
-        self.builder
-            .build_conditional_branch(is_ok, ok_block, fail_block)
-            .map_err(llvm_err)?;
-
-        // On failure: if the function returns the same enum type,
-        // propagate (early-return with the error / None).
-        // Otherwise (void, i64, etc.) produce the enum value.
-        let fn_ret_ty = current_fn.get_type().get_return_type();
-        let should_propagate = fn_ret_ty == Some(bt);
-        self.builder.position_at_end(fail_block);
-        if should_propagate {
-            let _ = self.builder.build_return(Some(&loaded));
-        } else {
-            self.builder
-                .build_store(result_alloca, loaded)
-                .map_err(llvm_err)?;
-            self.builder
-                .build_unconditional_branch(merge_block)
-                .map_err(llvm_err)?;
-        }
-
-        // On success: unwrap inner value with correct type, call method, wrap result in Some/Ok
-        self.builder.position_at_end(ok_block);
-        let inner_ptr = self
-            .builder
-            .build_pointer_cast(data_ptr, ptr_ty, "sc_inner")
-            .map_err(llvm_err)?;
-        let inner_typed = match enum_inner_type {
-            InnerType::Int => {
-                let inner_val = self
-                    .builder
-                    .build_load(i64, inner_ptr, "sc_inner_val")
-                    .map_err(llvm_err)?;
-                self.bv_to_typed(inner_val)?
-            }
-            InnerType::Float => {
-                let f64 = self.f64_ty();
-                let inner_val = self
-                    .builder
-                    .build_load(f64, inner_ptr, "sc_inner_val")
-                    .map_err(llvm_err)?;
-                self.bv_to_typed(inner_val)?
-            }
-            InnerType::Str => {
-                let str_ty = self.string_type;
-                let str_ptr = self
-                    .builder
-                    .build_pointer_cast(inner_ptr, self.ptr_ty(), "sc_inner_str")
-                    .map_err(llvm_err)?;
-                let loaded = self
-                    .builder
-                    .build_load(str_ty, str_ptr, "sc_inner_str_val")
-                    .map_err(llvm_err)?;
-                let alloca = self
-                    .builder
-                    .build_alloca(str_ty, "str_tmp")
-                    .map_err(llvm_err)?;
-                self.builder.build_store(alloca, loaded).map_err(llvm_err)?;
-                TypedValue::Str(alloca)
-            }
-        };
-
-        let mut all_args = vec![inner_typed];
-        for a in args {
-            all_args.push(self.compile_expr(a)?);
-        }
-        let call_result = self.compile_ufcs_call(method_name, &all_args)?;
-
-        let call_ty = call_result.get_type_for_alloca(self);
-        let size = self.basic_type_size(call_ty)?;
-        let heap_ptr = self.malloc_rc(size)?;
-        self.store_typed_value(&call_result, heap_ptr, call_ty)?;
-        let heap_ptr_i8 = self
-            .builder
-            .build_pointer_cast(heap_ptr, ptr_ty, "sc_heap_i8")
-            .map_err(llvm_err)?;
-        let undef = enum_ty.get_undef();
-        let r1 = self
-            .builder
-            .build_insert_value(undef, i64.const_int(0, false), 0, "sc_ok_tag")
-            .map_err(llvm_err)?;
-        let r2 = self
-            .builder
-            .build_insert_value(r1, heap_ptr_i8, 1, "sc_ok_data")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(result_alloca, r2)
-            .map_err(llvm_err)?;
-        self.builder
-            .build_unconditional_branch(merge_block)
-            .map_err(llvm_err)?;
-
-        self.builder.position_at_end(merge_block);
-        let result_inner_type = match &call_result {
-            TypedValue::Float(_) => InnerType::Float,
-            TypedValue::Str(_) => InnerType::Str,
-            _ => InnerType::Int,
-        };
-        Ok(TypedValue::Enum(
-            result_alloca,
-            enum_ty,
-            result_inner_type,
-            false,
-        ))
-    }
-
-    /// Compile a UFCS call: method_name(value, args...)
-    pub(super) fn compile_ufcs_call(
-        &mut self,
-        method_name: &str,
-        args: &[TypedValue<'ctx>],
-    ) -> Result<TypedValue<'ctx>, String> {
-        if let Some(fn_val) = self.module.get_function(method_name) {
-            let mut ca: Vec<BasicMetadataValueEnum> = Vec::new();
-            for a in args {
-                if let Some(bv) = a.to_bv() {
-                    ca.push(bv.into());
-                } else {
-                    ca.push(self.i64_ty().const_int(0, false).into());
-                }
-            }
-            let cc = self
-                .builder
-                .build_call(fn_val, &ca, "ufcs")
-                .map_err(llvm_err)?;
-            match cc.try_as_basic_value().basic() {
-                Some(bv) => self.bv_to_typed(bv),
-                None => Ok(TypedValue::Unit),
-            }
-        } else {
-            Err(format!("Method '{}' not found", method_name))
-        }
     }
 
     pub(super) fn lookup_struct_field_names(&self, struct_ty: StructType<'ctx>) -> Vec<String> {
@@ -1520,10 +1932,12 @@ impl<'ctx> CodeGen<'ctx> {
             .build_alloca(bt, "struct_lit")
             .map_err(llvm_err)?;
 
+        let field_types = struct_ty.get_field_types();
         let undef = struct_ty.get_undef();
         let mut result = undef;
 
         for (i, val) in field_vals.iter().enumerate() {
+            let expected_ft = field_types.get(i).copied();
             let bv = match val {
                 TypedValue::Struct(ptr, ty) => {
                     let sbt: BasicTypeEnum = (*ty).into();
@@ -1532,9 +1946,48 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(llvm_err)?
                         .as_basic_value_enum()
                 }
-                _ => val
-                    .to_bv()
-                    .unwrap_or_else(|| self.i64_ty().const_int(0, false).as_basic_value_enum()),
+                TypedValue::Nullable(ptr, ty) => self
+                    .builder
+                    .build_load(*ty, *ptr, "field_nullable")
+                    .map_err(llvm_err)?,
+                _ => {
+                    // If the struct field expects a nullable type but we have a scalar,
+                    // wrap the scalar in a nullable struct {i8=0, scalar}
+                    let needs_wrap = expected_ft
+                        .map(|ft| {
+                            if let BasicTypeEnum::StructType(st) = ft {
+                                let fts = st.get_field_types();
+                                fts.len() == 2
+                                    && matches!(fts[0], BasicTypeEnum::IntType(t) if t.get_bit_width() == 8)
+                            } else {
+                                false
+                            }
+                        })
+                        .unwrap_or(false);
+                    if needs_wrap {
+                        let field_st = if let BasicTypeEnum::StructType(st) = expected_ft.unwrap() {
+                            st
+                        } else {
+                            return Err("Expected struct type for nullable field".into());
+                        };
+                        let undef_f = field_st.get_undef();
+                        let flag = self.null_flag_ty().const_int(0, false);
+                        let with_flag = self
+                            .builder
+                            .build_insert_value(undef_f, flag, 0, "slf_flag")
+                            .map_err(llvm_err)?;
+                        let scalar = val
+                            .to_bv()
+                            .unwrap_or_else(|| self.i64_ty().const_int(0, false).into());
+                        self.builder
+                            .build_insert_value(with_flag, scalar, 1, "slf_val")
+                            .map_err(llvm_err)?
+                            .as_basic_value_enum()
+                    } else {
+                        val.to_bv()
+                            .unwrap_or_else(|| self.i64_ty().const_int(0, false).as_basic_value_enum())
+                    }
+                }
             };
             result = self
                 .builder
@@ -1597,6 +2050,10 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_load(bt2, *ptr, "tuple_field")
                         .map_err(llvm_err)?
                 }
+                TypedValue::Nullable(ptr, ty) => self
+                    .builder
+                    .build_load(*ty, *ptr, "tuple_field_nullable")
+                    .map_err(llvm_err)?,
                 _ => val
                     .to_bv()
                     .unwrap_or_else(|| self.i64_ty().const_int(0, false).as_basic_value_enum()),

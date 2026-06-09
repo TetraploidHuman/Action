@@ -1,20 +1,13 @@
-// Test: safe field access (?.) and Option propagation
-enum Option { Some(Int), None }
-
+// Test: nullable field access and elvis
 fun main() {
-    // Test 1: Safe field access on Some
-    val p = Some(10)
-    val r1 = p?.length
-    when r1 {
-        Some(v) -> print(v)
-        None -> print(0)
-    }
+    val p: Int? = 10
+    val n: Int? = null
 
-    // Test 2: Safe field access on None
-    val n = None
-    val r2 = n?.length
-    when r2 {
-        Some(v) -> print(9)
-        None -> print(1)
-    }
+    // Test 1: Elvis on non-null
+    val r1 = p ?: 0
+    print(r1)
+
+    // Test 2: Elvis on null
+    val r2 = n ?: 1
+    print(r2)
 }

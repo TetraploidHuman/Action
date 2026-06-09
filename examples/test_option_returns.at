@@ -1,89 +1,87 @@
-// Test functions that were updated to return Option
-enum Option { Some(Int), None }
-
+// Test functions returning nullable types: tail, init, indexOf, toInt, toFloat, parseInt
 fun main() {
-    // ---- Test tail: should return Option<List<Int>> ----
+    // ---- Test tail: returns List<Int>? ----
     val lst = List[1, 2, 3]
     val t = tail(lst)
-    print("tail([1,2,3]) isSome: ")
-    println(isSome(t))
+    print("tail([1,2,3]) != null: ")
+    println(t != null)
 
     val empty = List[]
     val t2 = tail(empty)
-    print("tail([]) isNone: ")
-    println(isNone(t2))
+    print("tail([]) == null: ")
+    println(t2 == null)
 
-    // ---- Test init: should return Option<List<Int>> ----
+    // ---- Test init: returns List<Int>? ----
     val i = init(lst)
-    print("init([1,2,3]) isSome: ")
-    println(isSome(i))
+    print("init([1,2,3]) != null: ")
+    println(i != null)
 
     val i2 = init(empty)
-    print("init([]) isNone: ")
-    println(isNone(i2))
+    print("init([]) == null: ")
+    println(i2 == null)
 
-    // ---- Test indexOf for list: should return Option<Int> ----
+    // ---- Test indexOf for list: returns Int? ----
     val idx = indexOf(2, lst)
-    print("indexOf(2, [1,2,3]) isSome: ")
-    println(isSome(idx))
+    print("indexOf(2, [1,2,3]) != null: ")
+    println(idx != null)
     print("indexOf(2, [1,2,3]) value: ")
-    println(unwrapOr(idx, -1))
+    println(idx ?: -1)
 
     val idx2 = indexOf(99, lst)
-    print("indexOf(99, [1,2,3]) isNone: ")
-    println(isNone(idx2))
+    print("indexOf(99, [1,2,3]) == null: ")
+    println(idx2 == null)
 
-    // ---- Test indexOf for string: should return Option<Int> ----
+    // ---- Test indexOf for string: returns Int? ----
     val sidx = indexOf("bc", "abcde")
-    print("indexOf('bc', 'abcde') isSome: ")
-    println(isSome(sidx))
+    print("indexOf('bc', 'abcde') != null: ")
+    println(sidx != null)
     print("indexOf('bc', 'abcde') value: ")
-    println(unwrapOr(sidx, -1))
+    println(sidx ?: -1)
 
     val sidx2 = indexOf("xyz", "abcde")
-    print("indexOf('xyz', 'abcde') isNone: ")
-    println(isNone(sidx2))
+    print("indexOf('xyz', 'abcde') == null: ")
+    println(sidx2 == null)
 
-    // ---- Test toInt: should return Option<Int> ----
+    // ---- Test toInt: returns Int? ----
     val ti1 = toInt("42")
-    print("toInt('42') isSome: ")
-    println(isSome(ti1))
+    print("toInt('42') != null: ")
+    println(ti1 != null)
     print("toInt('42') value: ")
-    println(unwrapOr(ti1, -1))
+    println(ti1 ?: -1)
 
     val ti2 = toInt("abc")
-    print("toInt('abc') isNone: ")
-    println(isNone(ti2))
+    print("toInt('abc') == null: ")
+    println(ti2 == null)
 
     val ti3 = toInt(3.14)
-    print("toInt(3.14) isSome: ")
-    println(isSome(ti3))
+    print("toInt(3.14) != null: ")
+    println(ti3 != null)
 
-    // ---- Test toFloat: should return Option<Float> ----
+    // ---- Test toFloat: returns Float? ----
     val tf1 = toFloat("3.14")
-    print("toFloat('3.14') isSome: ")
-    println(isSome(tf1))
+    print("toFloat('3.14') != null: ")
+    println(tf1 != null)
 
     val tf2 = toFloat("abc")
-    print("toFloat('abc') isNone: ")
-    println(isNone(tf2))
+    print("toFloat('abc') == null: ")
+    println(tf2 == null)
 
     val tf3 = toFloat(42)
-    print("toFloat(42) isSome: ")
-    println(isSome(tf3))
+    print("toFloat(42) != null: ")
+    println(tf3 != null)
 
-    // ---- Test parseInt: should return Option<Int> ----
+    // ---- Test parseInt: returns Int? ----
     val pi1 = parseInt("123")
-    print("parseInt('123') isSome: ")
-    println(isSome(pi1))
+    print("parseInt('123') != null: ")
+    println(pi1 != null)
     print("parseInt('123') value: ")
-    println(unwrapOr(pi1, -1))
+    println(pi1 ?: -1)
 
     val pi2 = parseInt("not_a_number")
-    print("parseInt('not_a_number') isNone: ")
-    println(isNone(pi2))
+    print("parseInt('not_a_number') == null: ")
+    println(pi2 == null)
 
-    // ---- Test string slice with [start, end) semantics ----
+    // ---- Test string slice ----
     val ss = slice("hello world", 0, 5)
     print("slice('hello world', 0, 5): ")
     println(ss)

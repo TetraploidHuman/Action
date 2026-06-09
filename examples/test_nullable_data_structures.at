@@ -1,0 +1,33 @@
+// Nullable types in data structures: Map lookups, multiple nullable values
+fun main() {
+    // 1. Count non-null elements among multiple nullable values
+    val v1: Int? = 1
+    val v2: Int? = null
+    val v3: Int? = 3
+    val v4: Int? = null
+    val v5: Int? = 5
+
+    print(5)                            // total items
+    var count = 0
+    when v1 != null { count = count + 1 }
+    when v2 != null { count = count + 1 }
+    when v3 != null { count = count + 1 }
+    when v4 != null { count = count + 1 }
+    when v5 != null { count = count + 1 }
+    print(count)                        // non-null count = 3
+
+    // 2. Map lookups with Elvis defaults
+    val m = Map["a": 1, "b": 2]
+    print(m["a"] ?: 0)                 // 1
+    print(m["c"] ?: 99)                // 99
+
+    // 3. Nullable values with direct initialization
+    val val_a: Int? = 100
+    val val_b: Int? = null
+    print(val_a ?: 0)                  // 100
+    print(val_b ?: 0)                  // 0
+
+    // 4. Sum nullable values using Elvis
+    val s1 = (val_a ?: 0) + (val_b ?: 0) + (v1 ?: 0)
+    print(s1)                           // 100 + 0 + 1 = 101
+}

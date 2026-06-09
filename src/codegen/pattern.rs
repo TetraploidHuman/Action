@@ -2,7 +2,7 @@
 
 use crate::ast::*;
 use inkwell::types::BasicTypeEnum;
-use inkwell::values::IntValue;
+use inkwell::values::{IntValue, PointerValue};
 use inkwell::FloatPredicate;
 use inkwell::IntPredicate;
 use std::collections::HashMap;
@@ -22,7 +22,46 @@ impl<'ctx> CodeGen<'ctx> {
                     TypedValue::Bool(b) => b,
                     _ => return Err("when condition must be boolean".to_string()),
                 };
-                self.compile_when_branch_lazy(c_bool, then_expr, else_expr)
+                // Smart cast: when x != null { ... } or when x == null { ... } else { ... }
+                let smart_var: Option<String> = match condition.as_ref() {
+                    Expr::Binary(lhs, BinaryOp::Neq, rhs)
+                    | Expr::Binary(lhs, BinaryOp::Eq, rhs) => {
+                        match (lhs.as_ref(), rhs.as_ref()) {
+                            (Expr::Ident(name), Expr::Null)
+                            | (Expr::Null, Expr::Ident(name)) => Some(name.clone()),
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                };
+                if let Some(ref var) = smart_var {
+                    let is_eq = matches!(
+                        condition.as_ref(),
+                        Expr::Binary(_, BinaryOp::Eq, _)
+                    );
+                    if is_eq {
+                        // when x == null { null_body } else { non_null_body }
+                        // Negate condition and swap branches so smart cast applies to non_null_body
+                        let negated = self
+                            .builder
+                            .build_not(c_bool, "neg_cond")
+                            .map_err(llvm_err)?;
+                        self.not_null_set.insert(var.clone());
+                        let result =
+                            self.compile_when_branch_lazy(negated, else_expr, then_expr);
+                        self.not_null_set.remove(var);
+                        result
+                    } else {
+                        // when x != null { non_null_body } [else { null_body }]
+                        self.not_null_set.insert(var.clone());
+                        let result =
+                            self.compile_when_branch_lazy(c_bool, then_expr, else_expr);
+                        self.not_null_set.remove(var);
+                        result
+                    }
+                } else {
+                    self.compile_when_branch_lazy(c_bool, then_expr, else_expr)
+                }
             }
             WhenKind::ValueMatch { value, arms } => self.compile_value_match(value, arms),
             WhenKind::ConditionChain { arms } => self.compile_condition_chain(arms),
@@ -280,6 +319,17 @@ impl<'ctx> CodeGen<'ctx> {
             }
 
             self.builder.position_at_end(body_block);
+            // Smart cast: if matched value is an Ident of nullable type and this arm's
+            // pattern is non-null, inject the ident into not_null_set so the ident
+            // is treated as non-nullable inside this arm's body.
+            let smart_var: Option<String> = match (value, &arm.pattern) {
+                (Expr::Ident(_), Pattern::Null) => None,
+                (Expr::Ident(name), _) => Some(name.clone()),
+                _ => None,
+            };
+            if let Some(ref var) = smart_var {
+                self.not_null_set.insert(var.clone());
+            }
             // Create child scope and bind pattern variables to the matched value
             let mut saved_scope = Scope::new();
             std::mem::swap(&mut self.scope, &mut saved_scope);
@@ -297,6 +347,9 @@ impl<'ctx> CodeGen<'ctx> {
             } else {
                 self.compile_expr(&arm.body)?
             };
+            if let Some(ref var) = smart_var {
+                self.not_null_set.remove(var);
+            }
             if let TypedValue::Enum(_, _, inner, rc) = &body_val {
                 result_enum_info = Some((*inner, *rc));
             }
@@ -357,6 +410,7 @@ impl<'ctx> CodeGen<'ctx> {
                 Ok(result)
             }
             Pattern::Constructor { .. } => Ok(b1.const_int(1, false)),
+            Pattern::Null => Ok(b1.const_int(0, false)),
             Pattern::Expr(expr) => {
                 let val = self.compile_expr(expr)?;
                 match val {
@@ -483,6 +537,35 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
             Pattern::Variable(_) => Ok(b1.const_int(1, false)),
+            Pattern::Null => {
+                // Match against null: check if val is a nullable type with null flag == 1
+                match val {
+                    TypedValue::Nullable(ptr, inner_bt) => {
+                        let nullable_bt: BasicTypeEnum = {
+                            let b1 = self.null_flag_ty();
+                            let fields: &[BasicTypeEnum] =
+                                &[b1.into(), *inner_bt];
+                            self.context.struct_type(fields, false).into()
+                        };
+                        let loaded = self
+                            .builder
+                            .build_load(nullable_bt, *ptr, "null_ld")
+                            .map_err(llvm_err)?;
+                        let null_struct = loaded.into_struct_value();
+                        let null_flag = self
+                            .builder
+                            .build_extract_value(null_struct, 0, "null_flag")
+                            .map_err(llvm_err)?
+                            .into_int_value();
+                        let one = self.null_flag_ty().const_int(1, false);
+                        Ok(self
+                            .builder
+                            .build_int_compare(IntPredicate::EQ, null_flag, one, "is_null")
+                            .map_err(llvm_err)?)
+                    }
+                    _ => Ok(b1.const_int(0, false)),
+                }
+            }
             Pattern::Constructor { name, args: _, .. } => {
                 // Check if val is an enum with matching variant tag
                 if let TypedValue::Enum(ptr, enum_st, ..) = val {
@@ -611,10 +694,42 @@ impl<'ctx> CodeGen<'ctx> {
         match pattern {
             Pattern::Variable(name) => {
                 if let Some(val) = matched_val {
-                    let ty = val.get_type_for_alloca(self);
-                    let alloca = self.builder.build_alloca(ty, name).map_err(llvm_err)?;
-                    self.store_value_to_alloca(val, alloca)?;
-                    self.scope.set(name.clone(), alloca, ty, val.val_kind());
+                    match val {
+                        TypedValue::Nullable(nullable_ptr, inner_bt) => {
+                            // Binding a pattern variable from a nullable value:
+                            // extract the inner non-null value (field 1) and bind that.
+                            // inner_bt is the full nullable struct type {i1, T}
+                            let nullable_st = inner_bt.into_struct_type();
+                            let loaded = self
+                                .builder
+                                .build_load(nullable_st, *nullable_ptr, "patnv_ld")
+                                .map_err(llvm_err)?;
+                            let inner_val = self
+                                .builder
+                                .build_extract_value(
+                                    loaded.into_struct_value(),
+                                    1,
+                                    "patnv_inner",
+                                )
+                                .map_err(llvm_err)?;
+                            let typed_inner = self.bv_to_typed(inner_val)?;
+                            let ty = typed_inner.get_type_for_alloca(self);
+                            let alloca = self.builder.build_alloca(ty, name).map_err(llvm_err)?;
+                            self.store_value_to_alloca(&typed_inner, alloca)?;
+                            self.scope.set(
+                                name.clone(),
+                                alloca,
+                                ty,
+                                typed_inner.val_kind(),
+                            );
+                        }
+                        _ => {
+                            let ty = val.get_type_for_alloca(self);
+                            let alloca = self.builder.build_alloca(ty, name).map_err(llvm_err)?;
+                            self.store_value_to_alloca(val, alloca)?;
+                            self.scope.set(name.clone(), alloca, ty, val.val_kind());
+                        }
+                    }
                 }
             }
             Pattern::Constructor {
@@ -863,6 +978,52 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    /// Store a branch result to the alloca, coercing between nullable and non-nullable.
+    fn store_branch_result(
+        &mut self,
+        v: &TypedValue<'ctx>,
+        alloca: PointerValue<'ctx>,
+        result_type: &Type,
+    ) -> Result<(), String> {
+        let target_is_nullable = matches!(result_type, Type::Nullable(_));
+        let value_is_nullable = matches!(v, TypedValue::Nullable(..));
+
+        match (target_is_nullable, value_is_nullable) {
+            (true, true) | (false, false) => {
+                // Same nullability: store directly
+                self.store_value_to_alloca(v, alloca)?;
+            }
+            (true, false) => {
+                // Non-nullable value into nullable target: wrap in {i1=0, value}
+                let inner_bt = self.ast_type_to_basic_type(&result_type);
+                let struct_ty = inner_bt.into_struct_type();
+                let undef = struct_ty.get_undef();
+                let flag = self.null_flag_ty().const_int(0, false);
+                let with_flag = self.builder.build_insert_value(undef, flag, 0, "br_flag")
+                    .map_err(llvm_err)?;
+                let bv = v.to_bv().unwrap_or_else(|| self.i64_ty().const_int(0, false).into());
+                let wrapped = self.builder.build_insert_value(with_flag, bv, 1, "br_val")
+                    .map_err(llvm_err)?;
+                self.builder.build_store(alloca, wrapped).map_err(llvm_err)?;
+            }
+            (false, true) => {
+                // Nullable value into non-nullable target: extract inner field
+                if let TypedValue::Nullable(ptr, ty) = v {
+                    let loaded = self
+                        .builder
+                        .build_load(*ty, *ptr, "br_ld")
+                        .map_err(llvm_err)?;
+                    let inner = self
+                        .builder
+                        .build_extract_value(loaded.into_struct_value(), 1, "br_inner")
+                        .map_err(llvm_err)?;
+                    self.builder.build_store(alloca, inner).map_err(llvm_err)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub(super) fn compile_when_branch_lazy(
         &mut self,
         c: IntValue<'ctx>,
@@ -878,13 +1039,39 @@ impl<'ctx> CodeGen<'ctx> {
         let then_diverges = matches!(then_expr, Expr::Continue | Expr::Break);
         let else_diverges = matches!(else_expr, Expr::Continue | Expr::Break);
 
-        // Infer result type from the non-divergent branch
-        let result_type = if !then_diverges {
+        // Infer result type from both branches (prefer nullable if either is nullable)
+        let then_inferred = if !then_diverges {
             self.infer_expr_type(then_expr)
-        } else if !else_diverges {
-            self.infer_expr_type(else_expr)
         } else {
             Type::Named("Int".into())
+        };
+        let else_inferred = if !else_diverges {
+            self.infer_expr_type(else_expr)
+        } else {
+            then_inferred.clone()
+        };
+        // Choose the result type: prefer nullable if either branch is nullable.
+        // If one branch is Nullable<Nothing> (null literal), promote to Nullable<T>
+        // where T is the other branch's type, so null propagates correctly.
+        let result_type = match (&then_inferred, &else_inferred) {
+            // Both non-nullable: use then type
+            (a, b) if !matches!(a, Type::Nullable(_)) && !matches!(b, Type::Nullable(_)) => {
+                then_inferred.clone()
+            }
+            // Nullable<Nothing> + T → Nullable<T>
+            (Type::Nullable(inner), other) | (other, Type::Nullable(inner))
+                if matches!(inner.as_ref(), Type::Named(n) if n == "Nothing") =>
+            {
+                match other {
+                    Type::Nullable(oi) => Type::Nullable(oi.clone()),
+                    _ => Type::Nullable(Box::new(other.clone())),
+                }
+            }
+            // Nullable<T> + Nullable<T> or Nullable<T> + T → Nullable<T>
+            (Type::Nullable(inner), _) | (_, Type::Nullable(inner)) => {
+                Type::Nullable(inner.clone())
+            }
+            _ => then_inferred.clone(),
         };
         let result_ty: BasicTypeEnum = self.ast_type_to_basic_type(&result_type);
 
@@ -931,7 +1118,7 @@ impl<'ctx> CodeGen<'ctx> {
             if let TypedValue::Enum(_, _, inner, rc) = &tv {
                 when_enum_info = Some((*inner, *rc));
             }
-            self.store_value_to_alloca(&tv, result_alloca.unwrap())?;
+            self.store_branch_result(&tv, result_alloca.unwrap(), &result_type)?;
             let _ = self.builder.build_unconditional_branch(merge_block);
         }
 
@@ -947,7 +1134,7 @@ impl<'ctx> CodeGen<'ctx> {
                     when_enum_info = Some((*inner, *rc));
                 }
             }
-            self.store_value_to_alloca(&ev, result_alloca.unwrap())?;
+            self.store_branch_result(&ev, result_alloca.unwrap(), &result_type)?;
             let _ = self.builder.build_unconditional_branch(merge_block);
         }
 

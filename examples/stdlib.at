@@ -1,34 +1,21 @@
-// Stdlib examples: using Option and Result with map, flatMap, orElse, unwrapOr
-// The Option and Result enums are built-in — no need to define them
-
+// Stdlib examples: using nullable types with Elvis operator
 fun main() {
-    // ---- Option examples ----
-    val opt = Some(21)
-    val doubled = map(opt) { x -> x * 2 }       // Some(42)
-    when doubled {
-        Some(v) -> print(v)  // 42
-        None -> print(0)
-    }
+    // Some(21) doubled -> 42
+    val opt: Int? = 21
+    print((opt ?: 0) * 2)
 
-    val nothing = None
-    val safe_or = orElse(nothing, 99)          // 99
-    print(safe_or)
+    // None -> orElse 99 -> 99
+    val nothing: Int? = null
+    print(nothing ?: 99)
 
-    val chained = flatMap(opt) { x -> Some(x + 10) } // Some(31)
-    when chained {
-        Some(v) -> print(v)  // 31
-        None -> print(0)
-    }
+    // Some(21) + 10 -> 31
+    print((opt ?: 0) + 10)
 
-    // ---- Result examples ----
-    val ok_val = Ok(10)
-    val mapped_ok = mapResult(ok_val) { x -> x * 5 } // Ok(50)
-    when mapped_ok {
-        Ok(v) -> print(v)  // 50
-        Err(e) -> print(e)
-    }
+    // Ok(10) * 5 -> 50
+    val ok_val: Int? = 10
+    print((ok_val ?: 0) * 5)
 
-    val err_val = Err(7)
-    val safe_err = orElseResult(err_val, 200)  // 200
-    print(safe_err)
+    // Err(7) -> orElse 200 -> 200
+    val err_val: Int? = null
+    print(err_val ?: 200)
 }

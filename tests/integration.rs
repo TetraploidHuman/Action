@@ -222,7 +222,7 @@ fn test_propagate() {
 
 #[test]
 fn test_safe_access() {
-    assert_eq!(run_example("safe_access.at"), "10429");
+    assert_eq!(run_example("safe_access.at"), "104210");
 }
 
 #[test]
@@ -499,7 +499,7 @@ fn test_string_edge() {
     // String manipulation edge cases
     assert_eq!(
         run_example("test_string_edge.at"),
-        "Hello Worldbcd03EnumVariant<0>(1)EnumVariant<0>(2)"
+        "Hello Worldbcd0312"
     );
 }
 
@@ -545,30 +545,29 @@ fn test_import_wildcard() {
 
 #[test]
 fn test_option_returns() {
-    // Comprehensive test of Option-returning builtins: tail, init, indexOf,
-    // toInt, toFloat, parseInt, slice, fromList, containsKey
+    // Nullable types: tail, init, indexOf, toInt, toFloat, parseInt return T?
     assert_eq!(
         run_example("test_option_returns.at"),
-        "tail([1,2,3]) isSome: true\n\
-         tail([]) isNone: true\n\
-         init([1,2,3]) isSome: true\n\
-         init([]) isNone: true\n\
-         indexOf(2, [1,2,3]) isSome: true\n\
+        "tail([1,2,3]) != null: true\n\
+         tail([]) == null: true\n\
+         init([1,2,3]) != null: true\n\
+         init([]) == null: true\n\
+         indexOf(2, [1,2,3]) != null: true\n\
          indexOf(2, [1,2,3]) value: 1\n\
-         indexOf(99, [1,2,3]) isNone: true\n\
-         indexOf('bc', 'abcde') isSome: true\n\
+         indexOf(99, [1,2,3]) == null: true\n\
+         indexOf('bc', 'abcde') != null: true\n\
          indexOf('bc', 'abcde') value: 1\n\
-         indexOf('xyz', 'abcde') isNone: true\n\
-         toInt('42') isSome: true\n\
+         indexOf('xyz', 'abcde') == null: true\n\
+         toInt('42') != null: true\n\
          toInt('42') value: 42\n\
-         toInt('abc') isNone: true\n\
-         toInt(3.14) isSome: true\n\
-         toFloat('3.14') isSome: true\n\
-         toFloat('abc') isNone: true\n\
-         toFloat(42) isSome: true\n\
-         parseInt('123') isSome: true\n\
+         toInt('abc') == null: true\n\
+         toInt(3.14) != null: true\n\
+         toFloat('3.14') != null: true\n\
+         toFloat('abc') == null: true\n\
+         toFloat(42) != null: true\n\
+         parseInt('123') != null: true\n\
          parseInt('123') value: 123\n\
-         parseInt('not_a_number') isNone: true\n\
+         parseInt('not_a_number') == null: true\n\
          slice('hello world', 0, 5): hello\n\
          fromList([1,2,3]) contains 2: true\n\
          containsKey(m, 'a'): true\n\
@@ -579,31 +578,30 @@ fn test_option_returns() {
 
 #[test]
 fn test_new_features() {
-    // Comprehensive test of v6 features: Option/Result methods, dot notation,
-    // LazyList, curry, ok()
+    // Nullable type features: Elvis, null checks, when, LazyList, curry
     assert_eq!(
         run_example("test_new_features.at"),
-        "isSome(Some(42)): true\n\
-         isNone(Some(42)): false\n\
-         isNone(None): true\n\
-         unwrapOr(Some(42), 0): 42\n\
-         unwrapOr(None, 0): 0\n\
-         unwrap(Some(42)): 42\n\
-         s.isSome(): true\n\
-         n.isNone(): true\n\
-         s.unwrapOr(99): 42\n\
-         n.unwrapOr(99): 99\n\
-         isOk(Ok(10)): true\n\
-         isErr(Err(...)): true\n\
-         unwrapOr(Ok(10), 0): 10\n\
-         unwrapOr(Err(...), 0): 0\n\
-         unwrap(Ok(10)): 10\n\
-         ok(Some(42), 99) -> isOk: true\n\
-         ok(None, 99) -> isErr: true\n\
+        "s != null: true\n\
+         s == null: false\n\
+         n == null: true\n\
+         s ?: 0: 42\n\
+         n ?: 0: 0\n\
+         s ?: -1 (unwrap): 42\n\
+         s != null check: true\n\
+         n == null check: true\n\
+         s ?: 99: 42\n\
+         n ?: 99: 99\n\
+         ok != null: true\n\
+         err == null: true\n\
+         ok ?: 0: 10\n\
+         err ?: 0: 0\n\
+         ok ?: -1 (unwrap): 10\n\
+         n == null via when: true\n\
+         s != null via when: true\n\
          toLazyList + len: 3\n\
          toList back + len: 3\n\
-         lazyHead of non-empty: true\n\
-         lazyHead of empty: false\n\
+         lazyHead of non-empty != null: true\n\
+         lazyHead of empty == null: true\n\
          lazyTake(2) len: 2\n\
          lazyDrop(1) len: 2\n\
          curry(add,5)(10): 15\n\
@@ -635,4 +633,126 @@ fn test_json() {
 fn test_json_error() {
     // action_json_parse on invalid JSON returns null, action_json_type(null) returns -1
     assert_eq!(run_example("test_json_error.at"), "-1\n");
+}
+
+#[test]
+fn test_smart_cast() {
+    assert_eq!(run_example("test_smart_cast.at"), "43920");
+}
+
+#[test]
+fn test_smart_cast_if() {
+    assert_eq!(run_example("test_smart_cast_if.at"), "43100");
+}
+
+#[test]
+fn test_nullable_comprehensive() {
+    assert_eq!(run_example("test_nullable_comprehensive.at"), "100425130-199773355");
+}
+
+// ---- Comprehensive nullable type system tests ----
+
+#[test]
+fn test_nullable_complex_smart_cast() {
+    // Nested when smart cast, function param smart cast, multi-variable smart cast,
+    // null comparison (null == null), nested null checks
+    assert_eq!(
+        run_example("test_nullable_complex_smart_cast.at"),
+        "112699201015427"
+    );
+}
+
+#[test]
+fn test_nullable_pattern_edges() {
+    // Null pattern with var binding, null with else, != null OneLine,
+    // nested null checks, Elvis + value match, Bool flag smart cast
+    assert_eq!(
+        run_example("test_nullable_pattern_edges.at"),
+        "429901515true\n20"
+    );
+}
+
+#[test]
+fn test_nullable_elvis_chain() {
+    // Elvis with expressions, arithmetic with Elvis, nested Elvis via intermediates,
+    // Elvis on non-null, Elvis in comparisons, multiple defaults
+    assert_eq!(
+        run_example("test_nullable_elvis_chain.at"),
+        "5210101577false\n6504230"
+    );
+}
+
+#[test]
+fn test_nullable_nested() {
+    // Nullable from map operations, nullable from conditional assignment,
+    // Elvis with arithmetic expressions
+    assert_eq!(
+        run_example("test_nullable_nested.at"),
+        "10\n0\n3\n42\n-1\n100"
+    );
+}
+
+#[test]
+fn test_nullable_data_structures() {
+    // Nullable count, map lookups with Elvis, multiple nullable values, sum with Elvis
+    assert_eq!(
+        run_example("test_nullable_data_structures.at"),
+        "531991000101"
+    );
+}
+
+#[test]
+fn test_nullable_propagation() {
+    // Smart cast non-null/null, Elvis defaults, arithmetic with Elvis, combined Elvis sum
+    assert_eq!(
+        run_example("test_nullable_propagation.at"),
+        "15411001540309942117"
+    );
+}
+
+#[test]
+fn test_nullable_bugfixes() {
+    // Bug #4: function returning nullable; Bug #5: when with null in else branch
+    assert_eq!(
+        run_example("test_bugfixes.at"),
+        "100\n-1\n42\n-1\n30"
+    );
+}
+
+#[test]
+fn test_nullable_chained_elvis() {
+    // Chained Elvis operator: (a ?: b) ?: c
+    assert_eq!(
+        run_example("test_bug2_chained_elvis.at"),
+        "5\n10\n"
+    );
+}
+
+#[test]
+fn test_lazyhead_empty() {
+    // lazyHead on empty LazyList returns null
+    assert_eq!(
+        run_example("test_lazyhead_empty.at"),
+        "true\nfalse\n"
+    );
+}
+
+#[test]
+fn test_struct_nullable() {
+    // Struct with nullable field, Elvis extraction
+    assert_eq!(
+        run_example("test_struct_nullable.at"),
+        "10-12025"
+    );
+}
+
+#[test]
+fn test_nullable_method_call() {
+    // Auto short-circuit for method calls on nullable receivers:
+    // Map keys/contains, List head/len, String len, LazyList head,
+    // function-returned nullable receivers, chained calls
+    assert_eq!(
+        run_example("test_nullable_method_call.at"),
+        "5HELLO-1NULLSTR103-1-110truefalsefalsetrue"
+    );
 }

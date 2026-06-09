@@ -1,0 +1,27 @@
+// Nullable types from collection operations and functions
+
+fun main() {
+    // 1. Nullable from map operations (key present)
+    val m = Map["x": 10, "y": 20]
+    println(m["x"] ?: 0)               // 10
+
+    // 2. Nullable from map operations (key missing)
+    println(m["z"] ?: 0)               // 0
+
+    // 3. Non-nullable list length
+    val listlen = len(List[1, 2, 3])
+    println(listlen)                    // 3
+
+    // 4. Nullable via direct initialization
+    val r: Int? = 42
+    println(r ?: 0)                    // 42
+
+    // 5. Nullable default (stays null)
+    val d: Int? = null
+    println(d ?: -1)                   // -1
+
+    // 6. Nullable from map, combined with arithmetic
+    val val1 = m["x"] ?: 0             // 10
+    val val2 = m["z"] ?: 0             // 0
+    print(val1 * 10 + val2)            // 100
+}

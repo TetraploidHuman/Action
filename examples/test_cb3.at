@@ -2,9 +2,9 @@
 fun apply_direct(f, x) = f(x)
 
 fun main() {
-    val opt = Some(10)
+    val opt: Int? = 10
     when opt {
-        Some(v) -> print(v)
-        None -> print(0)
+        null -> print(0)
+        else -> print(opt)
     }
 }
