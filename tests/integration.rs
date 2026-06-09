@@ -807,10 +807,7 @@ fn test_error_nullable_to_nonnullable() {
 
 #[test]
 fn test_error_standalone_question() {
-    assert_compile_error(
-        "test_error_standalone_question.at",
-        "Unexpected '?'",
-    );
+    assert_compile_error("test_error_standalone_question.at", "Unexpected '?'");
 }
 
 #[test]
@@ -823,10 +820,7 @@ fn test_error_null_arg_nonnull_param() {
 
 #[test]
 fn test_error_return_null_nonnull() {
-    assert_compile_error(
-        "test_error_return_null_nonnull.at",
-        "cannot use nullable",
-    );
+    assert_compile_error("test_error_return_null_nonnull.at", "cannot use nullable");
 }
 
 #[test]
