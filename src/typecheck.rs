@@ -479,7 +479,7 @@ impl TypeChecker {
         }
     }
 
-    fn collect_expr_errors(&self, expr: &Expr, errors: &mut Vec<CompilerError>) {
+    fn collect_expr_errors(&mut self, expr: &Expr, errors: &mut Vec<CompilerError>) {
         match expr {
             Expr::Binary(lhs, op, rhs) => {
                 if let Err(e) = self.check_binary_op(lhs, *op, rhs) {
@@ -705,12 +705,32 @@ impl TypeChecker {
         }
     }
 
-    fn collect_stmt_errors(&self, stmt: &Stmt, errors: &mut Vec<CompilerError>) {
+    fn collect_stmt_errors(&mut self, stmt: &Stmt, errors: &mut Vec<CompilerError>) {
         match stmt {
             Stmt::Expr { expr, .. } => self.collect_expr_errors(expr, errors),
-            Stmt::Let { value, .. }
-            | Stmt::Destructure { value, .. }
-            | Stmt::Const { value, .. } => {
+            Stmt::Let {
+                name,
+                type_ann,
+                value,
+                ..
+            } => {
+                self.collect_expr_errors(value, errors);
+                let inferred = self.infer_expr_type(value);
+                let ty = type_ann.clone().unwrap_or(inferred);
+                self.type_env.insert(name.clone(), ty);
+            }
+            Stmt::Const {
+                name,
+                type_ann,
+                value,
+                ..
+            } => {
+                self.collect_expr_errors(value, errors);
+                let inferred = self.infer_expr_type(value);
+                let ty = type_ann.clone().unwrap_or(inferred);
+                self.type_env.insert(name.clone(), ty);
+            }
+            Stmt::Destructure { value, .. } => {
                 self.collect_expr_errors(value, errors);
             }
             Stmt::Return { value: expr, .. } => {
@@ -1178,9 +1198,6 @@ impl TypeChecker {
                 };
                 norm_a == norm_b
             }
-            // Int is the compiler's fallback sentinel for uninferred types; be lenient
-            (Type::Named(n), _) if n == "Int" => true,
-            (_, Type::Named(n)) if n == "Int" => true,
             (Type::Struct(fa), Type::Struct(fb)) => {
                 if fa.len() != fb.len() {
                     return false;
