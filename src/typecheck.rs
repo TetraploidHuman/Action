@@ -854,6 +854,48 @@ impl TypeChecker {
                     .with_span(self.current_span));
                 }
             }
+            // Check function argument types
+            if let Some(fn_type) = self.type_env.get(name) {
+                match fn_type {
+                    Type::Function(param_tys, _ret_ty) => {
+                        if args.len() != param_tys.len() {
+                            return Err(CompilerError::new(format!(
+                                "Function '{}' expects {} arguments, but got {}",
+                                name,
+                                param_tys.len(),
+                                args.len()
+                            ))
+                            .with_span(self.current_span));
+                        }
+                        for (i, (arg, param_ty)) in
+                            args.iter().zip(param_tys.iter()).enumerate()
+                        {
+                            let arg_ty = self.infer_expr_type(arg);
+                            if !self.types_compatible(param_ty, &arg_ty) {
+                                let msg = if let Some(hint) =
+                                    Self::check_termination(param_ty, &arg_ty)
+                                {
+                                    hint
+                                } else {
+                                    format!(
+                                        "Argument {} to '{}' expects '{}' but got '{}'",
+                                        i + 1,
+                                        name,
+                                        param_ty,
+                                        arg_ty
+                                    )
+                                };
+                                return Err(CompilerError::new(msg)
+                                    .with_span(self.current_span));
+                            }
+                        }
+                    }
+                    _ => {
+                        // Variable callable? Mapped to a fn type? Not yet supported.
+                        // For now, let codegen handle mismatches.
+                    }
+                }
+            }
         }
         Ok(())
     }

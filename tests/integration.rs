@@ -791,7 +791,10 @@ fn test_error_nested_nullable() {
 
 #[test]
 fn test_error_arithmetic_nullable() {
-    assert_compile_error("test_error_arithmetic_nullable.at", "does not accept nullable operands");
+    assert_compile_error(
+        "test_error_arithmetic_nullable.at",
+        "does not accept nullable operands",
+    );
 }
 
 #[test]
@@ -809,10 +812,7 @@ fn test_error_standalone_question() {
 
 #[test]
 fn test_error_null_arg_nonnull_param() {
-    assert_compile_error(
-        "test_error_null_arg_nonnull_param.at",
-        "Call parameter type does not match",
-    );
+    assert_compile_error("test_error_null_arg_nonnull_param.at", "cannot use nullable");
 }
 
 #[test]
