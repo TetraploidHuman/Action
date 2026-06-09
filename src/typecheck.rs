@@ -376,6 +376,19 @@ impl TypeChecker {
                     body,
                     ..
                 } => {
+                    // Require type annotations on all parameters (except 'self')
+                    for p in params {
+                        if p.ty.is_none() && p.name != "self" {
+                            errors.push(
+                                CompilerError::new(format!(
+                                    "Parameter '{}' in function '{}' must have a type annotation",
+                                    p.name, name
+                                ))
+                                .with_span(self.current_span),
+                            );
+                        }
+                    }
+
                     // Temporarily add function parameters to the type environment
                     let mut saved: Vec<(String, Option<Type>)> = Vec::new();
                     for p in params {
@@ -868,9 +881,8 @@ impl TypeChecker {
                             .with_span(self.current_span));
                         }
                         for (i, (arg, param_ty)) in args.iter().zip(param_tys.iter()).enumerate() {
-                            // Skip check for untyped parameters (Int is the fallback sentinel).
-                            // Without this, functions like `f(cb, x)` would reject lambdas.
-                            if matches!(param_ty, Type::Named(n) if n == "Int") {
+                            // Skip lambdas — infer_expr_type returns body type, not function type
+                            if matches!(arg, Expr::Lambda { .. }) {
                                 continue;
                             }
                             let arg_ty = self.infer_expr_type(arg);
