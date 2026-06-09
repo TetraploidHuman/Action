@@ -30,8 +30,8 @@ Action 是一门静态类型的多范式编程语言，编译器用 Rust 编写�
 | Windows x64 | `action-*-windows-x64.zip` |
 
 ```bash
-tar xzf action-0.3.0-linux-x64.tar.gz
-export PATH="$PWD/action-0.3.0-linux-x64/bin:$PATH"
+tar xzf action-0.2.1-linux-x64.tar.gz
+export PATH="$PWD/action-0.2.1-linux-x64/bin:$PATH"
 action run hello.at
 ```
 
