@@ -648,15 +648,15 @@ impl Parser {
     // ---- Type Parsing ----
 
     fn parse_type(&mut self) -> Result<Type, ParseError> {
-        let ty = self.parse_type_primary()?;
+        let mut ty = self.parse_type_primary()?;
 
         // Function type arrow
-        // Check for nullable type: T?
-        if self.skip(TokenKind::Question) {
+        // Check for nullable type: T? (allow chained ? for T?? error)
+        while self.skip(TokenKind::Question) {
             if matches!(ty, Type::Nullable(_)) {
                 return Err(self.error("Nested nullable types (T??) are not allowed"));
             }
-            return Ok(Type::Nullable(Box::new(ty)));
+            ty = Type::Nullable(Box::new(ty));
         }
 
         if self.skip(TokenKind::Arrow) {
