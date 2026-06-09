@@ -1,7 +1,7 @@
 // Input/Output: readLine() returns String? (null on EOF)
 fun main() {
     val name_opt = readLine()
-    val name = name_opt ?: "World"
+    val name = name_opt or { "World" }
     val greeting = concat("Hello, ", name)
     println(greeting)
 }

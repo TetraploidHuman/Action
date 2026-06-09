@@ -1053,11 +1053,11 @@ impl<'ctx> CodeGen<'ctx> {
             ),
             Expr::SetLiteral(_) => Type::Set(Box::new(Type::Named("Int".into()))),
             Expr::Null => Type::Nullable(Box::new(Type::Named("Nothing".into()))),
-            Expr::Elvis { condition, default } => {
-                let cond_ty = self.infer_expr_type(condition);
+            Expr::OrBlock { nullable, fallback } => {
+                let cond_ty = self.infer_expr_type(nullable);
                 match cond_ty {
                     Type::Nullable(inner) => *inner,
-                    _ => self.infer_expr_type(default),
+                    _ => self.infer_expr_type(fallback),
                 }
             }
             _ => Type::Named("Int".into()),

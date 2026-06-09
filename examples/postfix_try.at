@@ -8,12 +8,12 @@ fun get_other(): Int? {
 }
 
 fun test_ok(): Int? {
-    val x = get_other() ?: 0  // non-null → 100, Elvis would give 0 if null
+    val x = get_other() or { 0 }// non-null → 100, Elvis would give 0 if null
     x + 1  // auto-wrapped to Int?
 }
 
 fun test_null(): Int? {
-    val x = get_value() ?: 99  // null → 99 via Elvis
+    val x = get_value() or { 99 }// null → 99 via Elvis
     x + 100  // auto-wrapped to Int?
 }
 

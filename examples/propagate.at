@@ -2,9 +2,9 @@
 fun main() {
     // Non-null value + Elvis
     val x: Int? = 44
-    print(x ?: 0)
+    print(x or { 0 })
 
     // Null value + Elvis
     val y: Int? = null
-    print(y ?: 9)
+    print(y or { 9 })
 }

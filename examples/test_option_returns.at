@@ -25,7 +25,7 @@ fun main() {
     print("indexOf(2, [1,2,3]) != null: ")
     println(idx != null)
     print("indexOf(2, [1,2,3]) value: ")
-    println(idx ?: -1)
+    println(idx or { -1 })
 
     val idx2 = indexOf(99, lst)
     print("indexOf(99, [1,2,3]) == null: ")
@@ -36,7 +36,7 @@ fun main() {
     print("indexOf('bc', 'abcde') != null: ")
     println(sidx != null)
     print("indexOf('bc', 'abcde') value: ")
-    println(sidx ?: -1)
+    println(sidx or { -1 })
 
     val sidx2 = indexOf("xyz", "abcde")
     print("indexOf('xyz', 'abcde') == null: ")
@@ -47,7 +47,7 @@ fun main() {
     print("toInt('42') != null: ")
     println(ti1 != null)
     print("toInt('42') value: ")
-    println(ti1 ?: -1)
+    println(ti1 or { -1 })
 
     val ti2 = toInt("abc")
     print("toInt('abc') == null: ")
@@ -75,7 +75,7 @@ fun main() {
     print("parseInt('123') != null: ")
     println(pi1 != null)
     print("parseInt('123') value: ")
-    println(pi1 ?: -1)
+    println(pi1 or { -1 })
 
     val pi2 = parseInt("not_a_number")
     print("parseInt('not_a_number') == null: ")

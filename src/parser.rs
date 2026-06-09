@@ -824,17 +824,46 @@ impl Parser {
                 }
                 TokenKind::Question => {
                     self.advance();
-                    if self.skip(TokenKind::Colon) {
-                        // Elvis operator: expr ?: default
-                        let default = self.parse_expr()?;
-                        left = Expr::Elvis {
-                            condition: Box::new(left),
-                            default: Box::new(default),
+                    // ? is only valid after a type or as part of ?. (safe call sugar)
+                    // Standalone ? after expression is not valid.
+                    // Check for ?. safe call sugar
+                    if self.current_kind() == TokenKind::Dot {
+                        self.advance(); // skip '.'
+                        let field = match &self.current_kind() {
+                            TokenKind::Ident(s) => {
+                                let name = s.clone();
+                                self.advance();
+                                name
+                            }
+                            _ => return Err(self.error("Expected field name after '?.'")),
                         };
+                        left = Expr::FieldAccess(Box::new(left), field);
+                    } else if self.current_kind() == TokenKind::LBracket {
+                        self.advance(); // skip '['
+                        let idx = self.parse_expr()?;
+                        self.expect(TokenKind::RBracket)?;
+                        left = Expr::Index(Box::new(left), Box::new(idx));
+                    } else if self.current_kind() == TokenKind::LParen {
+                        left = self.parse_call_suffix(left)?;
                     } else {
-                        return Err(self.error("Unexpected '?'. Did you mean '?:' (Elvis operator)?"));
+                        return Err(self.error("Unexpected '?'. Use 'or { }' for nullable fallback, or '?.' for safe call"));
                     }
                     true
+                }
+                TokenKind::Or => {
+                    // Check for or-block (nullable fallback): expr or { ... }
+                    // Only when followed by { — otherwise it's logical OR
+                    if self.peek2() == TokenKind::LBrace {
+                        self.advance(); // skip 'or'
+                        let fallback = self.parse_block_expr()?;
+                        left = Expr::OrBlock {
+                            nullable: Box::new(left),
+                            fallback: Box::new(fallback),
+                        };
+                        true
+                    } else {
+                        false
+                    }
                 }
                 TokenKind::LBrace => {
                     let is_callable = matches!(&left, Expr::Ident(name)

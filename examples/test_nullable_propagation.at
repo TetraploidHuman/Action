@@ -12,24 +12,24 @@ fun main() {
     // 3. Elvis with default 0
     val a: Int? = 10
     val b: Int? = null
-    print(a ?: 0)                       // 10
-    print(b ?: 0)                       // 0
+    print(a or { 0 })                       // 10
+    print(b or { 0 })                       // 0
 
     // 4. Arithmetic with Elvis
     val c: Int? = 30
     val d: Int? = null
-    print((a ?: 0) + (b ?: 5))          // 10 + 5 = 15
-    print((c ?: 0) + (d ?: 10))         // 30 + 10 = 40
+    print((a or { 0 }) + (b or { 5 }))          // 10 + 5 = 15
+    print((c or { 0 }) + (d or { 10 }))         // 30 + 10 = 40
 
     // 5. Multiple Elvis defaults
-    print(c ?: 99)                      // 30
-    print(d ?: 99)                      // 99
+    print(c or { 99 })                      // 30
+    print(d or { 99 })                      // 99
 
     // 6. Elvis on non-null
     val g: Int? = 42
-    print(g ?: -1)                      // 42
+    print(g or { -1 })                      // 42
 
     // 7. Combined Elvis sum
-    val all = (r1 ?: 0) + (a ?: 0) + (c ?: 0)
+    val all = (r1 or { 0 }) + (a or { 0 }) + (c or { 0 })
     print(all)                          // 77 + 10 + 30 = 117
 }

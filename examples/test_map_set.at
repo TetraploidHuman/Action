@@ -8,11 +8,11 @@ fun main() {
     print(has_bob)
 
     // Test: Map index access + ?: default
-    val alice_score = scores["alice"] ?: 0
+    val alice_score = scores["alice"] or { 0 }
     print(alice_score)
 
     // Test: Missing key returns default via ?:
-    val missing = scores["eve"] ?: 999
+    val missing = scores["eve"] or { 999 }
     print(missing)
 
     // Test: Set contains

@@ -60,7 +60,7 @@
       "patterns": [
         {
           "name": "keyword.control.action",
-          "match": "\\b(val|var|fun|return|when|else|for|in|is|break|continue|enum|type|import|module|export|const|copy|extension|and|or|not|as|lazy|unsafe|external|task)\\b"
+          "match": "\\b(val|var|fun|return|when|else|for|in|is|break|continue|enum|type|import|module|export|const|copy|extension|and|or|not|as|lazy|unsafe|external|task|null)\\b"
         }
       ]
     },
@@ -68,7 +68,7 @@
       "patterns": [
         {
           "name": "entity.name.type.action",
-          "match": "\\b(Int|Float|Bool|String|Char|Map|Set|List|Task|Stream|LazyList|CString|Ptr|FileHandle|Option|Result|Unit|Void)\\b"
+          "match": "\\b(Int|Float|Bool|String|Char|Map|Set|List|Task|Stream|LazyList|CString|Ptr|FileHandle|Unit|Void)\\b"
         }
       ]
     },

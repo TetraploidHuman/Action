@@ -830,12 +830,12 @@ fn transform_module_access(program: &mut Program) {
                 transform_expr(inner, prefixes);
             }
             Expr::Null => {}
-            Expr::Elvis {
-                ref mut condition,
-                ref mut default,
+            Expr::OrBlock {
+                ref mut nullable,
+                ref mut fallback,
             } => {
-                transform_expr(condition, prefixes);
-                transform_expr(default, prefixes);
+                transform_expr(nullable, prefixes);
+                transform_expr(fallback, prefixes);
             }
             Expr::StringInterpolate(ref mut parts) => {
                 for part in parts.iter_mut() {

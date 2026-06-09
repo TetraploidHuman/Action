@@ -37,7 +37,7 @@ impl<'ctx> CodeGen<'ctx> {
             Expr::Range(start, end) => self.compile_range(start, end),
             Expr::Tuple(exprs) => self.compile_tuple(exprs),
             Expr::Null => self.compile_null(),
-            Expr::Elvis { condition, default } => self.compile_elvis(condition, default),
+            Expr::OrBlock { nullable, fallback } => self.compile_or_block(nullable, fallback),
             Expr::Continue => {
                 if let Some(target) = self.continue_target {
                     self.builder
@@ -2296,9 +2296,9 @@ fn collect_free_vars(
             }
         }
         Expr::Null => {}
-        Expr::Elvis { condition, default } => {
-            collect_free_vars(condition, params, bound, free);
-            collect_free_vars(default, params, bound, free);
+        Expr::OrBlock { nullable, fallback } => {
+            collect_free_vars(nullable, params, bound, free);
+            collect_free_vars(fallback, params, bound, free);
         }
         Expr::Range(start, end) => {
             collect_free_vars(start, params, bound, free);

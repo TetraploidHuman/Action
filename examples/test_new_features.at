@@ -16,13 +16,13 @@ fun main() {
     println(n == null)
 
     print("s ?: 0: ")
-    println(s ?: 0)
+    println(s or { 0 })
 
     print("n ?: 0: ")
-    println(n ?: 0)
+    println(n or { 0 })
 
     print("s ?: -1 (unwrap): ")
-    println(s ?: -1)
+    println(s or { -1 })
 
     // ---- Test nullable checks in expressions ----
     print("s != null check: ")
@@ -32,10 +32,10 @@ fun main() {
     println(n == null)
 
     print("s ?: 99: ")
-    println(s ?: 99)
+    println(s or { 99 })
 
     print("n ?: 99: ")
-    println(n ?: 99)
+    println(n or { 99 })
 
     // ---- Test nullable as Result replacement ----
     val ok: Int? = 10
@@ -48,13 +48,13 @@ fun main() {
     println(err == null)
 
     print("ok ?: 0: ")
-    println(ok ?: 0)
+    println(ok or { 0 })
 
     print("err ?: 0: ")
-    println(err ?: 0)
+    println(err or { 0 })
 
     print("ok ?: -1 (unwrap): ")
-    println(ok ?: -1)
+    println(ok or { -1 })
 
     // ---- Test when with null condition expressions ----
     val isNull = n == null

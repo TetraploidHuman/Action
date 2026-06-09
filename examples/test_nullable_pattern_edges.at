@@ -28,7 +28,7 @@ fun main() {
 
     // 5. Elvis combined with value match
     val f: Int? = null
-    val g = f ?: 100
+    val g = f or { 100 }
     when g {
         100 -> print(1)
         else -> print(0)

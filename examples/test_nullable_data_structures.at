@@ -18,16 +18,16 @@ fun main() {
 
     // 2. Map lookups with Elvis defaults
     val m = Map["a": 1, "b": 2]
-    print(m["a"] ?: 0)                 // 1
-    print(m["c"] ?: 99)                // 99
+    print(m["a"] or { 0 })                 // 1
+    print(m["c"] or { 99 })                // 99
 
     // 3. Nullable values with direct initialization
     val val_a: Int? = 100
     val val_b: Int? = null
-    print(val_a ?: 0)                  // 100
-    print(val_b ?: 0)                  // 0
+    print(val_a or { 0 })                  // 100
+    print(val_b or { 0 })                  // 0
 
     // 4. Sum nullable values using Elvis
-    val s1 = (val_a ?: 0) + (val_b ?: 0) + (v1 ?: 0)
+    val s1 = (val_a or { 0 }) + (val_b or { 0 }) + (v1 or { 0 })
     print(s1)                           // 100 + 0 + 1 = 101
 }

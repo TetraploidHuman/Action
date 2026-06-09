@@ -2,6 +2,6 @@
 fun main() {
     val opt: Int? = 21
     val f = { x -> x * 2 }
-    val result = opt ?: 0
+    val result = opt or { 0 }
     print(f(result))
 }

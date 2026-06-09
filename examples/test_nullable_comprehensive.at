@@ -2,7 +2,7 @@
 // Tests: null literals, Elvis, smart cast, pattern variable binding, nullable params
 
 fun orDefault(x: Int?, default: Int): Int {
-    x ?: default
+    x or { default }
 }
 
 fun checkNull(x: Int?): Int {
@@ -15,11 +15,11 @@ fun checkNull(x: Int?): Int {
 fun main() {
     // 1. Null literal and Elvis
     val a: Int? = null
-    print(a ?: 100)                           // 100
+    print(a or { 100 })                           // 100
 
     // 2. Non-null with Elvis (should not use default)
     val b: Int? = 42
-    print(b ?: 0)                             // 42
+    print(b or { 0 })                             // 42
 
     // 3. Smart cast in when-else
     val c: Int? = 50
@@ -47,5 +47,5 @@ fun main() {
 
     // 8. Non-null Int used where Int? expected (auto-wrapping)
     val e: Int? = 55
-    print(e ?: 0)                             // 55
+    print(e or { 0 })                             // 55
 }

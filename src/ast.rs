@@ -326,10 +326,10 @@ pub enum Expr {
     Tuple(Vec<(Option<String>, Expr)>),
     /// Null literal: null
     Null,
-    /// Elvis operator: expr ?: default
-    Elvis {
-        condition: Box<Expr>,
-        default: Box<Expr>,
+    /// Nullable fallback: expr or { block }
+    OrBlock {
+        nullable: Box<Expr>,
+        fallback: Box<Expr>,
     },
     /// Assignment: x = value
     Assign {
@@ -528,7 +528,7 @@ impl fmt::Display for Expr {
                 write!(f, ")")
             }
             Expr::Null => write!(f, "null"),
-            Expr::Elvis { condition, default } => write!(f, "({} ?: {})", condition, default),
+            Expr::OrBlock { nullable, fallback } => write!(f, "({} or {{ {} }})", nullable, fallback),
             Expr::Assign { target, value } => write!(f, "{} = {}", target, value),
             Expr::StringInterpolate(parts) => {
                 write!(f, "\"")?;

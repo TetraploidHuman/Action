@@ -329,33 +329,33 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::Nullable(result_alloca, wrapped_bt))
     }
 
-    /// Compile Elvis operator: condition ?: default
-    /// If condition is null (flag=1), return default; otherwise return condition inner value
-    pub(super) fn compile_elvis(
+    /// Compile or-block: nullable or { fallback }
+    /// If nullable is null (flag=1), return fallback; otherwise return inner value
+    pub(super) fn compile_or_block(
         &mut self,
-        condition: &Expr,
-        default: &Expr,
+        nullable: &Expr,
+        fallback: &Expr,
     ) -> Result<TypedValue<'ctx>, String> {
-        let cond_val = self.compile_expr(condition)?;
+        let cond_val = self.compile_expr(nullable)?;
         let (cond_ptr, cond_ty) = match &cond_val {
             TypedValue::Nullable(p, t) => (*p, *t),
-            _ => return Ok(cond_val), // not nullable, just return condition as-is
+            _ => return Ok(cond_val), // not nullable, just return as-is
         };
 
         let current_fn = self
             .builder
             .get_insert_block()
             .and_then(|b| b.get_parent())
-            .ok_or("Cannot compile elvis outside function")?;
+            .ok_or("Cannot compile or-block outside function")?;
 
         let loaded = self
             .builder
-            .build_load(cond_ty, cond_ptr, "elvis_ld")
+            .build_load(cond_ty, cond_ptr, "orblk_ld")
             .map_err(llvm_err)?;
         let nullable_struct = loaded.into_struct_value();
         let null_flag = self
             .builder
-            .build_extract_value(nullable_struct, 0, "elvis_flag")
+            .build_extract_value(nullable_struct, 0, "orblk_flag")
             .map_err(llvm_err)?
             .into_int_value();
 
@@ -369,45 +369,45 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .map_err(llvm_err)?;
 
-        let null_block = self.context.append_basic_block(current_fn, "elvis_null");
-        let val_block = self.context.append_basic_block(current_fn, "elvis_val");
-        let merge_block = self.context.append_basic_block(current_fn, "elvis_merge");
+        let null_block = self.context.append_basic_block(current_fn, "orblk_null");
+        let val_block = self.context.append_basic_block(current_fn, "orblk_val");
+        let merge_block = self.context.append_basic_block(current_fn, "orblk_merge");
 
         self.builder
             .build_conditional_branch(is_null, null_block, val_block)
             .map_err(llvm_err)?;
 
-        // Null path: evaluate and return default
+        // Null path: evaluate and return fallback
         self.builder.position_at_end(null_block);
-        let default_val = self.compile_expr(default)?;
+        let default_val = self.compile_expr(fallback)?;
         let default_ty = default_val.get_type_for_alloca(self);
         let default_bv = match &default_val {
             TypedValue::Str(ptr) => self
                 .builder
-                .build_load(self.string_type, *ptr, "elvis_def_ld")
+                .build_load(self.string_type, *ptr, "orblk_def_ld")
                 .map_err(llvm_err)?
                 .as_basic_value_enum(),
             TypedValue::Struct(ptr, st) => {
                 let bt: BasicTypeEnum = (*st).into();
                 self.builder
-                    .build_load(bt, *ptr, "elvis_def_ld")
+                    .build_load(bt, *ptr, "orblk_def_ld")
                     .map_err(llvm_err)?
             }
             TypedValue::Enum(ptr, et, ..) => {
                 let bt: BasicTypeEnum = (*et).into();
                 self.builder
-                    .build_load(bt, *ptr, "elvis_def_ld")
+                    .build_load(bt, *ptr, "orblk_def_ld")
                     .map_err(llvm_err)?
             }
             TypedValue::Nullable(ptr, ty) => self
                 .builder
-                .build_load(*ty, *ptr, "elvis_def_ld")
+                .build_load(*ty, *ptr, "orblk_def_ld")
                 .map_err(llvm_err)?,
             TypedValue::Bool(v) => {
                 // Bool values may be i64 but default_ty is i1; truncate to match.
                 if matches!(default_ty, BasicTypeEnum::IntType(t) if t.get_bit_width() == 1) {
                     self.builder
-                        .build_int_truncate(*v, self.bool_ty(), "elvis_def_bool")
+                        .build_int_truncate(*v, self.bool_ty(), "orblk_def_bool")
                         .map_err(llvm_err)?
                         .as_basic_value_enum()
                 } else {
@@ -427,7 +427,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(val_block);
         let inner_val = self
             .builder
-            .build_extract_value(nullable_struct, 1, "elvis_inner")
+            .build_extract_value(nullable_struct, 1, "orblk_inner")
             .map_err(llvm_err)?;
         // When inner value is a fat return struct ({i64, ptr} aka string_type)
         // but the default is a scalar, extract the i64 tag from the fat struct.
@@ -437,10 +437,10 @@ impl<'ctx> CodeGen<'ctx> {
             let undef = struct_ty.get_undef();
             let with_flag = self
                 .builder
-                .build_insert_value(undef, self.null_flag_ty().const_int(0, false), 0, "ei_flag")
+                .build_insert_value(undef, self.null_flag_ty().const_int(0, false), 0, "orblk_flag")
                 .map_err(llvm_err)?;
             self.builder
-                .build_insert_value(with_flag, inner_val, 1, "ei_wrapped")
+                .build_insert_value(with_flag, inner_val, 1, "orblk_wrapped")
                 .map_err(llvm_err)?
                 .as_basic_value_enum()
         } else {
@@ -456,7 +456,7 @@ impl<'ctx> CodeGen<'ctx> {
                     if sv.get_type() == self.string_type && default_is_scalar =>
                 {
                     self.builder
-                        .build_extract_value(sv, 0, "ei_fat_i64")
+                        .build_extract_value(sv, 0, "orblk_fat_i64")
                         .map_err(llvm_err)?
                 }
                 _ => inner_val,
@@ -469,7 +469,7 @@ impl<'ctx> CodeGen<'ctx> {
                     if iv.get_type() != it =>
                 {
                     self.builder
-                        .build_int_truncate(iv, it, "ei_conv")
+                        .build_int_truncate(iv, it, "orblk_conv")
                         .map_err(llvm_err)?
                         .as_basic_value_enum()
                 }
@@ -483,7 +483,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(merge_block);
         let phi = self
             .builder
-            .build_phi(default_ty, "elvis_res")
+            .build_phi(default_ty, "orblk_res")
             .map_err(llvm_err)?;
         phi.add_incoming(&[
             (&default_bv, null_block),

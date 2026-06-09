@@ -4,13 +4,13 @@ fun main() {
     val y: Int? = null
 
     // Elvis with non-null: extracts value
-    val r1 = x ?: 0
+    val r1 = x or { 0 }
     print(r1)
 
     // Elvis with null: returns default
-    val r2 = y ?: 42
+    val r2 = y or { 42 }
     print(r2)
 
     // Elvis with non-null: extracts value
-    print(x ?: 9)
+    print(x or { 9 })
 }

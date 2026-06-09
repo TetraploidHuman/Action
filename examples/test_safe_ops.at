@@ -4,10 +4,10 @@ fun main() {
     val n: Int? = null
 
     // Test 1: Elvis on non-null
-    val r1 = p ?: 0
+    val r1 = p or { 0 }
     print(r1)
 
     // Test 2: Elvis on null
-    val r2 = n ?: 1
+    val r2 = n or { 1 }
     print(r2)
 }

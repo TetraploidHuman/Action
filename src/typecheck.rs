@@ -650,18 +650,9 @@ impl TypeChecker {
                 self.collect_expr_errors(inner, errors);
             }
             Expr::Null => {}
-            Expr::Elvis { condition, default } => {
-                self.collect_expr_errors(condition, errors);
-                self.collect_expr_errors(default, errors);
-                // Reject null ?: null — Elvis requires a non-nullable default
-                let _cond_ty = self.infer_expr_type(condition);
-                let def_ty = self.infer_expr_type(default);
-                if matches!(def_ty, Type::Nullable(_)) {
-                    errors.push(CompilerError::new(format!(
-                        "Elvis operator '?:' requires a non-nullable default value, got '{}'",
-                        def_ty
-                    )));
-                }
+            Expr::OrBlock { nullable, fallback } => {
+                self.collect_expr_errors(nullable, errors);
+                self.collect_expr_errors(fallback, errors);
             }
             Expr::Unary(_, inner) => {
                 self.collect_expr_errors(inner, errors);
@@ -746,7 +737,7 @@ impl TypeChecker {
                 BinaryOp::Lt | BinaryOp::Gt | BinaryOp::Lte | BinaryOp::Gte => {} // comparison allow
                 _ => {
                     return Err(CompilerError::new(format!(
-                        "Arithmetic/bitwise operation '{}' does not accept nullable operands. Use '?:' to provide a default",
+                        "Arithmetic/bitwise operation '{}' does not accept nullable operands. Use 'or {{ }}' to provide a default",
                         op
                     ))
                     .with_span(self.current_span));
@@ -1024,19 +1015,19 @@ impl TypeChecker {
             }
             Expr::Copy(inner) => self.infer_expr_type(inner),
             Expr::Null => Type::Nullable(Box::new(Type::Named("Nothing".into()))),
-            Expr::Elvis { condition, default } => {
-                let cond_ty = self.infer_expr_type(condition);
-                let default_ty = self.infer_expr_type(default);
-                // Elvis unwraps nullable: T? ?: U -> T | U
-                match cond_ty {
+            Expr::OrBlock { nullable, fallback } => {
+                let nullable_ty = self.infer_expr_type(nullable);
+                let fallback_ty = self.infer_expr_type(fallback);
+                // Or-block unwraps nullable: T? or { ... } -> T
+                match nullable_ty {
                     Type::Nullable(inner) => {
-                        if self.types_compatible(&inner, &default_ty) {
+                        if self.types_compatible(&inner, &fallback_ty) {
                             *inner
                         } else {
-                            default_ty
+                            fallback_ty
                         }
                     }
-                    _ => cond_ty,
+                    _ => nullable_ty,
                 }
             }
             Expr::Unsafe(inner) => self.infer_expr_type(inner),
@@ -1147,7 +1138,7 @@ impl TypeChecker {
                 // T? used where T is expected
                 if !matches!(declared, Type::Named(n) if n == "Nothing") {
                     Some(format!(
-                        "cannot use nullable '{}' where non-nullable '{}' is expected. Use '?:' to provide a default, or check for null first",
+                        "cannot use nullable '{}' where non-nullable '{}' is expected. Use 'or {{ }}' to provide a default, or check for null first",
                         inferred, declared
                     ))
                 } else {
