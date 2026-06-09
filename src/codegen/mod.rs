@@ -962,9 +962,7 @@ impl<'ctx> CodeGen<'ctx> {
                         "parseDate" | "date" => {
                             Type::Nullable(Box::new(Type::Named("Date".into())))
                         }
-                        "datetime" => {
-                            Type::Nullable(Box::new(Type::Named("DateTime".into())))
-                        }
+                        "datetime" => Type::Nullable(Box::new(Type::Named("DateTime".into()))),
                         "format" => Type::Named("String".into()),
                         "now" => Type::Named("DateTime".into()),
                         "today" => Type::Named("Date".into()),

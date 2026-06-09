@@ -56,7 +56,8 @@ impl<'ctx> CodeGen<'ctx> {
                             // Already nullable — check if we need to reconcile types.
                             // A generic null ({i8, i64}) needs conversion to the declared
                             // type (e.g. {i8, list_type}).
-                            let declared_bt = self.ast_type_to_basic_type(type_ann.as_ref().unwrap());
+                            let declared_bt =
+                                self.ast_type_to_basic_type(type_ann.as_ref().unwrap());
                             if null_bt == declared_bt {
                                 raw_val
                             } else {
@@ -1155,9 +1156,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .map_err(llvm_err)?;
                         let _ = self.builder.build_return(Some(&loaded));
                     }
-                    TypedValue::List(ptr)
-                    | TypedValue::Map(ptr)
-                    | TypedValue::Set(ptr) => {
+                    TypedValue::List(ptr) | TypedValue::Map(ptr) | TypedValue::Set(ptr) => {
                         let list_val = self.load_list(*ptr)?;
                         let _ = self.builder.build_return(Some(&list_val));
                     }
@@ -1192,12 +1191,17 @@ impl<'ctx> CodeGen<'ctx> {
                                     // Pack scalar into nullable: field 0 = 0 (not null), field 1 = value
                                     let undef = struct_ty.get_undef();
                                     let flag = self.null_flag_ty().const_int(0, false);
-                                    let with_flag = self.builder.build_insert_value(undef, flag, 0, "nlf")
+                                    let with_flag = self
+                                        .builder
+                                        .build_insert_value(undef, flag, 0, "nlf")
                                         .map_err(llvm_err)?;
-                                    let packed = self.builder.build_insert_value(with_flag, bv, 1, "nlv")
+                                    let packed = self
+                                        .builder
+                                        .build_insert_value(with_flag, bv, 1, "nlv")
                                         .map_err(llvm_err)?;
                                     let _ = self.builder.build_return(Some(&packed));
-                                } else if let Some((fat_alloca, _fat_ty)) = self.last_fat_ret.take() {
+                                } else if let Some((fat_alloca, _fat_ty)) = self.last_fat_ret.take()
+                                {
                                     if struct_ty != self.fat_return_type {
                                         let ptr_ty =
                                             self.context.ptr_type(inkwell::AddressSpace::default());

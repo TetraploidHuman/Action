@@ -22,10 +22,7 @@ impl<'ctx> CodeGen<'ctx> {
             } => self.compile_call(func, args, trailing_lambda),
             Expr::When(w) => self.compile_when(w),
             Expr::Block(stmts) => self.compile_block(stmts),
-            Expr::Assign {
-                target,
-                value,
-            } => self.compile_assign(target, value),
+            Expr::Assign { target, value } => self.compile_assign(target, value),
             Expr::For(f) => self.compile_for(f),
             Expr::StringInterpolate(parts) => self.compile_string_interp(parts),
             Expr::FieldAccess(obj, field) => self.compile_field_access(obj, field),
@@ -989,7 +986,9 @@ impl<'ctx> CodeGen<'ctx> {
                     if self.not_null_set.contains(name) {
                         // Smart cast: extract inner value from nullable struct
                         let loaded_struct = val.into_struct_value();
-                        let inner = self.builder.build_extract_value(loaded_struct, 1, "smart_inner")
+                        let inner = self
+                            .builder
+                            .build_extract_value(loaded_struct, 1, "smart_inner")
                             .map_err(llvm_err)?;
                         return self.bv_to_typed(inner);
                     }
@@ -2001,12 +2000,10 @@ impl<'ctx> CodeGen<'ctx> {
             TypedValue::CString(p) | TypedValue::Ptr(p) | TypedValue::FileHandle(p) => {
                 Ok((*p).into())
             }
-            TypedValue::Nullable(ptr, ty) => {
-                Ok(self
-                    .builder
-                    .build_load(*ty, *ptr, "arg_nullable")
-                    .map_err(llvm_err)?)
-            }
+            TypedValue::Nullable(ptr, ty) => Ok(self
+                .builder
+                .build_load(*ty, *ptr, "arg_nullable")
+                .map_err(llvm_err)?),
             _ => v
                 .to_bv()
                 .ok_or_else(|| format!("Cannot pass value as argument")),

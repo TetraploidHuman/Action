@@ -392,7 +392,9 @@ impl TypeChecker {
                         if !matches!(&inferred, Type::Named(n) if n == "Int")
                             && !self.types_compatible(declared_ret, &inferred)
                         {
-                            let msg = if let Some(hint) = Self::check_termination(declared_ret, &inferred) {
+                            let msg = if let Some(hint) =
+                                Self::check_termination(declared_ret, &inferred)
+                            {
                                 hint
                             } else {
                                 format!("Function '{}' declares return type '{}' but body has type '{}'",
@@ -503,8 +505,12 @@ impl TypeChecker {
                                 let ty = self.infer_expr_type(value);
                                 if matches!(ty, Type::Nullable(_)) {
                                     Some(name.clone())
-                                } else { None }
-                            } else { None }
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
                         }
                         _ => None,
                     };
@@ -567,10 +573,8 @@ impl TypeChecker {
                     if let Some(ref var) = smart_var {
                         // For x != null: then branch has non-null x
                         // For x == null: else branch has non-null x
-                        let is_neq = matches!(
-                            condition.as_ref(),
-                            Expr::Binary(_, BinaryOp::Neq, _)
-                        );
+                        let is_neq =
+                            matches!(condition.as_ref(), Expr::Binary(_, BinaryOp::Neq, _));
                         if is_neq {
                             self.not_null_set.borrow_mut().insert(var.clone());
                         }
@@ -943,7 +947,9 @@ impl TypeChecker {
                         "coroutineScope" => Type::Named("List".into()),
                         // Callback-based list functions
                         "any" | "all" => Type::Named("Bool".into()),
-                        "find" | "findIndex" | "reduce" => Type::Nullable(Box::new(Type::Named("Int".into()))),
+                        "find" | "findIndex" | "reduce" => {
+                            Type::Nullable(Box::new(Type::Named("Int".into())))
+                        }
                         "foldRight" => Type::Named("Int".into()),
                         "takeWhile" | "dropWhile" | "sortedBy" => Type::Named("List".into()),
                         _ => {
@@ -973,7 +979,9 @@ impl TypeChecker {
                         (Type::Map(_, _), "insert") | (Type::Set(_), "insert") => Type::Unit,
                         (Type::Map(_, _), "remove")
                         | (Type::Map(_, _), "get")
-                        | (Type::Set(_), "remove") => Type::Nullable(Box::new(Type::Named("Int".into()))),
+                        | (Type::Set(_), "remove") => {
+                            Type::Nullable(Box::new(Type::Named("Int".into())))
+                        }
                         // Stream UFCS methods
                         (Type::Stream(_), "send") => Type::Unit,
                         (Type::Stream(_), "receive") => Type::Named("Int".into()),
@@ -1209,8 +1217,7 @@ impl TypeChecker {
             }
             // Nullable<Nothing> (from null literal) is compatible with any nullable
             // Must check before general Nullable compatibility
-            (_declared, Type::Nullable(inner_inferred))
-                if matches!(inner_inferred.as_ref(), Type::Named(n) if n == "Nothing") =>
+            (_declared, Type::Nullable(inner_inferred)) if matches!(inner_inferred.as_ref(), Type::Named(n) if n == "Nothing") =>
             {
                 matches!(_declared, Type::Nullable(_))
             }

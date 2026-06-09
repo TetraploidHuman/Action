@@ -25,20 +25,16 @@ impl<'ctx> CodeGen<'ctx> {
                 // Smart cast: when x != null { ... } or when x == null { ... } else { ... }
                 let smart_var: Option<String> = match condition.as_ref() {
                     Expr::Binary(lhs, BinaryOp::Neq, rhs)
-                    | Expr::Binary(lhs, BinaryOp::Eq, rhs) => {
-                        match (lhs.as_ref(), rhs.as_ref()) {
-                            (Expr::Ident(name), Expr::Null)
-                            | (Expr::Null, Expr::Ident(name)) => Some(name.clone()),
-                            _ => None,
+                    | Expr::Binary(lhs, BinaryOp::Eq, rhs) => match (lhs.as_ref(), rhs.as_ref()) {
+                        (Expr::Ident(name), Expr::Null) | (Expr::Null, Expr::Ident(name)) => {
+                            Some(name.clone())
                         }
-                    }
+                        _ => None,
+                    },
                     _ => None,
                 };
                 if let Some(ref var) = smart_var {
-                    let is_eq = matches!(
-                        condition.as_ref(),
-                        Expr::Binary(_, BinaryOp::Eq, _)
-                    );
+                    let is_eq = matches!(condition.as_ref(), Expr::Binary(_, BinaryOp::Eq, _));
                     if is_eq {
                         // when x == null { null_body } else { non_null_body }
                         // Negate condition and swap branches so smart cast applies to non_null_body
@@ -47,15 +43,13 @@ impl<'ctx> CodeGen<'ctx> {
                             .build_not(c_bool, "neg_cond")
                             .map_err(llvm_err)?;
                         self.not_null_set.insert(var.clone());
-                        let result =
-                            self.compile_when_branch_lazy(negated, else_expr, then_expr);
+                        let result = self.compile_when_branch_lazy(negated, else_expr, then_expr);
                         self.not_null_set.remove(var);
                         result
                     } else {
                         // when x != null { non_null_body } [else { null_body }]
                         self.not_null_set.insert(var.clone());
-                        let result =
-                            self.compile_when_branch_lazy(c_bool, then_expr, else_expr);
+                        let result = self.compile_when_branch_lazy(c_bool, then_expr, else_expr);
                         self.not_null_set.remove(var);
                         result
                     }
@@ -543,8 +537,7 @@ impl<'ctx> CodeGen<'ctx> {
                     TypedValue::Nullable(ptr, inner_bt) => {
                         let nullable_bt: BasicTypeEnum = {
                             let b1 = self.null_flag_ty();
-                            let fields: &[BasicTypeEnum] =
-                                &[b1.into(), *inner_bt];
+                            let fields: &[BasicTypeEnum] = &[b1.into(), *inner_bt];
                             self.context.struct_type(fields, false).into()
                         };
                         let loaded = self
@@ -706,22 +699,14 @@ impl<'ctx> CodeGen<'ctx> {
                                 .map_err(llvm_err)?;
                             let inner_val = self
                                 .builder
-                                .build_extract_value(
-                                    loaded.into_struct_value(),
-                                    1,
-                                    "patnv_inner",
-                                )
+                                .build_extract_value(loaded.into_struct_value(), 1, "patnv_inner")
                                 .map_err(llvm_err)?;
                             let typed_inner = self.bv_to_typed(inner_val)?;
                             let ty = typed_inner.get_type_for_alloca(self);
                             let alloca = self.builder.build_alloca(ty, name).map_err(llvm_err)?;
                             self.store_value_to_alloca(&typed_inner, alloca)?;
-                            self.scope.set(
-                                name.clone(),
-                                alloca,
-                                ty,
-                                typed_inner.val_kind(),
-                            );
+                            self.scope
+                                .set(name.clone(), alloca, ty, typed_inner.val_kind());
                         }
                         _ => {
                             let ty = val.get_type_for_alloca(self);
@@ -999,12 +984,20 @@ impl<'ctx> CodeGen<'ctx> {
                 let struct_ty = inner_bt.into_struct_type();
                 let undef = struct_ty.get_undef();
                 let flag = self.null_flag_ty().const_int(0, false);
-                let with_flag = self.builder.build_insert_value(undef, flag, 0, "br_flag")
+                let with_flag = self
+                    .builder
+                    .build_insert_value(undef, flag, 0, "br_flag")
                     .map_err(llvm_err)?;
-                let bv = v.to_bv().unwrap_or_else(|| self.i64_ty().const_int(0, false).into());
-                let wrapped = self.builder.build_insert_value(with_flag, bv, 1, "br_val")
+                let bv = v
+                    .to_bv()
+                    .unwrap_or_else(|| self.i64_ty().const_int(0, false).into());
+                let wrapped = self
+                    .builder
+                    .build_insert_value(with_flag, bv, 1, "br_val")
                     .map_err(llvm_err)?;
-                self.builder.build_store(alloca, wrapped).map_err(llvm_err)?;
+                self.builder
+                    .build_store(alloca, wrapped)
+                    .map_err(llvm_err)?;
             }
             (false, true) => {
                 // Nullable value into non-nullable target: extract inner field
@@ -1059,9 +1052,7 @@ impl<'ctx> CodeGen<'ctx> {
                 then_inferred.clone()
             }
             // Nullable<Nothing> + T → Nullable<T>
-            (Type::Nullable(inner), other) | (other, Type::Nullable(inner))
-                if matches!(inner.as_ref(), Type::Named(n) if n == "Nothing") =>
-            {
+            (Type::Nullable(inner), other) | (other, Type::Nullable(inner)) if matches!(inner.as_ref(), Type::Named(n) if n == "Nothing") => {
                 match other {
                     Type::Nullable(oi) => Type::Nullable(oi.clone()),
                     _ => Type::Nullable(Box::new(other.clone())),

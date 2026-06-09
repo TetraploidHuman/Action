@@ -332,10 +332,7 @@ pub enum Expr {
         fallback: Box<Expr>,
     },
     /// Assignment: x = value
-    Assign {
-        target: Box<Expr>,
-        value: Box<Expr>,
-    },
+    Assign { target: Box<Expr>, value: Box<Expr> },
     /// String interpolation segment (used internally)
     StringInterpolate(Vec<StringPart>),
     /// Continue expression (skip current iteration in a for expression)
@@ -528,7 +525,9 @@ impl fmt::Display for Expr {
                 write!(f, ")")
             }
             Expr::Null => write!(f, "null"),
-            Expr::OrBlock { nullable, fallback } => write!(f, "({} or {{ {} }})", nullable, fallback),
+            Expr::OrBlock { nullable, fallback } => {
+                write!(f, "({} or {{ {} }})", nullable, fallback)
+            }
             Expr::Assign { target, value } => write!(f, "{} = {}", target, value),
             Expr::StringInterpolate(parts) => {
                 write!(f, "\"")?;

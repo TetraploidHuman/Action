@@ -23,7 +23,12 @@ impl<'ctx> CodeGen<'ctx> {
         let undef = generic_nullable.get_undef();
         let with_flag = self
             .builder
-            .build_insert_value(undef, self.null_flag_ty().const_int(1, false), 0, "null_flag")
+            .build_insert_value(
+                undef,
+                self.null_flag_ty().const_int(1, false),
+                0,
+                "null_flag",
+            )
             .map_err(llvm_err)?;
         let null_val = self
             .builder
@@ -32,10 +37,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(alloca, null_val)
             .map_err(llvm_err)?;
-        Ok(TypedValue::Nullable(
-            alloca,
-            generic_nullable.into(),
-        ))
+        Ok(TypedValue::Nullable(alloca, generic_nullable.into()))
     }
 
     /// Compile a method call on a nullable receiver with auto short-circuit.
@@ -112,13 +114,17 @@ impl<'ctx> CodeGen<'ctx> {
                         let is_map = match inner_ast.as_ref() {
                             Type::Map(..) => true,
                             Type::Named(n) if n == "Map" => true,
-                            Type::Generic(b, _) => matches!(b.as_ref(), Type::Named(n) if n == "Map"),
+                            Type::Generic(b, _) => {
+                                matches!(b.as_ref(), Type::Named(n) if n == "Map")
+                            }
                             _ => false,
                         };
                         let is_set = match inner_ast.as_ref() {
                             Type::Set(..) => true,
                             Type::Named(n) if n == "Set" => true,
-                            Type::Generic(b, _) => matches!(b.as_ref(), Type::Named(n) if n == "Set"),
+                            Type::Generic(b, _) => {
+                                matches!(b.as_ref(), Type::Named(n) if n == "Set")
+                            }
                             _ => false,
                         };
                         if is_map {
@@ -221,9 +227,7 @@ impl<'ctx> CodeGen<'ctx> {
         );
         let method_result = match self.compile_call(&syn_func, args, trailing) {
             Ok(v) => v,
-            Err(_e) => {
-                TypedValue::Int(self.i64_ty().const_int(0, false))
-            }
+            Err(_e) => TypedValue::Int(self.i64_ty().const_int(0, false)),
         };
         self.scope.remove_var(&synthetic_name);
 
@@ -274,18 +278,12 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         let result_bt = method_result.get_type_for_alloca(self);
-        let nty = self.get_nullable_type(
-            result_bt,
-            &format!("__nmc_res_{}", self.synthetic_counter),
-        );
+        let nty =
+            self.get_nullable_type(result_bt, &format!("__nmc_res_{}", self.synthetic_counter));
         let wrapped = self.wrap_in_nullable(&method_result, nty)?;
         let (wrapped_ptr, wrapped_bt) = match &wrapped {
             TypedValue::Nullable(p, t) => (*p, *t),
-            _ => {
-                return Err(
-                    "wrap_in_typed_nullable did not return Nullable".to_string(),
-                )
-            }
+            _ => return Err("wrap_in_typed_nullable did not return Nullable".to_string()),
         };
         let val_loaded = self
             .builder
@@ -437,7 +435,12 @@ impl<'ctx> CodeGen<'ctx> {
             let undef = struct_ty.get_undef();
             let with_flag = self
                 .builder
-                .build_insert_value(undef, self.null_flag_ty().const_int(0, false), 0, "orblk_flag")
+                .build_insert_value(
+                    undef,
+                    self.null_flag_ty().const_int(0, false),
+                    0,
+                    "orblk_flag",
+                )
                 .map_err(llvm_err)?;
             self.builder
                 .build_insert_value(with_flag, inner_val, 1, "orblk_wrapped")
@@ -485,10 +488,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_phi(default_ty, "orblk_res")
             .map_err(llvm_err)?;
-        phi.add_incoming(&[
-            (&default_bv, null_block),
-            (&inner_bv, val_block),
-        ]);
+        phi.add_incoming(&[(&default_bv, null_block), (&inner_bv, val_block)]);
 
         self.bv_to_typed(phi.as_basic_value())
     }
@@ -506,7 +506,12 @@ impl<'ctx> CodeGen<'ctx> {
         let undef = nullable_struct_ty.get_undef();
         let with_flag = self
             .builder
-            .build_insert_value(undef, self.null_flag_ty().const_int(0, false), 0, "wrap_flag")
+            .build_insert_value(
+                undef,
+                self.null_flag_ty().const_int(0, false),
+                0,
+                "wrap_flag",
+            )
             .map_err(llvm_err)?;
         let value_bv = match value {
             TypedValue::Str(ptr) => self
@@ -548,10 +553,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(alloca, wrapped)
             .map_err(llvm_err)?;
-        Ok(TypedValue::Nullable(
-            alloca,
-            nullable_struct_ty.into(),
-        ))
+        Ok(TypedValue::Nullable(alloca, nullable_struct_ty.into()))
     }
 
     /// Load the null flag (field 0) from a nullable struct — 1 means null, 0 means valid.
@@ -560,9 +562,13 @@ impl<'ctx> CodeGen<'ctx> {
         ptr: PointerValue<'ctx>,
         ty: BasicTypeEnum<'ctx>,
     ) -> Result<inkwell::values::IntValue<'ctx>, String> {
-        let loaded = self.builder.build_load(ty, ptr, "ld_flag")
+        let loaded = self
+            .builder
+            .build_load(ty, ptr, "ld_flag")
             .map_err(llvm_err)?;
-        Ok(self.builder.build_extract_value(loaded.into_struct_value(), 0, "null_flag")
+        Ok(self
+            .builder
+            .build_extract_value(loaded.into_struct_value(), 0, "null_flag")
             .map_err(llvm_err)?
             .into_int_value())
     }
@@ -579,64 +585,119 @@ impl<'ctx> CodeGen<'ctx> {
         let r_flag = self.load_null_flag(r_ptr, ty)?;
         let one = self.null_flag_ty().const_int(1, false);
         let zero = self.null_flag_ty().const_int(0, false);
-        let l_is_null = self.builder.build_int_compare(IntPredicate::EQ, l_flag, one, "l_is_null")
+        let l_is_null = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, l_flag, one, "l_is_null")
             .map_err(llvm_err)?;
-        let r_is_null = self.builder.build_int_compare(IntPredicate::EQ, r_flag, one, "r_is_null")
+        let r_is_null = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, r_flag, one, "r_is_null")
             .map_err(llvm_err)?;
-        let both_null = self.builder.build_and(l_is_null, r_is_null, "both_null")
+        let both_null = self
+            .builder
+            .build_and(l_is_null, r_is_null, "both_null")
             .map_err(llvm_err)?;
         // both_valid: l_flag==0 && r_flag==0
-        let l_valid = self.builder.build_int_compare(IntPredicate::EQ, l_flag, zero, "l_valid")
+        let l_valid = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, l_flag, zero, "l_valid")
             .map_err(llvm_err)?;
-        let r_valid = self.builder.build_int_compare(IntPredicate::EQ, r_flag, zero, "r_valid")
+        let r_valid = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, r_flag, zero, "r_valid")
             .map_err(llvm_err)?;
-        let both_valid = self.builder.build_and(l_valid, r_valid, "both_valid")
+        let both_valid = self
+            .builder
+            .build_and(l_valid, r_valid, "both_valid")
             .map_err(llvm_err)?;
         // inner_eq: only meaningful when both valid — compare field 1 as same-typed values
         let struct_ty = ty.into_struct_type();
-        let inner_field_ty = struct_ty.get_field_type_at_index(1)
+        let inner_field_ty = struct_ty
+            .get_field_type_at_index(1)
             .ok_or("nullable struct missing field 1")?;
         let inner_eq = match inner_field_ty {
             BasicTypeEnum::IntType(_) => {
-                let l_inner = self.builder.build_extract_value(
-                    self.builder.build_load(ty, l_ptr, "eq_ld_l")
-                        .map_err(llvm_err)?.into_struct_value(), 1, "l_inner"
-                ).map_err(llvm_err)?.into_int_value();
-                let r_inner = self.builder.build_extract_value(
-                    self.builder.build_load(ty, r_ptr, "eq_ld_r")
-                        .map_err(llvm_err)?.into_struct_value(), 1, "r_inner"
-                ).map_err(llvm_err)?.into_int_value();
-                self.builder.build_int_compare(IntPredicate::EQ, l_inner, r_inner, "inner_eq")
+                let l_inner = self
+                    .builder
+                    .build_extract_value(
+                        self.builder
+                            .build_load(ty, l_ptr, "eq_ld_l")
+                            .map_err(llvm_err)?
+                            .into_struct_value(),
+                        1,
+                        "l_inner",
+                    )
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                let r_inner = self
+                    .builder
+                    .build_extract_value(
+                        self.builder
+                            .build_load(ty, r_ptr, "eq_ld_r")
+                            .map_err(llvm_err)?
+                            .into_struct_value(),
+                        1,
+                        "r_inner",
+                    )
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                self.builder
+                    .build_int_compare(IntPredicate::EQ, l_inner, r_inner, "inner_eq")
                     .map_err(llvm_err)?
             }
             BasicTypeEnum::FloatType(_) => {
-                let l_inner = self.builder.build_extract_value(
-                    self.builder.build_load(ty, l_ptr, "eq_ld_l")
-                        .map_err(llvm_err)?.into_struct_value(), 1, "l_inner"
-                ).map_err(llvm_err)?.into_float_value();
-                let r_inner = self.builder.build_extract_value(
-                    self.builder.build_load(ty, r_ptr, "eq_ld_r")
-                        .map_err(llvm_err)?.into_struct_value(), 1, "r_inner"
-                ).map_err(llvm_err)?.into_float_value();
-                self.builder.build_float_compare(inkwell::FloatPredicate::OEQ, l_inner, r_inner, "inner_eq")
+                let l_inner = self
+                    .builder
+                    .build_extract_value(
+                        self.builder
+                            .build_load(ty, l_ptr, "eq_ld_l")
+                            .map_err(llvm_err)?
+                            .into_struct_value(),
+                        1,
+                        "l_inner",
+                    )
+                    .map_err(llvm_err)?
+                    .into_float_value();
+                let r_inner = self
+                    .builder
+                    .build_extract_value(
+                        self.builder
+                            .build_load(ty, r_ptr, "eq_ld_r")
+                            .map_err(llvm_err)?
+                            .into_struct_value(),
+                        1,
+                        "r_inner",
+                    )
+                    .map_err(llvm_err)?
+                    .into_float_value();
+                self.builder
+                    .build_float_compare(inkwell::FloatPredicate::OEQ, l_inner, r_inner, "inner_eq")
                     .map_err(llvm_err)?
             }
             _ => {
                 // For struct types (String, etc.), fall back to ptr comparison or assume equal
                 // In practice, this path is only hit when both values are valid and neither is null
                 // For simplicity, compare the raw bytes via pointer equality (conservative)
-                let l_ptr_int = self.builder.build_ptr_to_int(l_ptr, self.i64_ty(), "l_ptr_i")
+                let l_ptr_int = self
+                    .builder
+                    .build_ptr_to_int(l_ptr, self.i64_ty(), "l_ptr_i")
                     .map_err(llvm_err)?;
-                let r_ptr_int = self.builder.build_ptr_to_int(r_ptr, self.i64_ty(), "r_ptr_i")
+                let r_ptr_int = self
+                    .builder
+                    .build_ptr_to_int(r_ptr, self.i64_ty(), "r_ptr_i")
                     .map_err(llvm_err)?;
-                self.builder.build_int_compare(IntPredicate::EQ, l_ptr_int, r_ptr_int, "ptr_eq")
+                self.builder
+                    .build_int_compare(IntPredicate::EQ, l_ptr_int, r_ptr_int, "ptr_eq")
                     .map_err(llvm_err)?
             }
         };
-        let valid_eq = self.builder.build_and(both_valid, inner_eq, "valid_eq")
+        let valid_eq = self
+            .builder
+            .build_and(both_valid, inner_eq, "valid_eq")
             .map_err(llvm_err)?;
         Ok(TypedValue::Bool(
-            self.builder.build_or(both_null, valid_eq, "nullable_eq")
+            self.builder
+                .build_or(both_null, valid_eq, "nullable_eq")
                 .map_err(llvm_err)?,
         ))
     }
@@ -652,61 +713,116 @@ impl<'ctx> CodeGen<'ctx> {
         let r_flag = self.load_null_flag(r_ptr, ty)?;
         let one = self.null_flag_ty().const_int(1, false);
         let zero = self.null_flag_ty().const_int(0, false);
-        let l_is_null = self.builder.build_int_compare(IntPredicate::EQ, l_flag, one, "l_is_null")
+        let l_is_null = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, l_flag, one, "l_is_null")
             .map_err(llvm_err)?;
-        let r_is_null = self.builder.build_int_compare(IntPredicate::EQ, r_flag, one, "r_is_null")
+        let r_is_null = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, r_flag, one, "r_is_null")
             .map_err(llvm_err)?;
         // xor: exactly one is null → not equal
-        let one_null = self.builder.build_xor(l_is_null, r_is_null, "one_null")
+        let one_null = self
+            .builder
+            .build_xor(l_is_null, r_is_null, "one_null")
             .map_err(llvm_err)?;
         // both_valid
-        let l_valid = self.builder.build_int_compare(IntPredicate::EQ, l_flag, zero, "l_valid_ne")
+        let l_valid = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, l_flag, zero, "l_valid_ne")
             .map_err(llvm_err)?;
-        let r_valid = self.builder.build_int_compare(IntPredicate::EQ, r_flag, zero, "r_valid_ne")
+        let r_valid = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, r_flag, zero, "r_valid_ne")
             .map_err(llvm_err)?;
-        let both_valid = self.builder.build_and(l_valid, r_valid, "both_valid_ne")
+        let both_valid = self
+            .builder
+            .build_and(l_valid, r_valid, "both_valid_ne")
             .map_err(llvm_err)?;
         let struct_ty = ty.into_struct_type();
-        let inner_field_ty = struct_ty.get_field_type_at_index(1)
+        let inner_field_ty = struct_ty
+            .get_field_type_at_index(1)
             .ok_or("nullable struct missing field 1")?;
         let inner_ne = match inner_field_ty {
             BasicTypeEnum::IntType(_) => {
-                let l_inner = self.builder.build_extract_value(
-                    self.builder.build_load(ty, l_ptr, "ne_ld_l")
-                        .map_err(llvm_err)?.into_struct_value(), 1, "l_inner"
-                ).map_err(llvm_err)?.into_int_value();
-                let r_inner = self.builder.build_extract_value(
-                    self.builder.build_load(ty, r_ptr, "ne_ld_r")
-                        .map_err(llvm_err)?.into_struct_value(), 1, "r_inner"
-                ).map_err(llvm_err)?.into_int_value();
-                self.builder.build_int_compare(IntPredicate::NE, l_inner, r_inner, "inner_ne")
+                let l_inner = self
+                    .builder
+                    .build_extract_value(
+                        self.builder
+                            .build_load(ty, l_ptr, "ne_ld_l")
+                            .map_err(llvm_err)?
+                            .into_struct_value(),
+                        1,
+                        "l_inner",
+                    )
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                let r_inner = self
+                    .builder
+                    .build_extract_value(
+                        self.builder
+                            .build_load(ty, r_ptr, "ne_ld_r")
+                            .map_err(llvm_err)?
+                            .into_struct_value(),
+                        1,
+                        "r_inner",
+                    )
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                self.builder
+                    .build_int_compare(IntPredicate::NE, l_inner, r_inner, "inner_ne")
                     .map_err(llvm_err)?
             }
             BasicTypeEnum::FloatType(_) => {
-                let l_inner = self.builder.build_extract_value(
-                    self.builder.build_load(ty, l_ptr, "ne_ld_l")
-                        .map_err(llvm_err)?.into_struct_value(), 1, "l_inner"
-                ).map_err(llvm_err)?.into_float_value();
-                let r_inner = self.builder.build_extract_value(
-                    self.builder.build_load(ty, r_ptr, "ne_ld_r")
-                        .map_err(llvm_err)?.into_struct_value(), 1, "r_inner"
-                ).map_err(llvm_err)?.into_float_value();
-                self.builder.build_float_compare(inkwell::FloatPredicate::ONE, l_inner, r_inner, "inner_ne")
+                let l_inner = self
+                    .builder
+                    .build_extract_value(
+                        self.builder
+                            .build_load(ty, l_ptr, "ne_ld_l")
+                            .map_err(llvm_err)?
+                            .into_struct_value(),
+                        1,
+                        "l_inner",
+                    )
+                    .map_err(llvm_err)?
+                    .into_float_value();
+                let r_inner = self
+                    .builder
+                    .build_extract_value(
+                        self.builder
+                            .build_load(ty, r_ptr, "ne_ld_r")
+                            .map_err(llvm_err)?
+                            .into_struct_value(),
+                        1,
+                        "r_inner",
+                    )
+                    .map_err(llvm_err)?
+                    .into_float_value();
+                self.builder
+                    .build_float_compare(inkwell::FloatPredicate::ONE, l_inner, r_inner, "inner_ne")
                     .map_err(llvm_err)?
             }
             _ => {
-                let l_ptr_int = self.builder.build_ptr_to_int(l_ptr, self.i64_ty(), "l_ptr_i_ne")
+                let l_ptr_int = self
+                    .builder
+                    .build_ptr_to_int(l_ptr, self.i64_ty(), "l_ptr_i_ne")
                     .map_err(llvm_err)?;
-                let r_ptr_int = self.builder.build_ptr_to_int(r_ptr, self.i64_ty(), "r_ptr_i_ne")
+                let r_ptr_int = self
+                    .builder
+                    .build_ptr_to_int(r_ptr, self.i64_ty(), "r_ptr_i_ne")
                     .map_err(llvm_err)?;
-                self.builder.build_int_compare(IntPredicate::NE, l_ptr_int, r_ptr_int, "ptr_ne")
+                self.builder
+                    .build_int_compare(IntPredicate::NE, l_ptr_int, r_ptr_int, "ptr_ne")
                     .map_err(llvm_err)?
             }
         };
-        let valid_ne = self.builder.build_and(both_valid, inner_ne, "valid_ne")
+        let valid_ne = self
+            .builder
+            .build_and(both_valid, inner_ne, "valid_ne")
             .map_err(llvm_err)?;
         Ok(TypedValue::Bool(
-            self.builder.build_or(one_null, valid_ne, "nullable_ne")
+            self.builder
+                .build_or(one_null, valid_ne, "nullable_ne")
                 .map_err(llvm_err)?,
         ))
     }
@@ -871,10 +987,8 @@ impl<'ctx> CodeGen<'ctx> {
                         _ => return Err("Index must be an integer".to_string()),
                     };
                     let list_val = self.load_list(*list_ptr)?;
-                    let cc = self.call_rt(
-                        "action_list_get",
-                        &[list_val.into(), index_val.into()],
-                    )?;
+                    let cc =
+                        self.call_rt("action_list_get", &[list_val.into(), index_val.into()])?;
                     match cc.try_as_basic_value().basic() {
                         Some(bv) => {
                             let fat = bv.into_struct_value();
@@ -1109,7 +1223,12 @@ impl<'ctx> CodeGen<'ctx> {
         let undef = nullable_ty.get_undef();
         let r1 = self
             .builder
-            .build_insert_value(undef, self.null_flag_ty().const_int(0, false), 0, "some_flag")
+            .build_insert_value(
+                undef,
+                self.null_flag_ty().const_int(0, false),
+                0,
+                "some_flag",
+            )
             .map_err(llvm_err)?;
         let r2 = self
             .builder
@@ -1125,7 +1244,12 @@ impl<'ctx> CodeGen<'ctx> {
         let undef2 = nullable_ty.get_undef();
         let rn1 = self
             .builder
-            .build_insert_value(undef2, self.null_flag_ty().const_int(1, false), 0, "none_flag")
+            .build_insert_value(
+                undef2,
+                self.null_flag_ty().const_int(1, false),
+                0,
+                "none_flag",
+            )
             .map_err(llvm_err)?;
         self.builder
             .build_store(null_alloca, rn1)
@@ -1200,7 +1324,12 @@ impl<'ctx> CodeGen<'ctx> {
         let undef = nullable_ty.get_undef();
         let r1 = self
             .builder
-            .build_insert_value(undef, self.null_flag_ty().const_int(0, false), 0, "some_flag")
+            .build_insert_value(
+                undef,
+                self.null_flag_ty().const_int(0, false),
+                0,
+                "some_flag",
+            )
             .map_err(llvm_err)?;
         let r2 = self
             .builder
@@ -1216,7 +1345,12 @@ impl<'ctx> CodeGen<'ctx> {
         let undef2 = nullable_ty.get_undef();
         let rn1 = self
             .builder
-            .build_insert_value(undef2, self.null_flag_ty().const_int(1, false), 0, "none_flag")
+            .build_insert_value(
+                undef2,
+                self.null_flag_ty().const_int(1, false),
+                0,
+                "none_flag",
+            )
             .map_err(llvm_err)?;
         self.builder
             .build_store(null_alloca, rn1)
@@ -1322,7 +1456,8 @@ impl<'ctx> CodeGen<'ctx> {
                     (var.ptr, var.kind, var.ty, var.enum_data_rc_managed)
                 };
                 // Wrap non-nullable value into nullable when target is nullable
-                let v = if var_kind == ValKind::Nullable && !matches!(&v, TypedValue::Nullable(..)) {
+                let v = if var_kind == ValKind::Nullable && !matches!(&v, TypedValue::Nullable(..))
+                {
                     let inner_bt = v.get_type_for_alloca(self);
                     let nty = self.get_nullable_type(inner_bt, "assign_wrap");
                     self.wrap_in_nullable(&v, nty)?
@@ -1430,9 +1565,7 @@ impl<'ctx> CodeGen<'ctx> {
                                     .build_struct_gep(st, ptr, idx, "field_gep2")
                                     .map_err(llvm_err)?;
                                 if let Some(bv) = v.to_bv() {
-                                    self.builder
-                                        .build_store(field_ptr, bv)
-                                        .map_err(llvm_err)?;
+                                    self.builder.build_store(field_ptr, bv).map_err(llvm_err)?;
                                 }
                                 // Write back the modified inner struct into the nullable
                                 let inner_st_bt: BasicTypeEnum = st.into();
@@ -1442,12 +1575,7 @@ impl<'ctx> CodeGen<'ctx> {
                                     .map_err(llvm_err)?;
                                 let updated_nf = self
                                     .builder
-                                    .build_insert_value(
-                                        nf_struct,
-                                        updated_inner,
-                                        1,
-                                        "asn_nf_upd",
-                                    )
+                                    .build_insert_value(nf_struct, updated_inner, 1, "asn_nf_upd")
                                     .map_err(llvm_err)?;
                                 self.builder
                                     .build_store(nullable_ptr, updated_nf)
@@ -1984,8 +2112,9 @@ impl<'ctx> CodeGen<'ctx> {
                             .map_err(llvm_err)?
                             .as_basic_value_enum()
                     } else {
-                        val.to_bv()
-                            .unwrap_or_else(|| self.i64_ty().const_int(0, false).as_basic_value_enum())
+                        val.to_bv().unwrap_or_else(|| {
+                            self.i64_ty().const_int(0, false).as_basic_value_enum()
+                        })
                     }
                 }
             };

@@ -497,10 +497,7 @@ fn test_float_edge() {
 #[test]
 fn test_string_edge() {
     // String manipulation edge cases
-    assert_eq!(
-        run_example("test_string_edge.at"),
-        "Hello Worldbcd0312"
-    );
+    assert_eq!(run_example("test_string_edge.at"), "Hello Worldbcd0312");
 }
 
 // ---- Edge-case tests: stream, coroutine, task ----
@@ -647,7 +644,10 @@ fn test_smart_cast_if() {
 
 #[test]
 fn test_nullable_comprehensive() {
-    assert_eq!(run_example("test_nullable_comprehensive.at"), "100425130-199773355");
+    assert_eq!(
+        run_example("test_nullable_comprehensive.at"),
+        "100425130-199773355"
+    );
 }
 
 // ---- Comprehensive nullable type system tests ----
@@ -713,37 +713,25 @@ fn test_nullable_propagation() {
 #[test]
 fn test_nullable_bugfixes() {
     // Bug #4: function returning nullable; Bug #5: when with null in else branch
-    assert_eq!(
-        run_example("test_bugfixes.at"),
-        "100\n-1\n42\n-1\n30"
-    );
+    assert_eq!(run_example("test_bugfixes.at"), "100\n-1\n42\n-1\n30");
 }
 
 #[test]
 fn test_nullable_chained_elvis() {
     // Chained Elvis operator: (a ?: b) ?: c
-    assert_eq!(
-        run_example("test_bug2_chained_elvis.at"),
-        "5\n10\n"
-    );
+    assert_eq!(run_example("test_bug2_chained_elvis.at"), "5\n10\n");
 }
 
 #[test]
 fn test_lazyhead_empty() {
     // lazyHead on empty LazyList returns null
-    assert_eq!(
-        run_example("test_lazyhead_empty.at"),
-        "true\nfalse\n"
-    );
+    assert_eq!(run_example("test_lazyhead_empty.at"), "true\nfalse\n");
 }
 
 #[test]
 fn test_struct_nullable() {
     // Struct with nullable field, Elvis extraction
-    assert_eq!(
-        run_example("test_struct_nullable.at"),
-        "10-12025"
-    );
+    assert_eq!(run_example("test_struct_nullable.at"), "10-12025");
 }
 
 #[test]

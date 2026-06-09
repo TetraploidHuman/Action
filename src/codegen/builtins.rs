@@ -3,8 +3,7 @@
 use crate::ast::*;
 use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
 use inkwell::values::{
-    BasicMetadataValueEnum, BasicValue, FloatValue, IntValue, PointerValue,
-    StructValue,
+    BasicMetadataValueEnum, BasicValue, FloatValue, IntValue, PointerValue, StructValue,
 };
 use inkwell::{FloatPredicate, IntPredicate};
 
@@ -1605,11 +1604,9 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_global_string_ptr("null", "null_str")
                         .map_err(llvm_err)?
                         .as_pointer_value();
-                    let _ = self.builder.build_call(
-                        printf_fn,
-                        &[null_str.into()],
-                        "print_null_call",
-                    );
+                    let _ =
+                        self.builder
+                            .build_call(printf_fn, &[null_str.into()], "print_null_call");
                 }
                 self.builder
                     .build_unconditional_branch(merge_block)
@@ -1627,18 +1624,20 @@ impl<'ctx> CodeGen<'ctx> {
                         let _ = self.call_rt("action_print_int", &[v.as_basic_value_enum().into()]);
                     }
                     TypedValue::Float(v) => {
-                        let _ = self.call_rt("action_print_float", &[v.as_basic_value_enum().into()]);
+                        let _ =
+                            self.call_rt("action_print_float", &[v.as_basic_value_enum().into()]);
                     }
                     TypedValue::Bool(v) => {
-                        let _ = self.call_rt("action_print_bool", &[v.as_basic_value_enum().into()]);
+                        let _ =
+                            self.call_rt("action_print_bool", &[v.as_basic_value_enum().into()]);
                     }
                     TypedValue::Str(v) => {
                         let _ = self.call_rt_with_str("action_print_string", *v);
                     }
                     _ => {
-                        let bv = inner_typed.to_bv().unwrap_or_else(|| {
-                            self.i64_ty().const_int(0, false).into()
-                        });
+                        let bv = inner_typed
+                            .to_bv()
+                            .unwrap_or_else(|| self.i64_ty().const_int(0, false).into());
                         let _ = self.call_rt("action_print_int", &[bv.into()]);
                     }
                 }
@@ -3764,7 +3763,12 @@ impl<'ctx> CodeGen<'ctx> {
         let undef = nullable_ty.get_undef();
         let r1 = self
             .builder
-            .build_insert_value(undef, self.null_flag_ty().const_int(0, false), 0, "lh_some_flag")
+            .build_insert_value(
+                undef,
+                self.null_flag_ty().const_int(0, false),
+                0,
+                "lh_some_flag",
+            )
             .map_err(llvm_err)?;
         let r2 = self
             .builder
@@ -3780,7 +3784,12 @@ impl<'ctx> CodeGen<'ctx> {
         let undef2 = nullable_ty.get_undef();
         let n1 = self
             .builder
-            .build_insert_value(undef2, self.null_flag_ty().const_int(1, false), 0, "lh_none_flag")
+            .build_insert_value(
+                undef2,
+                self.null_flag_ty().const_int(1, false),
+                0,
+                "lh_none_flag",
+            )
             .map_err(llvm_err)?;
         self.builder
             .build_store(result_alloca, n1)
@@ -3788,10 +3797,7 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self.builder.build_unconditional_branch(merge_block);
 
         self.builder.position_at_end(merge_block);
-        Ok(TypedValue::Nullable(
-            result_alloca,
-            null_bt,
-        ))
+        Ok(TypedValue::Nullable(result_alloca, null_bt))
     }
 
     /// lazy.zip(lazy1, lazy2) - zip two lazy lists eagerly, return as List
@@ -4820,9 +4826,7 @@ impl<'ctx> CodeGen<'ctx> {
         let poll_timeout = self
             .context
             .append_basic_block(current_fn, "wt_poll_timeout");
-        let wt_return = self
-            .context
-            .append_basic_block(current_fn, "wt_return");
+        let wt_return = self.context.append_basic_block(current_fn, "wt_return");
         let wt_nullable_ty = self.get_nullable_type(self.string_type.into(), "Nullable");
         let wt_result_alloca = self
             .builder
@@ -8082,7 +8086,12 @@ impl<'ctx> CodeGen<'ctx> {
         let some_undef = nullable_ty.get_undef();
         let s1 = self
             .builder
-            .build_insert_value(some_undef, self.null_flag_ty().const_int(0, false), 0, "s_flag")
+            .build_insert_value(
+                some_undef,
+                self.null_flag_ty().const_int(0, false),
+                0,
+                "s_flag",
+            )
             .map_err(llvm_err)?;
         let some_val = self
             .builder
@@ -8094,7 +8103,12 @@ impl<'ctx> CodeGen<'ctx> {
         let none_undef = nullable_ty.get_undef();
         let none_val = self
             .builder
-            .build_insert_value(none_undef, self.null_flag_ty().const_int(1, false), 0, "n_flag")
+            .build_insert_value(
+                none_undef,
+                self.null_flag_ty().const_int(1, false),
+                0,
+                "n_flag",
+            )
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(merge_bb);
         // Merge
@@ -8146,7 +8160,12 @@ impl<'ctx> CodeGen<'ctx> {
         let some_undef = nullable_ty.get_undef();
         let s1 = self
             .builder
-            .build_insert_value(some_undef, self.null_flag_ty().const_int(0, false), 0, "s_flag")
+            .build_insert_value(
+                some_undef,
+                self.null_flag_ty().const_int(0, false),
+                0,
+                "s_flag",
+            )
             .map_err(llvm_err)?;
         let some_val = self
             .builder
@@ -8158,7 +8177,12 @@ impl<'ctx> CodeGen<'ctx> {
         let none_undef = nullable_ty.get_undef();
         let none_val = self
             .builder
-            .build_insert_value(none_undef, self.null_flag_ty().const_int(1, false), 0, "n_flag")
+            .build_insert_value(
+                none_undef,
+                self.null_flag_ty().const_int(1, false),
+                0,
+                "n_flag",
+            )
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(merge_bb);
         // Merge
@@ -8210,7 +8234,12 @@ impl<'ctx> CodeGen<'ctx> {
         let some_undef = nullable_ty.get_undef();
         let s1 = self
             .builder
-            .build_insert_value(some_undef, self.null_flag_ty().const_int(0, false), 0, "s_flag")
+            .build_insert_value(
+                some_undef,
+                self.null_flag_ty().const_int(0, false),
+                0,
+                "s_flag",
+            )
             .map_err(llvm_err)?;
         let some_val = self
             .builder
@@ -8222,7 +8251,12 @@ impl<'ctx> CodeGen<'ctx> {
         let none_undef = nullable_ty.get_undef();
         let none_val = self
             .builder
-            .build_insert_value(none_undef, self.null_flag_ty().const_int(1, false), 0, "n_flag")
+            .build_insert_value(
+                none_undef,
+                self.null_flag_ty().const_int(1, false),
+                0,
+                "n_flag",
+            )
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(merge_bb);
         // Merge
@@ -8274,7 +8308,12 @@ impl<'ctx> CodeGen<'ctx> {
         let some_undef = nullable_ty.get_undef();
         let s1 = self
             .builder
-            .build_insert_value(some_undef, self.null_flag_ty().const_int(0, false), 0, "s_flag")
+            .build_insert_value(
+                some_undef,
+                self.null_flag_ty().const_int(0, false),
+                0,
+                "s_flag",
+            )
             .map_err(llvm_err)?;
         let some_val = self
             .builder
@@ -8286,7 +8325,12 @@ impl<'ctx> CodeGen<'ctx> {
         let none_undef = nullable_ty.get_undef();
         let none_val = self
             .builder
-            .build_insert_value(none_undef, self.null_flag_ty().const_int(1, false), 0, "n_flag")
+            .build_insert_value(
+                none_undef,
+                self.null_flag_ty().const_int(1, false),
+                0,
+                "n_flag",
+            )
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(merge_bb);
         // Merge
@@ -9883,7 +9927,12 @@ impl<'ctx> CodeGen<'ctx> {
                             let undef = nullable_ty.get_undef();
                             let r1 = self
                                 .builder
-                                .build_insert_value(undef, self.null_flag_ty().const_int(0, false), 0, "s_flag")
+                                .build_insert_value(
+                                    undef,
+                                    self.null_flag_ty().const_int(0, false),
+                                    0,
+                                    "s_flag",
+                                )
                                 .map_err(llvm_err)?;
                             self.builder
                                 .build_insert_value(r1, elem_bv, 1, "s_val")
@@ -9895,7 +9944,12 @@ impl<'ctx> CodeGen<'ctx> {
                         let none_struct = {
                             let undef = nullable_ty.get_undef();
                             self.builder
-                                .build_insert_value(undef, self.null_flag_ty().const_int(1, false), 0, "n_flag")
+                                .build_insert_value(
+                                    undef,
+                                    self.null_flag_ty().const_int(1, false),
+                                    0,
+                                    "n_flag",
+                                )
                                 .map_err(llvm_err)?
                         };
                         let _ = self.builder.build_unconditional_branch(merge_bb);
@@ -9962,7 +10016,12 @@ impl<'ctx> CodeGen<'ctx> {
                             let undef = nullable_ty.get_undef();
                             let r1 = self
                                 .builder
-                                .build_insert_value(undef, self.null_flag_ty().const_int(0, false), 0, "s_flag")
+                                .build_insert_value(
+                                    undef,
+                                    self.null_flag_ty().const_int(0, false),
+                                    0,
+                                    "s_flag",
+                                )
                                 .map_err(llvm_err)?;
                             self.builder
                                 .build_insert_value(r1, elem_bv, 1, "s_val")
@@ -9974,7 +10033,12 @@ impl<'ctx> CodeGen<'ctx> {
                         let none_struct = {
                             let undef = nullable_ty.get_undef();
                             self.builder
-                                .build_insert_value(undef, self.null_flag_ty().const_int(1, false), 0, "n_flag")
+                                .build_insert_value(
+                                    undef,
+                                    self.null_flag_ty().const_int(1, false),
+                                    0,
+                                    "n_flag",
+                                )
                                 .map_err(llvm_err)?
                         };
                         let _ = self.builder.build_unconditional_branch(merge_bb);
@@ -10043,7 +10107,12 @@ impl<'ctx> CodeGen<'ctx> {
                             let undef = nullable_ty.get_undef();
                             let r1 = self
                                 .builder
-                                .build_insert_value(undef, self.null_flag_ty().const_int(0, false), 0, "s_flag")
+                                .build_insert_value(
+                                    undef,
+                                    self.null_flag_ty().const_int(0, false),
+                                    0,
+                                    "s_flag",
+                                )
                                 .map_err(llvm_err)?;
                             self.builder
                                 .build_insert_value(r1, elem_bv, 1, "s_val")
@@ -10055,7 +10124,12 @@ impl<'ctx> CodeGen<'ctx> {
                         let none_struct = {
                             let undef = nullable_ty.get_undef();
                             self.builder
-                                .build_insert_value(undef, self.null_flag_ty().const_int(1, false), 0, "n_flag")
+                                .build_insert_value(
+                                    undef,
+                                    self.null_flag_ty().const_int(1, false),
+                                    0,
+                                    "n_flag",
+                                )
                                 .map_err(llvm_err)?
                         };
                         let _ = self.builder.build_unconditional_branch(merge_bb);

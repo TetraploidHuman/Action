@@ -2519,13 +2519,12 @@ mod tests {
     fn test_let_with_nullable_type() {
         let prog = parse("val x: Int? = null").unwrap();
         match &prog.stmts[0] {
-            Stmt::Let {
-                name,
-                type_ann,
-                ..
-            } => {
+            Stmt::Let { name, type_ann, .. } => {
                 assert_eq!(name, "x");
-                assert_eq!(type_ann, &Some(Type::Nullable(Box::new(Type::Named("Int".into())))));
+                assert_eq!(
+                    type_ann,
+                    &Some(Type::Nullable(Box::new(Type::Named("Int".into()))))
+                );
             }
             _ => panic!("Expected Let with nullable type"),
         }
