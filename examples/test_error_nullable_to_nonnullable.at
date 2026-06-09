@@ -1,0 +1,4 @@
+// Error: nullable used where non-nullable is expected
+fun main() {
+    val x: Int = null   // can't assign null to Int
+}

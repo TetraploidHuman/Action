@@ -65,6 +65,38 @@ fn run_example(name: &str) -> String {
     stdout.replace("\r\n", "\n").replace('\r', "")
 }
 
+/// Run an example that is expected to fail. Returns stderr.
+/// Asserts the process exits with non-zero status.
+fn run_example_fails(name: &str) -> String {
+    let example = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("examples")
+        .join(name);
+    let output = Command::new(action_binary())
+        .args(["run", example.to_str().unwrap()])
+        .output()
+        .expect(&format!("Failed to run example: {}", name));
+    assert!(
+        !output.status.success(),
+        "Expected {} to fail, but it succeeded.\nstdout: {}",
+        name,
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    stderr.replace("\r\n", "\n").replace('\r', "")
+}
+
+/// Assert that running `name` fails with `expected_msg` contained in stderr.
+fn assert_compile_error(name: &str, expected_msg: &str) {
+    let stderr = run_example_fails(name);
+    assert!(
+        stderr.contains(expected_msg),
+        "Expected error containing {:?} when compiling {}, but got:\n{}",
+        expected_msg,
+        name,
+        stderr
+    );
+}
+
 #[test]
 fn test_hello() {
     assert_eq!(run_example("hello.at"), "Hello, World!\n");
@@ -742,5 +774,65 @@ fn test_nullable_method_call() {
     assert_eq!(
         run_example("test_nullable_method_call.at"),
         "5HELLO-1NULLSTR103-1-110truefalsefalsetrue"
+    );
+}
+
+// ============================================================
+// Compile-error tests — nullable type system rejects bad code
+// ============================================================
+
+#[test]
+fn test_error_nested_nullable() {
+    assert_compile_error(
+        "test_error_nested_nullable.at",
+        "Nested nullable types (T??) are not allowed",
+    );
+}
+
+#[test]
+fn test_error_arithmetic_nullable() {
+    assert_compile_error(
+        "test_error_arithmetic_nullable.at",
+        "does not accept nullable operands",
+    );
+}
+
+#[test]
+fn test_error_nullable_to_nonnullable() {
+    assert_compile_error(
+        "test_error_nullable_to_nonnullable.at",
+        "cannot use nullable",
+    );
+}
+
+#[test]
+fn test_error_standalone_question() {
+    assert_compile_error(
+        "test_error_standalone_question.at",
+        "Unexpected '?'",
+    );
+}
+
+#[test]
+fn test_error_null_arg_nonnull_param() {
+    assert_compile_error(
+        "test_error_null_arg_nonnull_param.at",
+        "cannot use nullable",
+    );
+}
+
+#[test]
+fn test_error_return_null_nonnull() {
+    assert_compile_error(
+        "test_error_return_null_nonnull.at",
+        "cannot use nullable",
+    );
+}
+
+#[test]
+fn test_error_safe_call_no_field() {
+    assert_compile_error(
+        "test_error_safe_call_no_field.at",
+        "Expected field name after '?.'",
     );
 }
