@@ -1,0 +1,32 @@
+// Test generic functions with multiple type parameters and mixed types
+// Verifies pickFirst/pickSecond monomorphize correctly for each type combination
+
+fun <T, U> pickFirst(a: T, b: U): T {
+    a
+}
+
+fun <T, U> pickSecond(a: T, b: U): U {
+    b
+}
+
+fun main() {
+    // Int + String
+    val r1 = pickFirst(10, "world")
+    println("pickFirst(10, \"world\"): ${r1}")
+
+    val r2 = pickSecond(10, "world")
+    println("pickSecond(10, \"world\"): ${r2}")
+
+    // Bool + Int
+    val r3 = pickFirst(false, 99)
+    println("pickFirst(false, 99): ${r3}")
+
+    val r4 = pickSecond(false, 99)
+    println("pickSecond(false, 99): ${r4}")
+
+    // String + String (same type for both params)
+    val r5 = pickFirst("a", "b")
+    println("pickFirst(\"a\", \"b\"): ${r5}")
+
+    println("mixed types work!")
+}

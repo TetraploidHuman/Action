@@ -241,6 +241,8 @@ pub struct TypeChecker {
     current_span: Span,
     /// Variables known to be non-null (smart cast from null checks)
     not_null_set: RefCell<HashSet<String>>,
+    /// Generic function definitions (non-empty type_params), indexed by name
+    generic_funs: HashMap<String, Stmt>,
 }
 
 impl TypeChecker {
@@ -250,6 +252,7 @@ impl TypeChecker {
             type_env: HashMap::new(),
             current_span: Span::default(),
             not_null_set: RefCell::new(HashSet::new()),
+            generic_funs: HashMap::new(),
         }
     }
 
@@ -293,8 +296,14 @@ impl TypeChecker {
                     name,
                     params,
                     return_type,
+                    type_params,
                     ..
                 } => {
+                    // Store generic functions for monomorphization
+                    if !type_params.is_empty() {
+                        self.generic_funs.insert(name.clone(), stmt.clone());
+                    }
+
                     // NOTE: untyped parameters and return types default to Int.
                     // Full type inference (Hindley-Milner) is not implemented;
                     // fixing this requires type variable unification across all call sites.
@@ -374,6 +383,7 @@ impl TypeChecker {
                     params,
                     return_type,
                     body,
+                    type_params,
                     ..
                 } => {
                     // Require type annotations on all parameters (except 'self')
@@ -397,26 +407,44 @@ impl TypeChecker {
                         saved.push((p.name.clone(), old));
                     }
 
+                    // For generic functions, add type params to type_env so T is known
+                    let mut saved_tps: Vec<(String, Option<Type>)> = Vec::new();
+                    for tp in type_params {
+                        let old = self.type_env.insert(tp.clone(), Type::TypeVar(tp.clone()));
+                        saved_tps.push((tp.clone(), old));
+                    }
+
                     self.collect_expr_errors(body, &mut errors);
                     // Validate return type annotation if present
                     if let Some(declared_ret) = return_type {
-                        let inferred = self.infer_expr_type(body);
-                        // Skip check when inferred type is Int (fallback for unknown types)
-                        if !matches!(&inferred, Type::Named(n) if n == "Int")
-                            && !self.types_compatible(declared_ret, &inferred)
-                        {
-                            let msg = if let Some(hint) =
-                                Self::check_termination(declared_ret, &inferred)
+                        // Skip return type check for generic functions (validated per-instantiation)
+                        if type_params.is_empty() || !matches!(declared_ret, Type::TypeVar(_)) {
+                            let inferred = self.infer_expr_type(body);
+                            // Skip check when inferred type is Int (fallback for unknown types)
+                            if !matches!(&inferred, Type::Named(n) if n == "Int")
+                                && !self.types_compatible(declared_ret, &inferred)
                             {
-                                hint
-                            } else {
-                                format!("Function '{}' declares return type '{}' but body has type '{}'",
-                                    name, declared_ret, inferred)
-                            };
-                            errors.push(CompilerError::new(msg).with_span(self.current_span));
+                                let msg = if let Some(hint) =
+                                    Self::check_termination(declared_ret, &inferred)
+                                {
+                                    hint
+                                } else {
+                                    format!("Function '{}' declares return type '{}' but body has type '{}'",
+                                        name, declared_ret, inferred)
+                                };
+                                errors.push(CompilerError::new(msg).with_span(self.current_span));
+                            }
                         }
                     }
 
+                    // Restore type param bindings
+                    for (tpname, old_val) in saved_tps {
+                        if let Some(ty) = old_val {
+                            self.type_env.insert(tpname, ty);
+                        } else {
+                            self.type_env.remove(&tpname);
+                        }
+                    }
                     // Restore parameter bindings
                     for (pname, old_val) in saved {
                         if let Some(ty) = old_val {
@@ -867,6 +895,38 @@ impl TypeChecker {
                     .with_span(self.current_span));
                 }
             }
+            // Check generic function via type inference
+            if let Some(generic_stmt) = self.generic_funs.get(name) {
+                if let Stmt::Fun { params, type_params, .. } = generic_stmt {
+                    if !type_params.is_empty() {
+                        let param_tys: Vec<Type> = params.iter()
+                            .map(|p| p.ty.clone().unwrap_or(Type::Named("Int".into())))
+                            .collect();
+                        if args.len() != param_tys.len() {
+                            return Err(CompilerError::new(format!(
+                                "Function '{}' expects {} arguments, but got {}",
+                                name, param_tys.len(), args.len()
+                            )).with_span(self.current_span));
+                        }
+                        // Collect arg types, skipping lambdas
+                        let mut arg_tys = Vec::new();
+                        let mut filtered_params = Vec::new();
+                        for (arg, param_ty) in args.iter().zip(param_tys.iter()) {
+                            if matches!(arg, Expr::Lambda { .. }) { continue; }
+                            arg_tys.push(self.infer_expr_type(arg));
+                            filtered_params.push(param_ty.clone());
+                        }
+                        if !filtered_params.is_empty() {
+                            if let Err(msg) = self.infer_type_args(&filtered_params, &arg_tys) {
+                                return Err(CompilerError::new(format!(
+                                    "Cannot infer type arguments for '{}': {}", name, msg
+                                )).with_span(self.current_span));
+                            }
+                        }
+                        return Ok(());
+                    }
+                }
+            }
             // Check function argument types
             if let Some(fn_type) = self.type_env.get(name) {
                 match fn_type {
@@ -1010,7 +1070,7 @@ impl TypeChecker {
                 }
                 Type::Named("Int".into())
             }
-            Expr::Call { func, .. } => {
+            Expr::Call { func, args, .. } => {
                 if let Expr::Ident(name) = func.as_ref() {
                     match name.as_str() {
                         "print" | "println" | "send" | "close" | "cancel" => Type::Unit,
@@ -1037,6 +1097,9 @@ impl TypeChecker {
                                     .cloned()
                                     .unwrap_or_default();
                                 Type::Named(enum_name)
+                            } else if let Some(generic_stmt) = self.generic_funs.get(name) {
+                                // Generic function: infer type args and resolve return type
+                                self.infer_generic_return_type(generic_stmt, args)
                             } else if let Some(Type::Function(_, ret)) = self.type_env.get(name) {
                                 *ret.clone()
                             } else {
@@ -1213,6 +1276,130 @@ impl TypeChecker {
         }
     }
 
+    /// Infer the return type of a generic function call by unifying parameter types
+    /// and substituting the result into the declared return type.
+    fn infer_generic_return_type(&self, stmt: &Stmt, args: &[Expr]) -> Type {
+        if let Stmt::Fun { params, return_type, .. } = stmt {
+            let param_tys: Vec<Type> = params.iter()
+                .map(|p| p.ty.clone().unwrap_or(Type::Named("Int".into())))
+                .collect();
+            let mut arg_tys = Vec::new();
+            let mut filtered_params = Vec::new();
+            for (arg, param_ty) in args.iter().zip(param_tys.iter()) {
+                if matches!(arg, Expr::Lambda { .. }) { continue; }
+                arg_tys.push(self.infer_expr_type(arg));
+                filtered_params.push(param_ty.clone());
+            }
+            if let Ok(type_map) = self.infer_type_args(&filtered_params, &arg_tys) {
+                if let Some(ret) = return_type {
+                    return resolve_type_vars(ret, &type_map);
+                }
+            }
+        }
+        Type::Named("Int".into())
+    }
+
+    /// Unify an expected type (may contain TypeVars) with an actual concrete type,
+    /// accumulating type variable bindings in type_map.
+    fn unify(
+        &self,
+        expected: &Type,
+        actual: &Type,
+        type_map: &mut HashMap<String, Type>,
+    ) -> Result<(), String> {
+        match (expected, actual) {
+            (Type::TypeVar(name), _) => {
+                if let Some(existing) = type_map.get(name) {
+                    if self.types_compatible(existing, actual) {
+                        Ok(())
+                    } else {
+                        Err(format!(
+                            "Conflicting type inference for '{}': {} vs {}",
+                            name, existing, actual
+                        ))
+                    }
+                } else {
+                    type_map.insert(name.clone(), actual.clone());
+                    Ok(())
+                }
+            }
+            (Type::Named(a), Type::Named(b)) => {
+                if a == b {
+                    Ok(())
+                } else {
+                    // Normalize aliases
+                    let norm_a = match a.as_str() { "Str" => "String", "Double" => "Float", o => o };
+                    let norm_b = match b.as_str() { "Str" => "String", "Double" => "Float", o => o };
+                    if norm_a == norm_b { Ok(()) }
+                    else { Err(format!("Type mismatch: {} vs {}", a, b)) }
+                }
+            }
+            (Type::Generic(ba, ta), Type::Generic(bb, tb)) => {
+                if ta.len() != tb.len() {
+                    return Err("Generic argument count mismatch".to_string());
+                }
+                self.unify(ba, bb, type_map)?;
+                for (a, b) in ta.iter().zip(tb.iter()) {
+                    self.unify(a, b, type_map)?;
+                }
+                Ok(())
+            }
+            (Type::Nullable(a), Type::Nullable(b)) => self.unify(a, b, type_map),
+            (Type::Function(pa, ra), Type::Function(pb, rb)) => {
+                if pa.len() != pb.len() {
+                    return Err("Function arity mismatch".to_string());
+                }
+                for (a, b) in pa.iter().zip(pb.iter()) {
+                    self.unify(a, b, type_map)?;
+                }
+                self.unify(ra, rb, type_map)
+            }
+            (Type::Struct(fa), Type::Struct(fb)) => {
+                if fa.len() != fb.len() {
+                    return Err("Struct field count mismatch".to_string());
+                }
+                for ((na, ta), (nb, tb)) in fa.iter().zip(fb.iter()) {
+                    if na != nb {
+                        return Err(format!("Struct field name mismatch: {} vs {}", na, nb));
+                    }
+                    self.unify(ta, tb, type_map)?;
+                }
+                Ok(())
+            }
+            (Type::Map(ka, va), Type::Map(kb, vb)) => {
+                self.unify(ka, kb, type_map)?;
+                self.unify(va, vb, type_map)
+            }
+            (Type::Set(ea), Type::Set(eb)) => self.unify(ea, eb, type_map),
+            (Type::Task(ta), Type::Task(tb)) => self.unify(ta, tb, type_map),
+            (Type::Stream(sa), Type::Stream(sb)) => self.unify(sa, sb, type_map),
+            (Type::LazyList(la), Type::LazyList(lb)) => self.unify(la, lb, type_map),
+            (Type::Ptr(pa), Type::Ptr(pb)) => self.unify(pa, pb, type_map),
+            (Type::Unit, Type::Unit) => Ok(()),
+            // Auto-wrap: T can be passed where T? is expected
+            (Type::Nullable(inner), _) if !matches!(actual, Type::Nullable(_)) => {
+                self.unify(inner, actual, type_map)
+            }
+            // Null literal (Nothing) is compatible with any nullable
+            (_, Type::Nullable(inner)) if matches!(inner.as_ref(), Type::Named(n) if n == "Nothing") => Ok(()),
+            _ => Err(format!("Type mismatch: {} vs {}", expected, actual)),
+        }
+    }
+
+    /// Infer type arguments for a generic function call by unifying parameter types
+    /// with actual argument types.
+    fn infer_type_args(
+        &self,
+        param_tys: &[Type],
+        arg_tys: &[Type],
+    ) -> Result<HashMap<String, Type>, String> {
+        let mut type_map = HashMap::new();
+        for (param_ty, arg_ty) in param_tys.iter().zip(arg_tys.iter()) {
+            self.unify(param_ty, arg_ty, &mut type_map)?;
+        }
+        Ok(type_map)
+    }
+
     /// Check for nullable termination violation: T? used where T is expected.
     /// Returns Some(error_suffix) if declared expects T but inferred is T?.
     fn check_termination(declared: &Type, inferred: &Type) -> Option<String> {
@@ -1288,6 +1475,9 @@ impl TypeChecker {
                         .zip(tb.iter())
                         .all(|(a, b)| self.types_compatible(a, b))
             }
+            // Type variables are compatible with anything (validated by unification at call sites)
+            (Type::TypeVar(_), _) => true,
+            (_, Type::TypeVar(_)) => true,
             // Nullable<Nothing> (from null literal) is compatible with any nullable
             // Must check before general Nullable compatibility
             (_declared, Type::Nullable(inner_inferred)) if matches!(inner_inferred.as_ref(), Type::Named(n) if n == "Nothing") =>

@@ -149,12 +149,14 @@ fn compound_to_binary(kind: &TokenKind) -> Option<BinaryOp> {
 pub struct Parser {
     tokens: Vec<Token>,
     pos: usize,
+    /// Type parameter names currently in scope (e.g., from `fun <T, U>`)
+    current_type_params: Vec<String>,
 }
 
 #[allow(dead_code)]
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
-        Parser { tokens, pos: 0 }
+        Parser { tokens, pos: 0, current_type_params: Vec::new() }
     }
 
     fn current(&self) -> &Token {
@@ -566,6 +568,10 @@ impl Parser {
         };
         self.advance();
 
+        // Set current type params so parse_type emits TypeVar for T, U, etc.
+        let saved_type_params = std::mem::take(&mut self.current_type_params);
+        self.current_type_params = type_params.clone();
+
         // Parameters
         self.expect(TokenKind::LParen)?;
         let mut params = Vec::new();
@@ -597,6 +603,9 @@ impl Parser {
         } else {
             None
         };
+
+        // Restore previous type params
+        self.current_type_params = saved_type_params;
 
         // Body
         // When = is followed by {, treat it as a block body (same as without =)
@@ -688,6 +697,8 @@ impl Parser {
                     }
                     self.expect(TokenKind::RBracket)?;
                     Ok(Type::Generic(Box::new(Type::Named(name)), args))
+                } else if self.current_type_params.contains(&name) {
+                    Ok(Type::TypeVar(name))
                 } else {
                     Ok(Type::Named(name))
                 }

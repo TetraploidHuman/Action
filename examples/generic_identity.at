@@ -1,0 +1,22 @@
+// Test generic identity function with multiple concrete types
+// Verifies monomorphization creates separate LLVM functions per type
+
+fun <T> identity(x: T): T {
+    x
+}
+
+fun main() {
+    val i = identity(42)
+    println("identity(Int): ${i}")
+
+    val b = identity(true)
+    println("identity(Bool): ${b}")
+
+    val s = identity("hello")
+    println("identity(String): ${s}")
+
+    val f = identity(3.14)
+    println("identity(Float): ${f}")
+
+    println("all types work!")
+}

@@ -392,6 +392,7 @@ fn type_to_detail(ty: &Type) -> String {
         Type::Ptr(t) => format!("Ptr<{}>", type_to_detail(t)),
         Type::FileHandle => "FileHandle".to_string(),
         Type::Nullable(t) => format!("{}?", type_to_detail(t)),
+        Type::TypeVar(name) => name.clone(),
         Type::Unit => "()".to_string(),
     }
 }

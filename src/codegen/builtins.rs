@@ -481,6 +481,17 @@ impl<'ctx> CodeGen<'ctx> {
                 };
             }
 
+            // Generic function dispatch (monomorphization)
+            if let Some(generic_stmt) = self.generic_fun_defs.get(name).cloned() {
+                if let Stmt::Fun { params: _, type_params, .. } = &generic_stmt {
+                    if !type_params.is_empty() {
+                        return self.compile_generic_call(
+                            &generic_stmt, name, args, trailing.clone(),
+                        );
+                    }
+                }
+            }
+
             // Try direct call if function exists in module
             if self.module.get_function(name).is_some() {
                 let fn_val = self.module.get_function(name).unwrap();

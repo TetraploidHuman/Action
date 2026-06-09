@@ -1,4 +1,5 @@
 use crate::lexer::Span;
+use std::collections::HashMap;
 use std::fmt;
 
 // ---- Types as written in source code ----
@@ -7,6 +8,8 @@ use std::fmt;
 pub enum Type {
     /// Named type: Int, String, MyType, List[Int]
     Named(String),
+    /// Type variable: T (from fun <T>, enum Option[T], etc.)
+    TypeVar(String),
     /// Generic instantiation: List[Int], Option[String]
     Generic(Box<Type>, Vec<Type>),
     /// Function type: (Int, String) -> Bool
@@ -43,6 +46,7 @@ impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Type::Named(name) => write!(f, "{}", name),
+            Type::TypeVar(name) => write!(f, "{}", name),
             Type::Generic(base, args) => {
                 write!(f, "{}[", base)?;
                 for (i, arg) in args.iter().enumerate() {
@@ -84,6 +88,38 @@ impl fmt::Display for Type {
             Type::Unit => write!(f, "()"),
             Type::Nullable(inner) => write!(f, "{}?", inner),
         }
+    }
+}
+
+/// Substitute type variables with concrete types from the given map.
+/// Recursively handles all type containers.
+pub fn resolve_type_vars(ty: &Type, type_map: &HashMap<String, Type>) -> Type {
+    match ty {
+        Type::TypeVar(name) => type_map.get(name).cloned().unwrap_or_else(|| ty.clone()),
+        Type::Named(_) => ty.clone(),
+        Type::Generic(base, params) => {
+            Type::Generic(
+                Box::new(resolve_type_vars(base, type_map)),
+                params.iter().map(|p| resolve_type_vars(p, type_map)).collect(),
+            )
+        }
+        Type::Function(params, ret) => Type::Function(
+            params.iter().map(|p| resolve_type_vars(p, type_map)).collect(),
+            Box::new(resolve_type_vars(ret, type_map)),
+        ),
+        Type::Struct(fields) => Type::Struct(
+            fields.iter().map(|(n, t)| (n.clone(), resolve_type_vars(t, type_map))).collect(),
+        ),
+        Type::Map(k, v) => Type::Map(
+            Box::new(resolve_type_vars(k, type_map)),
+            Box::new(resolve_type_vars(v, type_map)),
+        ),
+        Type::Set(t) => Type::Set(Box::new(resolve_type_vars(t, type_map))),
+        Type::Task(t) => Type::Task(Box::new(resolve_type_vars(t, type_map))),
+        Type::Stream(s) => Type::Stream(Box::new(resolve_type_vars(s, type_map))),
+        Type::LazyList(l) => Type::LazyList(Box::new(resolve_type_vars(l, type_map))),
+        Type::Nullable(inner) => Type::Nullable(Box::new(resolve_type_vars(inner, type_map))),
+        Type::Unit | Type::CString | Type::FileHandle | Type::Ptr(_) => ty.clone(),
     }
 }
 

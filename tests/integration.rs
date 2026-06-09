@@ -830,3 +830,45 @@ fn test_error_safe_call_no_field() {
         "Expected field name after '?.'",
     );
 }
+
+// --- Generics tests ---
+
+#[test]
+fn test_generic_fun() {
+    let out = run_example("generic_fun.at");
+    assert!(out.contains("identity(42): 42"));
+    assert!(out.contains("pickFirst(10, 20): 10"));
+    assert!(out.contains("pickSecond(99, 77): 77"));
+    assert!(out.contains("generic functions work!"));
+}
+
+#[test]
+fn test_generic_identity() {
+    let out = run_example("generic_identity.at");
+    assert!(out.contains("identity(Int): 42"));
+    assert!(out.contains("identity(Bool): true"));
+    assert!(out.contains("identity(String): hello"));
+    assert!(out.contains("identity(Float): 3.14"));
+    assert!(out.contains("all types work!"));
+}
+
+#[test]
+fn test_generic_pair() {
+    let out = run_example("generic_pair.at");
+    assert!(out.contains("pickFirst(10, \"world\"): 10"));
+    assert!(out.contains("pickSecond(10, \"world\"): world"));
+    assert!(out.contains("pickFirst(false, 99): false"));
+    assert!(out.contains("pickSecond(false, 99): 99"));
+    assert!(out.contains("pickFirst(\"a\", \"b\"): a"));
+    assert!(out.contains("mixed types work!"));
+}
+
+#[test]
+fn test_generic_enum() {
+    let out = run_example("generic_enum.at");
+    assert!(out.contains("unwrapOr(Some(42), 0): 42"));
+    assert!(out.contains("unwrapOr(None, 99): 99"));
+    assert!(out.contains("isSome(Some(42)): true"));
+    assert!(out.contains("isSome(None): false"));
+    assert!(out.contains("generic enum functions work!"));
+}

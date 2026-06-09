@@ -1,0 +1,37 @@
+// Test generic function with enum pattern matching
+// Verifies Option[T] monomorphization with when/is patterns
+
+enum Option { Some(Int), None }
+
+fun <T> unwrapOr(opt: Option, default: T): T {
+    when opt {
+        Some(v) -> v
+        None -> default
+    }
+}
+
+fun <T> isSome(opt: Option): Bool {
+    when opt {
+        Some(_) -> true
+        None -> false
+    }
+}
+
+fun main() {
+    val s = Some(42)
+    val n = None
+
+    val r1 = unwrapOr(s, 0)
+    println("unwrapOr(Some(42), 0): ${r1}")
+
+    val r2 = unwrapOr(n, 99)
+    println("unwrapOr(None, 99): ${r2}")
+
+    val r3 = isSome(s)
+    println("isSome(Some(42)): ${r3}")
+
+    val r4 = isSome(n)
+    println("isSome(None): ${r4}")
+
+    println("generic enum functions work!")
+}

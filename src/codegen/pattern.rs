@@ -950,7 +950,9 @@ impl<'ctx> CodeGen<'ctx> {
     /// Resolve a type by substituting type variables with concrete types
     pub(super) fn resolve_type(&self, ty: &Type, type_map: &HashMap<String, Type>) -> Type {
         match ty {
-            Type::Named(name) => type_map.get(name).cloned().unwrap_or_else(|| ty.clone()),
+            Type::Named(name) | Type::TypeVar(name) => {
+                type_map.get(name).cloned().unwrap_or_else(|| ty.clone())
+            }
             Type::Generic(base, params) => {
                 let new_base = self.resolve_type(base, type_map);
                 let new_params: Vec<Type> = params
