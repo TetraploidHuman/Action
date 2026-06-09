@@ -6,7 +6,7 @@ Action 是一门静态类型的多范式编程语言，编译器用 Rust 编写�
 
 ## 特性
 
-- **可空类型** — Kotlin 风格 `T?` 空安全，`?.` 短路运算，`?:` 默认值，智能转换
+- **可空类型** — Kotlin 风格 `T?` 空安全，自动短路传播，`or {}` 默认值，智能转换
 - **静态类型系统** — 结构化类型，类型推断，类型别名
 - **模式匹配** — 穷尽性 `when` 表达式，支持枚举/结构体解构
 - **一等函数** — Lambda 表达式，隐式 `it` 参数，高阶函数
@@ -30,8 +30,8 @@ Action 是一门静态类型的多范式编程语言，编译器用 Rust 编写�
 | Windows x64 | `action-*-windows-x64.zip` |
 
 ```bash
-tar xzf action-0.2.0-linux-x64.tar.gz
-export PATH="$PWD/action-0.2.0-linux-x64/bin:$PATH"
+tar xzf action-0.3.0-linux-x64.tar.gz
+export PATH="$PWD/action-0.3.0-linux-x64/bin:$PATH"
 action run hello.at
 ```
 
@@ -182,33 +182,40 @@ val has_even = any(nums) { it % 2 == 0 }
 val name: String? = "Alice"
 val empty: String? = null
 
-// ?. 安全访问 — 接收者为 null 时短路返回 null
-val upper = name?.toUpper()        // "ALICE"
-val none = empty?.toUpper()        // null
+// 对可空接收者的字段访问、方法调用、索引操作自动短路
+// 接收者为 null 时直接返回 null，不执行实际调用
+val upper = name.toUpper()         // String? = "ALICE"
+val none = empty.toUpper()         // String? = null
 
-// ?: (Elvis) 提供默认值
-val display = empty ?: "Guest"     // "Guest"
+// or { } 提供默认值/回退处理
+val display = empty or { "Guest" }  // "Guest"
+
+// or { } 中可以使用 return 提前终止
+val x = maybe() or { return }      // 若 maybe() 返回 null 则提前返回
 
 // 智能转换 — if x != null 分支内自动转换为非空类型
 if name != null {
-    println(name.toUpper())        // 不需要 ?.
+    println(name.toUpper())        // 不需要 or { }，name 已是 String
 }
 
 // 可空集合方法调用，同样自动短路
 val list: List? = getList()
-val first = list?.head()           // 安全取第一个元素
-val len = list?.len()              // 安全获取长度
+val first = list.head()            // 安全取第一个元素
+val len = list.len()               // 安全获取长度
 ```
 
 ### 可空链式调用
 
 ```action
-// 多层可空结构的安全访问
+// 多层可空结构的安全访问 — 自动短路传播
 val user: User? = findUser(id)
-val city = user?.address?.city    // 任一中间值为 null 则整体为 null
+val city = user.address.city       // 任一中间值为 null 则整体为 null
 
-// 与 ?: 配合
-val cityName = user?.address?.city ?: "Unknown"
+// 与 or { } 配合
+val cityName = user.address.city or { "Unknown" }
+
+// 也可显式使用 ?. 安全调用操作符（效果等价于自动传播的 .）
+val city2 = user?.address?.city    // 等价于 user.address.city
 ```
 
 ### 枚举
@@ -233,7 +240,7 @@ val area = when shape {
 
 // 可空枚举接收者
 val s: Shape? = getShape()
-val a = s?.let { ... }    // 安全操作
+val a = s.let { ... }             // 安全操作，自动短路
 ```
 
 ### 结构体
@@ -386,12 +393,23 @@ val ok = x > 0 and y / x > 2     // 若 x > 0 为假，不计算 y / x
 val safe = a or risky()          // 若 a 为真，不调用 risky()
 ```
 
-### 错误传播 (Try 运算符)
+### 错误传播 (or 回退块)
 
 ```action
-// ? 后缀运算符 — 若值为 null 则立即返回 null
-val x? = nullableValue()          // 若为 null，函数提前返回 null
-val y = result?                    // 后缀 try 运算符
+// or { } 块中可以 return 提前终止，实现错误传播
+fun process(): String? {
+    val x = maybe() or { return null }   // 若 maybe() 返回 null，提前返回 null
+    val y = another(x) or { return null } // 同上
+    toUpper(x + y)                        // 正常逻辑
+}
+
+// or { } 也可以提供默认值继续执行
+val z = maybe() or { "default" }
+
+// 链式调用中，任意一步为 null 自动短路为 null
+fun getUserCity(id: Int): String? {
+    findUser(id).address.city    // 任一环节为 null 则整体为 null
+}
 ```
 
 ### 协程与流
