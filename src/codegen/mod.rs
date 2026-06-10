@@ -1336,10 +1336,8 @@ impl<'ctx> CodeGen<'ctx> {
             .iter()
             .map(|p| self.ast_type_to_llvm(p.ty.as_ref()))
             .collect();
-        let fn_type =
-            self.build_fn_type(resolved_return.as_ref(), mangled_name, &param_llvm_tys);
-        self.module
-            .add_function(mangled_name, fn_type, None);
+        let fn_type = self.build_fn_type(resolved_return.as_ref(), mangled_name, &param_llvm_tys);
+        self.module.add_function(mangled_name, fn_type, None);
 
         // Compile the body with resolved types
         self.compile_fun_def(

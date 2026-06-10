@@ -97,18 +97,25 @@ pub fn resolve_type_vars(ty: &Type, type_map: &HashMap<String, Type>) -> Type {
     match ty {
         Type::TypeVar(name) => type_map.get(name).cloned().unwrap_or_else(|| ty.clone()),
         Type::Named(_) => ty.clone(),
-        Type::Generic(base, params) => {
-            Type::Generic(
-                Box::new(resolve_type_vars(base, type_map)),
-                params.iter().map(|p| resolve_type_vars(p, type_map)).collect(),
-            )
-        }
+        Type::Generic(base, params) => Type::Generic(
+            Box::new(resolve_type_vars(base, type_map)),
+            params
+                .iter()
+                .map(|p| resolve_type_vars(p, type_map))
+                .collect(),
+        ),
         Type::Function(params, ret) => Type::Function(
-            params.iter().map(|p| resolve_type_vars(p, type_map)).collect(),
+            params
+                .iter()
+                .map(|p| resolve_type_vars(p, type_map))
+                .collect(),
             Box::new(resolve_type_vars(ret, type_map)),
         ),
         Type::Struct(fields) => Type::Struct(
-            fields.iter().map(|(n, t)| (n.clone(), resolve_type_vars(t, type_map))).collect(),
+            fields
+                .iter()
+                .map(|(n, t)| (n.clone(), resolve_type_vars(t, type_map)))
+                .collect(),
         ),
         Type::Map(k, v) => Type::Map(
             Box::new(resolve_type_vars(k, type_map)),

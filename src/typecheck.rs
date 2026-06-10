@@ -897,30 +897,43 @@ impl TypeChecker {
             }
             // Check generic function via type inference
             if let Some(generic_stmt) = self.generic_funs.get(name) {
-                if let Stmt::Fun { params, type_params, .. } = generic_stmt {
+                if let Stmt::Fun {
+                    params,
+                    type_params,
+                    ..
+                } = generic_stmt
+                {
                     if !type_params.is_empty() {
-                        let param_tys: Vec<Type> = params.iter()
+                        let param_tys: Vec<Type> = params
+                            .iter()
                             .map(|p| p.ty.clone().unwrap_or(Type::Named("Int".into())))
                             .collect();
                         if args.len() != param_tys.len() {
                             return Err(CompilerError::new(format!(
                                 "Function '{}' expects {} arguments, but got {}",
-                                name, param_tys.len(), args.len()
-                            )).with_span(self.current_span));
+                                name,
+                                param_tys.len(),
+                                args.len()
+                            ))
+                            .with_span(self.current_span));
                         }
                         // Collect arg types, skipping lambdas
                         let mut arg_tys = Vec::new();
                         let mut filtered_params = Vec::new();
                         for (arg, param_ty) in args.iter().zip(param_tys.iter()) {
-                            if matches!(arg, Expr::Lambda { .. }) { continue; }
+                            if matches!(arg, Expr::Lambda { .. }) {
+                                continue;
+                            }
                             arg_tys.push(self.infer_expr_type(arg));
                             filtered_params.push(param_ty.clone());
                         }
                         if !filtered_params.is_empty() {
                             if let Err(msg) = self.infer_type_args(&filtered_params, &arg_tys) {
                                 return Err(CompilerError::new(format!(
-                                    "Cannot infer type arguments for '{}': {}", name, msg
-                                )).with_span(self.current_span));
+                                    "Cannot infer type arguments for '{}': {}",
+                                    name, msg
+                                ))
+                                .with_span(self.current_span));
                             }
                         }
                         return Ok(());
@@ -1279,14 +1292,22 @@ impl TypeChecker {
     /// Infer the return type of a generic function call by unifying parameter types
     /// and substituting the result into the declared return type.
     fn infer_generic_return_type(&self, stmt: &Stmt, args: &[Expr]) -> Type {
-        if let Stmt::Fun { params, return_type, .. } = stmt {
-            let param_tys: Vec<Type> = params.iter()
+        if let Stmt::Fun {
+            params,
+            return_type,
+            ..
+        } = stmt
+        {
+            let param_tys: Vec<Type> = params
+                .iter()
                 .map(|p| p.ty.clone().unwrap_or(Type::Named("Int".into())))
                 .collect();
             let mut arg_tys = Vec::new();
             let mut filtered_params = Vec::new();
             for (arg, param_ty) in args.iter().zip(param_tys.iter()) {
-                if matches!(arg, Expr::Lambda { .. }) { continue; }
+                if matches!(arg, Expr::Lambda { .. }) {
+                    continue;
+                }
                 arg_tys.push(self.infer_expr_type(arg));
                 filtered_params.push(param_ty.clone());
             }
@@ -1328,10 +1349,21 @@ impl TypeChecker {
                     Ok(())
                 } else {
                     // Normalize aliases
-                    let norm_a = match a.as_str() { "Str" => "String", "Double" => "Float", o => o };
-                    let norm_b = match b.as_str() { "Str" => "String", "Double" => "Float", o => o };
-                    if norm_a == norm_b { Ok(()) }
-                    else { Err(format!("Type mismatch: {} vs {}", a, b)) }
+                    let norm_a = match a.as_str() {
+                        "Str" => "String",
+                        "Double" => "Float",
+                        o => o,
+                    };
+                    let norm_b = match b.as_str() {
+                        "Str" => "String",
+                        "Double" => "Float",
+                        o => o,
+                    };
+                    if norm_a == norm_b {
+                        Ok(())
+                    } else {
+                        Err(format!("Type mismatch: {} vs {}", a, b))
+                    }
                 }
             }
             (Type::Generic(ba, ta), Type::Generic(bb, tb)) => {
@@ -1381,7 +1413,9 @@ impl TypeChecker {
                 self.unify(inner, actual, type_map)
             }
             // Null literal (Nothing) is compatible with any nullable
-            (_, Type::Nullable(inner)) if matches!(inner.as_ref(), Type::Named(n) if n == "Nothing") => Ok(()),
+            (_, Type::Nullable(inner)) if matches!(inner.as_ref(), Type::Named(n) if n == "Nothing") => {
+                Ok(())
+            }
             _ => Err(format!("Type mismatch: {} vs {}", expected, actual)),
         }
     }
