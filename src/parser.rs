@@ -156,7 +156,11 @@ pub struct Parser {
 #[allow(dead_code)]
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
-        Parser { tokens, pos: 0, current_type_params: Vec::new() }
+        Parser {
+            tokens,
+            pos: 0,
+            current_type_params: Vec::new(),
+        }
     }
 
     fn current(&self) -> &Token {
