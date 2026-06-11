@@ -875,8 +875,23 @@ fn test_generic_enum() {
 
 #[test]
 fn test_cow() {
-    let out = run_example("cow_test.at");
-    assert!(out.contains("All CoW tests passed"));
+    let example = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("examples")
+        .join("cow_test.at");
+    let output = Command::new(action_binary())
+        .args(["run", example.to_str().unwrap()])
+        .output()
+        .expect("Failed to run cow_test.at");
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let out = stdout.replace("\r\n", "\n").replace('\r', "");
+    assert!(
+        out.contains("All CoW tests passed"),
+        "cow_test failed.\nstdout: {:?}\nstderr: {:?}\nexit: {:?}",
+        out,
+        stderr,
+        output.status.code()
+    );
 }
 
 #[test]
