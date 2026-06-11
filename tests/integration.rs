@@ -872,3 +872,21 @@ fn test_generic_enum() {
     assert!(out.contains("isSome(None): false"));
     assert!(out.contains("generic enum functions work!"));
 }
+
+#[test]
+fn test_cow() {
+    let out = run_example("cow_test.at");
+    assert!(out.contains("All CoW tests passed"));
+}
+
+#[test]
+fn test_rc_cycle() {
+    let out = run_example("rc_cycle_test.at");
+    assert!(out.contains("RC cycle test completed"));
+}
+
+#[test]
+fn test_rc_pressure() {
+    let out = run_example("rc_pressure_test.at");
+    assert!(out.contains("All RC pressure tests passed"));
+}

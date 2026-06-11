@@ -586,6 +586,8 @@ impl<'ctx> CodeGen<'ctx> {
                     }
 
                     let v = self.compile_expr(e)?;
+                    self.rc_inc_typed_value(&v)?;
+                    self.emit_scope_cleanup()?;
                     if let Some(bv) = v.to_bv() {
                         let _ = self.builder.build_return(Some(&bv));
                         return Ok(());
@@ -996,10 +998,29 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?;
                 self.builder.build_store(alloca, pv).map_err(llvm_err)?;
                 let kind = self.param_val_kind(param.ty.as_ref());
-                // RC inc for heap-typed parameters so the callee holds a reference.
-                // Without this, a raw value (RC=0) passed directly (e.g. string literal)
-                // will be freed by scope cleanup on the first variable binding that
-                // rc_inc's then rc_dec's it.
+                param_slots.push((alloca, pv.get_type(), kind));
+                if let Some(Type::Function(param_tys_ast, ret_ast)) = param.ty.as_ref() {
+                    let ret = Some(ret_ast.as_ref());
+                    let param_llvm_tys: Vec<BasicMetadataTypeEnum> = param_tys_ast
+                        .iter()
+                        .map(|t| self.ast_type_to_llvm(Some(t)))
+                        .collect();
+                    let fn_type = self.build_fn_type(ret, name, &param_llvm_tys);
+                    self.scope.set_with_fn_type(
+                        param.name.clone(),
+                        alloca,
+                        pv.get_type(),
+                        kind,
+                        Some(fn_type),
+                    );
+                } else {
+                    self.scope
+                        .set(param.name.clone(), alloca, pv.get_type(), kind);
+                }
+                if kind == ValKind::Enum {
+                    self.scope.set_enum_data_rc_managed(&param.name, true);
+                }
+                // RC inc for heap-typed parameters so the callee holds a reference
                 match kind {
                     ValKind::Str => {
                         let sv = self.load_string(alloca)?;
@@ -1020,29 +1041,6 @@ impl<'ctx> CodeGen<'ctx> {
                         self.rc_inc(pdata)?;
                     }
                     _ => {}
-                }
-                param_slots.push((alloca, pv.get_type(), kind));
-                if let Some(Type::Function(param_tys_ast, ret_ast)) = param.ty.as_ref() {
-                    let ret = Some(ret_ast.as_ref());
-                    let param_llvm_tys: Vec<BasicMetadataTypeEnum> = param_tys_ast
-                        .iter()
-                        .map(|t| self.ast_type_to_llvm(Some(t)))
-                        .collect();
-                    let fn_type = self.build_fn_type(ret, name, &param_llvm_tys);
-                    self.scope.set_with_fn_type(
-                        param.name.clone(),
-                        alloca,
-                        pv.get_type(),
-                        kind,
-                        Some(fn_type),
-                    );
-                } else {
-                    self.scope
-                        .set(param.name.clone(), alloca, pv.get_type(), kind);
-                }
-                // Enum parameters carry heap-allocated data that needs RC cleanup
-                if kind == ValKind::Enum {
-                    self.scope.set_enum_data_rc_managed(&param.name, true);
                 }
             }
         }

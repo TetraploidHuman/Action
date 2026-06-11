@@ -644,7 +644,6 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_call(func, args, "").map_err(llvm_err)
     }
     /// Allocate memory with a refcount header. Returns data pointer (ptr+8).
-    #[allow(dead_code)]
     pub(super) fn malloc_rc(&self, size: IntValue<'ctx>) -> Result<PointerValue<'ctx>, String> {
         let func = self
             .module
@@ -763,6 +762,14 @@ impl<'ctx> CodeGen<'ctx> {
                         .into_pointer_value();
                     self.rc_dec(data_ptr)?;
                 }
+                ValKind::Fn if var.is_closure => {
+                    let cap_ptr = self
+                        .builder
+                        .build_load(self.ptr_ty(), var.ptr, "closure_cleanup")
+                        .map_err(llvm_err)?
+                        .into_pointer_value();
+                    self.rc_dec(cap_ptr)?;
+                }
                 _ => {}
             }
         }
@@ -776,6 +783,7 @@ impl<'ctx> CodeGen<'ctx> {
         kind: ValKind,
         ty: inkwell::types::BasicTypeEnum<'ctx>,
         rc_managed: bool,
+        var_is_closure: bool,
     ) -> Result<(), String> {
         match kind {
             ValKind::Str => {
@@ -808,6 +816,14 @@ impl<'ctx> CodeGen<'ctx> {
                     .into_pointer_value();
                 self.rc_dec(data_ptr)?;
             }
+            ValKind::Fn if var_is_closure => {
+                let cap_ptr = self
+                    .builder
+                    .build_load(self.ptr_ty(), ptr, "fn_dec_ptr")
+                    .map_err(llvm_err)?
+                    .into_pointer_value();
+                self.rc_dec(cap_ptr)?;
+            }
             _ => {}
         }
         Ok(())
@@ -834,8 +850,9 @@ impl<'ctx> CodeGen<'ctx> {
                     .into_pointer_value();
                 self.rc_inc(data_ptr)?;
             }
-            TypedValue::LazyList(_) => {
-                // LazyList is stack-only ({i64, ptr, i64, i64}), no heap data to RC
+            TypedValue::LazyList(_) => {}
+            TypedValue::Closure { closure_ptr, .. } => {
+                self.rc_inc(*closure_ptr)?;
             }
             TypedValue::Enum(alloca, enum_ty, _, true) => {
                 let bt: BasicTypeEnum = (*enum_ty).into();

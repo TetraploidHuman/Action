@@ -1,0 +1,70 @@
+// rc_pressure_test.at
+// Stress-tests Reference Counting by allocating and discarding many objects.
+// Verifies that RC correctly frees temporary objects in loops without leaks
+// or double-free errors.
+
+fun main() {
+    // Test 1: String pressure — allocate and discard many strings via concat
+    var total_len = 0
+    var k = 0
+    for k < 300 {
+        var s = ""
+        var i = 0
+        for i < 30 {
+            s = s + "x"
+            i = i + 1
+        }
+        total_len = total_len + s.len()
+        // s and all intermediate concat strings are dropped — RC decrements and frees them
+        k = k + 1
+    }
+    print("String pressure test: ")
+    println(total_len)
+
+    // Test 2: List pressure — allocate and discard fixed-size lists
+    var list_count = 0
+    var m = 0
+    for m < 300 {
+        val lst = List[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        list_count = list_count + lst.len()
+        // lst is dropped — RC decrements and frees the list
+        m = m + 1
+    }
+    print("List pressure test: ")
+    println(list_count)
+
+    // Test 3: Closure + captured var pressure
+    var calls = 0
+    var n = 0
+    for n < 500 {
+        var captured = n
+        val f = { x -> x + captured }
+        calls = calls + f(1)
+        // closure + captured var cell are dropped — RC frees both
+        n = n + 1
+    }
+    print("Closure pressure test: ")
+    println(calls)
+
+    // Test 4: Burst allocation — many objects in one iteration
+    var burst = 0
+    var p = 0
+    for p < 100 {
+        var sa = ""
+        var sb = ""
+        var ia = 0
+        for ia < 10 {
+            sa = sa + "a"
+            sb = sb + "b"
+            ia = ia + 1
+        }
+        val la = List[1, 2, 3]
+        val lb = List[4, 5, 6]
+        burst = burst + sa.len() + sb.len() + la.len() + lb.len()
+        p = p + 1
+    }
+    print("Burst allocation test: ")
+    println(burst)
+
+    println("All RC pressure tests passed")
+}

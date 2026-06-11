@@ -389,6 +389,14 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_pointer_value();
                         self.rc_inc(dp)?;
                     }
+                    ValKind::Fn if var.is_closure => {
+                        let cap_ptr = self
+                            .builder
+                            .build_load(self.ptr_ty(), var.ptr, "crc_cap")
+                            .map_err(llvm_err)?
+                            .into_pointer_value();
+                        self.rc_inc(cap_ptr)?;
+                    }
                     _ => {}
                 }
             }

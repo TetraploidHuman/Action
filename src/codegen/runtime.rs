@@ -1221,6 +1221,8 @@ impl<'ctx> CodeGen<'ctx> {
             None,
         );
         let lp_entry = self.context.append_basic_block(list_push_fn, "entry");
+        let lp_cow = self.context.append_basic_block(list_push_fn, "cow_clone");
+        let lp_check_grow = self.context.append_basic_block(list_push_fn, "check_grow");
         let lp_grow = self.context.append_basic_block(list_push_fn, "grow");
         let lp_done = self.context.append_basic_block(list_push_fn, "done");
         self.builder.position_at_end(lp_entry);
@@ -1241,7 +1243,58 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(list, 2, "cap")
             .map_err(llvm_err)?
             .into_int_value();
-        let one = i64.const_int(1, false);
+        // CoW check: if refcount > 1, clone the data buffer
+        let data_int = self
+            .builder
+            .build_ptr_to_int(data_ptr, i64, "data_int")
+            .map_err(llvm_err)?;
+        let rc_addr = self
+            .builder
+            .build_int_sub(data_int, i64.const_int(8, false), "rc_addr")
+            .map_err(llvm_err)?;
+        let rc_ptr = self
+            .builder
+            .build_int_to_ptr(rc_addr, ptr, "rc_ptr")
+            .map_err(llvm_err)?;
+        let rc_val = self
+            .builder
+            .build_load(self.i64_ty(), rc_ptr, "rc_val")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let need_cow = self
+            .builder
+            .build_int_compare(IntPredicate::SGT, rc_val, i64.const_int(1, false), "need_cow")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(need_cow, lp_cow, lp_check_grow);
+
+        // CoW clone block: allocate new buffer, copy data, dec old refcount
+        self.builder.position_at_end(lp_cow);
+        let elem_size_16 = i64.const_int(16, false);
+        let cow_data_size = self
+            .builder
+            .build_int_mul(cap, elem_size_16, "cow_data_size")
+            .map_err(llvm_err)?;
+        let new_buf = self
+            .builder
+            .build_call(malloc_rc_fn, &[cow_data_size.into()], "cow_new_buf")
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_pointer_value();
+        let cow_memcpy_fn = self.module.get_function("memcpy").unwrap();
+        let _ = self
+            .builder
+            .build_call(cow_memcpy_fn, &[new_buf.into(), data_ptr.into(), cow_data_size.into()], "")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(lp_check_grow);
+
+        // Check grow block: phi for data, then grow check
+        self.builder.position_at_end(lp_check_grow);
+        let phi_data = self.builder.build_phi(ptr, "phi_data").map_err(llvm_err)?;
+        phi_data.add_incoming(&[(&data_ptr, lp_entry), (&new_buf, lp_cow)]);
+        let check_data = phi_data.as_basic_value().into_pointer_value();
         let need_grow = self
             .builder
             .build_int_compare(IntPredicate::SGE, len, cap, "need_grow")
@@ -1266,23 +1319,22 @@ impl<'ctx> CodeGen<'ctx> {
             .build_select(cap_small, min_cap, cap2x, "new_cap")
             .map_err(llvm_err)?
             .into_int_value();
-        let data_size = self
+        let grow_data_size = self
             .builder
             .build_int_mul(new_cap, i64.const_int(16, false), "data_size")
             .map_err(llvm_err)?;
         let total_size = self
             .builder
-            .build_int_add(data_size, i64.const_int(8, false), "total_size")
+            .build_int_add(grow_data_size, i64.const_int(8, false), "total_size")
             .map_err(llvm_err)?;
-        // Adjust data_ptr back to original allocation (RC header at -8)
-        let data_int = self
+        let grow_data_int = self
             .builder
-            .build_ptr_to_int(data_ptr, i64, "data_int")
+            .build_ptr_to_int(check_data, i64, "data_int")
             .map_err(llvm_err)?;
         let rc_offset = i64.const_int(8, false);
         let orig_int = self
             .builder
-            .build_int_sub(data_int, rc_offset, "orig_int")
+            .build_int_sub(grow_data_int, rc_offset, "orig_int")
             .map_err(llvm_err)?;
         let orig_ptr = self
             .builder
@@ -1315,12 +1367,12 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Done block: phi for data/cap, store element, return
         self.builder.position_at_end(lp_done);
-        let phi_data = self.builder.build_phi(ptr, "phi_data").map_err(llvm_err)?;
-        phi_data.add_incoming(&[(&data_ptr, lp_entry), (&new_data, lp_grow)]);
-        let phi_cap = self.builder.build_phi(i64, "phi_cap").map_err(llvm_err)?;
-        phi_cap.add_incoming(&[(&cap, lp_entry), (&new_cap, lp_grow)]);
-        let final_data = phi_data.as_basic_value().into_pointer_value();
-        let final_cap = phi_cap.as_basic_value().into_int_value();
+        let phi_final_data = self.builder.build_phi(ptr, "phi_final_data").map_err(llvm_err)?;
+        phi_final_data.add_incoming(&[(&check_data, lp_check_grow), (&new_data, lp_grow)]);
+        let phi_final_cap = self.builder.build_phi(i64, "phi_final_cap").map_err(llvm_err)?;
+        phi_final_cap.add_incoming(&[(&cap, lp_check_grow), (&new_cap, lp_grow)]);
+        let final_data = phi_final_data.as_basic_value().into_pointer_value();
+        let final_cap = phi_final_cap.as_basic_value().into_int_value();
         // Store element at data[len] — element is {i64, ptr} fat struct (16 bytes)
         let data_i8 = self
             .builder
@@ -1338,7 +1390,7 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self.builder.build_store(elem_ptr, elem).map_err(llvm_err)?;
         let new_len = self
             .builder
-            .build_int_add(len, one, "new_len")
+            .build_int_add(len, i64.const_int(1, false), "new_len")
             .map_err(llvm_err)?;
         let undef = list_ty.get_undef();
         let r1 = self
@@ -2643,6 +2695,8 @@ impl<'ctx> CodeGen<'ctx> {
             None,
         );
         let mi_entry = self.context.append_basic_block(mi_fn, "entry");
+        let mi_cow = self.context.append_basic_block(mi_fn, "cow_clone");
+        let mi_merge = self.context.append_basic_block(mi_fn, "merge");
         let mi_search = self.context.append_basic_block(mi_fn, "search");
         let mi_body = self.context.append_basic_block(mi_fn, "body");
         let mi_ckey = self.context.append_basic_block(mi_fn, "ckey");
@@ -2700,6 +2754,67 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_ptr_to_int(mi_vptr, i64, "vp_i64")
             .map_err(llvm_err)?;
+        // CoW check for map: if refcount > 1, clone the data buffer
+        let mi_data_int = self
+            .builder
+            .build_ptr_to_int(mi_data, i64, "mi_data_int")
+            .map_err(llvm_err)?;
+        let mi_rc_addr = self
+            .builder
+            .build_int_sub(mi_data_int, i64.const_int(8, false), "mi_rc_addr")
+            .map_err(llvm_err)?;
+        let mi_rc_ptr = self
+            .builder
+            .build_int_to_ptr(mi_rc_addr, ptr, "mi_rc_ptr")
+            .map_err(llvm_err)?;
+        let mi_rc_val = self
+            .builder
+            .build_load(self.i64_ty(), mi_rc_ptr, "mi_rc_val")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let mi_need_cow = self
+            .builder
+            .build_int_compare(IntPredicate::SGT, mi_rc_val, i64.const_int(1, false), "mi_need_cow")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(mi_need_cow, mi_cow, mi_merge);
+
+        // CoW clone for map: clone cap*32 bytes (4*i64 per entry)
+        self.builder.position_at_end(mi_cow);
+        let mi_cow_size = self
+            .builder
+            .build_int_mul(mi_cap, i64.const_int(32, false), "mi_cow_size")
+            .map_err(llvm_err)?;
+        let mi_new_data = self
+            .builder
+            .build_call(malloc_rc_fn, &[mi_cow_size.into()], "mi_new_data")
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_pointer_value();
+        let mi_memcpy_fn = self.module.get_function("memcpy").unwrap();
+        let _ = self
+            .builder
+            .build_call(mi_memcpy_fn, &[mi_new_data.into(), mi_data.into(), mi_cow_size.into()], "")
+            .map_err(llvm_err)?;
+        let mi_cow_old_rc = self
+            .builder
+            .build_load(self.i64_ty(), mi_rc_ptr, "mi_cow_old_rc")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let mi_cow_new_rc = self
+            .builder
+            .build_int_sub(mi_cow_old_rc, i64.const_int(1, false), "mi_cow_new_rc")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_store(mi_rc_ptr, mi_cow_new_rc).map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(mi_merge);
+
+        // Merge block: phi for data, then continue
+        self.builder.position_at_end(mi_merge);
+        let mi_data_phi = self.builder.build_phi(ptr, "mi_data_phi").map_err(llvm_err)?;
+        mi_data_phi.add_incoming(&[(&mi_data, mi_entry), (&mi_new_data, mi_cow)]);
+        let mi_data = mi_data_phi.as_basic_value().into_pointer_value();
         let mi_di64 = self
             .builder
             .build_pointer_cast(mi_data, ptr, "di64")
@@ -3352,10 +3467,16 @@ impl<'ctx> CodeGen<'ctx> {
             list_ty.fn_type(&[list_ty.into(), str_ty.into()], false),
             None,
         );
-        let mr_blocks: Vec<_> = (0..8)
+        let mr_entry = self.context.append_basic_block(mr_fn, "entry");
+        let mr_cow = self.context.append_basic_block(mr_fn, "cow_clone");
+        let mr_merge = self.context.append_basic_block(mr_fn, "merge");
+        let mr_blocks: Vec<_> = (0..6)
             .map(|i| self.context.append_basic_block(mr_fn, &format!("b{}", i)))
             .collect();
-        self.builder.position_at_end(mr_blocks[0]); // entry
+        // mr_blocks: 0=search, 1=body, 2=ckey, 3=remove, 4=shift, 5=next
+        let mr_done = self.context.append_basic_block(mr_fn, "done");
+
+        self.builder.position_at_end(mr_entry);
         let mr_map = mr_fn.get_first_param().unwrap().into_struct_value();
         let mr_key = mr_fn.get_nth_param(1).unwrap().into_struct_value();
         let mr_data = self
@@ -3387,15 +3508,76 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_ptr_to_int(mr_kptr, i64, "kp_i64")
             .map_err(llvm_err)?;
+        // CoW check: if refcount > 1, clone the data buffer
+        let mr_data_int = self
+            .builder
+            .build_ptr_to_int(mr_data, i64, "mr_data_int")
+            .map_err(llvm_err)?;
+        let mr_rc_addr = self
+            .builder
+            .build_int_sub(mr_data_int, i64.const_int(8, false), "mr_rc_addr")
+            .map_err(llvm_err)?;
+        let mr_rc_ptr = self
+            .builder
+            .build_int_to_ptr(mr_rc_addr, ptr, "mr_rc_ptr")
+            .map_err(llvm_err)?;
+        let mr_rc_val = self
+            .builder
+            .build_load(self.i64_ty(), mr_rc_ptr, "mr_rc_val")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let mr_need_cow = self
+            .builder
+            .build_int_compare(IntPredicate::SGT, mr_rc_val, i64.const_int(1, false), "mr_need_cow")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(mr_need_cow, mr_cow, mr_merge);
+
+        // CoW clone: clone cap*32 bytes
+        self.builder.position_at_end(mr_cow);
+        let mr_cow_size = self
+            .builder
+            .build_int_mul(mr_cap, i64.const_int(32, false), "mr_cow_size")
+            .map_err(llvm_err)?;
+        let mr_new_data = self
+            .builder
+            .build_call(malloc_rc_fn, &[mr_cow_size.into()], "mr_new_data")
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_pointer_value();
+        let mr_memcpy_fn = self.module.get_function("memcpy").unwrap();
+        let _ = self
+            .builder
+            .build_call(mr_memcpy_fn, &[mr_new_data.into(), mr_data.into(), mr_cow_size.into()], "")
+            .map_err(llvm_err)?;
+        let mr_cow_old_rc = self
+            .builder
+            .build_load(self.i64_ty(), mr_rc_ptr, "mr_cow_old_rc")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let mr_cow_new_rc = self
+            .builder
+            .build_int_sub(mr_cow_old_rc, i64.const_int(1, false), "mr_cow_new_rc")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_store(mr_rc_ptr, mr_cow_new_rc).map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(mr_merge);
+
+        // Merge block: phi for data, then setup search state
+        self.builder.position_at_end(mr_merge);
+        let mr_data_phi = self.builder.build_phi(ptr, "mr_data_phi").map_err(llvm_err)?;
+        mr_data_phi.add_incoming(&[(&mr_data, mr_entry), (&mr_new_data, mr_cow)]);
+        let mr_data = mr_data_phi.as_basic_value().into_pointer_value();
         let mr_di64 = self
             .builder
             .build_pointer_cast(mr_data, ptr, "di64")
             .map_err(llvm_err)?;
         let mr_i = self.builder.build_alloca(i64, "i").map_err(llvm_err)?;
         self.builder.build_store(mr_i, zero).map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(mr_blocks[1]); // search
+        let _ = self.builder.build_unconditional_branch(mr_blocks[0]); // search
 
-        self.builder.position_at_end(mr_blocks[1]); // search
+        self.builder.position_at_end(mr_blocks[0]); // search
         let mr_iv = self
             .builder
             .build_load(i64, mr_i, "iv")
@@ -3407,9 +3589,9 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self
             .builder
-            .build_conditional_branch(mr_cond, mr_blocks[2], mr_blocks[7]); // body or not_found
+            .build_conditional_branch(mr_cond, mr_blocks[1], mr_done); // body or not_found
 
-        self.builder.position_at_end(mr_blocks[2]); // body
+        self.builder.position_at_end(mr_blocks[1]); // body
         let mr_off = self
             .builder
             .build_int_mul(mr_iv, i64.const_int(4, false), "off")
@@ -3430,9 +3612,9 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self
             .builder
-            .build_conditional_branch(mr_teq, mr_blocks[3], mr_blocks[6]); // ckey or next
+            .build_conditional_branch(mr_teq, mr_blocks[2], mr_blocks[5]); // ckey or next
 
-        self.builder.position_at_end(mr_blocks[3]); // ckey
+        self.builder.position_at_end(mr_blocks[2]); // ckey
         let mr_off1 = self
             .builder
             .build_int_add(mr_off, i64.const_int(1, false), "off1")
@@ -3480,12 +3662,12 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self.builder.build_conditional_branch(
             mr_feq.into_int_value(),
-            mr_blocks[4],
-            mr_blocks[6],
+            mr_blocks[3],
+            mr_blocks[5],
         ); // remove or next
 
         // Remove: shift remaining entries down by one slot (4 i64s = 32 bytes)
-        self.builder.position_at_end(mr_blocks[4]); // remove
+        self.builder.position_at_end(mr_blocks[3]); // remove
         let mr_len_dec = self
             .builder
             .build_int_sub(mr_len, i64.const_int(1, false), "len_dec")
@@ -3505,9 +3687,9 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self
             .builder
-            .build_conditional_branch(mr_has_remaining, mr_blocks[5], mr_blocks[7]); // shift or done
+            .build_conditional_branch(mr_has_remaining, mr_blocks[4], mr_done); // shift or done
 
-        self.builder.position_at_end(mr_blocks[5]); // shift
+        self.builder.position_at_end(mr_blocks[4]); // shift
                                                     // Source: data + (iv + 1) * 32 bytes → dest: data + iv * 32 bytes
         let mr_src_off = self
             .builder
@@ -3539,23 +3721,23 @@ impl<'ctx> CodeGen<'ctx> {
                 "",
             )
             .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(mr_blocks[7]); // done
+        let _ = self.builder.build_unconditional_branch(mr_done); // done
 
-        self.builder.position_at_end(mr_blocks[6]); // next
+        self.builder.position_at_end(mr_blocks[5]); // next
         let mr_niv = self
             .builder
             .build_int_add(mr_iv, i64.const_int(1, false), "niv")
             .map_err(llvm_err)?;
         self.builder.build_store(mr_i, mr_niv).map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(mr_blocks[1]);
+        let _ = self.builder.build_unconditional_branch(mr_blocks[0]);
 
-        self.builder.position_at_end(mr_blocks[7]); // done (not found, or already removed)
+        self.builder.position_at_end(mr_done); // done (not found, or already removed)
                                                     // Return {data, len_dec or len, cap}
         let mr_ret_len = self.builder.build_phi(i64, "ret_len").map_err(llvm_err)?;
         mr_ret_len.add_incoming(&[
-            (&mr_len, mr_blocks[1]),
+            (&mr_len, mr_blocks[0]),
+            (&mr_len_dec, mr_blocks[3]),
             (&mr_len_dec, mr_blocks[4]),
-            (&mr_len_dec, mr_blocks[5]),
         ]);
         let mr_ret_len_val = mr_ret_len.as_basic_value().into_int_value();
         let mr_ur = list_ty.get_undef();

@@ -1440,9 +1440,11 @@ impl<'ctx> CodeGen<'ctx> {
         value: &Expr,
     ) -> Result<TypedValue<'ctx>, String> {
         let v = self.compile_expr(value)?;
+        // RC inc the new value before storing
+        self.rc_inc_typed_value(&v)?;
         match target {
             Expr::Ident(name) => {
-                let (var_ptr, var_kind, var_ty, var_rc_managed) = {
+                let (var_ptr, var_kind, var_ty, var_rc_managed, var_is_closure) = {
                     let var = self
                         .scope
                         .get(name)
@@ -1453,7 +1455,7 @@ impl<'ctx> CodeGen<'ctx> {
                             name
                         ));
                     }
-                    (var.ptr, var.kind, var.ty, var.enum_data_rc_managed)
+                    (var.ptr, var.kind, var.ty, var.enum_data_rc_managed, var.is_closure)
                 };
                 // Wrap non-nullable value into nullable when target is nullable
                 let v = if var_kind == ValKind::Nullable && !matches!(&v, TypedValue::Nullable(..))
@@ -1465,7 +1467,7 @@ impl<'ctx> CodeGen<'ctx> {
                     v
                 };
                 // Decrement RC of old value before overwriting
-                self.rc_dec_at(var_ptr, var_kind, var_ty, var_rc_managed)?;
+                self.rc_dec_at(var_ptr, var_kind, var_ty, var_rc_managed, var_is_closure)?;
                 match &v {
                     TypedValue::Str(ptr) => {
                         let str_struct = self.load_string(*ptr)?;
@@ -1527,8 +1529,6 @@ impl<'ctx> CodeGen<'ctx> {
                         }
                     }
                 }
-                // Increment RC of new value
-                self.rc_inc_typed_value(&v)?;
                 Ok(v)
             }
             Expr::FieldAccess(obj, field) => {

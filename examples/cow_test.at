@@ -1,0 +1,55 @@
+// cow_test.at
+// Verifies Copy-on-Write semantics for collections.
+// Shallow copies should not share mutable state.
+
+fun main() {
+    // Test 1: List CoW — appending to copy doesn't affect original
+    val a = List[1, 2, 3]
+    var b = a
+    b = b.append(4)
+    print("List CoW a len (expect 3): ")
+    println(a.len())
+    print("List CoW b len (expect 4): ")
+    println(b.len())
+    print("List CoW a[0] (expect 1): ")
+    println(a.get(0))
+    print("List CoW b[2] (expect 3): ")
+    println(b.get(2))
+
+    // Test 2: Map CoW — inserting into copy doesn't affect original
+    val m1 = Map["x": 10, "y": 20]
+    var m2 = m1
+    m2.insert("z", 30)
+    print("Map CoW m1 len (expect 2): ")
+    println(m1.len())
+    print("Map CoW m2 len (expect 3): ")
+    println(m2.len())
+
+    // Test 3: Multiple list copies all independent
+    val orig = List[1]
+    var c1 = orig
+    var c2 = orig
+    var c3 = orig
+    c1 = c1.append(11)
+    c2 = c2.append(22)
+    c3 = c3.append(33)
+    print("Multi-copy orig len (expect 1): ")
+    println(orig.len())
+    print("Multi-copy c1[1] (expect 11): ")
+    println(c1.get(1))
+    print("Multi-copy c2[1] (expect 22): ")
+    println(c2.get(1))
+    print("Multi-copy c3[1] (expect 33): ")
+    println(c3.get(1))
+
+    // Test 4: Map remove CoW
+    val m3 = Map["a": 1, "b": 2, "c": 3]
+    var m4 = m3
+    m4.remove("a")
+    print("Map remove m3 len (expect 3): ")
+    println(m3.len())
+    print("Map remove m4 len (expect 2): ")
+    println(m4.len())
+
+    println("All CoW tests passed")
+}
