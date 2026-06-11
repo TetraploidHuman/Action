@@ -2822,19 +2822,7 @@ impl<'ctx> CodeGen<'ctx> {
                 "",
             )
             .map_err(llvm_err)?;
-        let mi_cow_old_rc = self
-            .builder
-            .build_load(self.i64_ty(), mi_rc_ptr, "mi_cow_old_rc")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let mi_cow_new_rc = self
-            .builder
-            .build_int_sub(mi_cow_old_rc, i64.const_int(1, false), "mi_cow_new_rc")
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_store(mi_rc_ptr, mi_cow_new_rc)
-            .map_err(llvm_err)?;
+        // RC management is handled by the caller (builtin_map_insert).
         let _ = self.builder.build_unconditional_branch(mi_merge);
 
         // Merge block: phi for data, then continue
@@ -3591,19 +3579,7 @@ impl<'ctx> CodeGen<'ctx> {
                 "",
             )
             .map_err(llvm_err)?;
-        let mr_cow_old_rc = self
-            .builder
-            .build_load(self.i64_ty(), mr_rc_ptr, "mr_cow_old_rc")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let mr_cow_new_rc = self
-            .builder
-            .build_int_sub(mr_cow_old_rc, i64.const_int(1, false), "mr_cow_new_rc")
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_store(mr_rc_ptr, mr_cow_new_rc)
-            .map_err(llvm_err)?;
+        // RC management is handled by the caller (builtin_map_remove).
         let _ = self.builder.build_unconditional_branch(mr_merge);
 
         // Merge block: phi for data, then setup search state
