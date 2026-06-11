@@ -166,10 +166,11 @@ fn map_host_symbols(cg: &CodeGen, engine: &inkwell::execution_engine::ExecutionE
         }
 
         for name in [
-            "fgets", "malloc", "realloc", "free", "strlen", "memcpy", "strcmp", "printf", "fprintf", "fflush",
-            "fclose", "fopen", "fread", "fwrite", "fseek", "ftell", "feof", "remove", "sprintf",
-            "strtod", "strftime", "strptime", "sqrt", "sin", "cos", "tan", "asin", "acos", "atan",
-            "atan2", "exp", "log", "log10", "log2", "pow", "abs", "floor", "ceil", "round", "cbrt",
+            "fgets", "malloc", "realloc", "free", "strlen", "memcpy", "strcmp", "printf",
+            "fprintf", "fflush", "fclose", "fopen", "fread", "fwrite", "fseek", "ftell", "feof",
+            "remove", "sprintf", "strtod", "strftime", "strptime", "sqrt", "sin", "cos", "tan",
+            "asin", "acos", "atan", "atan2", "exp", "log", "log10", "log2", "pow", "abs", "floor",
+            "ceil", "round", "cbrt",
         ] {
             if let Some(func) = cg.module.get_function(name) {
                 let addr = match name {
