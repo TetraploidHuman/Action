@@ -1455,7 +1455,13 @@ impl<'ctx> CodeGen<'ctx> {
                             name
                         ));
                     }
-                    (var.ptr, var.kind, var.ty, var.enum_data_rc_managed, var.is_closure)
+                    (
+                        var.ptr,
+                        var.kind,
+                        var.ty,
+                        var.enum_data_rc_managed,
+                        var.is_closure,
+                    )
                 };
                 // Wrap non-nullable value into nullable when target is nullable
                 let v = if var_kind == ValKind::Nullable && !matches!(&v, TypedValue::Nullable(..))

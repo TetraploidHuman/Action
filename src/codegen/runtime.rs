@@ -1263,7 +1263,12 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
         let need_cow = self
             .builder
-            .build_int_compare(IntPredicate::SGT, rc_val, i64.const_int(1, false), "need_cow")
+            .build_int_compare(
+                IntPredicate::SGT,
+                rc_val,
+                i64.const_int(1, false),
+                "need_cow",
+            )
             .map_err(llvm_err)?;
         let _ = self
             .builder
@@ -1286,7 +1291,11 @@ impl<'ctx> CodeGen<'ctx> {
         let cow_memcpy_fn = self.module.get_function("memcpy").unwrap();
         let _ = self
             .builder
-            .build_call(cow_memcpy_fn, &[new_buf.into(), data_ptr.into(), cow_data_size.into()], "")
+            .build_call(
+                cow_memcpy_fn,
+                &[new_buf.into(), data_ptr.into(), cow_data_size.into()],
+                "",
+            )
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(lp_check_grow);
 
@@ -1367,9 +1376,15 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Done block: phi for data/cap, store element, return
         self.builder.position_at_end(lp_done);
-        let phi_final_data = self.builder.build_phi(ptr, "phi_final_data").map_err(llvm_err)?;
+        let phi_final_data = self
+            .builder
+            .build_phi(ptr, "phi_final_data")
+            .map_err(llvm_err)?;
         phi_final_data.add_incoming(&[(&check_data, lp_check_grow), (&new_data, lp_grow)]);
-        let phi_final_cap = self.builder.build_phi(i64, "phi_final_cap").map_err(llvm_err)?;
+        let phi_final_cap = self
+            .builder
+            .build_phi(i64, "phi_final_cap")
+            .map_err(llvm_err)?;
         phi_final_cap.add_incoming(&[(&cap, lp_check_grow), (&new_cap, lp_grow)]);
         let final_data = phi_final_data.as_basic_value().into_pointer_value();
         let final_cap = phi_final_cap.as_basic_value().into_int_value();
@@ -2774,7 +2789,12 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
         let mi_need_cow = self
             .builder
-            .build_int_compare(IntPredicate::SGT, mi_rc_val, i64.const_int(1, false), "mi_need_cow")
+            .build_int_compare(
+                IntPredicate::SGT,
+                mi_rc_val,
+                i64.const_int(1, false),
+                "mi_need_cow",
+            )
             .map_err(llvm_err)?;
         let _ = self
             .builder
@@ -2796,7 +2816,11 @@ impl<'ctx> CodeGen<'ctx> {
         let mi_memcpy_fn = self.module.get_function("memcpy").unwrap();
         let _ = self
             .builder
-            .build_call(mi_memcpy_fn, &[mi_new_data.into(), mi_data.into(), mi_cow_size.into()], "")
+            .build_call(
+                mi_memcpy_fn,
+                &[mi_new_data.into(), mi_data.into(), mi_cow_size.into()],
+                "",
+            )
             .map_err(llvm_err)?;
         let mi_cow_old_rc = self
             .builder
@@ -2807,12 +2831,18 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_sub(mi_cow_old_rc, i64.const_int(1, false), "mi_cow_new_rc")
             .map_err(llvm_err)?;
-        let _ = self.builder.build_store(mi_rc_ptr, mi_cow_new_rc).map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_store(mi_rc_ptr, mi_cow_new_rc)
+            .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(mi_merge);
 
         // Merge block: phi for data, then continue
         self.builder.position_at_end(mi_merge);
-        let mi_data_phi = self.builder.build_phi(ptr, "mi_data_phi").map_err(llvm_err)?;
+        let mi_data_phi = self
+            .builder
+            .build_phi(ptr, "mi_data_phi")
+            .map_err(llvm_err)?;
         mi_data_phi.add_incoming(&[(&mi_data, mi_entry), (&mi_new_data, mi_cow)]);
         let mi_data = mi_data_phi.as_basic_value().into_pointer_value();
         let mi_di64 = self
@@ -3528,7 +3558,12 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
         let mr_need_cow = self
             .builder
-            .build_int_compare(IntPredicate::SGT, mr_rc_val, i64.const_int(1, false), "mr_need_cow")
+            .build_int_compare(
+                IntPredicate::SGT,
+                mr_rc_val,
+                i64.const_int(1, false),
+                "mr_need_cow",
+            )
             .map_err(llvm_err)?;
         let _ = self
             .builder
@@ -3550,7 +3585,11 @@ impl<'ctx> CodeGen<'ctx> {
         let mr_memcpy_fn = self.module.get_function("memcpy").unwrap();
         let _ = self
             .builder
-            .build_call(mr_memcpy_fn, &[mr_new_data.into(), mr_data.into(), mr_cow_size.into()], "")
+            .build_call(
+                mr_memcpy_fn,
+                &[mr_new_data.into(), mr_data.into(), mr_cow_size.into()],
+                "",
+            )
             .map_err(llvm_err)?;
         let mr_cow_old_rc = self
             .builder
@@ -3561,12 +3600,18 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_sub(mr_cow_old_rc, i64.const_int(1, false), "mr_cow_new_rc")
             .map_err(llvm_err)?;
-        let _ = self.builder.build_store(mr_rc_ptr, mr_cow_new_rc).map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_store(mr_rc_ptr, mr_cow_new_rc)
+            .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(mr_merge);
 
         // Merge block: phi for data, then setup search state
         self.builder.position_at_end(mr_merge);
-        let mr_data_phi = self.builder.build_phi(ptr, "mr_data_phi").map_err(llvm_err)?;
+        let mr_data_phi = self
+            .builder
+            .build_phi(ptr, "mr_data_phi")
+            .map_err(llvm_err)?;
         mr_data_phi.add_incoming(&[(&mr_data, mr_entry), (&mr_new_data, mr_cow)]);
         let mr_data = mr_data_phi.as_basic_value().into_pointer_value();
         let mr_di64 = self
@@ -3732,7 +3777,7 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self.builder.build_unconditional_branch(mr_blocks[0]);
 
         self.builder.position_at_end(mr_done); // done (not found, or already removed)
-                                                    // Return {data, len_dec or len, cap}
+                                               // Return {data, len_dec or len, cap}
         let mr_ret_len = self.builder.build_phi(i64, "ret_len").map_err(llvm_err)?;
         mr_ret_len.add_incoming(&[
             (&mr_len, mr_blocks[0]),
