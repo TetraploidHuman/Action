@@ -1556,10 +1556,13 @@ impl<'ctx> CodeGen<'ctx> {
         let llvm_param_tys = fn_type.get_param_types();
 
         let mut ca: Vec<BasicMetadataValueEnum> = Vec::new();
+        let mut tracked_args: Vec<TypedValue<'ctx>> = Vec::new();
         for (i, a) in args.iter().enumerate() {
+            let av = self.compile_expr(a)?;
             let bv = self.compile_and_load(a)?;
             let casted = self.coerce_arg(bv, llvm_param_tys.get(i))?;
             ca.push(casted.into());
+            tracked_args.push(av);
         }
         if let Some(lam) = trailing {
             let bv = self.compile_and_load(&lam)?;
@@ -1568,6 +1571,9 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         let cc = self.builder.build_call(fn_val, &ca, "").map_err(llvm_err)?;
+        for av in &tracked_args {
+            self.rc_free_intermediate(av)?;
+        }
         match cc.try_as_basic_value().basic() {
             Some(bv) => self.bv_to_typed(bv),
             None => Ok(TypedValue::Unit),

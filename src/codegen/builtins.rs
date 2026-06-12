@@ -559,10 +559,13 @@ impl<'ctx> CodeGen<'ctx> {
                     let fn_type = fn_val.get_type();
                     let param_tys = fn_type.get_param_types();
                     let mut ca: Vec<BasicMetadataValueEnum> = Vec::new();
+                    let mut tracked_args: Vec<TypedValue<'ctx>> = Vec::new();
                     for (i, a) in args.iter().enumerate() {
+                        let av = self.compile_expr(a)?;
                         let bv = self.compile_and_load(a)?;
                         let casted = self.coerce_arg(bv, param_tys.get(i))?;
                         ca.push(casted.into());
+                        tracked_args.push(av);
                     }
                     if let Some(lam) = trailing {
                         let bv = self.compile_and_load(lam)?;
@@ -570,6 +573,9 @@ impl<'ctx> CodeGen<'ctx> {
                         ca.push(casted.into());
                     }
                     let cc = self.builder.build_call(fn_val, &ca, "").map_err(llvm_err)?;
+                    for av in &tracked_args {
+                        self.rc_free_intermediate(av)?;
+                    }
                     return match cc.try_as_basic_value().basic() {
                         Some(bv) => self.bv_to_typed(bv),
                         None => Ok(TypedValue::Unit),
@@ -1393,13 +1399,18 @@ impl<'ctx> CodeGen<'ctx> {
                 let fn_type = fn_val.get_type();
                 let param_tys = fn_type.get_param_types();
                 let mut ca: Vec<BasicMetadataValueEnum> = Vec::new();
+                let mut tracked_args: Vec<TypedValue<'ctx>> = Vec::new();
+                let recv_val = self.compile_expr(receiver)?;
                 let recv_bv = self.compile_and_load(receiver)?;
                 let casted_recv = self.coerce_arg(recv_bv, param_tys.first())?;
                 ca.push(casted_recv.into());
+                tracked_args.push(recv_val);
                 for (i, a) in args.iter().enumerate() {
+                    let av = self.compile_expr(a)?;
                     let bv = self.compile_and_load(a)?;
                     let casted = self.coerce_arg(bv, param_tys.get(i + 1))?;
                     ca.push(casted.into());
+                    tracked_args.push(av);
                 }
                 if let Some(lam) = trailing {
                     let bv = self.compile_and_load(lam)?;
@@ -1407,6 +1418,9 @@ impl<'ctx> CodeGen<'ctx> {
                     ca.push(casted.into());
                 }
                 let cc = self.builder.build_call(fn_val, &ca, "").map_err(llvm_err)?;
+                for av in &tracked_args {
+                    self.rc_free_intermediate(av)?;
+                }
                 return match cc.try_as_basic_value().basic() {
                     Some(bv) => self.bv_to_typed(bv),
                     None => Ok(TypedValue::Unit),
@@ -1442,9 +1456,12 @@ impl<'ctx> CodeGen<'ctx> {
         match target {
             TypedValue::Fn(fn_ptr, fn_type) => {
                 let mut ca: Vec<BasicMetadataValueEnum> = Vec::new();
+                let mut tracked_args: Vec<TypedValue<'ctx>> = Vec::new();
                 for a in args {
+                    let av = self.compile_expr(a)?;
                     let bv = self.compile_and_load(a)?;
                     ca.push(bv.into());
+                    tracked_args.push(av);
                 }
                 if let Some(lam) = trailing {
                     let bv = self.compile_and_load(lam)?;
@@ -1455,6 +1472,9 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_indirect_call(fn_type, fn_ptr, &ca, "indirect")
                     .map_err(llvm_err)?;
+                for av in &tracked_args {
+                    self.rc_free_intermediate(av)?;
+                }
                 match cc.try_as_basic_value().basic() {
                     Some(bv) => self.unpack_fat_return(bv, fn_type.get_return_type()),
                     None => Ok(TypedValue::Unit),
@@ -1467,11 +1487,14 @@ impl<'ctx> CodeGen<'ctx> {
                 closure_ty: _,
             } => {
                 let mut ca: Vec<BasicMetadataValueEnum> = Vec::new();
+                let mut tracked_args: Vec<TypedValue<'ctx>> = Vec::new();
                 // First arg: the closure struct pointer (captures context)
                 ca.push(closure_ptr.into());
                 for a in args {
+                    let av = self.compile_expr(a)?;
                     let bv = self.compile_and_load(a)?;
                     ca.push(bv.into());
+                    tracked_args.push(av);
                 }
                 if let Some(lam) = trailing {
                     let bv = self.compile_and_load(lam)?;
@@ -1482,6 +1505,9 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_indirect_call(actual_fn_type, fn_ptr, &ca, "indirect_closure")
                     .map_err(llvm_err)?;
+                for av in &tracked_args {
+                    self.rc_free_intermediate(av)?;
+                }
                 match cc.try_as_basic_value().basic() {
                     Some(bv) => self.unpack_fat_return(bv, actual_fn_type.get_return_type()),
                     None => Ok(TypedValue::Unit),
@@ -1503,9 +1529,12 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_int_to_ptr(iv, ptr_type, "fn_ptr_cast")
                     .map_err(llvm_err)?;
                 let mut ca: Vec<BasicMetadataValueEnum> = Vec::new();
+                let mut tracked_args: Vec<TypedValue<'ctx>> = Vec::new();
                 for a in args {
+                    let av = self.compile_expr(a)?;
                     let bv = self.compile_and_load(a)?;
                     ca.push(bv.into());
+                    tracked_args.push(av);
                 }
                 if let Some(lam) = trailing {
                     let bv = self.compile_and_load(lam)?;
@@ -1515,6 +1544,9 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_indirect_call(fn_type, fn_ptr, &ca, "indirect_untyped")
                     .map_err(llvm_err)?;
+                for av in &tracked_args {
+                    self.rc_free_intermediate(av)?;
+                }
                 match cc.try_as_basic_value().basic() {
                     Some(bv) => self.unpack_fat_return(bv, Some(BasicTypeEnum::StructType(ret_ty))),
                     None => Ok(TypedValue::Unit),
