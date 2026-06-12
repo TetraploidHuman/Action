@@ -3,7 +3,8 @@
 use crate::ast::*;
 use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
 use inkwell::values::{
-    BasicMetadataValueEnum, BasicValue, FloatValue, IntValue, PointerValue, StructValue,
+    BasicMetadataValueEnum, BasicValue, BasicValueEnum, FloatValue, IntValue, PointerValue,
+    StructValue,
 };
 use inkwell::{FloatPredicate, IntPredicate};
 
@@ -1590,7 +1591,13 @@ impl<'ctx> CodeGen<'ctx> {
             TypedValue::Fn(_, _) | TypedValue::Closure { .. } => {
                 /* print fn/closure pointer as int */
                 if let Some(bv) = v.to_bv() {
-                    let _ = self.call_rt("action_print_int", &[bv.into()]);
+                    if let BasicValueEnum::PointerValue(p) = bv {
+                        let int_val =
+                            self.builder
+                                .build_ptr_to_int(p, self.i64_ty(), "fn_ptr_as_int")
+                                .map_err(llvm_err)?;
+                        let _ = self.call_rt("action_print_int", &[int_val.into()]);
+                    }
                 }
             }
             TypedValue::List(ptr) | TypedValue::Set(ptr) | TypedValue::Map(ptr) => {
@@ -1626,7 +1633,13 @@ impl<'ctx> CodeGen<'ctx> {
             TypedValue::CString(_p) | TypedValue::Ptr(_p) | TypedValue::FileHandle(_p) => {
                 // Print pointer value as hex
                 if let Some(bv) = v.to_bv() {
-                    let _ = self.call_rt("action_print_int", &[bv.into()]);
+                    if let BasicValueEnum::PointerValue(p) = bv {
+                        let int_val =
+                            self.builder
+                                .build_ptr_to_int(p, self.i64_ty(), "ptr_as_int")
+                                .map_err(llvm_err)?;
+                        let _ = self.call_rt("action_print_int", &[int_val.into()]);
+                    }
                 }
             }
             TypedValue::Struct(_, _) => {
