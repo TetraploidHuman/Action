@@ -1451,7 +1451,13 @@ impl<'ctx> CodeGen<'ctx> {
                             name
                         ));
                     }
-                    (var.ptr, var.kind, var.ty, var.enum_data_rc_managed, var.is_closure)
+                    (
+                        var.ptr,
+                        var.kind,
+                        var.ty,
+                        var.enum_data_rc_managed,
+                        var.is_closure,
+                    )
                 };
                 // Dec RC of old value before overwriting
                 if var_is_closure {

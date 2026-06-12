@@ -8492,7 +8492,8 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     TypedValue::Map(ptr) => {
                         let m = self.load_list(ptr)?;
-                        let raw_len = self.builder
+                        let raw_len = self
+                            .builder
                             .build_extract_value(m, 1, "len")
                             .map_err(llvm_err)?
                             .into_int_value();
@@ -8503,7 +8504,8 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     TypedValue::Set(ptr) => {
                         let m = self.load_list(ptr)?;
-                        let raw_len = self.builder
+                        let raw_len = self
+                            .builder
                             .build_extract_value(m, 1, "len")
                             .map_err(llvm_err)?
                             .into_int_value();
@@ -10260,7 +10262,8 @@ impl<'ctx> CodeGen<'ctx> {
                 match (&list_val, &idx_val) {
                     (TypedValue::List(lp), TypedValue::Int(iv)) => {
                         let lv = self.load_list(*lp)?;
-                        let result = self.call_rt("action_list_remove", &[lv.into(), (*iv).into()])?;
+                        let result =
+                            self.call_rt("action_list_remove", &[lv.into(), (*iv).into()])?;
                         let rv = result.try_as_basic_value().basic().ok_or("remove failed")?;
                         let alloca = self
                             .builder
@@ -10269,9 +10272,7 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, rv).map_err(llvm_err)?;
                         Ok(TypedValue::List(alloca))
                     }
-                    _ => Err(
-                        "remove expects (List, Int)".to_string()
-                    ),
+                    _ => Err("remove expects (List, Int)".to_string()),
                 }
             }
             "reverse" => {
@@ -10793,7 +10794,10 @@ impl<'ctx> CodeGen<'ctx> {
                     (TypedValue::List(lp), TypedValue::Int(iv)) => {
                         let lv = self.load_list(*lp)?;
                         let fat = self.to_fat_struct(&elem_val)?;
-                        let result = self.call_rt("action_list_insert", &[lv.into(), (*iv).into(), fat.into()])?;
+                        let result = self.call_rt(
+                            "action_list_insert",
+                            &[lv.into(), (*iv).into(), fat.into()],
+                        )?;
                         let rv = result.try_as_basic_value().basic().ok_or("insert failed")?;
                         let alloca = self
                             .builder
@@ -10802,9 +10806,7 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, rv).map_err(llvm_err)?;
                         Ok(TypedValue::List(alloca))
                     }
-                    _ => Err(
-                        "insert expects (List, Int, Any)".to_string()
-                    ),
+                    _ => Err("insert expects (List, Int, Any)".to_string()),
                 }
             }
             "init" => {

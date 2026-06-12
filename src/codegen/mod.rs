@@ -507,8 +507,8 @@ impl<'ctx> CodeGen<'ctx> {
         // Leaf: {i32 count, i32 pad, [B x {i64, ptr}] elements}
         let leaf_type = context.struct_type(
             &[
-                context.i32_type().into(),                             // count (0..B)
-                context.i32_type().into(),                             // padding (align to 8)
+                context.i32_type().into(),               // count (0..B)
+                context.i32_type().into(),               // padding (align to 8)
                 string_type.array_type(B as u32).into(), // elements array
             ],
             false,
@@ -516,9 +516,9 @@ impl<'ctx> CodeGen<'ctx> {
         // Internal: {i32 count, i32 pad, i64 total, [B x {ptr, i64}] children}
         let internal_type = context.struct_type(
             &[
-                context.i32_type().into(),                                // count (0..B)
-                context.i32_type().into(),                                // padding (align to 8)
-                context.i64_type().into(),                                // total elements in subtree
+                context.i32_type().into(),                    // count (0..B)
+                context.i32_type().into(),                    // padding (align to 8)
+                context.i64_type().into(),                    // total elements in subtree
                 child_entry_type.array_type(B as u32).into(), // children array
             ],
             false,
@@ -751,7 +751,10 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(llvm_err)?
                         .into_int_value();
                     let rdl_fn = self.module.get_function("action_rc_dec_list_node").unwrap();
-                    let _ = self.builder.build_call(rdl_fn, &[data_ptr.into(), height.into()], "").map_err(llvm_err)?;
+                    let _ = self
+                        .builder
+                        .build_call(rdl_fn, &[data_ptr.into(), height.into()], "")
+                        .map_err(llvm_err)?;
                 }
                 ValKind::Map | ValKind::Set => {
                     let list_val = self.load_list(var.ptr)?;
@@ -766,7 +769,10 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(llvm_err)?
                         .into_int_value();
                     let rdl_fn = self.module.get_function("action_rc_dec_list_node").unwrap();
-                    let _ = self.builder.build_call(rdl_fn, &[data_ptr.into(), height.into()], "").map_err(llvm_err)?;
+                    let _ = self
+                        .builder
+                        .build_call(rdl_fn, &[data_ptr.into(), height.into()], "")
+                        .map_err(llvm_err)?;
                 }
                 ValKind::LazyList => {
                     // LazyList is stack-only, no heap data to clean up
@@ -879,7 +885,10 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?
                     .into_int_value();
                 let rdl_fn = self.module.get_function("action_rc_dec_list_node").unwrap();
-                let _ = self.builder.build_call(rdl_fn, &[data_ptr.into(), height.into()], "").map_err(llvm_err)?;
+                let _ = self
+                    .builder
+                    .build_call(rdl_fn, &[data_ptr.into(), height.into()], "")
+                    .map_err(llvm_err)?;
             }
             ValKind::Map | ValKind::Set => {
                 let list_val = self.load_list(ptr)?;
@@ -894,7 +903,10 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?
                     .into_int_value();
                 let rdl_fn = self.module.get_function("action_rc_dec_list_node").unwrap();
-                let _ = self.builder.build_call(rdl_fn, &[data_ptr.into(), height.into()], "").map_err(llvm_err)?;
+                let _ = self
+                    .builder
+                    .build_call(rdl_fn, &[data_ptr.into(), height.into()], "")
+                    .map_err(llvm_err)?;
             }
             ValKind::Enum if rc_managed => {
                 let loaded = self
