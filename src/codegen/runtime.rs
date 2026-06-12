@@ -69,6 +69,11 @@ impl<'ctx> CodeGen<'ctx> {
             void.fn_type(&[ptr.into(), ptr.into(), i64.into()], false),
             None,
         );
+        self.module.add_function(
+            "action_list_push_leaf",
+            void.fn_type(&[ptr.into(), ptr.into()], false),
+            None,
+        );
         let memcmp_fn = self.module.add_function(
             "memcmp",
             i32.fn_type(&[ptr.into(), ptr.into(), i64.into()], false),
@@ -11191,21 +11196,394 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self.builder.build_return(Some(&fl_result));
 
+        // ---- action_list_push_leaf(ptr acc, ptr leaf) -> void ----
+        // Bulk-push all elements from a leaf into the accumulator.
+        // Uses memcpy+rc_inc when accumulator's last leaf has room; falls back to per-element push.
+        let pl_fn = self.module.get_function("action_list_push_leaf").unwrap();
+        let pl_memcpy_fn = self.module.get_function("memcpy").unwrap();
+        let pl_rc_inc_fn = self.module.get_function("action_rc_inc").unwrap();
+        let pl_push_fn = self.module.get_function("action_list_push").unwrap();
+        let string_ty = self.string_type;
+        let list_ty = self.list_type;
+        let leaf_ty = self.leaf_type;
+        let pl_entry = self.context.append_basic_block(pl_fn, "entry");
+        let pl_loop_bb = self.context.append_basic_block(pl_fn, "lp");
+        let pl_body_bb = self.context.append_basic_block(pl_fn, "body");
+        let pl_fb_bb = self.context.append_basic_block(pl_fn, "fb");
+        let pl_bulk_bb = self.context.append_basic_block(pl_fn, "bulk");
+        let pl_fallback_bb = self.context.append_basic_block(pl_fn, "fallback");
+        let pl_memcpy_bb = self.context.append_basic_block(pl_fn, "memcpy");
+        let pl_rc_loop = self.context.append_basic_block(pl_fn, "rc_lp");
+        let pl_rc_body = self.context.append_basic_block(pl_fn, "rc_body");
+        let pl_rc_done = self.context.append_basic_block(pl_fn, "rc_done");
+        let pl_done = self.context.append_basic_block(pl_fn, "done");
+        self.builder.position_at_end(pl_entry);
+        let pl_acc = pl_fn.get_first_param().unwrap().into_pointer_value();
+        let pl_leaf = pl_fn.get_nth_param(1).unwrap().into_pointer_value();
+        let pl_leaf_i8 = self
+            .builder
+            .build_pointer_cast(pl_leaf, ptr, "lf_i8")
+            .map_err(llvm_err)?;
+        let pl_leaf_cnt_r = self
+            .builder
+            .build_load(i32, pl_leaf_i8, "lf_cnt")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let pl_leaf_cnt = self
+            .builder
+            .build_int_z_extend(pl_leaf_cnt_r, i64, "cnt64")
+            .map_err(llvm_err)?;
+        let pl_pos = self.builder.build_alloca(i64, "pos").map_err(llvm_err)?;
+        let _ = self.builder.build_store(pl_pos, zero).map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(pl_loop_bb);
+        // Loop header
+        self.builder.position_at_end(pl_loop_bb);
+        let pl_pos_v = self
+            .builder
+            .build_load(i64, pl_pos, "pos_v")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let pl_cmp = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, pl_pos_v, pl_leaf_cnt, "cmp")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(pl_cmp, pl_body_bb, pl_fb_bb);
+        // Loop body: try to bulk-push remaining elements
+        self.builder.position_at_end(pl_body_bb);
+        let pl_cur = self
+            .builder
+            .build_load(list_ty, pl_acc, "cur")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let pl_cur_node = self
+            .builder
+            .build_extract_value(pl_cur, 0, "cur_node")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let pl_cur_total = self
+            .builder
+            .build_extract_value(pl_cur, 1, "cur_total")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let pl_cur_h = self
+            .builder
+            .build_extract_value(pl_cur, 2, "cur_h")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let pl_cur_h0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, pl_cur_h, zero, "cur_h0")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(pl_cur_h0, pl_bulk_bb, pl_fallback_bb);
+        // Bulk path: result is h=0 (single leaf)
+        self.builder.position_at_end(pl_bulk_bb);
+        let pl_lst_lf = pl_cur_node;
+        let pl_lst_i8 = self
+            .builder
+            .build_pointer_cast(pl_lst_lf, ptr, "lst_i8")
+            .map_err(llvm_err)?;
+        let pl_lst_cnt_r = self
+            .builder
+            .build_load(i32, pl_lst_i8, "lst_cnt")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let pl_lst_cnt = self
+            .builder
+            .build_int_z_extend(pl_lst_cnt_r, i64, "lst_cnt64")
+            .map_err(llvm_err)?;
+        let pl_room = self
+            .builder
+            .build_int_sub(i64.const_int(64, false), pl_lst_cnt, "room")
+            .map_err(llvm_err)?;
+        let pl_rem = self
+            .builder
+            .build_int_sub(pl_leaf_cnt, pl_pos_v, "rem")
+            .map_err(llvm_err)?;
+        let pl_batch = self
+            .builder
+            .build_select(
+                self.builder
+                    .build_int_compare(IntPredicate::SLT, pl_rem, pl_room, "use_rem")
+                    .map_err(llvm_err)?,
+                pl_rem,
+                pl_room,
+                "batch",
+            )
+            .map_err(llvm_err)?
+            .into_int_value();
+        let pl_batch_z = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, pl_batch, zero, "batch_z")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(pl_batch_z, pl_fallback_bb, pl_memcpy_bb);
+        // memcpy block
+        self.builder.position_at_end(pl_memcpy_bb);
+        let pl_lf_int = self
+            .builder
+            .build_ptr_to_int(pl_lst_lf, i64, "lf_int")
+            .map_err(llvm_err)?;
+        let pl_rc_a = self
+            .builder
+            .build_int_sub(pl_lf_int, i64.const_int(8, false), "rc_a")
+            .map_err(llvm_err)?;
+        let pl_rc_p = self
+            .builder
+            .build_int_to_ptr(pl_rc_a, ptr, "rc_p")
+            .map_err(llvm_err)?;
+        let pl_rc_v = self
+            .builder
+            .build_load(i64, pl_rc_p, "rc_v")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let pl_need_cow = self
+            .builder
+            .build_int_compare(IntPredicate::SGT, pl_rc_v, one, "need_cow")
+            .map_err(llvm_err)?;
+        let pl_leaf_sz = leaf_ty.size_of().ok_or("leaf size")?;
+        let pl_cow_lf = self
+            .builder
+            .build_call(malloc_rc_fn, &[pl_leaf_sz.into()], "cow_lf")
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_pointer_value();
+        let _ = self
+            .builder
+            .build_call(
+                pl_memcpy_fn,
+                &[pl_cow_lf.into(), pl_lst_lf.into(), pl_leaf_sz.into()],
+                "",
+            )
+            .map_err(llvm_err)?;
+        let pl_use_lf = self
+            .builder
+            .build_select(pl_need_cow, pl_cow_lf, pl_lst_lf, "use_lf")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let pl_use_lf_i8 = self
+            .builder
+            .build_pointer_cast(pl_use_lf, ptr, "use_i8")
+            .map_err(llvm_err)?;
+        let pl_dst_off = self
+            .builder
+            .build_int_add(
+                i64.const_int(8, false),
+                self.builder
+                    .build_int_mul(pl_lst_cnt, i64.const_int(16, false), "dstoff_mul")
+                    .map_err(llvm_err)?,
+                "dstoff",
+            )
+            .map_err(llvm_err)?;
+        let pl_dst = unsafe {
+            self.builder
+                .build_gep(i8, pl_use_lf_i8, &[pl_dst_off], "dst")
+                .map_err(llvm_err)
+        }?;
+        let pl_src_off = self
+            .builder
+            .build_int_add(
+                i64.const_int(8, false),
+                self.builder
+                    .build_int_mul(pl_pos_v, i64.const_int(16, false), "srcoff_mul")
+                    .map_err(llvm_err)?,
+                "srcoff",
+            )
+            .map_err(llvm_err)?;
+        let pl_src = unsafe {
+            self.builder
+                .build_gep(i8, pl_leaf_i8, &[pl_src_off], "src")
+                .map_err(llvm_err)
+        }?;
+        let pl_cpy_sz = self
+            .builder
+            .build_int_mul(pl_batch, i64.const_int(16, false), "cpy_sz")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_call(
+                pl_memcpy_fn,
+                &[pl_dst.into(), pl_src.into(), pl_cpy_sz.into()],
+                "",
+            )
+            .map_err(llvm_err)?;
+        // rc_inc each copied element
+        let pl_rc_i = self.builder.build_alloca(i64, "rc_i").map_err(llvm_err)?;
+        let _ = self.builder.build_store(pl_rc_i, zero).map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(pl_rc_loop);
+        self.builder.position_at_end(pl_rc_loop);
+        let pl_rc_iv = self
+            .builder
+            .build_load(i64, pl_rc_i, "rc_iv")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let pl_rc_cmp = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, pl_rc_iv, pl_batch, "rc_cmp")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(pl_rc_cmp, pl_rc_body, pl_rc_done);
+        self.builder.position_at_end(pl_rc_body);
+        let pl_el_off = self
+            .builder
+            .build_int_add(
+                i64.const_int(8, false),
+                self.builder
+                    .build_int_mul(
+                        self.builder
+                            .build_int_add(pl_pos_v, pl_rc_iv, "el_idx")
+                            .map_err(llvm_err)?,
+                        i64.const_int(16, false),
+                        "el_off_mul",
+                    )
+                    .map_err(llvm_err)?,
+                "el_off",
+            )
+            .map_err(llvm_err)?;
+        let pl_el_p = unsafe {
+            self.builder
+                .build_gep(i8, pl_leaf_i8, &[pl_el_off], "el_p")
+                .map_err(llvm_err)
+        }?;
+        let pl_el_ev = self
+            .builder
+            .build_load(string_ty, pl_el_p, "el_ev")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let pl_el_dp = self
+            .builder
+            .build_extract_value(pl_el_ev, 1, "el_dp")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let _ = self
+            .builder
+            .build_call(pl_rc_inc_fn, &[pl_el_dp.into()], "")
+            .map_err(llvm_err)?;
+        let pl_rc_next = self
+            .builder
+            .build_int_add(pl_rc_iv, one, "rc_next")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_store(pl_rc_i, pl_rc_next)
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(pl_rc_loop);
+        // Update leaf count and accumulator
+        self.builder.position_at_end(pl_rc_done);
+        let pl_new_lc = self
+            .builder
+            .build_int_add(pl_lst_cnt, pl_batch, "new_lc")
+            .map_err(llvm_err)?;
+        let pl_new_lc_i32 = self
+            .builder
+            .build_int_truncate(pl_new_lc, i32, "new_lc_i32")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_store(pl_use_lf_i8, pl_new_lc_i32)
+            .map_err(llvm_err)?;
+        let pl_new_total = self
+            .builder
+            .build_int_add(pl_cur_total, pl_batch, "new_total")
+            .map_err(llvm_err)?;
+        let pl_undef = list_ty.get_undef();
+        let pl_v1 = self
+            .builder
+            .build_insert_value(pl_undef, pl_use_lf, 0, "v1")
+            .map_err(llvm_err)?;
+        let pl_v2 = self
+            .builder
+            .build_insert_value(pl_v1, pl_new_total, 1, "v2")
+            .map_err(llvm_err)?;
+        let pl_v3 = self
+            .builder
+            .build_insert_value(pl_v2, zero, 2, "v3")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_store(pl_acc, pl_v3).map_err(llvm_err)?;
+        let pl_nxt = self
+            .builder
+            .build_int_add(pl_pos_v, pl_batch, "nxt")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_store(pl_pos, pl_nxt).map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(pl_loop_bb);
+        // Fallback: push one element via action_list_push
+        self.builder.position_at_end(pl_fallback_bb);
+        let pl_fb_off = self
+            .builder
+            .build_int_add(
+                i64.const_int(8, false),
+                self.builder
+                    .build_int_mul(pl_pos_v, i64.const_int(16, false), "fb_off_m")
+                    .map_err(llvm_err)?,
+                "fb_off",
+            )
+            .map_err(llvm_err)?;
+        let pl_fb_ep = unsafe {
+            self.builder
+                .build_gep(i8, pl_leaf_i8, &[pl_fb_off], "fb_ep")
+                .map_err(llvm_err)
+        }?;
+        let pl_fb_ev = self
+            .builder
+            .build_load(string_ty, pl_fb_ep, "fb_ev")
+            .map_err(llvm_err)?;
+        let pl_fb_ed = self
+            .builder
+            .build_extract_value(pl_fb_ev.into_struct_value(), 1, "fb_ed")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let _ = self
+            .builder
+            .build_call(pl_rc_inc_fn, &[pl_fb_ed.into()], "")
+            .map_err(llvm_err)?;
+        let pl_fb_cur = self
+            .builder
+            .build_load(list_ty, pl_acc, "fb_cur")
+            .map_err(llvm_err)?;
+        let pl_fb_new = self
+            .builder
+            .build_call(
+                pl_push_fn,
+                &[pl_fb_cur.into(), pl_fb_ev.as_basic_value_enum().into()],
+                "fb_new",
+            )
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic();
+        let _ = self
+            .builder
+            .build_store(pl_acc, pl_fb_new)
+            .map_err(llvm_err)?;
+        let pl_fb_next = self
+            .builder
+            .build_int_add(pl_pos_v, one, "fb_next")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_store(pl_pos, pl_fb_next)
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(pl_loop_bb);
+        // Final branch
+        self.builder.position_at_end(pl_fb_bb);
+        let _ = self.builder.build_unconditional_branch(pl_done);
+        self.builder.position_at_end(pl_done);
+        let _ = self.builder.build_return(None);
+
         // ---- action_list_push_subtree(ptr acc, ptr node, i64 height) -> void ----
         // Pushes all elements from subtree into accumulator.
-        // h=0: bulk-memcpy from leaf; h=1: iterate children (leaves), bulk-memcpy each;
+        // h=0: delegate to push_leaf; h=1: iterate children (leaves), push_leaf each;
         // h>=2: iterate children, recurse.
         let ps_fn = self
             .module
             .get_function("action_list_push_subtree")
             .unwrap();
-        let ps_memcpy_fn = self.module.get_function("memcpy").unwrap();
-        let ps_rc_inc_fn = self.module.get_function("action_rc_inc").unwrap();
-        let ps_push_fn = self.module.get_function("action_list_push").unwrap();
-        let string_ty = self.string_type;
         let child_entry_ty = self.child_entry_type;
-        let list_ty = self.list_type;
-        let leaf_ty = self.leaf_type;
         let ps_entry = self.context.append_basic_block(ps_fn, "entry");
         let ps_h0_leaf = self.context.append_basic_block(ps_fn, "h0_leaf");
         let ps_h1_intl = self.context.append_basic_block(ps_fn, "h1_intl");
@@ -11232,377 +11610,13 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self
             .builder
             .build_conditional_branch(ps_is_h1, ps_h1_intl, ps_hgt1_recurse);
-        // === ps_h0_leaf: single leaf — push elements in bulk ===
-        // Shared bulk-push-of-leaf logic: iterates over elements in leaf, uses memcpy+rc_inc
-        // when result accumulator's last leaf has room.
+        // === ps_h0_leaf: delegate to action_list_push_leaf ===
         self.builder.position_at_end(ps_h0_leaf);
-        let ps_leaf_i8 = self
-            .builder
-            .build_pointer_cast(ps_node, ptr, "lf_i8")
-            .map_err(llvm_err)?;
-        let ps_leaf_cnt_r = self
-            .builder
-            .build_load(i32, ps_leaf_i8, "lf_cnt")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let ps_leaf_cnt = self
-            .builder
-            .build_int_z_extend(ps_leaf_cnt_r, i64, "cnt64")
-            .map_err(llvm_err)?;
-        // Position index alloca
-        let ps_pos = self.builder.build_alloca(i64, "pos").map_err(llvm_err)?;
-        let _ = self.builder.build_store(ps_pos, zero).map_err(llvm_err)?;
-        let ps_loop_bb = self.context.append_basic_block(ps_fn, "lp");
-        let ps_body_bb = self.context.append_basic_block(ps_fn, "body");
-        let _ = self.builder.build_unconditional_branch(ps_loop_bb);
-        // Loop header
-        self.builder.position_at_end(ps_loop_bb);
-        let ps_pos_v = self
-            .builder
-            .build_load(i64, ps_pos, "pos_v")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let ps_cmp = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, ps_pos_v, ps_leaf_cnt, "cmp")
-            .map_err(llvm_err)?;
-        let ps_fb_bb = self.context.append_basic_block(ps_fn, "fb");
+        let ps_leaf_fn = self.module.get_function("action_list_push_leaf").unwrap();
         let _ = self
             .builder
-            .build_conditional_branch(ps_cmp, ps_body_bb, ps_fb_bb);
-        // Loop body: try to bulk-push remaining elements
-        self.builder.position_at_end(ps_body_bb);
-        // Load current result accumulator
-        let ps_cur = self
-            .builder
-            .build_load(list_ty, ps_acc, "cur")
-            .map_err(llvm_err)?
-            .into_struct_value();
-        let ps_cur_node = self
-            .builder
-            .build_extract_value(ps_cur, 0, "cur_node")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let ps_cur_total = self
-            .builder
-            .build_extract_value(ps_cur, 1, "cur_total")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let ps_cur_h = self
-            .builder
-            .build_extract_value(ps_cur, 2, "cur_h")
-            .map_err(llvm_err)?
-            .into_int_value();
-        // Determine result's last leaf and its count
-        let ps_cur_h0 = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, ps_cur_h, zero, "cur_h0")
+            .build_call(ps_leaf_fn, &[ps_acc.into(), ps_node.into()], "")
             .map_err(llvm_err)?;
-        let ps_bulk_bb = self.context.append_basic_block(ps_fn, "bulk");
-        let ps_fallback_bb = self.context.append_basic_block(ps_fn, "fallback");
-        let _ = self
-            .builder
-            .build_conditional_branch(ps_cur_h0, ps_bulk_bb, ps_fallback_bb);
-        // Bulk path: result is h=0 (single leaf). memcpy, rc_inc, update counts.
-        self.builder.position_at_end(ps_bulk_bb);
-        let ps_lst_lf = ps_cur_node; // for h=0, node IS the leaf
-        let ps_lst_i8 = self
-            .builder
-            .build_pointer_cast(ps_lst_lf, ptr, "lst_i8")
-            .map_err(llvm_err)?;
-        let ps_lst_cnt_r = self
-            .builder
-            .build_load(i32, ps_lst_i8, "lst_cnt")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let ps_lst_cnt = self
-            .builder
-            .build_int_z_extend(ps_lst_cnt_r, i64, "lst_cnt64")
-            .map_err(llvm_err)?;
-        let ps_room = self
-            .builder
-            .build_int_sub(i64.const_int(64, false), ps_lst_cnt, "room")
-            .map_err(llvm_err)?;
-        let ps_rem = self
-            .builder
-            .build_int_sub(ps_leaf_cnt, ps_pos_v, "rem")
-            .map_err(llvm_err)?;
-        let ps_batch = self
-            .builder
-            .build_select(
-                self.builder
-                    .build_int_compare(IntPredicate::SLT, ps_rem, ps_room, "use_rem")
-                    .map_err(llvm_err)?,
-                ps_rem,
-                ps_room,
-                "batch",
-            )
-            .map_err(llvm_err)?
-            .into_int_value();
-        let ps_batch_z = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, ps_batch, zero, "batch_z")
-            .map_err(llvm_err)?;
-        let ps_memcpy_bb = self.context.append_basic_block(ps_fn, "memcpy");
-        let _ = self
-            .builder
-            .build_conditional_branch(ps_batch_z, ps_fallback_bb, ps_memcpy_bb);
-        // memcpy block
-        self.builder.position_at_end(ps_memcpy_bb);
-        // CoW check on last leaf
-        let ps_lf_int = self
-            .builder
-            .build_ptr_to_int(ps_lst_lf, i64, "lf_int")
-            .map_err(llvm_err)?;
-        let ps_rc_a = self
-            .builder
-            .build_int_sub(ps_lf_int, i64.const_int(8, false), "rc_a")
-            .map_err(llvm_err)?;
-        let ps_rc_p = self
-            .builder
-            .build_int_to_ptr(ps_rc_a, ptr, "rc_p")
-            .map_err(llvm_err)?;
-        let ps_rc_v = self
-            .builder
-            .build_load(i64, ps_rc_p, "rc_v")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let ps_need_cow = self
-            .builder
-            .build_int_compare(IntPredicate::SGT, ps_rc_v, one, "need_cow")
-            .map_err(llvm_err)?;
-        let ps_leaf_sz = leaf_ty.size_of().ok_or("leaf size")?;
-        let ps_cow_lf = self
-            .builder
-            .build_call(malloc_rc_fn, &[ps_leaf_sz.into()], "cow_lf")
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .unwrap_basic()
-            .into_pointer_value();
-        let _ = self
-            .builder
-            .build_call(
-                ps_memcpy_fn,
-                &[ps_cow_lf.into(), ps_lst_lf.into(), ps_leaf_sz.into()],
-                "",
-            )
-            .map_err(llvm_err)?;
-        let ps_use_lf = self
-            .builder
-            .build_select(ps_need_cow, ps_cow_lf, ps_lst_lf, "use_lf")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        // memcpy batch elements
-        let ps_use_lf_i8 = self
-            .builder
-            .build_pointer_cast(ps_use_lf, ptr, "use_i8")
-            .map_err(llvm_err)?;
-        let ps_dst_off = self
-            .builder
-            .build_int_add(
-                i64.const_int(8, false),
-                self.builder
-                    .build_int_mul(ps_lst_cnt, i64.const_int(16, false), "dstoff_mul")
-                    .map_err(llvm_err)?,
-                "dstoff",
-            )
-            .map_err(llvm_err)?;
-        let ps_dst = unsafe {
-            self.builder
-                .build_gep(i8, ps_use_lf_i8, &[ps_dst_off], "dst")
-                .map_err(llvm_err)
-        }?;
-        let ps_src_off = self
-            .builder
-            .build_int_add(
-                i64.const_int(8, false),
-                self.builder
-                    .build_int_mul(ps_pos_v, i64.const_int(16, false), "srcoff_mul")
-                    .map_err(llvm_err)?,
-                "srcoff",
-            )
-            .map_err(llvm_err)?;
-        let ps_src = unsafe {
-            self.builder
-                .build_gep(i8, ps_leaf_i8, &[ps_src_off], "src")
-                .map_err(llvm_err)
-        }?;
-        let ps_cpy_sz = self
-            .builder
-            .build_int_mul(ps_batch, i64.const_int(16, false), "cpy_sz")
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_call(
-                ps_memcpy_fn,
-                &[ps_dst.into(), ps_src.into(), ps_cpy_sz.into()],
-                "",
-            )
-            .map_err(llvm_err)?;
-        // rc_inc each copied element
-        let ps_rc_loop = self.context.append_basic_block(ps_fn, "rc_lp");
-        let ps_rc_body = self.context.append_basic_block(ps_fn, "rc_body");
-        let ps_rc_done = self.context.append_basic_block(ps_fn, "rc_done");
-        let ps_rc_i = self.builder.build_alloca(i64, "rc_i").map_err(llvm_err)?;
-        let _ = self.builder.build_store(ps_rc_i, zero).map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(ps_rc_loop);
-        self.builder.position_at_end(ps_rc_loop);
-        let ps_rc_iv = self
-            .builder
-            .build_load(i64, ps_rc_i, "rc_iv")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let ps_rc_cmp = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, ps_rc_iv, ps_batch, "rc_cmp")
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(ps_rc_cmp, ps_rc_body, ps_rc_done);
-        self.builder.position_at_end(ps_rc_body);
-        // Element index = pos_v + rc_iv. Element is at leaf+8 + idx*16.
-        // Load full string_type {i64 tag, ptr data} then extract data_ptr (field 1).
-        let ps_el_off = self
-            .builder
-            .build_int_add(
-                i64.const_int(8, false),
-                self.builder
-                    .build_int_mul(
-                        self.builder
-                            .build_int_add(ps_pos_v, ps_rc_iv, "el_idx")
-                            .map_err(llvm_err)?,
-                        i64.const_int(16, false),
-                        "el_off_mul",
-                    )
-                    .map_err(llvm_err)?,
-                "el_off",
-            )
-            .map_err(llvm_err)?;
-        let ps_el_p = unsafe {
-            self.builder
-                .build_gep(i8, ps_leaf_i8, &[ps_el_off], "el_p")
-                .map_err(llvm_err)
-        }?;
-        let ps_el_ev = self
-            .builder
-            .build_load(string_ty, ps_el_p, "el_ev")
-            .map_err(llvm_err)?
-            .into_struct_value();
-        let ps_el_dp = self
-            .builder
-            .build_extract_value(ps_el_ev, 1, "el_dp")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let _ = self
-            .builder
-            .build_call(ps_rc_inc_fn, &[ps_el_dp.into()], "")
-            .map_err(llvm_err)?;
-        let ps_rc_next = self
-            .builder
-            .build_int_add(ps_rc_iv, one, "rc_next")
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_store(ps_rc_i, ps_rc_next)
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(ps_rc_loop);
-        // Update leaf count and accumulator
-        self.builder.position_at_end(ps_rc_done);
-        let ps_new_lc = self
-            .builder
-            .build_int_add(ps_lst_cnt, ps_batch, "new_lc")
-            .map_err(llvm_err)?;
-        let ps_new_lc_i32 = self
-            .builder
-            .build_int_truncate(ps_new_lc, i32, "new_lc_i32")
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_store(ps_use_lf_i8, ps_new_lc_i32)
-            .map_err(llvm_err)?;
-        let ps_new_total = self
-            .builder
-            .build_int_add(ps_cur_total, ps_batch, "new_total")
-            .map_err(llvm_err)?;
-        let ps_undef = list_ty.get_undef();
-        let ps_v1 = self
-            .builder
-            .build_insert_value(ps_undef, ps_use_lf, 0, "v1")
-            .map_err(llvm_err)?;
-        let ps_v2 = self
-            .builder
-            .build_insert_value(ps_v1, ps_new_total, 1, "v2")
-            .map_err(llvm_err)?;
-        let ps_v3 = self
-            .builder
-            .build_insert_value(ps_v2, zero, 2, "v3")
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_store(ps_acc, ps_v3).map_err(llvm_err)?;
-        let ps_nxt = self
-            .builder
-            .build_int_add(ps_pos_v, ps_batch, "nxt")
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_store(ps_pos, ps_nxt).map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(ps_loop_bb);
-        // Fallback: push one element via action_list_push
-        self.builder.position_at_end(ps_fallback_bb);
-        let ps_fb_off = self
-            .builder
-            .build_int_add(
-                i64.const_int(8, false),
-                self.builder
-                    .build_int_mul(ps_pos_v, i64.const_int(16, false), "fb_off_m")
-                    .map_err(llvm_err)?,
-                "fb_off",
-            )
-            .map_err(llvm_err)?;
-        let ps_fb_ep = unsafe {
-            self.builder
-                .build_gep(i8, ps_leaf_i8, &[ps_fb_off], "fb_ep")
-                .map_err(llvm_err)
-        }?;
-        let ps_fb_ev = self
-            .builder
-            .build_load(string_ty, ps_fb_ep, "fb_ev")
-            .map_err(llvm_err)?;
-        let ps_fb_ed = self
-            .builder
-            .build_extract_value(ps_fb_ev.into_struct_value(), 1, "fb_ed")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let _ = self
-            .builder
-            .build_call(ps_rc_inc_fn, &[ps_fb_ed.into()], "")
-            .map_err(llvm_err)?;
-        let ps_fb_cur = self
-            .builder
-            .build_load(list_ty, ps_acc, "fb_cur")
-            .map_err(llvm_err)?;
-        let ps_fb_new = self
-            .builder
-            .build_call(
-                ps_push_fn,
-                &[ps_fb_cur.into(), ps_fb_ev.as_basic_value_enum().into()],
-                "fb_new",
-            )
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .unwrap_basic();
-        let _ = self
-            .builder
-            .build_store(ps_acc, ps_fb_new)
-            .map_err(llvm_err)?;
-        let ps_fb_next = self
-            .builder
-            .build_int_add(ps_pos_v, one, "fb_next")
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_store(ps_pos, ps_fb_next)
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(ps_loop_bb);
-        // Final branch
-        self.builder.position_at_end(ps_fb_bb);
         let _ = self.builder.build_unconditional_branch(ps_done);
         // === ps_h1_intl: internal node with leaf children ===
         self.builder.position_at_end(ps_h1_intl);
