@@ -97,6 +97,11 @@ impl<'ctx> CodeGen<'ctx> {
                     let alloca = self.builder.build_alloca(ty, name).map_err(llvm_err)?;
                     self.store_typed_value(&val, alloca, ty)?;
                     self.rc_inc_typed_value(&val)?;
+                    // Balance: if compile_block already rc_inc'd this variable
+                    // (transferred ownership through scope cleanup), undo that extra ref.
+                    if self.block_did_rc_inc {
+                        self.rc_dec_typed_value(&val)?;
+                    }
                     let fn_type = match &val {
                         TypedValue::Fn(_, ft) => Some(*ft),
                         TypedValue::Closure { .. } => None, // closure uses actual_fn_type

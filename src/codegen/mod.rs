@@ -452,6 +452,9 @@ pub struct CodeGen<'ctx> {
     /// Generic function definitions with type_params, indexed by name.
     /// Used for monomorphization at call sites.
     pub(super) generic_fun_defs: HashMap<String, Stmt>,
+    /// Tracks whether compile_block did an rc_inc on the last expression.
+    /// val stmt uses this to apply a balancing rc_dec.
+    pub(super) block_did_rc_inc: bool,
 }
 
 pub(super) struct TcoState<'ctx> {
@@ -624,6 +627,7 @@ impl<'ctx> CodeGen<'ctx> {
             nullable_types: HashMap::new(),
             not_null_set: HashSet::new(),
             generic_fun_defs: HashMap::new(),
+            block_did_rc_inc: false,
         }
     }
 
@@ -840,13 +844,18 @@ impl<'ctx> CodeGen<'ctx> {
                     self.rc_dec(data_ptr)?;
                 }
                 ValKind::Fn if var.is_closure => {
-                    // Closure: the alloca stores a pointer to the captures struct
+                    // Closure: the alloca stores a pointer to the captures struct.
+                    // First rc_dec captured heap values inside, then rc_dec the struct.
                     let cap_ptr = self
                         .builder
                         .build_load(self.ptr_ty(), var.ptr, "closure_cleanup")
                         .map_err(llvm_err)?
                         .into_pointer_value();
-                    self.rc_dec(cap_ptr)?;
+                    if let Some(closure_ty) = var.closure_ty {
+                        self.rc_dec_closure_captures(cap_ptr, closure_ty)?;
+                    } else {
+                        self.rc_dec(cap_ptr)?;
+                    }
                 }
                 _ => {}
             }
@@ -971,6 +980,69 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Decrement RC for a heap-typed value returned from a block expression.
+    /// RC decrement all captured heap values inside a closure's captures struct,
+    /// then rc_dec the captures struct itself.
+    fn rc_dec_closure_captures(
+        &self,
+        closure_ptr: PointerValue<'ctx>,
+        closure_ty: StructType<'ctx>,
+    ) -> Result<(), String> {
+        let typed_ptr = self
+            .builder
+            .build_pointer_cast(
+                closure_ptr,
+                self.context.ptr_type(inkwell::AddressSpace::default()),
+                "cc_typed",
+            )
+            .map_err(llvm_err)?;
+        let struct_val = self
+            .builder
+            .build_load(closure_ty, typed_ptr, "cc_val")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        for (i, field_type) in closure_ty.get_field_types().iter().enumerate() {
+            let field = self
+                .builder
+                .build_extract_value(struct_val, i as u32, "cc_f")
+                .map_err(llvm_err)?;
+            match field_type {
+                BasicTypeEnum::StructType(st) if *st == self.string_type => {
+                    let data_ptr = self
+                        .builder
+                        .build_extract_value(field.into_struct_value(), 1, "cc_sd")
+                        .map_err(llvm_err)?
+                        .into_pointer_value();
+                    self.rc_dec(data_ptr)?;
+                }
+                BasicTypeEnum::StructType(st) if *st == self.list_type => {
+                    let sv = field.into_struct_value();
+                    let data_ptr = self
+                        .builder
+                        .build_extract_value(sv, 0, "cc_ld")
+                        .map_err(llvm_err)?
+                        .into_pointer_value();
+                    let height = self
+                        .builder
+                        .build_extract_value(sv, 2, "cc_lh")
+                        .map_err(llvm_err)?
+                        .into_int_value();
+                    let rdl_fn = self.module.get_function("action_rc_dec_list_node").unwrap();
+                    let _ = self
+                        .builder
+                        .build_call(rdl_fn, &[data_ptr.into(), height.into()], "")
+                        .map_err(llvm_err)?;
+                }
+                BasicTypeEnum::PointerType(_) => {
+                    // Inner closure's captures struct pointer
+                    let inner_ptr = field.into_pointer_value();
+                    self.rc_dec(inner_ptr)?;
+                }
+                _ => {}
+            }
+        }
+        self.rc_dec(closure_ptr)
+    }
+
     /// Mirrors rc_inc_typed_value, used to balance compile_block's RC inc when
     /// the block result is discarded (e.g., used as a statement).
     pub(super) fn rc_dec_typed_value(&self, val: &TypedValue<'ctx>) -> Result<(), String> {
@@ -1007,8 +1079,12 @@ impl<'ctx> CodeGen<'ctx> {
                     .into_pointer_value();
                 self.rc_dec(data_ptr)?;
             }
-            TypedValue::Closure { closure_ptr, .. } => {
-                self.rc_dec(*closure_ptr)?;
+            TypedValue::Closure {
+                closure_ptr,
+                closure_ty,
+                ..
+            } => {
+                self.rc_dec_closure_captures(*closure_ptr, *closure_ty)?;
             }
             _ => {}
         }

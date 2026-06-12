@@ -1557,14 +1557,25 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
 
-        // RC inc the return value before cleaning up the scope — but only when
-        // the last expression is a local variable that cleanup would decrement.
-        // Literals and non-variable expressions don't need protection.
-        if self.is_scope_variable(&last) {
-            self.rc_inc_typed_value(&last)?;
+        // If a Return/Break/Continue was already emitted, the current block already
+        // has a terminator and cleanup was done by that handler — skip to avoid
+        // double rc_dec on scope variables.
+        let current_block = self.builder.get_insert_block().unwrap();
+        if current_block.get_terminator().is_none() {
+            // RC inc the return value before cleaning up the scope — but only when
+            // the last expression is a local variable that cleanup would decrement.
+            // Literals and non-variable expressions don't need protection.
+            if self.is_scope_variable(&last) {
+                self.rc_inc_typed_value(&last)?;
+                self.block_did_rc_inc = true;
+            } else {
+                self.block_did_rc_inc = false;
+            }
+            // RC cleanup: decrement refcounts on heap-typed variables in this scope
+            self.emit_scope_cleanup()?;
+        } else {
+            self.block_did_rc_inc = false;
         }
-        // RC cleanup: decrement refcounts on heap-typed variables in this scope
-        self.emit_scope_cleanup()?;
 
         let mut parent = Scope::new();
         std::mem::swap(&mut self.scope, &mut parent);
