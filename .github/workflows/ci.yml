@@ -99,7 +99,7 @@ jobs:
         run: cargo build --target ${{ matrix.target }}
       - name: Build (Linux)
         if: runner.os == 'Linux'
-        run: nix-shell --run "cargo build --target ${{ matrix.target }}"
+        run: nix-shell --run "RUSTFLAGS='-C debuginfo=0' cargo build --target ${{ matrix.target }}"
 
       # ── Smoke test (check) ────────────────────────────
       - name: Smoke test (check)
@@ -125,7 +125,7 @@ jobs:
         run: cargo test --target ${{ matrix.target }}
       - name: Test (Linux)
         if: runner.os == 'Linux'
-        run: nix-shell --run "cargo test --target ${{ matrix.target }}"
+        run: nix-shell --run "RUSTFLAGS='-C debuginfo=0' cargo test --target ${{ matrix.target }}"
 
       # ── Debug: show run output on failure ──────────────
       - name: Debug run output (Windows)
