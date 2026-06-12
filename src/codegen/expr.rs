@@ -1385,6 +1385,10 @@ impl<'ctx> CodeGen<'ctx> {
             )),
             (TypedValue::Str(a), TypedValue::Str(b)) => {
                 let cc = self.call_rt_with_2str("action_string_concat", *a, *b)?;
+                // Free intermediate operands (not scope variables) after concat
+                // takes ownership of the data.
+                self.rc_free_intermediate(l)?;
+                self.rc_free_intermediate(r)?;
                 match cc.try_as_basic_value().basic() {
                     Some(bv) => {
                         let alloca = self

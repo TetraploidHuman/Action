@@ -476,6 +476,10 @@ impl<'ctx> CodeGen<'ctx> {
                 }
 
                 let cc = self.builder.build_call(fn_val, &ca, "").map_err(llvm_err)?;
+                // Free intermediate arguments (not scope variables) after the call.
+                for av in &arg_vals {
+                    self.rc_free_intermediate(av)?;
+                }
                 return match cc.try_as_basic_value().basic() {
                     Some(bv) => self.bv_to_typed(bv),
                     None => Ok(TypedValue::Unit),
@@ -507,10 +511,13 @@ impl<'ctx> CodeGen<'ctx> {
                 let fn_type = fn_val.get_type();
                 let param_tys = fn_type.get_param_types();
                 let mut ca: Vec<BasicMetadataValueEnum> = Vec::new();
+                let mut direct_arg_vals: Vec<TypedValue<'ctx>> = Vec::new();
                 for (i, a) in args.iter().enumerate() {
+                    let av = self.compile_expr(a)?;
                     let bv = self.compile_and_load(a)?;
                     let casted = self.coerce_arg(bv, param_tys.get(i))?;
                     ca.push(casted.into());
+                    direct_arg_vals.push(av);
                 }
                 if let Some(lam) = trailing {
                     let bv = self.compile_and_load(lam)?;
@@ -519,6 +526,9 @@ impl<'ctx> CodeGen<'ctx> {
                 }
 
                 let cc = self.builder.build_call(fn_val, &ca, "").map_err(llvm_err)?;
+                for av in &direct_arg_vals {
+                    self.rc_free_intermediate(av)?;
+                }
                 return match cc.try_as_basic_value().basic() {
                     Some(bv) => self.bv_to_typed(bv),
                     None => Ok(TypedValue::Unit),

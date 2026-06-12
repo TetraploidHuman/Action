@@ -1884,14 +1884,30 @@ impl<'ctx> CodeGen<'ctx> {
                     None => Some(ptr),
                     Some(acc) => {
                         let cc = self.call_rt_with_2str("action_string_concat", acc, ptr)?;
-                        // Decrement old accumulator's RC since the concat result owns a new ref
-                        let old_str = self.load_string(acc)?;
-                        let old_data = self
-                            .builder
-                            .build_extract_value(old_str, 1, "old_data")
-                            .map_err(llvm_err)?
-                            .into_pointer_value();
-                        self.rc_dec(old_data)?;
+                        // Free the accumulator's data if it's an intermediate (not a scope
+                        // variable). Intermediates start at RC=0 so rc_inc+rc_dec triggers
+                        // the free via RC 0→1→0.
+                        if !self.is_scope_variable(&TypedValue::Str(acc)) {
+                            let old_str = self.load_string(acc)?;
+                            let old_data = self
+                                .builder
+                                .build_extract_value(old_str, 1, "old_data")
+                                .map_err(llvm_err)?
+                                .into_pointer_value();
+                            self.rc_inc(old_data)?;
+                            self.rc_dec(old_data)?;
+                        }
+                        // Free the part being concatenated if it's an intermediate.
+                        if !self.is_scope_variable(&TypedValue::Str(ptr)) {
+                            let part_str = self.load_string(ptr)?;
+                            let part_data = self
+                                .builder
+                                .build_extract_value(part_str, 1, "part_data")
+                                .map_err(llvm_err)?
+                                .into_pointer_value();
+                            self.rc_inc(part_data)?;
+                            self.rc_dec(part_data)?;
+                        }
                         match cc.try_as_basic_value().basic() {
                             Some(bv) => {
                                 let alloca = self

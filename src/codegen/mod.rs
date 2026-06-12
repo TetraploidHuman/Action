@@ -1091,6 +1091,16 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
+    /// Free an intermediate heap-typed value that is not a scope variable.
+    /// Intermediates start with RC=0; rc_inc+rc_dec triggers the free at RC=0.
+    pub(super) fn rc_free_intermediate(&self, val: &TypedValue<'ctx>) -> Result<(), String> {
+        if !self.is_scope_variable(val) {
+            self.rc_inc_typed_value(val)?;
+            self.rc_dec_typed_value(val)?;
+        }
+        Ok(())
+    }
+
     /// Check whether a TypedValue corresponds to a local variable in the current scope
     /// by comparing alloca pointers.
     fn is_scope_variable(&self, val: &TypedValue<'ctx>) -> bool {
