@@ -536,7 +536,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             Stmt::Expr { expr, .. } => {
                 let result = self.compile_expr(expr)?;
-                self.rc_dec_typed_value(&result)?;
+                self.rc_discard_value(&result)?;
             }
             Stmt::Return { value: expr, .. } => {
                 if let Some(e) = expr {

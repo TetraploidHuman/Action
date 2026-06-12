@@ -1549,10 +1549,21 @@ impl<'ctx> CodeGen<'ctx> {
         std::mem::swap(&mut self.scope, &mut saved);
         self.scope = Scope::with_parent(saved);
 
+        // Reset the flag — it will be set by inner compile_block calls for
+        // Stmt::Expr that are themselves blocks, and by the final handling below.
+        self.block_did_rc_inc = false;
+
         let mut last = TypedValue::Unit;
         for (_i, s) in stmts.iter().enumerate() {
             match s {
-                Stmt::Expr { expr: e, .. } => last = self.compile_expr(e)?,
+                Stmt::Expr { expr: e, .. } => {
+                    // Discard the previous expression result before overwriting it.
+                    // Non-last statement values are not used; heap-typed intermediates
+                    // (RC=0) need rc_inc+rc_dec to trigger free, and scope-variable
+                    // returns from inner blocks need rc_dec to drop the protection ref.
+                    self.rc_discard_value(&last)?;
+                    last = self.compile_expr(e)?;
+                }
                 _ => self.compile_stmt(s)?,
             }
         }

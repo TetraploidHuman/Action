@@ -257,7 +257,8 @@ impl<'ctx> CodeGen<'ctx> {
             .build_conditional_branch(cond_val, body_block, exit);
 
         self.builder.position_at_end(body_block);
-        self.compile_expr(body)?;
+        let body_val = self.compile_expr(body)?;
+        self.rc_discard_value(&body_val)?;
         let _ = self.builder.build_unconditional_branch(header);
 
         self.builder.position_at_end(exit);
@@ -284,7 +285,8 @@ impl<'ctx> CodeGen<'ctx> {
 
         let _ = self.builder.build_unconditional_branch(body_block);
         self.builder.position_at_end(body_block);
-        self.compile_expr(body)?;
+        let body_val = self.compile_expr(body)?;
+        self.rc_discard_value(&body_val)?;
         let _ = self.builder.build_unconditional_branch(body_block);
 
         self.builder.position_at_end(exit);
@@ -479,6 +481,8 @@ impl<'ctx> CodeGen<'ctx> {
             self.builder
                 .build_store(list_ptr, pushed)
                 .map_err(llvm_err)?;
+        } else {
+            self.rc_discard_value(&body_val)?;
         }
 
         // Branch to loop_next (increment)
@@ -707,6 +711,8 @@ impl<'ctx> CodeGen<'ctx> {
             self.builder
                 .build_store(list_ptr, pushed)
                 .map_err(llvm_err)?;
+        } else {
+            self.rc_discard_value(&body_val)?;
         }
 
         // Restore scope

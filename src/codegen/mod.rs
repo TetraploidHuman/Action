@@ -1101,6 +1101,21 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
+    /// Discard a value that is no longer needed (e.g., for-loop body return value).
+    /// Handles both scope variables (compile_block rc_inc'd for protection) and
+    /// intermediates (RC=0).
+    pub(super) fn rc_discard_value(&self, val: &TypedValue<'ctx>) -> Result<(), String> {
+        if self.block_did_rc_inc {
+            // compile_block already added one extra RC to protect from scope cleanup;
+            // undo that since the caller doesn't take ownership.
+            self.rc_dec_typed_value(val)?;
+        } else {
+            // Intermediate with RC=0; rc_inc+rc_dec triggers the free path.
+            self.rc_free_intermediate(val)?;
+        }
+        Ok(())
+    }
+
     /// Check whether a TypedValue corresponds to a local variable in the current scope
     /// by comparing alloca pointers.
     fn is_scope_variable(&self, val: &TypedValue<'ctx>) -> bool {
