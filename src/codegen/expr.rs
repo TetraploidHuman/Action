@@ -737,23 +737,17 @@ impl<'ctx> CodeGen<'ctx> {
                 .build_unconditional_branch(merge_block)
                 .map_err(llvm_err)?;
 
-            // Merge block: load and return the value
+            // Merge block: return the original lazy alloca so that
+            // is_scope_variable() can recognize heap-typed values.
             self.builder.position_at_end(merge_block);
-            let val = self
-                .builder
-                .build_load(lazy_ty, lazy_ptr, name)
-                .map_err(llvm_err)?;
 
             return match lazy_kind {
-                ValKind::Str => {
-                    let alloca = self
-                        .builder
-                        .build_alloca(lazy_ty, "str_tmp")
-                        .map_err(llvm_err)?;
-                    self.builder.build_store(alloca, val).map_err(llvm_err)?;
-                    Ok(TypedValue::Str(alloca))
-                }
+                ValKind::Str => Ok(TypedValue::Str(lazy_ptr)),
                 ValKind::Fn => {
+                    let val = self
+                        .builder
+                        .build_load(lazy_ty, lazy_ptr, name)
+                        .map_err(llvm_err)?;
                     if let BasicValueEnum::PointerValue(p) = val {
                         if let Some(ft) = lazy_fn_type {
                             return Ok(TypedValue::Fn(p, ft));
@@ -761,30 +755,9 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     self.bv_to_typed(val)
                 }
-                ValKind::List => {
-                    let alloca = self
-                        .builder
-                        .build_alloca(lazy_ty, "list_tmp")
-                        .map_err(llvm_err)?;
-                    self.builder.build_store(alloca, val).map_err(llvm_err)?;
-                    Ok(TypedValue::List(alloca))
-                }
-                ValKind::Map => {
-                    let alloca = self
-                        .builder
-                        .build_alloca(lazy_ty, "map_tmp")
-                        .map_err(llvm_err)?;
-                    self.builder.build_store(alloca, val).map_err(llvm_err)?;
-                    Ok(TypedValue::Map(alloca))
-                }
-                ValKind::Set => {
-                    let alloca = self
-                        .builder
-                        .build_alloca(lazy_ty, "set_tmp")
-                        .map_err(llvm_err)?;
-                    self.builder.build_store(alloca, val).map_err(llvm_err)?;
-                    Ok(TypedValue::Set(alloca))
-                }
+                ValKind::List => Ok(TypedValue::List(lazy_ptr)),
+                ValKind::Map => Ok(TypedValue::Map(lazy_ptr)),
+                ValKind::Set => Ok(TypedValue::Set(lazy_ptr)),
                 ValKind::Task => {
                     let task_ptr = self
                         .builder
@@ -801,6 +774,10 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 ValKind::LazyList => Ok(TypedValue::LazyList(lazy_ptr)),
                 ValKind::CString => {
+                    let val = self
+                        .builder
+                        .build_load(lazy_ty, lazy_ptr, name)
+                        .map_err(llvm_err)?;
                     if let BasicValueEnum::PointerValue(p) = val {
                         Ok(TypedValue::CString(p))
                     } else {
@@ -808,6 +785,10 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                 }
                 ValKind::Ptr => {
+                    let val = self
+                        .builder
+                        .build_load(lazy_ty, lazy_ptr, name)
+                        .map_err(llvm_err)?;
                     if let BasicValueEnum::PointerValue(p) = val {
                         Ok(TypedValue::Ptr(p))
                     } else {
@@ -815,6 +796,10 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                 }
                 ValKind::FileHandle => {
+                    let val = self
+                        .builder
+                        .build_load(lazy_ty, lazy_ptr, name)
+                        .map_err(llvm_err)?;
                     if let BasicValueEnum::PointerValue(p) = val {
                         Ok(TypedValue::FileHandle(p))
                     } else {
@@ -822,23 +807,11 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                 }
                 ValKind::Struct => {
-                    let alloca = self
-                        .builder
-                        .build_alloca(lazy_ty, "struct_tmp")
-                        .map_err(llvm_err)?;
-                    self.builder.build_store(alloca, val).map_err(llvm_err)?;
-                    Ok(TypedValue::Struct(
-                        alloca,
-                        val.into_struct_value().get_type(),
-                    ))
+                    let st = lazy_ty.into_struct_type();
+                    Ok(TypedValue::Struct(lazy_ptr, st))
                 }
                 ValKind::Enum => {
-                    let alloca = self
-                        .builder
-                        .build_alloca(lazy_ty, "enum_tmp")
-                        .map_err(llvm_err)?;
-                    self.builder.build_store(alloca, val).map_err(llvm_err)?;
-                    let et = val.into_struct_value().get_type();
+                    let et = lazy_ty.into_struct_type();
                     let inner_type = self
                         .scope
                         .get(name)
@@ -847,40 +820,35 @@ impl<'ctx> CodeGen<'ctx> {
                     let rc_managed = self
                         .scope
                         .get(name)
-                        .map(|v| v.enum_data_rc_managed)
-                        .unwrap_or(false);
-                    self.last_enum_inner = Some((inner_type, rc_managed));
-                    Ok(TypedValue::Enum(alloca, et, inner_type, rc_managed))
+                        .map_or(false, |v| v.enum_data_rc_managed);
+                    Ok(TypedValue::Enum(lazy_ptr, et, inner_type, rc_managed))
                 }
-                ValKind::Nullable => {
-                    let alloca = self
+                ValKind::Nullable => Ok(TypedValue::Nullable(lazy_ptr, lazy_ty)),
+                _ => {
+                    let val = self
                         .builder
-                        .build_alloca(lazy_ty, "nullable_tmp")
+                        .build_load(lazy_ty, lazy_ptr, name)
                         .map_err(llvm_err)?;
-                    self.builder.build_store(alloca, val).map_err(llvm_err)?;
-                    Ok(TypedValue::Nullable(alloca, lazy_ty))
+                    self.bv_to_typed(val)
                 }
-                _ => self.bv_to_typed(val),
             };
         }
 
         if let Some(var) = self.scope.get(name) {
-            let val = self
-                .builder
-                .build_load(var.ty, var.ptr, name)
-                .map_err(llvm_err)?;
+            // For heap-typed variables, return the original scope alloca directly
+            // so that is_scope_variable() can recognize them and compile_block's
+            // rc_inc/emit_scope_cleanup can properly protect them.
             let kind = var.kind;
 
             match kind {
                 ValKind::Str => {
-                    let alloca = self
-                        .builder
-                        .build_alloca(var.ty, "str_tmp")
-                        .map_err(llvm_err)?;
-                    self.builder.build_store(alloca, val).map_err(llvm_err)?;
-                    return Ok(TypedValue::Str(alloca));
+                    return Ok(TypedValue::Str(var.ptr));
                 }
                 ValKind::Fn => {
+                    let val = self
+                        .builder
+                        .build_load(var.ty, var.ptr, name)
+                        .map_err(llvm_err)?;
                     if let BasicValueEnum::PointerValue(p) = val {
                         if var.is_closure {
                             if let (Some(ct), Some(cfp), Some(aft)) =
@@ -912,28 +880,13 @@ impl<'ctx> CodeGen<'ctx> {
                     ));
                 }
                 ValKind::List => {
-                    let alloca = self
-                        .builder
-                        .build_alloca(var.ty, "list_tmp")
-                        .map_err(llvm_err)?;
-                    self.builder.build_store(alloca, val).map_err(llvm_err)?;
-                    return Ok(TypedValue::List(alloca));
+                    return Ok(TypedValue::List(var.ptr));
                 }
                 ValKind::Map => {
-                    let alloca = self
-                        .builder
-                        .build_alloca(var.ty, "map_tmp")
-                        .map_err(llvm_err)?;
-                    self.builder.build_store(alloca, val).map_err(llvm_err)?;
-                    return Ok(TypedValue::Map(alloca));
+                    return Ok(TypedValue::Map(var.ptr));
                 }
                 ValKind::Set => {
-                    let alloca = self
-                        .builder
-                        .build_alloca(var.ty, "set_tmp")
-                        .map_err(llvm_err)?;
-                    self.builder.build_store(alloca, val).map_err(llvm_err)?;
-                    return Ok(TypedValue::Set(alloca));
+                    return Ok(TypedValue::Set(var.ptr));
                 }
                 ValKind::Task => {
                     let task_ptr = self
@@ -953,45 +906,52 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(TypedValue::LazyList(var.ptr));
                 }
                 ValKind::CString => {
+                    let val = self
+                        .builder
+                        .build_load(var.ty, var.ptr, name)
+                        .map_err(llvm_err)?;
                     if let BasicValueEnum::PointerValue(p) = val {
                         return Ok(TypedValue::CString(p));
                     }
                     return self.bv_to_typed(val);
                 }
                 ValKind::Ptr => {
+                    let val = self
+                        .builder
+                        .build_load(var.ty, var.ptr, name)
+                        .map_err(llvm_err)?;
                     if let BasicValueEnum::PointerValue(p) = val {
                         return Ok(TypedValue::Ptr(p));
                     }
                     return self.bv_to_typed(val);
                 }
                 ValKind::FileHandle => {
+                    let val = self
+                        .builder
+                        .build_load(var.ty, var.ptr, name)
+                        .map_err(llvm_err)?;
                     if let BasicValueEnum::PointerValue(p) = val {
                         return Ok(TypedValue::FileHandle(p));
                     }
                     return self.bv_to_typed(val);
                 }
                 ValKind::Struct => {
-                    let alloca = self
-                        .builder
-                        .build_alloca(var.ty, "struct_tmp")
-                        .map_err(llvm_err)?;
-                    self.builder.build_store(alloca, val).map_err(llvm_err)?;
                     let st = var.ty.into_struct_type();
-                    return Ok(TypedValue::Struct(alloca, st));
+                    return Ok(TypedValue::Struct(var.ptr, st));
                 }
                 ValKind::Enum => {
-                    let alloca = self
-                        .builder
-                        .build_alloca(var.ty, "enum_tmp")
-                        .map_err(llvm_err)?;
-                    self.builder.build_store(alloca, val).map_err(llvm_err)?;
                     let et = var.ty.into_struct_type();
                     let inner_type = var.enum_inner_type.unwrap_or(InnerType::Int);
-                    return Ok(TypedValue::Enum(alloca, et, inner_type, false));
+                    let rc_managed = var.enum_data_rc_managed;
+                    return Ok(TypedValue::Enum(var.ptr, et, inner_type, rc_managed));
                 }
                 ValKind::Nullable => {
                     if self.not_null_set.contains(name) {
                         // Smart cast: extract inner value from nullable struct
+                        let val = self
+                            .builder
+                            .build_load(var.ty, var.ptr, name)
+                            .map_err(llvm_err)?;
                         let loaded_struct = val.into_struct_value();
                         let inner = self
                             .builder
@@ -999,14 +959,13 @@ impl<'ctx> CodeGen<'ctx> {
                             .map_err(llvm_err)?;
                         return self.bv_to_typed(inner);
                     }
-                    let alloca = self
-                        .builder
-                        .build_alloca(var.ty, "nullable_tmp")
-                        .map_err(llvm_err)?;
-                    self.builder.build_store(alloca, val).map_err(llvm_err)?;
-                    return Ok(TypedValue::Nullable(alloca, var.ty));
+                    return Ok(TypedValue::Nullable(var.ptr, var.ty));
                 }
                 _ => {
+                    let val = self
+                        .builder
+                        .build_load(var.ty, var.ptr, name)
+                        .map_err(llvm_err)?;
                     if val.is_struct_value() {
                         let alloca = self
                             .builder
