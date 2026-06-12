@@ -1098,7 +1098,12 @@ impl<'ctx> CodeGen<'ctx> {
                         // Shift elements within the elements array (offset 8), preserving the header.
                         let elems_ptr = unsafe {
                             self.builder
-                                .build_gep(self.context.i8_type(), data_ptr, &[self.i64_ty().const_int(8, false)], "elems")
+                                .build_gep(
+                                    self.context.i8_type(),
+                                    data_ptr,
+                                    &[self.i64_ty().const_int(8, false)],
+                                    "elems",
+                                )
                                 .map_err(llvm_err)
                         }?;
                         let src_ptr = unsafe {

@@ -3287,7 +3287,9 @@ impl<'ctx> CodeGen<'ctx> {
                 .basic()
                 .ok_or("get failed")?;
             // Delegate to action_print_string which dispatches on data pointer null-ness
-            let print_str_fn = self.module.get_function("action_print_string")
+            let print_str_fn = self
+                .module
+                .get_function("action_print_string")
                 .ok_or("action_print_string not found")?;
             let _ = self
                 .builder

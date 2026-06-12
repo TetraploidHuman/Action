@@ -1037,11 +1037,7 @@ impl<'ctx> CodeGen<'ctx> {
             _ => None,
         };
         match alloca {
-            Some(ptr) => self
-                .scope
-                .local_variables()
-                .values()
-                .any(|v| v.ptr == ptr),
+            Some(ptr) => self.scope.local_variables().values().any(|v| v.ptr == ptr),
             None => false,
         }
     }

@@ -1,10 +1,10 @@
 // Submodule: misc
 
 use crate::ast::*;
+use inkwell::types::BasicType;
 use inkwell::types::{BasicTypeEnum, StructType};
 use inkwell::values::{BasicValue, BasicValueEnum, PointerValue};
 use inkwell::IntPredicate;
-use inkwell::types::BasicType;
 
 use super::{llvm_err, CodeGen, InnerType, Scope, TypedValue, ValKind};
 
