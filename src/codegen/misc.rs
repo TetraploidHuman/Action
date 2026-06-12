@@ -4,6 +4,7 @@ use crate::ast::*;
 use inkwell::types::{BasicTypeEnum, StructType};
 use inkwell::values::{BasicValue, BasicValueEnum, PointerValue};
 use inkwell::IntPredicate;
+use inkwell::types::BasicType;
 
 use super::{llvm_err, CodeGen, InnerType, Scope, TypedValue, ValKind};
 
@@ -675,19 +676,75 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?
             }
             _ => {
-                // For struct types (String, etc.), fall back to ptr comparison or assume equal
-                // In practice, this path is only hit when both values are valid and neither is null
-                // For simplicity, compare the raw bytes via pointer equality (conservative)
-                let l_ptr_int = self
+                // For struct types (String, List, user-defined structs, etc.)
+                // compare the inner values byte-by-byte via memcmp.
+                let l_struct_val = self
                     .builder
-                    .build_ptr_to_int(l_ptr, self.i64_ty(), "l_ptr_i")
-                    .map_err(llvm_err)?;
-                let r_ptr_int = self
+                    .build_load(ty, l_ptr, "eq_ld_l")
+                    .map_err(llvm_err)?
+                    .into_struct_value();
+                let r_struct_val = self
                     .builder
-                    .build_ptr_to_int(r_ptr, self.i64_ty(), "r_ptr_i")
+                    .build_load(ty, r_ptr, "eq_ld_r")
+                    .map_err(llvm_err)?
+                    .into_struct_value();
+                let l_inner = self
+                    .builder
+                    .build_extract_value(l_struct_val, 1, "l_inner")
                     .map_err(llvm_err)?;
+                let r_inner = self
+                    .builder
+                    .build_extract_value(r_struct_val, 1, "r_inner")
+                    .map_err(llvm_err)?;
+                let inner_size = inner_field_ty
+                    .size_of()
+                    .ok_or("cannot get inner field size")?;
+                // Stack-allocate space for the inner values so we can memcmp them
+                let l_tmp = self
+                    .builder
+                    .build_alloca(inner_field_ty, "l_tmp")
+                    .map_err(llvm_err)?;
+                let r_tmp = self
+                    .builder
+                    .build_alloca(inner_field_ty, "r_tmp")
+                    .map_err(llvm_err)?;
+                self.builder.build_store(l_tmp, l_inner).map_err(llvm_err)?;
+                self.builder.build_store(r_tmp, r_inner).map_err(llvm_err)?;
+                let l_byte = self
+                    .builder
+                    .build_pointer_cast(l_tmp, self.ptr_ty(), "l_byte")
+                    .map_err(llvm_err)?;
+                let r_byte = self
+                    .builder
+                    .build_pointer_cast(r_tmp, self.ptr_ty(), "r_byte")
+                    .map_err(llvm_err)?;
+                // size_of returns an IntValue; zero-extend to i64 for memcmp
+                let inner_size_val = self
+                    .builder
+                    .build_int_z_extend(inner_size, self.i64_ty(), "inner_sz")
+                    .map_err(llvm_err)?;
+                let memcmp_fn = self
+                    .module
+                    .get_function("memcmp")
+                    .ok_or("memcmp not found")?;
+                let cmp_result = self
+                    .builder
+                    .build_call(
+                        memcmp_fn,
+                        &[l_byte.into(), r_byte.into(), inner_size_val.into()],
+                        "inner_cmp",
+                    )
+                    .map_err(llvm_err)?
+                    .try_as_basic_value()
+                    .unwrap_basic()
+                    .into_int_value();
                 self.builder
-                    .build_int_compare(IntPredicate::EQ, l_ptr_int, r_ptr_int, "ptr_eq")
+                    .build_int_compare(
+                        IntPredicate::EQ,
+                        cmp_result,
+                        self.i32_ty().const_int(0, false),
+                        "inner_eq",
+                    )
                     .map_err(llvm_err)?
             }
         };
@@ -803,16 +860,72 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?
             }
             _ => {
-                let l_ptr_int = self
+                // For struct types, compare inner values via memcmp (same as eq case)
+                let l_struct_val = self
                     .builder
-                    .build_ptr_to_int(l_ptr, self.i64_ty(), "l_ptr_i_ne")
-                    .map_err(llvm_err)?;
-                let r_ptr_int = self
+                    .build_load(ty, l_ptr, "ne_ld_l")
+                    .map_err(llvm_err)?
+                    .into_struct_value();
+                let r_struct_val = self
                     .builder
-                    .build_ptr_to_int(r_ptr, self.i64_ty(), "r_ptr_i_ne")
+                    .build_load(ty, r_ptr, "ne_ld_r")
+                    .map_err(llvm_err)?
+                    .into_struct_value();
+                let l_inner = self
+                    .builder
+                    .build_extract_value(l_struct_val, 1, "l_inner_ne")
                     .map_err(llvm_err)?;
+                let r_inner = self
+                    .builder
+                    .build_extract_value(r_struct_val, 1, "r_inner_ne")
+                    .map_err(llvm_err)?;
+                let inner_size = inner_field_ty
+                    .size_of()
+                    .ok_or("cannot get inner field size")?;
+                let l_tmp = self
+                    .builder
+                    .build_alloca(inner_field_ty, "l_tmp_ne")
+                    .map_err(llvm_err)?;
+                let r_tmp = self
+                    .builder
+                    .build_alloca(inner_field_ty, "r_tmp_ne")
+                    .map_err(llvm_err)?;
+                self.builder.build_store(l_tmp, l_inner).map_err(llvm_err)?;
+                self.builder.build_store(r_tmp, r_inner).map_err(llvm_err)?;
+                let l_byte = self
+                    .builder
+                    .build_pointer_cast(l_tmp, self.ptr_ty(), "l_byte_ne")
+                    .map_err(llvm_err)?;
+                let r_byte = self
+                    .builder
+                    .build_pointer_cast(r_tmp, self.ptr_ty(), "r_byte_ne")
+                    .map_err(llvm_err)?;
+                let inner_size_val = self
+                    .builder
+                    .build_int_z_extend(inner_size, self.i64_ty(), "inner_sz_ne")
+                    .map_err(llvm_err)?;
+                let memcmp_fn = self
+                    .module
+                    .get_function("memcmp")
+                    .ok_or("memcmp not found")?;
+                let cmp_result = self
+                    .builder
+                    .build_call(
+                        memcmp_fn,
+                        &[l_byte.into(), r_byte.into(), inner_size_val.into()],
+                        "inner_cmp_ne",
+                    )
+                    .map_err(llvm_err)?
+                    .try_as_basic_value()
+                    .unwrap_basic()
+                    .into_int_value();
                 self.builder
-                    .build_int_compare(IntPredicate::NE, l_ptr_int, r_ptr_int, "ptr_ne")
+                    .build_int_compare(
+                        IntPredicate::NE,
+                        cmp_result,
+                        self.i32_ty().const_int(0, false),
+                        "inner_ne",
+                    )
                     .map_err(llvm_err)?
             }
         };
@@ -897,9 +1010,36 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_insert_value(undef, b1.const_int(0, false), 0, "wrap_tv_flag")
             .map_err(llvm_err)?;
-        let value_bv = value
-            .to_bv()
-            .unwrap_or_else(|| self.i64_ty().const_int(0, false).into());
+        let value_bv = match value {
+            TypedValue::Str(ptr) => self
+                .builder
+                .build_load(self.string_type, *ptr, "wtv_s")
+                .map_err(llvm_err)?
+                .as_basic_value_enum(),
+            TypedValue::Struct(ptr, st) => {
+                let bt: BasicTypeEnum = (*st).into();
+                self.builder
+                    .build_load(bt, *ptr, "wtv_st")
+                    .map_err(llvm_err)?
+            }
+            TypedValue::Enum(ptr, et, ..) => {
+                let bt: BasicTypeEnum = (*et).into();
+                self.builder
+                    .build_load(bt, *ptr, "wtv_en")
+                    .map_err(llvm_err)?
+            }
+            TypedValue::List(ptr) | TypedValue::Map(ptr) | TypedValue::Set(ptr) => {
+                self.load_list(*ptr)?.as_basic_value_enum()
+            }
+            TypedValue::Bool(v) => self
+                .builder
+                .build_int_truncate(*v, self.bool_ty(), "wtv_bool")
+                .map_err(llvm_err)?
+                .as_basic_value_enum(),
+            _ => value
+                .to_bv()
+                .unwrap_or_else(|| self.i64_ty().const_int(0, false).into()),
+        };
         let wrapped = self
             .builder
             .build_insert_value(with_flag, value_bv, 1, "wrap_tv_val")
@@ -1417,8 +1557,12 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
 
-        // RC inc the return value before cleaning up the scope
-        self.rc_inc_typed_value(&last)?;
+        // RC inc the return value before cleaning up the scope — but only when
+        // the last expression is a local variable that cleanup would decrement.
+        // Literals and non-variable expressions don't need protection.
+        if self.is_scope_variable(&last) {
+            self.rc_inc_typed_value(&last)?;
+        }
         // RC cleanup: decrement refcounts on heap-typed variables in this scope
         self.emit_scope_cleanup()?;
 

@@ -540,6 +540,15 @@ fn test_stream_ops() {
 }
 
 #[test]
+fn test_stream_buffer() {
+    // Stress test: multiple send/receive cycles verify memmove preserves leaf header.
+    assert_eq!(
+        run_example("test_stream_buffer.at"),
+        "10203040100200300DONE"
+    );
+}
+
+#[test]
 fn test_coroutine() {
     assert_eq!(run_example("test_coroutine.at"), "322");
 }

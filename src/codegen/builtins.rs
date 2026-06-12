@@ -178,7 +178,6 @@ impl<'ctx> CodeGen<'ctx> {
                 || name == "setIsSubset"
                 || name == "setInsert"
                 || name == "setRemove"
-                || name == "randShuffle"
                 || name == "sorted"
                 || name == "readDir"
                 || name == "identity"
@@ -1095,9 +1094,16 @@ impl<'ctx> CodeGen<'ctx> {
                             .module
                             .get_function("memmove")
                             .ok_or("memmove not found")?;
+                        // data_ptr points to the leaf node start (count+pad header).
+                        // Shift elements within the elements array (offset 8), preserving the header.
+                        let elems_ptr = unsafe {
+                            self.builder
+                                .build_gep(self.context.i8_type(), data_ptr, &[self.i64_ty().const_int(8, false)], "elems")
+                                .map_err(llvm_err)
+                        }?;
                         let src_ptr = unsafe {
                             self.builder
-                                .build_gep(self.string_type, data_ptr, &[one], "src")
+                                .build_gep(self.string_type, elems_ptr, &[one], "src")
                                 .map_err(llvm_err)
                         }?;
                         let elem_size = self.i64_ty().const_int(16, false);
@@ -1109,7 +1115,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .builder
                             .build_call(
                                 mm_fn,
-                                &[data_ptr.into(), src_ptr.into(), move_bytes.into()],
+                                &[elems_ptr.into(), src_ptr.into(), move_bytes.into()],
                                 "",
                             )
                             .map_err(llvm_err)?;

@@ -970,6 +970,82 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
+    /// Decrement RC for a heap-typed value returned from a block expression.
+    /// Mirrors rc_inc_typed_value, used to balance compile_block's RC inc when
+    /// the block result is discarded (e.g., used as a statement).
+    pub(super) fn rc_dec_typed_value(&self, val: &TypedValue<'ctx>) -> Result<(), String> {
+        match val {
+            TypedValue::Str(ptr) => {
+                let str_val = self.load_string(*ptr)?;
+                let data_ptr = self
+                    .builder
+                    .build_extract_value(str_val, 1, "data")
+                    .map_err(llvm_err)?
+                    .into_pointer_value();
+                self.rc_dec(data_ptr)?;
+            }
+            TypedValue::List(ptr) | TypedValue::Map(ptr) | TypedValue::Set(ptr) => {
+                let list_val = self.load_list(*ptr)?;
+                let data_ptr = self
+                    .builder
+                    .build_extract_value(list_val, 0, "data")
+                    .map_err(llvm_err)?
+                    .into_pointer_value();
+                self.rc_dec(data_ptr)?;
+            }
+            TypedValue::LazyList(_) => {}
+            TypedValue::Enum(alloca, enum_ty, _, true) => {
+                let bt: BasicTypeEnum = (*enum_ty).into();
+                let loaded = self
+                    .builder
+                    .build_load(bt, *alloca, "enum_rcdec")
+                    .map_err(llvm_err)?;
+                let data_ptr = self
+                    .builder
+                    .build_extract_value(loaded.into_struct_value(), 1, "edata")
+                    .map_err(llvm_err)?
+                    .into_pointer_value();
+                self.rc_dec(data_ptr)?;
+            }
+            TypedValue::Closure { closure_ptr, .. } => {
+                self.rc_dec(*closure_ptr)?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Check whether a TypedValue corresponds to a local variable in the current scope
+    /// by comparing alloca pointers.
+    fn is_scope_variable(&self, val: &TypedValue<'ctx>) -> bool {
+        let alloca: Option<PointerValue<'ctx>> = match val {
+            TypedValue::Str(p)
+            | TypedValue::List(p)
+            | TypedValue::Map(p)
+            | TypedValue::Set(p)
+            | TypedValue::Task(p)
+            | TypedValue::Stream(p)
+            | TypedValue::LazyList(p)
+            | TypedValue::CString(p)
+            | TypedValue::FileHandle(p)
+            | TypedValue::Ptr(p) => Some(*p),
+            TypedValue::Struct(p, _) => Some(*p),
+            TypedValue::Enum(p, _, _, _) => Some(*p),
+            TypedValue::Nullable(p, _) => Some(*p),
+            TypedValue::Fn(p, _) => Some(*p),
+            TypedValue::Closure { closure_ptr, .. } => Some(*closure_ptr),
+            _ => None,
+        };
+        match alloca {
+            Some(ptr) => self
+                .scope
+                .local_variables()
+                .values()
+                .any(|v| v.ptr == ptr),
+            None => false,
+        }
+    }
+
     /// Load a string struct value from its alloca pointer
     fn load_string(
         &self,

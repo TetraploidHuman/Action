@@ -530,7 +530,8 @@ impl<'ctx> CodeGen<'ctx> {
                 self.compile_expr(&Expr::Break)?;
             }
             Stmt::Expr { expr, .. } => {
-                self.compile_expr(expr)?;
+                let result = self.compile_expr(expr)?;
+                self.rc_dec_typed_value(&result)?;
             }
             Stmt::Return { value: expr, .. } => {
                 if let Some(e) = expr {
@@ -585,8 +586,11 @@ impl<'ctx> CodeGen<'ctx> {
                     }
 
                     let v = self.compile_expr(e)?;
-                    // RC inc the return value before cleaning up the scope
-                    self.rc_inc_typed_value(&v)?;
+                    // RC inc the return value before cleaning up the scope — only
+                    // when the value is a local variable that cleanup would decrement.
+                    if self.is_scope_variable(&v) {
+                        self.rc_inc_typed_value(&v)?;
+                    }
                     // RC cleanup: decrement refcounts on heap-typed variables in this scope
                     self.emit_scope_cleanup()?;
                     if let Some(bv) = v.to_bv() {

@@ -899,6 +899,8 @@ impl<'ctx> CodeGen<'ctx> {
             let entry_bb = self.context.append_basic_block(str_eq_fn, "entry");
             let compare_bb = self.context.append_basic_block(str_eq_fn, "compare");
             let check_ptr_bb = self.context.append_basic_block(str_eq_fn, "check_ptr");
+            let both_null_bb = self.context.append_basic_block(str_eq_fn, "both_null");
+            let one_null_bb = self.context.append_basic_block(str_eq_fn, "one_null");
             let do_memcmp_bb = self.context.append_basic_block(str_eq_fn, "do_memcmp");
             let true_bb = self.context.append_basic_block(str_eq_fn, "true");
             let false_bb = self.context.append_basic_block(str_eq_fn, "false");
@@ -935,7 +937,9 @@ impl<'ctx> CodeGen<'ctx> {
                 .builder
                 .build_conditional_branch(is_empty, true_bb, check_ptr_bb);
 
-            // Check for null pointers: if either is null, it's a scalar comparison — tags already match, so equal
+            // Check for null pointers: if both are null → scalars, equal (tags already match).
+            // If exactly one is null → one scalar, one string → not equal.
+            // If both non-null → string comparison via memcmp.
             self.builder.position_at_end(check_ptr_bb);
             let data1 = self
                 .builder
@@ -956,13 +960,23 @@ impl<'ctx> CodeGen<'ctx> {
                 .builder
                 .build_int_compare(IntPredicate::EQ, data2, null_ptr, "d2_null")
                 .map_err(llvm_err)?;
-            let any_null = self
+            let both_null = self
                 .builder
-                .build_or(d1_null, d2_null, "any_null")
+                .build_and(d1_null, d2_null, "both_null")
+                .map_err(llvm_err)?;
+            let one_null = self
+                .builder
+                .build_xor(d1_null, d2_null, "one_null")
                 .map_err(llvm_err)?;
             let _ = self
                 .builder
-                .build_conditional_branch(any_null, true_bb, do_memcmp_bb);
+                .build_conditional_branch(both_null, both_null_bb, one_null_bb);
+            self.builder.position_at_end(both_null_bb);
+            let _ = self.builder.build_unconditional_branch(true_bb);
+            self.builder.position_at_end(one_null_bb);
+            let _ = self
+                .builder
+                .build_conditional_branch(one_null, false_bb, do_memcmp_bb);
 
             self.builder.position_at_end(do_memcmp_bb);
             let memcmp_call = self
@@ -3272,16 +3286,12 @@ impl<'ctx> CodeGen<'ctx> {
                 .try_as_basic_value()
                 .basic()
                 .ok_or("get failed")?;
-            let lp_elem = lp_elem_val.into_struct_value();
-            let lp_tag = self
-                .builder
-                .build_extract_value(lp_elem, 0, "lptag")
-                .map_err(llvm_err)?
-                .into_int_value();
-            // Print integer tag for now
+            // Delegate to action_print_string which dispatches on data pointer null-ness
+            let print_str_fn = self.module.get_function("action_print_string")
+                .ok_or("action_print_string not found")?;
             let _ = self
                 .builder
-                .build_call(printf_fn, &[fmt_int_ptr.into(), lp_tag.into()], "");
+                .build_call(print_str_fn, &[lp_elem_val.into()], "");
             // Next
             let lp_next = self
                 .builder
