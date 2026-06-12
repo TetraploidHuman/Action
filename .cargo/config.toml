@@ -1,0 +1,6 @@
+# Disable debuginfo for dev builds to avoid rustc SIGSEGV.
+# The CodeGen::init() Rust function is ~10000 lines and generates
+# very large LLVM IR that overflows the DWARF debug info emitter's
+# stack during compilation.  This is a known LLVM upstream issue.
+[profile.dev]
+debug = 0
