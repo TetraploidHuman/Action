@@ -370,7 +370,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Track write position in result list (separate from loop counter,
         // needed when continue skips some elements)
-        let collect_pos = if result_list.is_some() {
+        let _collect_pos = if result_list.is_some() {
             let pos = self
                 .builder
                 .build_alloca(i64, "collect_pos")
@@ -436,19 +436,14 @@ impl<'ctx> CodeGen<'ctx> {
         // Loop body
         self.builder.position_at_end(loop_body);
 
-        // For list iteration: load the element at current index into val_alloca
+        // For list iteration: load the element at current index via action_list_get (tree-aware)
         if let (Some(va), Some(list_ptr)) = (val_alloca, input_list_ptr) {
             let loaded = self.load_list(list_ptr)?;
-            let data_ptr = self.list_data_ptr(loaded)?;
-            let fat_elem_ptr = unsafe {
-                self.builder
-                    .build_gep(self.string_type, data_ptr, &[current], "fat_elem")
-                    .map_err(llvm_err)
-            }?;
-            let fat_elem = self
-                .builder
-                .build_load(self.string_type, fat_elem_ptr, "fat_val")
-                .map_err(llvm_err)?;
+            let list_get_cc = self.call_rt("action_list_get", &[loaded.into(), current.into()])?;
+            let fat_elem = list_get_cc
+                .try_as_basic_value()
+                .basic()
+                .ok_or("list_get failed")?;
             let tag = self
                 .builder
                 .build_extract_value(fat_elem.into_struct_value(), 0, "elem_tag")
@@ -472,28 +467,18 @@ impl<'ctx> CodeGen<'ctx> {
         let body_val = self.compile_expr(body)?;
 
         // Collect result if needed
-        if let (Some(list_ptr), Some(pos)) = (result_list, collect_pos) {
+        if let Some(list_ptr) = result_list {
             let list_loaded = self.load_list(list_ptr)?;
             let elem_fat = self.to_fat_struct(&body_val)?;
-            let data_ptr = self.list_data_ptr(list_loaded)?;
-            let pos_val = self
-                .builder
-                .build_load(i64, pos, "pos_val")
-                .map_err(llvm_err)?
-                .into_int_value();
-            let fat_elem_ptr = unsafe {
-                self.builder
-                    .build_gep(self.string_type, data_ptr, &[pos_val], "collect_elem")
-                    .map_err(llvm_err)
-            }?;
+            let push_cc =
+                self.call_rt("action_list_push", &[list_loaded.into(), elem_fat.into()])?;
+            let pushed = push_cc
+                .try_as_basic_value()
+                .basic()
+                .ok_or("list_push failed")?;
             self.builder
-                .build_store(fat_elem_ptr, elem_fat)
+                .build_store(list_ptr, pushed)
                 .map_err(llvm_err)?;
-            let next_pos = self
-                .builder
-                .build_int_add(pos_val, i64.const_int(1, false), "pos_next")
-                .map_err(llvm_err)?;
-            self.builder.build_store(pos, next_pos).map_err(llvm_err)?;
         }
 
         // Branch to loop_next (increment)

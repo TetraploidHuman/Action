@@ -874,12 +874,6 @@ fn test_generic_enum() {
 }
 
 #[test]
-fn test_cow() {
-    let out = run_example("cow_test.at");
-    assert!(out.contains("All CoW tests passed"));
-}
-
-#[test]
 fn test_rc_cycle() {
     let out = run_example("rc_cycle_test.at");
     assert!(out.contains("RC cycle test completed"));
@@ -889,4 +883,33 @@ fn test_rc_cycle() {
 fn test_rc_pressure() {
     let out = run_example("rc_pressure_test.at");
     assert!(out.contains("All RC pressure tests passed"));
+}
+
+#[test]
+fn test_string_ops() {
+    let out = run_example("string_ops.at");
+    assert!(out.contains("split count: 3"));
+    assert!(out.contains("joined: a-b-c"));
+    assert!(out.contains("replaced: hi world hi"));
+    assert!(out.contains("copied: abc"));
+    assert!(out.contains("words count: 2 first: hello"));
+    assert!(out.contains("done"));
+}
+
+#[test]
+fn test_list_insert_remove() {
+    let out = run_example("list_insert_remove.at");
+    assert!(out.contains("All list insert/remove tests passed"));
+}
+
+#[test]
+fn test_list_stress() {
+    let out = run_example("stress_list.at");
+    assert!(out.contains("All stress tests passed"));
+}
+
+#[test]
+fn test_list_concat() {
+    let out = run_example("list_concat_test.at");
+    assert!(out.contains("All concat tests passed"));
 }

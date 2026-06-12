@@ -159,19 +159,6 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(map_ptr, new_map)
             .map_err(llvm_err)?;
-        // RC management: inc new data buffer, dec old
-        let new_data = self
-            .builder
-            .build_extract_value(new_map.into_struct_value(), 0, "mi_new_data")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        self.rc_inc(new_data)?;
-        let old_data = self
-            .builder
-            .build_extract_value(map_loaded, 0, "mi_old_data")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        self.rc_dec(old_data)?;
         Ok(TypedValue::Map(map_ptr))
     }
 
@@ -211,19 +198,6 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(map_ptr, new_map)
             .map_err(llvm_err)?;
-        // RC management: inc new data buffer, dec old
-        let new_data = self
-            .builder
-            .build_extract_value(new_map.into_struct_value(), 0, "mr_new_data")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        self.rc_inc(new_data)?;
-        let old_data = self
-            .builder
-            .build_extract_value(map_loaded, 0, "mr_old_data")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        self.rc_dec(old_data)?;
         Ok(TypedValue::Map(map_ptr))
     }
 
@@ -495,8 +469,6 @@ impl<'ctx> CodeGen<'ctx> {
                 // store_value_to_alloca handles load+store for complex types
                 self.store_value_to_alloca(v, field_ptr)?;
             }
-            // The first reference will be taken by the variable binding (compile_let)
-            // or by the function parameter. Don't inc here — action_malloc_rc starts at 0.
             // Determine inner type from the first data argument
             let inner = compiled.first().map_or(InnerType::Int, |v| match v {
                 TypedValue::Float(_) => InnerType::Float,

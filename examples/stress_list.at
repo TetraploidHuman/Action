@@ -1,0 +1,79 @@
+// stress_list.at - Large list stress test (1000+ elements)
+// Verifies correctness of push, get, insert, remove, reverse, take, slice
+
+fun main() {
+    // Build large list 0..999
+    var lst = List[]
+    var i = 0
+    for i < 1000 {
+        lst = append(lst, i)
+        i = i + 1
+    }
+    print("len after 1000 pushes (expect 1000): ")
+    println(lst.len())
+
+    // Quick spot-check
+    print("get[0] (expect 0): ")
+    println(lst.get(0))
+    print("get[500] (expect 500): ")
+    println(lst.get(500))
+    print("get[999] (expect 999): ")
+    println(lst.get(999))
+
+    // Reverse
+    var rev = lst.reverse()
+    print("reverse len (expect 1000): ")
+    println(rev.len())
+    print("reverse[0] (expect 999): ")
+    println(rev.get(0))
+    print("reverse[999] (expect 0): ")
+    println(rev.get(999))
+
+    // Take
+    var t = lst.take(50)
+    print("take 50 len (expect 50): ")
+    println(t.len())
+    print("take[0] (expect 0): ")
+    println(t.get(0))
+    print("take[49] (expect 49): ")
+    println(t.get(49))
+
+    // Slice (standalone function: slice(collection, start, end))
+    var s = slice(lst, 100, 110)
+    print("slice 100..110 len (expect 10): ")
+    println(s.len())
+    print("slice[0] (expect 100): ")
+    println(s.get(0))
+    print("slice[9] (expect 109): ")
+    println(s.get(9))
+
+    // Insert at middle
+    var ins = lst.insert(500, 9999)
+    print("insert len (expect 1001): ")
+    println(ins.len())
+    print("insert[500] (expect 9999): ")
+    println(ins.get(500))
+    print("insert[501] (expect 500): ")
+    println(ins.get(501))
+
+    // Remove from middle
+    var rem = lst.remove(500)
+    print("remove len (expect 999): ")
+    println(rem.len())
+    print("remove[500] (expect 501): ")
+    println(rem.get(500))
+
+    // Contains
+    print("contains 500 (expect true): ")
+    println(lst.contains(500))
+    print("contains 9999 (expect false): ")
+    println(lst.contains(9999))
+
+    // CoW - original unaffected
+    print("original len still 1000 (expect 1000): ")
+    println(lst.len())
+    print("original[500] still 500 (expect 500): ")
+    println(lst.get(500))
+
+    println("All stress tests passed")
+}

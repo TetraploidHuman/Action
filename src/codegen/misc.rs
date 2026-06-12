@@ -1417,12 +1417,8 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
 
-        // RC inc the return value before cleaning up the scope.
-        // Without this, emit_scope_cleanup would rc_dec the variable being
-        // returned (e.g. `var r = ...; r`), freeing its data before the
-        // caller can take ownership.
+        // RC inc the return value before cleaning up the scope
         self.rc_inc_typed_value(&last)?;
-
         // RC cleanup: decrement refcounts on heap-typed variables in this scope
         self.emit_scope_cleanup()?;
 
@@ -1455,14 +1451,19 @@ impl<'ctx> CodeGen<'ctx> {
                             name
                         ));
                     }
-                    (
-                        var.ptr,
-                        var.kind,
-                        var.ty,
-                        var.enum_data_rc_managed,
-                        var.is_closure,
-                    )
+                    (var.ptr, var.kind, var.ty, var.enum_data_rc_managed, var.is_closure)
                 };
+                // Dec RC of old value before overwriting
+                if var_is_closure {
+                    let cap_ptr = self
+                        .builder
+                        .build_load(self.ptr_ty(), var_ptr, "fn_dec_ptr")
+                        .map_err(llvm_err)?
+                        .into_pointer_value();
+                    self.rc_dec(cap_ptr)?;
+                } else {
+                    self.rc_dec_at(var_ptr, var_kind, var_ty, var_rc_managed)?;
+                }
                 // Wrap non-nullable value into nullable when target is nullable
                 let v = if var_kind == ValKind::Nullable && !matches!(&v, TypedValue::Nullable(..))
                 {
@@ -1472,8 +1473,6 @@ impl<'ctx> CodeGen<'ctx> {
                 } else {
                     v
                 };
-                // Decrement RC of old value before overwriting
-                self.rc_dec_at(var_ptr, var_kind, var_ty, var_rc_managed, var_is_closure)?;
                 match &v {
                     TypedValue::Str(ptr) => {
                         let str_struct = self.load_string(*ptr)?;

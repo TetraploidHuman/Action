@@ -24,7 +24,6 @@ pkgs.mkShell {
 
   LLVM_SYS_211_PREFIX = "${pkgs.llvmPackages_21.llvm.dev}";
   LLVM_CONFIG_PATH = "${pkgs.llvmPackages_21.llvm.dev}/bin/llvm-config";
-
   shellHook = ''
     echo "Atomic Language Development Environment"
     echo "LLVM version: $(llvm-config --version)"

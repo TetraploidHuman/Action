@@ -76,7 +76,6 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     TypedValue::Str(ptr) => {
                         // Copy string: load struct, allocate new, store back
-                        // RC is handled by rc_inc_typed_value when the result is bound to a variable
                         let loaded = self.load_string(*ptr)?;
                         let new_alloca = self
                             .builder

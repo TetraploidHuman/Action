@@ -154,6 +154,8 @@ impl<'ctx> CodeGen<'ctx> {
                 || name == "toInt"
                 || name == "toFloat"
                 || name == "init"
+                || name == "insert"
+                || name == "remove"
                 || name == "chars"
                 || name == "setToList"
                 || name == "setFromList"
@@ -1312,10 +1314,22 @@ impl<'ctx> CodeGen<'ctx> {
                         let new_func = Expr::Ident(method.to_string());
                         return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                     }
+                    // Two-arg methods: f(list, arg1, arg2) — dispatch to builtin_stdlib
+                    "insert" => {
+                        if args.len() != 2 {
+                            return Err(format!("list.{} expects 2 arguments", method));
+                        }
+                        let new_func = Expr::Ident(method.to_string());
+                        return self.compile_call(
+                            &new_func,
+                            &[receiver.as_ref().clone(), args[0].clone(), args[1].clone()],
+                            &None,
+                        );
+                    }
                     // Single-arg methods: f(list, arg) — dispatch to builtin_stdlib
                     "get" | "contains" | "take" | "drop" | "append" | "prepend" | "indexOf"
                     | "slice" | "splitAt" | "chunks" | "windows" | "repeat" | "withIndex"
-                    | "zip" | "count" | "partition" => {
+                    | "remove" | "zip" | "count" | "partition" => {
                         if args.len() != 1 {
                             return Err(format!("list.{} expects 1 argument", method));
                         }
@@ -4254,11 +4268,6 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(collector_list, 1, "tc")
             .map_err(llvm_err)?
             .into_int_value();
-        let task_data = self
-            .builder
-            .build_extract_value(collector_list, 0, "td")
-            .map_err(llvm_err)?
-            .into_pointer_value();
 
         // Create result list
         let result_cap = self.i64_ty().const_int(4, false);
@@ -4328,16 +4337,12 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.builder.position_at_end(loop_body);
 
-        // Load task fat struct from collector[i]
-        let elem_gep = unsafe {
-            self.builder
-                .build_gep(self.string_type, task_data, &[i_val], "cs_gep")
-                .map_err(llvm_err)
-        }?;
-        let elem_fat = self
-            .builder
-            .build_load(self.string_type, elem_gep, "cs_fat")
-            .map_err(llvm_err)?
+        // Load task fat struct from collector[i] via action_list_get (tree-aware)
+        let cs_get_cc = self.call_rt("action_list_get", &[collector_list.into(), i_val.into()])?;
+        let elem_fat = cs_get_cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("list_get failed")?
             .into_struct_value();
         let task_i64 = self
             .builder
@@ -4480,15 +4485,11 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Cancel loop body: cancel one task
         self.builder.position_at_end(cancel_loop_body);
-        let c_elem_gep = unsafe {
-            self.builder
-                .build_gep(self.string_type, task_data, &[cj_val], "cs_cgep")
-                .map_err(llvm_err)
-        }?;
-        let c_elem_fat = self
-            .builder
-            .build_load(self.string_type, c_elem_gep, "cs_cfat")
-            .map_err(llvm_err)?
+        let c_get_cc = self.call_rt("action_list_get", &[collector_list.into(), cj_val.into()])?;
+        let c_elem_fat = c_get_cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("list_get failed")?
             .into_struct_value();
         let c_task_i64 = self
             .builder
@@ -8432,13 +8433,32 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_int_value();
                         Ok(TypedValue::Int(len))
                     }
-                    TypedValue::Map(ptr) | TypedValue::Set(ptr) => {
+                    TypedValue::Map(ptr) => {
                         let m = self.load_list(ptr)?;
-                        let len = self
+                        let raw_len = self
                             .builder
                             .build_extract_value(m, 1, "len")
                             .map_err(llvm_err)?
                             .into_int_value();
+                        let two = self.i64_ty().const_int(2, false);
+                        let len = self
+                            .builder
+                            .build_int_signed_div(raw_len, two, "entries")
+                            .map_err(llvm_err)?;
+                        Ok(TypedValue::Int(len))
+                    }
+                    TypedValue::Set(ptr) => {
+                        let m = self.load_list(ptr)?;
+                        let raw_len = self
+                            .builder
+                            .build_extract_value(m, 1, "len")
+                            .map_err(llvm_err)?
+                            .into_int_value();
+                        let two = self.i64_ty().const_int(2, false);
+                        let len = self
+                            .builder
+                            .build_int_signed_div(raw_len, two, "entries")
+                            .map_err(llvm_err)?;
                         Ok(TypedValue::Int(len))
                     }
                     _ => Err(
@@ -8470,12 +8490,27 @@ impl<'ctx> CodeGen<'ctx> {
                             .map_err(llvm_err)?
                             .into_int_value()
                     }
-                    TypedValue::Map(ptr) | TypedValue::Set(ptr) => {
+                    TypedValue::Map(ptr) => {
                         let m = self.load_list(ptr)?;
-                        self.builder
+                        let raw_len = self.builder
                             .build_extract_value(m, 1, "len")
                             .map_err(llvm_err)?
-                            .into_int_value()
+                            .into_int_value();
+                        let two = self.i64_ty().const_int(2, false);
+                        self.builder
+                            .build_int_signed_div(raw_len, two, "entries")
+                            .map_err(llvm_err)?
+                    }
+                    TypedValue::Set(ptr) => {
+                        let m = self.load_list(ptr)?;
+                        let raw_len = self.builder
+                            .build_extract_value(m, 1, "len")
+                            .map_err(llvm_err)?
+                            .into_int_value();
+                        let two = self.i64_ty().const_int(2, false);
+                        self.builder
+                            .build_int_signed_div(raw_len, two, "entries")
+                            .map_err(llvm_err)?
                     }
                     _ => {
                         return Err(
@@ -8536,7 +8571,52 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(alloca, result).map_err(llvm_err)?;
                         Ok(TypedValue::Str(alloca))
                     }
-                    _ => Err("concat: arguments must be strings".to_string()),
+                    (TypedValue::List(p1), TypedValue::List(p2)) => {
+                        let l1 = self.load_list(*p1)?;
+                        let l2 = self.load_list(*p2)?;
+                        let result = self
+                            .call_rt("action_list_concat", &[l1.into(), l2.into()])?
+                            .try_as_basic_value()
+                            .basic()
+                            .ok_or("list_concat failed")?;
+                        let alloca = self
+                            .builder
+                            .build_alloca(self.list_type, "concat_list")
+                            .map_err(llvm_err)?;
+                        self.builder.build_store(alloca, result).map_err(llvm_err)?;
+                        Ok(TypedValue::List(alloca))
+                    }
+                    (TypedValue::Map(p1), TypedValue::Map(p2)) => {
+                        let m1 = self.load_list(*p1)?;
+                        let m2 = self.load_list(*p2)?;
+                        let result = self
+                            .call_rt("action_map_union", &[m1.into(), m2.into()])?
+                            .try_as_basic_value()
+                            .basic()
+                            .ok_or("map_union failed")?;
+                        let alloca = self
+                            .builder
+                            .build_alloca(self.list_type, "concat_map")
+                            .map_err(llvm_err)?;
+                        self.builder.build_store(alloca, result).map_err(llvm_err)?;
+                        Ok(TypedValue::Map(alloca))
+                    }
+                    (TypedValue::Set(p1), TypedValue::Set(p2)) => {
+                        let s1 = self.load_list(*p1)?;
+                        let s2 = self.load_list(*p2)?;
+                        let result = self
+                            .call_rt("action_set_union", &[s1.into(), s2.into()])?
+                            .try_as_basic_value()
+                            .basic()
+                            .ok_or("set_union failed")?;
+                        let alloca = self
+                            .builder
+                            .build_alloca(self.list_type, "concat_set")
+                            .map_err(llvm_err)?;
+                        self.builder.build_store(alloca, result).map_err(llvm_err)?;
+                        Ok(TypedValue::Set(alloca))
+                    }
+                    _ => Err("concat: arguments must be both strings, both lists, both maps, or both sets".to_string()),
                 }
             }
             "toUpper" => {
@@ -10171,6 +10251,29 @@ impl<'ctx> CodeGen<'ctx> {
                     _ => Err("get: first argument must be a list, second an Int".to_string()),
                 }
             }
+            "remove" => {
+                if args.len() != 2 {
+                    return Err("remove expects 2 arguments (list, index)".to_string());
+                }
+                let list_val = self.compile_expr(&args[0])?;
+                let idx_val = self.compile_expr(&args[1])?;
+                match (&list_val, &idx_val) {
+                    (TypedValue::List(lp), TypedValue::Int(iv)) => {
+                        let lv = self.load_list(*lp)?;
+                        let result = self.call_rt("action_list_remove", &[lv.into(), (*iv).into()])?;
+                        let rv = result.try_as_basic_value().basic().ok_or("remove failed")?;
+                        let alloca = self
+                            .builder
+                            .build_alloca(self.list_type, "remove_result")
+                            .map_err(llvm_err)?;
+                        self.builder.build_store(alloca, rv).map_err(llvm_err)?;
+                        Ok(TypedValue::List(alloca))
+                    }
+                    _ => Err(
+                        "remove expects (List, Int)".to_string()
+                    ),
+                }
+            }
             "reverse" => {
                 if args.len() != 1 {
                     return Err("reverse expects 1 argument".to_string());
@@ -10676,6 +10779,31 @@ impl<'ctx> CodeGen<'ctx> {
                     _ => Err(
                         "indexOf: first arg must be (element, list) or (substring, string)"
                             .to_string(),
+                    ),
+                }
+            }
+            "insert" => {
+                if args.len() != 3 {
+                    return Err("insert expects 3 arguments (list, index, elem)".to_string());
+                }
+                let list_val = self.compile_expr(&args[0])?;
+                let idx_val = self.compile_expr(&args[1])?;
+                let elem_val = self.compile_expr(&args[2])?;
+                match (&list_val, &idx_val) {
+                    (TypedValue::List(lp), TypedValue::Int(iv)) => {
+                        let lv = self.load_list(*lp)?;
+                        let fat = self.to_fat_struct(&elem_val)?;
+                        let result = self.call_rt("action_list_insert", &[lv.into(), (*iv).into(), fat.into()])?;
+                        let rv = result.try_as_basic_value().basic().ok_or("insert failed")?;
+                        let alloca = self
+                            .builder
+                            .build_alloca(self.list_type, "insert_result")
+                            .map_err(llvm_err)?;
+                        self.builder.build_store(alloca, rv).map_err(llvm_err)?;
+                        Ok(TypedValue::List(alloca))
+                    }
+                    _ => Err(
+                        "insert expects (List, Int, Any)".to_string()
                     ),
                 }
             }

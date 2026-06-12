@@ -86,7 +86,6 @@ fn map_host_symbols(cg: &CodeGen, engine: &inkwell::execution_engine::ExecutionE
                 stream: *mut std::ffi::c_void,
             ) -> *mut std::ffi::c_void;
             fn malloc(size: u64) -> *mut std::ffi::c_void;
-            fn realloc(ptr: *mut std::ffi::c_void, new_size: u64) -> *mut std::ffi::c_void;
             fn free(ptr: *mut std::ffi::c_void);
             fn strlen(s: *const std::ffi::c_char) -> u64;
             fn memcpy(
@@ -166,17 +165,50 @@ fn map_host_symbols(cg: &CodeGen, engine: &inkwell::execution_engine::ExecutionE
         }
 
         for name in [
-            "fgets", "malloc", "realloc", "free", "strlen", "memcpy", "strcmp", "printf",
-            "fprintf", "fflush", "fclose", "fopen", "fread", "fwrite", "fseek", "ftell", "feof",
-            "remove", "sprintf", "strtod", "strftime", "strptime", "sqrt", "sin", "cos", "tan",
-            "asin", "acos", "atan", "atan2", "exp", "log", "log10", "log2", "pow", "abs", "floor",
-            "ceil", "round", "cbrt",
+            "fgets",
+            "malloc",
+            "free",
+            "strlen",
+            "memcpy",
+            "strcmp",
+            "printf",
+            "fprintf",
+            "fflush",
+            "fclose",
+            "fopen",
+            "fread",
+            "fwrite",
+            "fseek",
+            "ftell",
+            "feof",
+            "remove",
+            "sprintf",
+            "strtod",
+            "strftime",
+            "strptime",
+            "sqrt",
+            "sin",
+            "cos",
+            "tan",
+            "asin",
+            "acos",
+            "atan",
+            "atan2",
+            "exp",
+            "log",
+            "log10",
+            "log2",
+            "pow",
+            "abs",
+            "floor",
+            "ceil",
+            "round",
+            "cbrt",
         ] {
             if let Some(func) = cg.module.get_function(name) {
                 let addr = match name {
                     "fgets" => fgets as *const () as usize,
                     "malloc" => malloc as *const () as usize,
-                    "realloc" => realloc as *const () as usize,
                     "free" => free as *const () as usize,
                     "strlen" => strlen as *const () as usize,
                     "memcpy" => memcpy as *const () as usize,
@@ -402,4 +434,5 @@ fn map_host_symbols(cg: &CodeGen, engine: &inkwell::execution_engine::ExecutionE
             engine.add_global_mapping(&func, addr);
         }
     }
+
 }

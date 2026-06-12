@@ -96,7 +96,6 @@ impl<'ctx> CodeGen<'ctx> {
                     };
                     let alloca = self.builder.build_alloca(ty, name).map_err(llvm_err)?;
                     self.store_typed_value(&val, alloca, ty)?;
-                    // RC: increment refcount for heap-typed values being bound to a variable
                     self.rc_inc_typed_value(&val)?;
                     let fn_type = match &val {
                         TypedValue::Fn(_, ft) => Some(*ft),
@@ -586,7 +585,9 @@ impl<'ctx> CodeGen<'ctx> {
                     }
 
                     let v = self.compile_expr(e)?;
+                    // RC inc the return value before cleaning up the scope
                     self.rc_inc_typed_value(&v)?;
+                    // RC cleanup: decrement refcounts on heap-typed variables in this scope
                     self.emit_scope_cleanup()?;
                     if let Some(bv) = v.to_bv() {
                         let _ = self.builder.build_return(Some(&bv));
@@ -1017,6 +1018,7 @@ impl<'ctx> CodeGen<'ctx> {
                     self.scope
                         .set(param.name.clone(), alloca, pv.get_type(), kind);
                 }
+                // Enum parameters carry heap-allocated data that needs RC cleanup
                 if kind == ValKind::Enum {
                     self.scope.set_enum_data_rc_managed(&param.name, true);
                 }

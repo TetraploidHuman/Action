@@ -280,11 +280,11 @@ impl<'ctx> Scope<'ctx> {
             var.enum_data_rc_managed = managed;
         }
     }
-    fn local_variables(&self) -> &HashMap<String, ScopeVar<'ctx>> {
-        &self.variables
-    }
     pub(super) fn remove_var(&mut self, name: &str) {
         self.variables.remove(name);
+    }
+    fn local_variables(&self) -> &HashMap<String, ScopeVar<'ctx>> {
+        &self.variables
     }
 }
 
@@ -377,6 +377,16 @@ pub struct CodeGen<'ctx> {
     pub(super) scope: Scope<'ctx>,
     pub(super) string_type: StructType<'ctx>,
     pub(super) list_type: StructType<'ctx>,
+    /// Block-based B-tree leaf node: {i32 count, i32 pad, [B x {i64, ptr}] elements}
+    pub(super) leaf_type: StructType<'ctx>,
+    /// Block-based B-tree internal node: {i32 count, i32 pad, i64 total, [B x {ptr, i64}] children}
+    pub(super) internal_type: StructType<'ctx>,
+    /// Child entry in internal node: {ptr child, i64 subtree_total}
+    pub(super) child_entry_type: StructType<'ctx>,
+    /// ConcatNode: {i64 depth, i64 total_len, list_type left, list_type right}
+    /// height = -1 is the sentinel; node_ptr points to this heap-allocated struct
+    #[allow(dead_code)]
+    pub(super) concat_node_type: StructType<'ctx>,
     pub(super) lambda_count: usize,
     pub(super) str_pat_counter: usize,
     pub(super) registry: TypeRegistry,
@@ -483,6 +493,46 @@ impl<'ctx> CodeGen<'ctx> {
             ],
             false,
         );
+        // Block-based B-tree node types for persistent List
+        // B = 64: leaf holds up to 64 elements, internal holds up to 64 children
+        const B: usize = 64;
+        // Child entry: {ptr child, i64 subtree_total}
+        let child_entry_type = context.struct_type(
+            &[
+                context.ptr_type(inkwell::AddressSpace::default()).into(),
+                context.i64_type().into(),
+            ],
+            false,
+        );
+        // Leaf: {i32 count, i32 pad, [B x {i64, ptr}] elements}
+        let leaf_type = context.struct_type(
+            &[
+                context.i32_type().into(),                             // count (0..B)
+                context.i32_type().into(),                             // padding (align to 8)
+                string_type.array_type(B as u32).into(), // elements array
+            ],
+            false,
+        );
+        // Internal: {i32 count, i32 pad, i64 total, [B x {ptr, i64}] children}
+        let internal_type = context.struct_type(
+            &[
+                context.i32_type().into(),                                // count (0..B)
+                context.i32_type().into(),                                // padding (align to 8)
+                context.i64_type().into(),                                // total elements in subtree
+                child_entry_type.array_type(B as u32).into(), // children array
+            ],
+            false,
+        );
+        // ConcatNode for lazy concatenation: {i64 depth, i64 total_len, list_type left, list_type right}
+        let concat_node_type = context.struct_type(
+            &[
+                context.i64_type().into(), // depth
+                context.i64_type().into(), // total_len
+                list_type.into(),          // left: {ptr, i64, i64}
+                list_type.into(),          // right: {ptr, i64, i64}
+            ],
+            false,
+        );
         // Task type: {pthread: i64, done: i64, cancelled: i64, scheduler: i64, result_list: {ptr, i64, i64}}
         let task_type = context.struct_type(
             &[
@@ -540,6 +590,10 @@ impl<'ctx> CodeGen<'ctx> {
             scope: Scope::new(),
             string_type,
             list_type,
+            leaf_type,
+            internal_type,
+            child_entry_type,
+            concat_node_type,
             lambda_count: 0,
             str_pat_counter: 0,
             registry,
@@ -671,7 +725,7 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
-    /// Emit RC decrement for all heap-typed variables in the scope.
+    /// Emit RC decrement for all heap-typed variables in the current scope.
     pub(super) fn emit_scope_cleanup(&self) -> Result<(), String> {
         for (_name, var) in self.scope.local_variables() {
             match var.kind {
@@ -684,21 +738,40 @@ impl<'ctx> CodeGen<'ctx> {
                         .into_pointer_value();
                     self.rc_dec(data_ptr)?;
                 }
-                ValKind::List | ValKind::Map | ValKind::Set => {
+                ValKind::List => {
                     let list_val = self.load_list(var.ptr)?;
                     let data_ptr = self
                         .builder
                         .build_extract_value(list_val, 0, "data")
                         .map_err(llvm_err)?
                         .into_pointer_value();
-                    self.rc_dec(data_ptr)?;
+                    let height = self
+                        .builder
+                        .build_extract_value(list_val, 2, "height")
+                        .map_err(llvm_err)?
+                        .into_int_value();
+                    let rdl_fn = self.module.get_function("action_rc_dec_list_node").unwrap();
+                    let _ = self.builder.build_call(rdl_fn, &[data_ptr.into(), height.into()], "").map_err(llvm_err)?;
+                }
+                ValKind::Map | ValKind::Set => {
+                    let list_val = self.load_list(var.ptr)?;
+                    let data_ptr = self
+                        .builder
+                        .build_extract_value(list_val, 0, "data")
+                        .map_err(llvm_err)?
+                        .into_pointer_value();
+                    let height = self
+                        .builder
+                        .build_extract_value(list_val, 2, "height")
+                        .map_err(llvm_err)?
+                        .into_int_value();
+                    let rdl_fn = self.module.get_function("action_rc_dec_list_node").unwrap();
+                    let _ = self.builder.build_call(rdl_fn, &[data_ptr.into(), height.into()], "").map_err(llvm_err)?;
                 }
                 ValKind::LazyList => {
-                    // LazyList is stack-only ({i64, ptr, i64, i64}), no heap data to clean up
+                    // LazyList is stack-only, no heap data to clean up
                 }
                 ValKind::Stream => {
-                    // Stream variable stores a pointer (i8*) to the heap-allocated struct
-                    // var.ty is ptr_ty, not stream_type — load the pointer first
                     let stream_heap_ptr = self
                         .builder
                         .build_load(var.ty, var.ptr, "stream_cleanup_ptr")
@@ -724,8 +797,6 @@ impl<'ctx> CodeGen<'ctx> {
                     self.rc_dec(data_ptr)?;
                 }
                 ValKind::Task => {
-                    // Task variable stores a pointer to the heap-allocated struct
-                    // var.ty is task_type but only a pointer is stored — load the pointer first
                     let task_heap_ptr = self
                         .builder
                         .build_load(self.ptr_ty(), var.ptr, "task_cleanup_ptr")
@@ -763,6 +834,7 @@ impl<'ctx> CodeGen<'ctx> {
                     self.rc_dec(data_ptr)?;
                 }
                 ValKind::Fn if var.is_closure => {
+                    // Closure: the alloca stores a pointer to the captures struct
                     let cap_ptr = self
                         .builder
                         .build_load(self.ptr_ty(), var.ptr, "closure_cleanup")
@@ -783,7 +855,6 @@ impl<'ctx> CodeGen<'ctx> {
         kind: ValKind,
         ty: inkwell::types::BasicTypeEnum<'ctx>,
         rc_managed: bool,
-        var_is_closure: bool,
     ) -> Result<(), String> {
         match kind {
             ValKind::Str => {
@@ -795,14 +866,35 @@ impl<'ctx> CodeGen<'ctx> {
                     .into_pointer_value();
                 self.rc_dec(data_ptr)?;
             }
-            ValKind::List | ValKind::Map | ValKind::Set => {
+            ValKind::List => {
                 let list_val = self.load_list(ptr)?;
                 let data_ptr = self
                     .builder
                     .build_extract_value(list_val, 0, "data")
                     .map_err(llvm_err)?
                     .into_pointer_value();
-                self.rc_dec(data_ptr)?;
+                let height = self
+                    .builder
+                    .build_extract_value(list_val, 2, "height")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                let rdl_fn = self.module.get_function("action_rc_dec_list_node").unwrap();
+                let _ = self.builder.build_call(rdl_fn, &[data_ptr.into(), height.into()], "").map_err(llvm_err)?;
+            }
+            ValKind::Map | ValKind::Set => {
+                let list_val = self.load_list(ptr)?;
+                let data_ptr = self
+                    .builder
+                    .build_extract_value(list_val, 0, "data")
+                    .map_err(llvm_err)?
+                    .into_pointer_value();
+                let height = self
+                    .builder
+                    .build_extract_value(list_val, 2, "height")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                let rdl_fn = self.module.get_function("action_rc_dec_list_node").unwrap();
+                let _ = self.builder.build_call(rdl_fn, &[data_ptr.into(), height.into()], "").map_err(llvm_err)?;
             }
             ValKind::Enum if rc_managed => {
                 let loaded = self
@@ -815,14 +907,6 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?
                     .into_pointer_value();
                 self.rc_dec(data_ptr)?;
-            }
-            ValKind::Fn if var_is_closure => {
-                let cap_ptr = self
-                    .builder
-                    .build_load(self.ptr_ty(), ptr, "fn_dec_ptr")
-                    .map_err(llvm_err)?
-                    .into_pointer_value();
-                self.rc_dec(cap_ptr)?;
             }
             _ => {}
         }
@@ -850,9 +934,8 @@ impl<'ctx> CodeGen<'ctx> {
                     .into_pointer_value();
                 self.rc_inc(data_ptr)?;
             }
-            TypedValue::LazyList(_) => {}
-            TypedValue::Closure { closure_ptr, .. } => {
-                self.rc_inc(*closure_ptr)?;
+            TypedValue::LazyList(_) => {
+                // LazyList is stack-only, no heap data to RC
             }
             TypedValue::Enum(alloca, enum_ty, _, true) => {
                 let bt: BasicTypeEnum = (*enum_ty).into();
@@ -866,6 +949,9 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?
                     .into_pointer_value();
                 self.rc_inc(data_ptr)?;
+            }
+            TypedValue::Closure { closure_ptr, .. } => {
+                self.rc_inc(*closure_ptr)?;
             }
             _ => {}
         }
