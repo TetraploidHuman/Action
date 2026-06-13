@@ -1,7 +1,7 @@
 // Test new list, map, set, and math builtins
 fun main() {
     // Test flatten
-    val nested = List[List[1, 2], List[3, 4], List[5]]
+    val nested = list[list[1, 2], list[3, 4], list[5]]
     val flat = flatten(nested)
     print("flatten len: ")
     print(len(flat))
@@ -27,14 +27,14 @@ fun main() {
     println("")
 
     // Test sorted
-    val unsorted = List[3, 1, 4, 1, 5]
+    val unsorted = list[3, 1, 4, 1, 5]
     val s = sorted(unsorted)
     print("sorted len: ")
     print(len(s))
     println("")
 
     // Test unique
-    val dups = List[1, 2, 2, 3, 1]
+    val dups = list[1, 2, 2, 3, 1]
     val u = unique(dups)
     print("unique len: ")
     print(len(u))
@@ -62,7 +62,7 @@ fun main() {
     println("")
 
     // Test withIndex
-    val wi = withIndex(List[10, 20, 30])
+    val wi = withIndex(list[10, 20, 30])
     print("withIndex len: ")
     print(len(wi))
     println("")

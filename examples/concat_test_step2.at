@@ -1,0 +1,17 @@
+fun main() {
+    // Test 5: CoW
+    val g = list[10, 20]
+    val h = list[30, 40]
+    var i = concat(g, h)
+    print("CoW orig a len (expect 2): ")
+    println(g.len())
+    print("CoW orig a [0] (expect 10): ")
+    println(g.get(0))
+
+    // Test 6: string concat
+    var s = concat("hello", " world")
+    print("concat string (expect 'hello world'): ")
+    println(s)
+
+    println("step2 done")
+}

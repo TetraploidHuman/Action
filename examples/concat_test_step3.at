@@ -1,0 +1,17 @@
+fun main() {
+    // Test 7: concat maps
+    val m1 = map["a": 1, "b": 2]
+    val m2 = map["b": 99, "c": 3]
+    var m3 = concat(m1, m2)
+    print("concat map len (expect 3): ")
+    println(m3.len())
+
+    // Test 8: concat sets
+    val s1 = set[1, 2, 3]
+    val s2 = set[3, 4, 5]
+    var s3 = concat(s1, s2)
+    print("concat set len (expect 5): ")
+    println(s3.len())
+
+    println("step3 done")
+}

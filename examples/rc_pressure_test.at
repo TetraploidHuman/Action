@@ -4,7 +4,7 @@
 // or double-free errors.
 
 fun main() {
-    // Test 1: String pressure — allocate and discard many strings via concat
+    // Test 1: string pressure — allocate and discard many strings via concat
     var total_len = 0
     var k = 0
     for k < 300 {
@@ -18,19 +18,19 @@ fun main() {
         // s and all intermediate concat strings are dropped — RC decrements and frees them
         k = k + 1
     }
-    print("String pressure test: ")
+    print("string pressure test: ")
     println(total_len)
 
-    // Test 2: List pressure — allocate and discard fixed-size lists
+    // Test 2: list pressure — allocate and discard fixed-size lists
     var list_count = 0
     var m = 0
     for m < 300 {
-        val lst = List[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        val lst = list[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
         list_count = list_count + lst.len()
         // lst is dropped — RC decrements and frees the list
         m = m + 1
     }
-    print("List pressure test: ")
+    print("list pressure test: ")
     println(list_count)
 
     // Test 3: Closure + captured var pressure
@@ -58,8 +58,8 @@ fun main() {
             sb = sb + "b"
             ia = ia + 1
         }
-        val la = List[1, 2, 3]
-        val lb = List[4, 5, 6]
+        val la = list[1, 2, 3]
+        val lb = list[4, 5, 6]
         burst = burst + sa.len() + sb.len() + la.len() + lb.len()
         p = p + 1
     }

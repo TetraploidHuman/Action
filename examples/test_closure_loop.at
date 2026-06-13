@@ -1,7 +1,7 @@
 // Test closures in for loops capturing loop variable
 fun main() {
     var sum = 0
-    for i in List[1, 2, 3, 4, 5] {
+    for i in list[1, 2, 3, 4, 5] {
         val f = { x -> x + i }
         sum = sum + f(0)
     }

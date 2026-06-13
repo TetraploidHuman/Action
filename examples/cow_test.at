@@ -3,30 +3,30 @@
 // Shallow copies should not share mutable state.
 
 fun main() {
-    // Test 1: List CoW — appending to copy doesn't affect original
-    val a = List[1, 2, 3]
+    // Test 1: list CoW — appending to copy doesn't affect original
+    val a = list[1, 2, 3]
     var b = a
     b = b.append(4)
-    print("List CoW a len (expect 3): ")
+    print("list CoW a len (expect 3): ")
     println(a.len())
-    print("List CoW b len (expect 4): ")
+    print("list CoW b len (expect 4): ")
     println(b.len())
-    print("List CoW a[0] (expect 1): ")
+    print("list CoW a[0] (expect 1): ")
     println(a.get(0))
-    print("List CoW b[2] (expect 3): ")
+    print("list CoW b[2] (expect 3): ")
     println(b.get(2))
 
-    // Test 2: Map CoW — inserting into copy doesn't affect original
-    val m1 = Map["x": 10, "y": 20]
+    // Test 2: map CoW — inserting into copy doesn't affect original
+    val m1 = map["x": 10, "y": 20]
     var m2 = m1
     m2.insert("z", 30)
-    print("Map CoW m1 len (expect 2): ")
+    print("map CoW m1 len (expect 2): ")
     println(m1.len())
-    print("Map CoW m2 len (expect 3): ")
+    print("map CoW m2 len (expect 3): ")
     println(m2.len())
 
     // Test 3: Multiple list copies all independent
-    val orig = List[1]
+    val orig = list[1]
     var c1 = orig
     var c2 = orig
     var c3 = orig
@@ -42,13 +42,13 @@ fun main() {
     print("Multi-copy c3[1] (expect 33): ")
     println(c3.get(1))
 
-    // Test 4: Map remove CoW
-    val m3 = Map["a": 1, "b": 2, "c": 3]
+    // Test 4: map remove CoW
+    val m3 = map["a": 1, "b": 2, "c": 3]
     var m4 = m3
     m4.remove("a")
-    print("Map remove m3 len (expect 3): ")
+    print("map remove m3 len (expect 3): ")
     println(m3.len())
-    print("Map remove m4 len (expect 2): ")
+    print("map remove m4 len (expect 2): ")
     println(m4.len())
 
     println("All CoW tests passed")

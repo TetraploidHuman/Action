@@ -2,46 +2,46 @@
 
 fun main() {
     // 1. Elvis with expression on right side
-    val x: Int? = null
+    val x int? = null
     print(x or { (10 * 5 + 2) })           // 52
 
     // 2. Elvis inside arithmetic (null + non-null)
-    val p: Int? = 10
-    val q: Int? = null
+    val p int? = 10
+    val q int? = null
     print((p or { 0 }) + (q or { 0 }))         // 10 + 0 = 10
     print((p or { 0 }) * (q or { 1 }))         // 10 * 1 = 10
 
     // 3. Nested Elvis pattern using intermediate
-    val aa: Int? = 5
-    val bb: Int? = null
+    val aa int? = 5
+    val bb int? = null
     val r1 = (aa or { 0 }) + (bb or { 10 })    // 5 + 10 = 15
     print(r1)
 
     // 4. Elvis on non-null value (returns unwrapped inner)
-    val nn: Int? = 77
+    val nn int? = 77
     print(nn or { 0 })                      // 77
 
     // 5. Elvis result used in comparison
-    val a: Int? = null
+    val a int? = null
     val cond = (a or { 0 }) > 0
     println(cond)                       // false
 
     // 6. Elvis with arithmetic expression on right
-    val y: Int? = null
+    val y int? = null
     print(y or { (2 * 3) })                // 6
 
     // 7. Elvis assigned then used
-    val z: Int? = null
+    val z int? = null
     val dflt = z or { 50 }
     print(dflt)                         // 50
 
     // 8. Non-null Elvis (should not use default)
-    val has: Int? = 42
+    val has int? = 42
     print(has or { 100 })                   // 42
 
     // 9. Compare Elvis result
-    val v1: Int? = null
-    val v2: Int? = 30
+    val v1 int? = null
+    val v2 int? = 30
     val c1 = (v1 or { 0 })                  // 0
     val c2 = (v2 or { 0 })                  // 30
     print(c1 + c2)                      // 30

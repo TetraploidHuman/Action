@@ -17,14 +17,14 @@ fun main() {
     println("Goodbye!")
 }
 
-fun handleChat(input: String, msgs: String): String = {
+fun handleChat(input: string, msgs: string): string = {
     print("AI: ")
     val content = chatOnce(input, msgs)
     println(content)
     storeMessages(input, content, msgs)
 }
 
-fun chatOnce(input: String, msgs: String): String = {
+fun chatOnce(input: string, msgs: string): string = {
     val userMsg = "{\"role\": \"user\", \"content\": \"" + jsonEscape(input) + "\"}"
     val newMsgs = when msgs == "" { userMsg else msgs + ", " + userMsg }
     val body = "{\"model\": \"deepseek-chat\", \"messages\": [" + newMsgs + "]}"
@@ -33,14 +33,14 @@ fun chatOnce(input: String, msgs: String): String = {
     extractContent(resp)
 }
 
-fun storeMessages(input: String, content: String, msgs: String): String = {
+fun storeMessages(input: string, content: string, msgs: string): string = {
     val userMsg = "{\"role\": \"user\", \"content\": \"" + jsonEscape(input) + "\"}"
     val assistantMsg = "{\"role\": \"assistant\", \"content\": \"" + jsonEscape(content) + "\"}"
     when msgs == "" { userMsg + ", " + assistantMsg else msgs + ", " + userMsg + ", " + assistantMsg }
 }
 
 // Parse DeepSeek API response using the JSON library
-fun extractContent(raw: String): String = {
+fun extractContent(raw: string): string = {
     // Find first newline (HTTP response format: "STATUS\nBODY")
     var nl = 0
     for nl < len(raw) and substring(raw, nl, 1) != "\n" { nl = nl + 1 }

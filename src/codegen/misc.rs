@@ -114,17 +114,17 @@ impl<'ctx> CodeGen<'ctx> {
                     if let Some(p) = ptr {
                         let is_map = match inner_ast.as_ref() {
                             Type::Map(..) => true,
-                            Type::Named(n) if n == "Map" => true,
+                            Type::Named(n) if n == "map" => true,
                             Type::Generic(b, _) => {
-                                matches!(b.as_ref(), Type::Named(n) if n == "Map")
+                                matches!(b.as_ref(), Type::Named(n) if n == "map")
                             }
                             _ => false,
                         };
                         let is_set = match inner_ast.as_ref() {
                             Type::Set(..) => true,
-                            Type::Named(n) if n == "Set" => true,
+                            Type::Named(n) if n == "set" => true,
                             Type::Generic(b, _) => {
-                                matches!(b.as_ref(), Type::Named(n) if n == "Set")
+                                matches!(b.as_ref(), Type::Named(n) if n == "set")
                             }
                             _ => false,
                         };

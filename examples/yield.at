@@ -11,7 +11,7 @@ fun main() {
     }
 
     // Shorthand with implicit it
-    val cubes = for List[1, 2, 3] { it * it * it }
+    val cubes = for list[1, 2, 3] { it * it * it }
 
     // Access elements from the generated lists
     print(squares[0])  // 1

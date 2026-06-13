@@ -1,17 +1,17 @@
 // Test edge cases with empty collections
 fun main() {
     // Empty list operations
-    val empty = List[]
+    val empty = list[]
     print(len(empty))
     print(isEmpty(empty))
 
     // Empty map operations
-    val empty_map = Map[]
+    val empty_map = map[]
     print(len(empty_map))
     print(isEmpty(empty_map))
 
     // Empty set operations
-    val empty_set = Set[]
+    val empty_set = set[]
     print(len(empty_set))
 
     // Empty string operations

@@ -495,11 +495,11 @@ impl Parser {
         };
         self.advance();
 
-        // Optional type annotation
-        let type_ann = if self.skip(TokenKind::Colon) {
-            Some(self.parse_type()?)
-        } else {
+        // Optional type annotation — space-separated, no colon: var x Int = 0
+        let type_ann = if self.current_kind() == TokenKind::Eq {
             None
+        } else {
+            Some(self.parse_type()?)
         };
 
         // Assignment
@@ -526,11 +526,11 @@ impl Parser {
         };
         self.advance();
 
-        // Optional type annotation
-        let type_ann = if self.skip(TokenKind::Colon) {
-            Some(self.parse_type()?)
-        } else {
+        // Optional type annotation — space-separated, no colon: var x Int = 0
+        let type_ann = if self.current_kind() == TokenKind::Eq {
             None
+        } else {
+            Some(self.parse_type()?)
         };
 
         // Assignment
@@ -687,10 +687,11 @@ impl Parser {
     fn parse_type_primary(&mut self) -> Result<Type, ParseError> {
         match self.current_kind() {
             TokenKind::Ident(ref name) => {
-                let name = name.clone();
+                let original_name = name.clone();
+                let lowered = original_name.to_lowercase();
                 self.advance();
 
-                // Check for generic instantiation: List[Int]
+                // Check for generic instantiation: list[int]
                 if self.skip(TokenKind::LBracket) {
                     let mut args = Vec::new();
                     while self.current_kind() != TokenKind::RBracket {
@@ -700,11 +701,11 @@ impl Parser {
                         args.push(self.parse_type()?);
                     }
                     self.expect(TokenKind::RBracket)?;
-                    Ok(Type::Generic(Box::new(Type::Named(name)), args))
-                } else if self.current_type_params.contains(&name) {
-                    Ok(Type::TypeVar(name))
+                    Ok(Type::Generic(Box::new(Type::Named(lowered)), args))
+                } else if self.current_type_params.contains(&original_name) {
+                    Ok(Type::TypeVar(original_name))
                 } else {
-                    Ok(Type::Named(name))
+                    Ok(Type::Named(lowered))
                 }
             }
             TokenKind::Task => {
@@ -714,7 +715,7 @@ impl Parser {
                     self.expect(TokenKind::RBracket)?;
                     Ok(Type::Task(Box::new(inner)))
                 } else {
-                    Ok(Type::Named("Task".into()))
+                    Ok(Type::Named("task".into()))
                 }
             }
             TokenKind::LParen => {
@@ -1069,7 +1070,7 @@ impl Parser {
                 self.advance();
 
                 // Collection literals: List[...], Set[...], Map[...]
-                if (name == "List" || name == "Set" || name == "Map")
+                if (name == "list" || name == "set" || name == "map")
                     && self.current_kind() == TokenKind::LBracket
                 {
                     return self.parse_collection_literal(&name);
@@ -1304,7 +1305,7 @@ impl Parser {
         self.expect(TokenKind::LBracket)?; // consume '['
 
         match kind {
-            "List" => {
+            "list" => {
                 let mut items = Vec::new();
                 while self.current_kind() != TokenKind::RBracket {
                     if !items.is_empty() {
@@ -1318,7 +1319,7 @@ impl Parser {
                 self.expect(TokenKind::RBracket)?;
                 Ok(Expr::call(Expr::Ident("__list".to_string()), items))
             }
-            "Set" => {
+            "set" => {
                 let mut elements = Vec::new();
                 while self.current_kind() != TokenKind::RBracket {
                     if !elements.is_empty() {
@@ -1333,7 +1334,7 @@ impl Parser {
                 self.expect(TokenKind::RBracket)?;
                 Ok(Expr::SetLiteral(elements))
             }
-            "Map" => {
+            "map" => {
                 let mut entries = Vec::new();
                 while self.current_kind() != TokenKind::RBracket {
                     if !entries.is_empty() {
@@ -1868,7 +1869,7 @@ impl Parser {
 
         // Check for shorthand: for List[...] / Set[...] / Map[...] { body } uses implicit "it"
         if let TokenKind::Ident(ref name) = self.current_kind() {
-            if (name == "List" || name == "Set" || name == "Map")
+            if (name == "list" || name == "set" || name == "map")
                 && self.peek2() == TokenKind::LBracket
             {
                 let collection_kind = name.clone();
@@ -1960,7 +1961,7 @@ impl Parser {
         self.advance(); // skip 'type'
 
         let name = match &self.current_kind() {
-            TokenKind::Ident(s) => s.clone(),
+            TokenKind::Ident(s) => s.to_lowercase(),
             _ => return Err(self.error("Expected type name")),
         };
         self.advance();
@@ -2000,7 +2001,7 @@ impl Parser {
         self.advance(); // skip 'enum'
 
         let name = match &self.current_kind() {
-            TokenKind::Ident(s) => s.clone(),
+            TokenKind::Ident(s) => s.to_lowercase(),
             _ => return Err(self.error("Expected enum name")),
         };
         self.advance();
@@ -2465,7 +2466,7 @@ mod tests {
 
     #[test]
     fn test_for_iterate() {
-        let prog = parse("for item in List[1,2,3] { println(item) }").unwrap();
+        let prog = parse("for item in list[1,2,3] { println(item) }").unwrap();
         match &prog.stmts[0] {
             Stmt::Expr {
                 expr: Expr::For(f), ..
@@ -2481,7 +2482,7 @@ mod tests {
 
     #[test]
     fn test_for_expression() {
-        let expr = parse_expr("for x in List[1,2,3,4,5] { x * x }").unwrap();
+        let expr = parse_expr("for x in list[1,2,3,4,5] { x * x }").unwrap();
         match expr {
             Expr::For(f) => match &f.kind {
                 ForKind::Iterate { var, .. } => {
@@ -2503,7 +2504,7 @@ mod tests {
                 variants,
                 ..
             } => {
-                assert_eq!(name, "Option");
+                assert_eq!(name, "option");
                 assert_eq!(type_params, &vec!["T"]);
                 assert_eq!(variants.len(), 2);
                 assert_eq!(variants[0].name, "Some");
@@ -2520,7 +2521,7 @@ mod tests {
             Stmt::TypeAlias {
                 name, type_params, ..
             } => {
-                assert_eq!(name, "Point");
+                assert_eq!(name, "point");
                 assert!(type_params.is_empty());
             }
             _ => panic!("Expected TypeAlias"),
@@ -2557,13 +2558,13 @@ mod tests {
 
     #[test]
     fn test_let_with_nullable_type() {
-        let prog = parse("val x: Int? = null").unwrap();
+        let prog = parse("val x Int? = null").unwrap();
         match &prog.stmts[0] {
             Stmt::Let { name, type_ann, .. } => {
                 assert_eq!(name, "x");
                 assert_eq!(
                     type_ann,
-                    &Some(Type::Nullable(Box::new(Type::Named("Int".into()))))
+                    &Some(Type::Nullable(Box::new(Type::Named("int".into()))))
                 );
             }
             _ => panic!("Expected Let with nullable type"),

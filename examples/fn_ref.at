@@ -1,4 +1,4 @@
-fun add_one(x: Int): Int {
+fun add_one(x: int): int {
     return x + 1
 }
 

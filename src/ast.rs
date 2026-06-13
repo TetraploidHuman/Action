@@ -836,7 +836,7 @@ impl fmt::Display for Stmt {
                 let kw = if *mutable { "var" } else { "val" };
                 write!(f, "{}{} {}", lazy_kw, kw, name)?;
                 if let Some(ty) = type_ann {
-                    write!(f, ": {}", ty)?;
+                    write!(f, " {}", ty)?;
                 }
                 write!(f, " = {}", value)
             }
@@ -1020,7 +1020,7 @@ impl fmt::Display for Stmt {
             } => {
                 write!(f, "const {}", name)?;
                 if let Some(ty) = type_ann {
-                    write!(f, ": {}", ty)?;
+                    write!(f, " {}", ty)?;
                 }
                 write!(f, " = {}", value)
             }

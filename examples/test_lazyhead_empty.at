@@ -1,5 +1,5 @@
 fun main() {
-    val empty_ll = toLazyList(List[])
+    val empty_ll = toLazyList(list[])
     val h = lazyHead(empty_ll)
     println(h == null)
     println(h != null)

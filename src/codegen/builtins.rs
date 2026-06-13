@@ -542,11 +542,11 @@ impl<'ctx> CodeGen<'ctx> {
         if let Expr::FieldAccess(module_expr, method) = func {
             if let Expr::Ident(module_name) = module_expr.as_ref() {
                 // List.of(...) → List[...] (equivalent to list literal)
-                if module_name == "List" && method == "of" {
+                if module_name == "list" && method == "of" {
                     return self.builtin_list(args);
                 }
                 // Set.of(...) → Set literal
-                if module_name == "Set" && method == "of" {
+                if module_name == "set" && method == "of" {
                     return self.builtin_set_of(args);
                 }
                 let mangled = format!("{}_{}", module_name, method);

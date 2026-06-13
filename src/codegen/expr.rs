@@ -1891,10 +1891,10 @@ impl<'ctx> CodeGen<'ctx> {
     /// Map a TypedValue to its type name string for UFCS lookup
     pub(super) fn type_name_from_typed_value(&self, v: &TypedValue<'ctx>) -> String {
         match v {
-            TypedValue::Int(_) => "Int".to_string(),
-            TypedValue::Float(_) => "Float".to_string(),
-            TypedValue::Bool(_) => "Bool".to_string(),
-            TypedValue::Str(_) => "String".to_string(),
+            TypedValue::Int(_) => "int".to_string(),
+            TypedValue::Float(_) => "float".to_string(),
+            TypedValue::Bool(_) => "bool".to_string(),
+            TypedValue::Str(_) => "string".to_string(),
             TypedValue::Struct(_, st) => {
                 for (name, ty) in &self.named_structs {
                     if *ty == *st {
@@ -1906,9 +1906,9 @@ impl<'ctx> CodeGen<'ctx> {
             TypedValue::Enum(..) => "Enum".to_string(),
             TypedValue::Unit => "Unit".to_string(),
             TypedValue::Fn(_, _) | TypedValue::Closure { .. } => "Fn".to_string(),
-            TypedValue::List(_) => "List".to_string(),
-            TypedValue::Map(_) => "Map".to_string(),
-            TypedValue::Set(_) => "Set".to_string(),
+            TypedValue::List(_) => "list".to_string(),
+            TypedValue::Map(_) => "map".to_string(),
+            TypedValue::Set(_) => "set".to_string(),
             TypedValue::Task(_) => "Task".to_string(),
             TypedValue::Stream(_) => "Stream".to_string(),
             TypedValue::LazyList(_) => "LazyList".to_string(),
@@ -2056,68 +2056,68 @@ impl<'ctx> CodeGen<'ctx> {
             // Many builtins have corresponding action_* runtime functions
             let rt_name = match (type_name, method) {
                 // Int/Float/Bool -> String conversions
-                ("Int", "toString") | ("Bool", "toString") => "action_int_to_string",
-                ("Float", "toString") => "action_float_to_string",
+                ("int", "toString") | ("bool", "toString") => "action_int_to_string",
+                ("float", "toString") => "action_float_to_string",
                 // String methods
-                ("String", "len") | ("String", "length") => "action_string_len",
-                ("String", "toUpper") => "action_string_to_upper",
-                ("String", "toLower") => "action_string_to_lower",
-                ("String", "trim") => "action_string_trim",
-                ("String", "substring") => "action_string_substring",
-                ("String", "startsWith") => "action_string_starts_with",
-                ("String", "endsWith") => "action_string_ends_with",
-                ("String", "split") => "action_string_split",
-                ("String", "contains") => "action_string_contains",
-                ("String", "toInt") | ("String", "toFloat") => {
+                ("string", "len") | ("string", "length") => "action_string_len",
+                ("string", "toUpper") => "action_string_to_upper",
+                ("string", "toLower") => "action_string_to_lower",
+                ("string", "trim") => "action_string_trim",
+                ("string", "substring") => "action_string_substring",
+                ("string", "startsWith") => "action_string_starts_with",
+                ("string", "endsWith") => "action_string_ends_with",
+                ("string", "split") => "action_string_split",
+                ("string", "contains") => "action_string_contains",
+                ("string", "toInt") | ("string", "toFloat") => {
                     return Err(format!(
                         "::{}::{} cannot be used as a function reference (requires parsing)",
                         type_name, method
                     ));
                 }
                 // List methods
-                ("List", "len") | ("Map", "len") | ("Set", "len") => "action_list_len",
-                ("List", "head") => "action_list_head",
-                ("List", "last") => "action_list_last",
-                ("List", "tail") => "action_list_tail",
-                ("List", "init") => "action_list_init",
-                ("List", "reverse") => "action_list_reverse",
-                ("List", "take") => "action_list_take",
-                ("List", "drop") => "action_list_drop",
-                ("List", "contains") => "action_list_contains",
-                ("List", "zip") => "action_list_zip",
-                ("List", "get") => "action_list_get",
-                ("List", "append") | ("List", "push") => "action_list_push",
-                ("List", "range") => "action_list_range",
+                ("list", "len") | ("map", "len") | ("set", "len") => "action_list_len",
+                ("list", "head") => "action_list_head",
+                ("list", "last") => "action_list_last",
+                ("list", "tail") => "action_list_tail",
+                ("list", "init") => "action_list_init",
+                ("list", "reverse") => "action_list_reverse",
+                ("list", "take") => "action_list_take",
+                ("list", "drop") => "action_list_drop",
+                ("list", "contains") => "action_list_contains",
+                ("list", "zip") => "action_list_zip",
+                ("list", "get") => "action_list_get",
+                ("list", "append") | ("list", "push") => "action_list_push",
+                ("list", "range") => "action_list_range",
                 // Map methods
-                ("Map", "contains") => "action_map_contains",
-                ("Map", "get") => "action_map_get",
-                ("Map", "insert") => "action_map_insert",
-                ("Map", "remove") => "action_map_remove",
+                ("map", "contains") => "action_map_contains",
+                ("map", "get") => "action_map_get",
+                ("map", "insert") => "action_map_insert",
+                ("map", "remove") => "action_map_remove",
                 // Other String methods with runtime functions
-                ("String", "chars") => "action_string_chars",
-                ("String", "join") => "action_string_join",
-                ("String", "replace") => "action_string_replace",
-                ("String", "repeat") => "action_string_repeat",
-                ("String", "trimStart") => "action_string_trim_start",
-                ("String", "trimEnd") => "action_string_trim_end",
+                ("string", "chars") => "action_string_chars",
+                ("string", "join") => "action_string_join",
+                ("string", "replace") => "action_string_replace",
+                ("string", "repeat") => "action_string_repeat",
+                ("string", "trimStart") => "action_string_trim_start",
+                ("string", "trimEnd") => "action_string_trim_end",
                 // Methods without simple runtime function counterparts
-                ("List", "map")
-                | ("List", "filter")
-                | ("List", "fold")
-                | ("List", "flatMap")
-                | ("List", "flatten")
-                | ("List", "unique")
-                | ("List", "withIndex")
-                | ("List", "sorted")
-                | ("List", "sum")
-                | ("List", "product")
-                | ("List", "prepend")
-                | ("List", "isEmpty")
-                | ("List", "any")
-                | ("List", "all")
-                | ("List", "find")
-                | ("List", "reduce")
-                | ("List", "splitLines")
+                ("list", "map")
+                | ("list", "filter")
+                | ("list", "fold")
+                | ("list", "flatMap")
+                | ("list", "flatten")
+                | ("list", "unique")
+                | ("list", "withIndex")
+                | ("list", "sorted")
+                | ("list", "sum")
+                | ("list", "product")
+                | ("list", "prepend")
+                | ("list", "isEmpty")
+                | ("list", "any")
+                | ("list", "all")
+                | ("list", "find")
+                | ("list", "reduce")
+                | ("list", "splitLines")
                 | ("LazyList", _)
                 | ("Task", _)
                 | ("Stream", _)

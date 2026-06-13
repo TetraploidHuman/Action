@@ -1,20 +1,20 @@
 // Test Elvis operator and nullable propagation (replaces postfix ? operator)
-fun get_value(): Int? {
+fun get_value(): int? {
     null
 }
 
-fun get_other(): Int? {
+fun get_other(): int? {
     100
 }
 
-fun test_ok(): Int? {
+fun test_ok(): int? {
     val x = get_other() or { 0 }// non-null → 100, Elvis would give 0 if null
-    x + 1  // auto-wrapped to Int?
+    x + 1  // auto-wrapped to int?
 }
 
-fun test_null(): Int? {
+fun test_null(): int? {
     val x = get_value() or { 99 }// null → 99 via Elvis
-    x + 100  // auto-wrapped to Int?
+    x + 100  // auto-wrapped to int?
 }
 
 fun main() {

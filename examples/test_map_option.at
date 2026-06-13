@@ -1,6 +1,6 @@
-// Test Map with nullable types — get "a" value, default 0 for missing
+// Test map with nullable types — get "a" value, default 0 for missing
 fun main() {
-    val m = Map["a": 42]
+    val m = map["a": 42]
     val a = m["a"] or { 0 }
     print(a)
 }

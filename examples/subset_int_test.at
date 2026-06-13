@@ -1,6 +1,6 @@
 fun main() {
-    val s1 = Set[1, 4]
-    val s2 = Set[1, 2, 3]
+    val s1 = set[1, 4]
+    val s2 = set[1, 2, 3]
 
     print("s1 len: ") println(len(s1))
     print("s2 len: ") println(len(s2))
@@ -15,7 +15,7 @@ fun main() {
     println(r)
 
     // Also test: {1} subset of {1,2,3} should be true
-    val s3 = Set[1]
+    val s3 = set[1]
     val r2 = setIsSubset(s3, s2)
     print("subset2: ")
     println(r2)

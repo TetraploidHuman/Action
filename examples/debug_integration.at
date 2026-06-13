@@ -1,7 +1,7 @@
 // Debug integration_test crash - step 5: isEmpty + append
 
-enum Option { Some(Int), None }
-enum Result { Ok(Int), Err(Int) }
+enum Option { Some(int), None }
+enum Result { Ok(int), Err(int) }
 
 fun main() {
     // Option
@@ -20,8 +20,8 @@ fun main() {
     val err_val = Err("boom")
     print(orElseResult(err_val, 100))
 
-    // List
-    val xs = List[10, 20, 30]
+    // list
+    val xs = list[10, 20, 30]
     print(len(xs))
     print(isEmpty(xs))
 

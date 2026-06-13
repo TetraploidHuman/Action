@@ -1,5 +1,5 @@
 // is type matching examples
-enum Option { Some(Int), None }
+enum Option { Some(int), None }
 
 fun main() {
     val s = Some(42)
@@ -14,7 +14,7 @@ fun main() {
     // is with primitive types
     val x = 42
     when x {
-        is Int -> print(2)
+        is int -> print(2)
         else -> print(9)
     }
 

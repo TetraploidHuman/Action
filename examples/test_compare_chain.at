@@ -1,5 +1,5 @@
 // Test: comparison operators, chaining, short-circuit logic
-fun side_effect(x: Int): Bool {
+fun side_effect(x: int): bool {
     print(x)
     x > 0
 }

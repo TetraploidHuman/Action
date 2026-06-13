@@ -13,10 +13,10 @@ impl<'ctx> CodeGen<'ctx> {
     #[allow(dead_code)]
     pub(super) fn expr_type_hint(&self, expr: &Expr) -> &'static str {
         match expr {
-            Expr::Literal(Literal::String(_)) => "String",
-            Expr::Literal(Literal::Int(_)) => "Int",
-            Expr::Literal(Literal::Float(_)) => "Float",
-            Expr::Literal(Literal::Bool(_)) => "Bool",
+            Expr::Literal(Literal::String(_)) => "string",
+            Expr::Literal(Literal::Int(_)) => "int",
+            Expr::Literal(Literal::Float(_)) => "float",
+            Expr::Literal(Literal::Bool(_)) => "bool",
             Expr::Call { func, .. } => {
                 if let Expr::Ident(name) = func.as_ref() {
                     if name == "print" || name == "println" {
@@ -37,10 +37,10 @@ impl<'ctx> CodeGen<'ctx> {
                         || name == "httpRequest"
                         || name == "str"
                     {
-                        return "String";
+                        return "string";
                     }
                 }
-                "Int"
+                "int"
             }
             Expr::Ident(name) => {
                 if self.registry.lookup_variant(name).is_some() {
@@ -49,29 +49,29 @@ impl<'ctx> CodeGen<'ctx> {
                 // Look up in scope for type
                 if let Some(sv) = self.scope.get(name) {
                     match sv.kind {
-                        ValKind::Str => return "String",
-                        ValKind::Int => return "Int",
-                        ValKind::Float => return "Float",
-                        ValKind::Bool => return "Bool",
+                        ValKind::Str => return "string",
+                        ValKind::Int => return "int",
+                        ValKind::Float => return "float",
+                        ValKind::Bool => return "bool",
                         ValKind::Struct => return "Struct",
                         ValKind::Enum => return "Enum",
-                        ValKind::List => return "List",
-                        ValKind::Map => return "Map",
-                        ValKind::Set => return "Set",
+                        ValKind::List => return "list",
+                        ValKind::Map => return "map",
+                        ValKind::Set => return "set",
                         _ => {}
                     }
                 }
-                "Int"
+                "int"
             }
             Expr::Binary(lhs, op, _) => {
                 if *op == BinaryOp::Add {
                     // String concat returns String; look at LHS
                     let lh = self.expr_type_hint(lhs);
-                    if lh == "String" {
-                        return "String";
+                    if lh == "string" {
+                        return "string";
                     }
                 }
-                "Int"
+                "int"
             }
             Expr::StructLiteral(_) => "Struct",
             Expr::When(w) => match &w.kind {
@@ -79,9 +79,9 @@ impl<'ctx> CodeGen<'ctx> {
                 WhenKind::ValueMatch { arms, .. } | WhenKind::ConditionChain { arms } => arms
                     .first()
                     .map(|a| self.expr_type_hint(&a.body))
-                    .unwrap_or("Int"),
+                    .unwrap_or("int"),
             },
-            _ => "Int",
+            _ => "int",
         }
     }
 

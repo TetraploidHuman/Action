@@ -13,7 +13,7 @@ fun main() {
     println(r2)
 
     // Test 3: drop from list-backed lazy list
-    val lst = List[10, 20, 30, 40, 50]
+    val lst = list[10, 20, 30, 40, 50]
     val ll = toLazyList(lst)
     val dropped = lazyDrop(2, ll)
     val r3 = toList(dropped)
@@ -21,7 +21,7 @@ fun main() {
     println(r3)
 
     // Test 4: drop all elements
-    val lst2 = List[1, 2, 3]
+    val lst2 = list[1, 2, 3]
     val ll2 = toLazyList(lst2)
     val all_dropped = lazyDrop(3, ll2)
     print("drop_all len: ")

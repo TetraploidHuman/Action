@@ -1,8 +1,8 @@
 // Error: passing null to non-nullable parameter
-fun greet(name: String) {
+fun greet(name: string) {
     println("Hello, " + name)
 }
 
 fun main() {
-    greet(null)   // can't pass null where String is expected
+    greet(null)   // can't pass null where string is expected
 }

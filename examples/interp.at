@@ -1,4 +1,4 @@
-// String interpolation test (v6: ${expr} only)
+// string interpolation test (v6: ${expr} only)
 fun main() {
     val name = "World"
     val age = 42

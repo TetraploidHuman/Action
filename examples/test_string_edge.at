@@ -1,6 +1,6 @@
 // Test string manipulation edge cases
 fun main() {
-    // String concatenation
+    // string concatenation
     val s = "Hello" + " " + "World"
     print(s)
 
@@ -8,7 +8,7 @@ fun main() {
     val sub = slice("abcdef", 1, 4)
     print(sub)
 
-    // String length
+    // string length
     print(len(""))
     print(len("abc"))
 

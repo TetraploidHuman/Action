@@ -1,6 +1,6 @@
 fun main() {
-    val b = Set["a", "b", "c"]
-    val a_items = List["a", "d"]
+    val b = set["a", "b", "c"]
+    val a_items = list["a", "d"]
     var is_sub = true
     var idx = 0
     for item in a_items {

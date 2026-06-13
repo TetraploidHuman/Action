@@ -1,5 +1,5 @@
 // Struct examples in Atomic
-type Point = {x: Int, y: Int}
+type Point = {x: int, y: int}
 
 fun main() {
     // Create a struct literal

@@ -7,16 +7,16 @@ fun <T> identity(x: T): T {
 
 fun main() {
     val i = identity(42)
-    println("identity(Int): ${i}")
+    println("identity(int): ${i}")
 
     val b = identity(true)
-    println("identity(Bool): ${b}")
+    println("identity(bool): ${b}")
 
     val s = identity("hello")
-    println("identity(String): ${s}")
+    println("identity(string): ${s}")
 
     val f = identity(3.14)
-    println("identity(Float): ${f}")
+    println("identity(float): ${f}")
 
     println("all types work!")
 }

@@ -1,8 +1,8 @@
 // Simple overload test - string
-fun greet(name: String): String {
+fun greet(name: string): string {
     "Hello, " + name
 }
-fun greet(x: Int): Int {
+fun greet(x: int): int {
     x
 }
 

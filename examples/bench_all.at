@@ -1,0 +1,72 @@
+// Performance benchmark - tests all optimized operations
+fun main() {
+    // --- Build large list: 2000 pushes ---
+    var lst = list[]
+    var i = 0
+    for i < 2000 {
+        lst = lst.append(i)
+        i = i + 1
+    }
+
+    // --- Get: 2000 sequential accesses ---
+    i = 0
+    for i < 2000 {
+        var tmp = lst.get(i)
+        i = i + 1
+    }
+
+    // --- Contains: 200 lookups (hits) ---
+    i = 0
+    for i < 200 {
+        var tmp = lst.contains(i)
+        i = i + 1
+    }
+
+    // --- Contains: 200 lookups (misses) ---
+    i = 0
+    for i < 200 {
+        var tmp = lst.contains(i + 5000)
+        i = i + 1
+    }
+
+    // --- Reverse ---
+    var rev = lst.reverse()
+
+    // --- Take ---
+    var taken = lst.take(1000)
+
+    // --- Insert: 100 inserts at position 0 ---
+    var ins = lst
+    i = 0
+    for i < 100 {
+        ins = ins.insert(i * 2, 9999)
+        i = i + 1
+    }
+
+    // --- Remove: 100 removes from position 0 ---
+    var rem = ins
+    i = 0
+    for i < 100 {
+        rem = rem.remove(0)
+        i = i + 1
+    }
+
+    // --- Concat: two 500-element lists ---
+    var a = list[]
+    var b = list[]
+    i = 0
+    for i < 500 {
+        a = a.append(i)
+        b = b.append(i + 500)
+        i = i + 1
+    }
+    var c = concat(a, b)
+
+    // Output results for verification
+    println(lst.len())
+    println(rev.len())
+    println(taken.len())
+    println(ins.len())
+    println(rem.len())
+    println(c.len())
+}

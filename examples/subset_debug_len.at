@@ -1,6 +1,6 @@
 fun main() {
-    val s1 = Set["a", "d"]
-    val s2 = Set["a", "b", "c"]
+    val s1 = set["a", "d"]
+    val s2 = set["a", "b", "c"]
 
     // Verify lengths
     print("s1 len: ") println(len(s1))

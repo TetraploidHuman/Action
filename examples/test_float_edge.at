@@ -1,6 +1,6 @@
 // Test float arithmetic edge cases: precision, negatives, fractions
 fun main() {
-    // Float addition with decimals
+    // float addition with decimals
     val a = 0.1 + 0.2
     print(a > 0.3)
 
@@ -8,11 +8,11 @@ fun main() {
     val b = -3.5
     print(b < 0.0)
 
-    // Float division
+    // float division
     val c = 1.0 / 3.0
     print(c > 0.0)
 
-    // Float power
+    // float power
     val d = 2.0 ** 3.0
     print(d > 7.9)
 

@@ -1,0 +1,52 @@
+// Cross-version benchmark: push, get, contains, reverse, take, concat
+fun main() {
+    // --- Push 2000 elements ---
+    var lst = list[]
+    var i = 0
+    for i < 2000 {
+        lst = lst.append(i)
+        i = i + 1
+    }
+
+    // --- Get 2000 accesses ---
+    i = 0
+    for i < 2000 {
+        var tmp = lst.get(i)
+        i = i + 1
+    }
+
+    // --- Contains 200 hits + 200 misses ---
+    i = 0
+    for i < 200 {
+        var tmp = lst.contains(i)
+        i = i + 1
+    }
+    i = 0
+    for i < 200 {
+        var tmp = lst.contains(i + 5000)
+        i = i + 1
+    }
+
+    // --- Reverse ---
+    var rev = lst.reverse()
+
+    // --- Take ---
+    var taken = lst.take(1000)
+
+    // --- Concat two 500-element lists ---
+    var a = list[]
+    var b = list[]
+    i = 0
+    for i < 500 {
+        a = a.append(i)
+        b = b.append(i + 500)
+        i = i + 1
+    }
+    var c = concat(a, b)
+
+    // Verify output
+    println(lst.len())
+    println(rev.len())
+    println(taken.len())
+    println(c.len())
+}

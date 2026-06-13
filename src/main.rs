@@ -293,9 +293,9 @@ fn builtin_types(program: &Program) -> Vec<Stmt> {
             name: "Date".into(),
             type_params: vec![],
             definition: Type::Struct(vec![
-                ("year".into(), Type::Named("Int".into())),
-                ("month".into(), Type::Named("Int".into())),
-                ("day".into(), Type::Named("Int".into())),
+                ("year".into(), Type::Named("int".into())),
+                ("month".into(), Type::Named("int".into())),
+                ("day".into(), Type::Named("int".into())),
             ]),
             span: lexer::Span::default(),
         });
@@ -305,12 +305,12 @@ fn builtin_types(program: &Program) -> Vec<Stmt> {
             name: "DateTime".into(),
             type_params: vec![],
             definition: Type::Struct(vec![
-                ("year".into(), Type::Named("Int".into())),
-                ("month".into(), Type::Named("Int".into())),
-                ("day".into(), Type::Named("Int".into())),
-                ("hour".into(), Type::Named("Int".into())),
-                ("minute".into(), Type::Named("Int".into())),
-                ("second".into(), Type::Named("Int".into())),
+                ("year".into(), Type::Named("int".into())),
+                ("month".into(), Type::Named("int".into())),
+                ("day".into(), Type::Named("int".into())),
+                ("hour".into(), Type::Named("int".into())),
+                ("minute".into(), Type::Named("int".into())),
+                ("second".into(), Type::Named("int".into())),
             ]),
             span: lexer::Span::default(),
         });
@@ -319,7 +319,7 @@ fn builtin_types(program: &Program) -> Vec<Stmt> {
         builtins.push(Stmt::TypeAlias {
             name: "Random".into(),
             type_params: vec![],
-            definition: Type::Struct(vec![("seed".into(), Type::Named("Int".into()))]),
+            definition: Type::Struct(vec![("seed".into(), Type::Named("int".into()))]),
             span: lexer::Span::default(),
         });
     }

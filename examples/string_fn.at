@@ -1,4 +1,4 @@
-// String stdlib functions: toUpper, toLower, trim, concat
+// string stdlib functions: toUpper, toLower, trim, concat
 fun main() {
     // toUpper - convert to uppercase
     print(toUpper("hello world"))    // "HELLO WORLD"

@@ -1,10 +1,10 @@
 // Test nullable types with Elvis operator
 fun main() {
     // Non-null value + Elvis
-    val x: Int? = 44
+    val x int? = 44
     print(x or { 0 })
 
     // Null value + Elvis
-    val y: Int? = null
+    val y int? = null
     print(y or { 9 })
 }

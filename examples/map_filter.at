@@ -1,12 +1,12 @@
-// Map, filter, fold examples in Atomic
+// map, filter, fold examples in Atomic
 
 fun main() {
-    val nums = List[1, 2, 3, 4, 5]
+    val nums = list[1, 2, 3, 4, 5]
 
-    // Map: double each element -> List[2, 4, 6, 8, 10]
+    // map: double each element -> list[2, 4, 6, 8, 10]
     val doubled = map(nums) { it * 2 }
 
-    // Filter: keep only even numbers -> List[2, 4]
+    // Filter: keep only even numbers -> list[2, 4]
     val evens = filter(nums) { it % 2 == 0 }
 
     // Fold: sum of all elements -> 15

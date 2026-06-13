@@ -1,6 +1,6 @@
 fun main() {
     // Subset with single element not in superset - should be false
-    val r = setIsSubset(Set["x"], Set["y"])
+    val r = setIsSubset(set["x"], set["y"])
     print("subset ({x}) of ({y}): ")
     print(r)
     println("")

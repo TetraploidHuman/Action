@@ -854,10 +854,10 @@ fn test_generic_fun() {
 #[test]
 fn test_generic_identity() {
     let out = run_example("generic_identity.at");
-    assert!(out.contains("identity(Int): 42"));
-    assert!(out.contains("identity(Bool): true"));
-    assert!(out.contains("identity(String): hello"));
-    assert!(out.contains("identity(Float): 3.14"));
+    assert!(out.contains("identity(int): 42"));
+    assert!(out.contains("identity(bool): true"));
+    assert!(out.contains("identity(string): hello"));
+    assert!(out.contains("identity(float): 3.14"));
     assert!(out.contains("all types work!"));
 }
 

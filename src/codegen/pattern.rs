@@ -107,11 +107,11 @@ impl<'ctx> CodeGen<'ctx> {
         let result_type = arm_types
             .iter()
             .find(
-                |t| matches!(t, Type::Named(n) if self.enum_types.contains_key(n) || n == "String"),
+                |t| matches!(t, Type::Named(n) if self.enum_types.contains_key(n) || n == "string"),
             )
             .or_else(|| arm_types.first())
             .cloned()
-            .unwrap_or_else(|| Type::Named("Int".into()));
+            .unwrap_or_else(|| Type::Named("int".into()));
         let result_ty = self.ast_type_to_basic_type(&result_type);
 
         // Allocate result at entry
@@ -241,11 +241,11 @@ impl<'ctx> CodeGen<'ctx> {
         let result_type = arm_types
             .iter()
             .find(
-                |t| matches!(t, Type::Named(n) if self.enum_types.contains_key(n) || n == "String"),
+                |t| matches!(t, Type::Named(n) if self.enum_types.contains_key(n) || n == "string"),
             )
             .or_else(|| arm_types.first())
             .cloned()
-            .unwrap_or_else(|| Type::Named("Int".into()));
+            .unwrap_or_else(|| Type::Named("int".into()));
         let result_ty = self.ast_type_to_basic_type(&result_type);
 
         // Allocate result at entry
@@ -649,11 +649,11 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 // Compile-time type check against TypedValue variant
                 let matches = match type_name.as_str() {
-                    "Int" => matches!(val, TypedValue::Int(_)),
-                    "Float" => matches!(val, TypedValue::Float(_)),
-                    "Bool" => matches!(val, TypedValue::Bool(_)),
-                    "String" => matches!(val, TypedValue::Str(_)),
-                    "List" => matches!(val, TypedValue::List(_)),
+                    "int" => matches!(val, TypedValue::Int(_)),
+                    "float" => matches!(val, TypedValue::Float(_)),
+                    "bool" => matches!(val, TypedValue::Bool(_)),
+                    "string" => matches!(val, TypedValue::Str(_)),
+                    "list" => matches!(val, TypedValue::List(_)),
                     _ => false,
                 };
                 Ok(b1.const_int(if matches { 1 } else { 0 }, false))
@@ -793,7 +793,7 @@ impl<'ctx> CodeGen<'ctx> {
                             offsets.push(cur);
                             let ft = resolved_params.as_ref().and_then(|p| p.get(pi));
                             cur += match ft {
-                                Some(Type::Named(n)) if n == "String" || n == "Str" => 16,
+                                Some(Type::Named(n)) if n == "string" || n == "Str" => 16,
                                 _ => 8,
                             };
                         }
@@ -809,7 +809,7 @@ impl<'ctx> CodeGen<'ctx> {
                             };
                             let tv: TypedValue =
                                 match resolved_params.as_ref().and_then(|p| p.get(i)) {
-                                    Some(Type::Named(n)) if n == "String" || n == "Str" => {
+                                    Some(Type::Named(n)) if n == "string" || n == "Str" => {
                                         let loaded = self
                                             .builder
                                             .build_load(self.string_type, fp, "efld_str")
@@ -821,7 +821,7 @@ impl<'ctx> CodeGen<'ctx> {
                                         self.builder.build_store(a, loaded).map_err(llvm_err)?;
                                         TypedValue::Str(a)
                                     }
-                                    Some(Type::Named(n)) if n == "Float" || n == "Double" => {
+                                    Some(Type::Named(n)) if n == "float" || n == "Double" => {
                                         let loaded = self
                                             .builder
                                             .build_load(self.f64_ty(), fp, "efld_f64")
@@ -853,7 +853,7 @@ impl<'ctx> CodeGen<'ctx> {
                             };
                             let tv: TypedValue =
                                 match resolved_params.as_ref().and_then(|p| p.get(idx)) {
-                                    Some(Type::Named(n)) if n == "String" || n == "Str" => {
+                                    Some(Type::Named(n)) if n == "string" || n == "Str" => {
                                         let loaded = self
                                             .builder
                                             .build_load(self.string_type, fp, "nefld_str")
@@ -865,7 +865,7 @@ impl<'ctx> CodeGen<'ctx> {
                                         self.builder.build_store(a, loaded).map_err(llvm_err)?;
                                         TypedValue::Str(a)
                                     }
-                                    Some(Type::Named(n)) if n == "Float" || n == "Double" => {
+                                    Some(Type::Named(n)) if n == "float" || n == "Double" => {
                                         let loaded = self
                                             .builder
                                             .build_load(self.f64_ty(), fp, "nefld_f64")
@@ -1051,7 +1051,7 @@ impl<'ctx> CodeGen<'ctx> {
         let then_inferred = if !then_diverges {
             self.infer_expr_type(then_expr)
         } else {
-            Type::Named("Int".into())
+            Type::Named("int".into())
         };
         let else_inferred = if !else_diverges {
             self.infer_expr_type(else_expr)

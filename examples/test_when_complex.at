@@ -1,5 +1,5 @@
 // Test: complex when expressions - guards, or-patterns, is-patterns, expression conditions
-enum Option { Some(Int), None }
+enum Option { Some(int), None }
 enum Color { Red, Green, Blue }
 
 fun main() {
@@ -30,7 +30,7 @@ fun main() {
     // Test 4: is-patterns with primitive types
     val z = 42
     when z {
-        is Int -> print(2)
+        is int -> print(2)
         else -> print(9)
     }
 

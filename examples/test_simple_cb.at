@@ -1,5 +1,5 @@
 // Test: untyped callback parameter
-fun call_it(f: (Int) -> Int, x: Int): Int = f(x)
+fun call_it(f: (int) -> int, x: int): int = f(x)
 
 fun main() {
     val result = call_it({ n -> n + 10 }, 5)

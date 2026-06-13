@@ -1,4 +1,4 @@
-// String pattern matching test - tests content comparison, not just length
+// string pattern matching test - tests content comparison, not just length
 fun main() {
     val s = "hello"
 

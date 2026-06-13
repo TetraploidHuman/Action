@@ -2,7 +2,9 @@
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
   "name": "Action",
   "scopeName": "source.action",
-  "fileTypes": [".at"],
+  "fileTypes": [
+    ".at"
+  ],
   "patterns": [
     {
       "include": "#comments"
@@ -46,13 +48,23 @@
           "name": "string.quoted.double.action",
           "begin": "\"",
           "end": "\"",
-          "patterns": [{ "name": "constant.character.escape.action", "match": "\\\\." }]
+          "patterns": [
+            {
+              "name": "constant.character.escape.action",
+              "match": "\\\\."
+            }
+          ]
         },
         {
           "name": "string.quoted.single.action",
           "begin": "'",
           "end": "'",
-          "patterns": [{ "name": "constant.character.escape.action", "match": "\\\\." }]
+          "patterns": [
+            {
+              "name": "constant.character.escape.action",
+              "match": "\\\\."
+            }
+          ]
         }
       ]
     },
@@ -68,7 +80,7 @@
       "patterns": [
         {
           "name": "entity.name.type.action",
-          "match": "\\b(Int|Float|Bool|String|Char|Map|Set|List|Task|Stream|LazyList|CString|Ptr|FileHandle|Unit|Void)\\b"
+          "match": "\\b(int|float|bool|string|char|map|set|list|task|stream|lazylist|cstring|ptr|filehandle|unit|void)\\b"
         }
       ]
     },

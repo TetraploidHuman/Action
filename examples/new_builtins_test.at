@@ -2,7 +2,7 @@
 fun main() {
     val xs = range(1, 5)
 
-    // Test tail (now returns Option<List<Int>>)
+    // Test tail (now returns Option<list<int>>)
     val t = tail(xs)
     print("tail isSome: ")
     println(isSome(t))

@@ -1,5 +1,5 @@
 // Test: FFI - External C function call + CString + unsafe
-external fun puts(s: CString): Int
+external fun puts(s: CString): int
 
 fun main() {
     val msg = "Hello from Atomic FFI!"

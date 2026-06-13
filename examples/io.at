@@ -1,4 +1,4 @@
-// Input/Output: readLine() returns String? (null on EOF)
+// Input/Output: readLine() returns string? (null on EOF)
 fun main() {
     val name_opt = readLine()
     val name = name_opt or { "World" }

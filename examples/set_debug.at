@@ -1,13 +1,13 @@
 fun main() {
-    val s1 = Set["a", "d"]
-    val s2 = Set["a", "b", "c"]
+    val s1 = set["a", "d"]
+    val s2 = set["a", "b", "c"]
 
     val r = setIsSubset(s1, s2)
     print("subset result: ")
     print(r)
     println("")
 
-    val r2 = setIsSubset(Set["a", "b"], Set["a", "b", "c"])
+    val r2 = setIsSubset(set["a", "b"], set["a", "b", "c"])
     print("subset2 result: ")
     print(r2)
     println("")
