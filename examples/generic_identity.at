@@ -1,7 +1,7 @@
 // Test generic identity function with multiple concrete types
 // Verifies monomorphization creates separate LLVM functions per type
 
-fun <T> identity(x: T): T {
+fun <T> identity(x: T) -> T {
     x
 }
 

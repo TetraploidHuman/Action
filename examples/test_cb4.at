@@ -1,5 +1,5 @@
 // Test: callback returning int
-fun apply_direct(f: (int) -> int, x: int): int = f(x)
+fun apply_direct(f: (int) -> int, x: int) -> int = f(x)
 
 fun main() {
     val r1 = apply_direct({ x -> x * 2 }, 21)

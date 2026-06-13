@@ -1,5 +1,5 @@
 // Test: define callback function but don't call it from main
-fun apply_direct(f: (int) -> int, x: int): int = f(x)
+fun apply_direct(f: (int) -> int, x: int) -> int = f(x)
 
 fun main() {
     val opt int? = 10

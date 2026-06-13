@@ -1,5 +1,5 @@
 // Error: returning null from non-nullable function
-fun getNumber(): int {
+fun getNumber() -> int {
     null   // can't return null from int function
 }
 

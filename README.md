@@ -5,7 +5,7 @@ Action 是一门静态类型的多范式编程语言，编译器用 Rust 编写�
 ## 特性
 
 - **可空类型** — Kotlin 风格 `T?` 空安全，方法/字段/索引自动短路传播，`or {}` 默认值，智能转换
-- **泛型** — 泛型函数 `fun <T> id(x: T): T`，泛型枚举 `option[T]`
+- **泛型** — 泛型函数 `fun <T> id(x: T) -> T`，泛型枚举 `option[T]`
 - **静态类型系统** — 结构化类型，类型推断，类型别名
 - **模式匹配** — 穷尽性 `when` 表达式，支持枚举/结构体解构，守卫（guard）与或模式
 - **一等函数** — Lambda 表达式，隐式 `it` 参数，闭包捕获
@@ -148,7 +148,7 @@ val r = when x {
 
 ```action
 // 单表达式函数
-fun add(a: int, b: int): int { a + b }
+fun add(a: int, b: int) -> int { a + b }
 
 // 多语句函数
 fun greet(name: string) {
@@ -156,12 +156,12 @@ fun greet(name: string) {
 }
 
 // 递归函数
-fun fib(n: int): int {
+fun fib(n: int) -> int {
     when n <= 1 { n else fib(n - 1) + fib(n - 2) }
 }
 
 // 尾递归优化
-fun sum(n: int, acc: int): int {
+fun sum(n: int, acc: int) -> int {
     when n <= 0 { acc else sum(n - 1, acc + n) }
 }
 ```
@@ -185,9 +185,9 @@ val has_even = nums.any { it % 2 == 0 }
 
 ```action
 // 泛型函数
-fun <T> identity(x: T): T { x }
+fun <T> identity(x: T) -> T { x }
 
-fun <T> pickFirst(a: T, b: T): T { a }
+fun <T> pickFirst(a: T, b: T) -> T { a }
 
 // 泛型枚举
 enum option[T] {
@@ -223,7 +223,7 @@ val display = name or { "Guest" }
 val cityName = user?.address?.city or { "Unknown" }
 
 // or { } 允许 return 提前终止，实现错误传播
-fun process(): string? {
+fun process() -> string? {
     val x = maybe() or { return null }
     val y = another(x) or { return null }
     toUpper(x + y)
@@ -293,8 +293,8 @@ val {x as px, y as py} = p  // 重命名
 ```action
 // 为现有类型添加方法
 extension int {
-    fun square(): int { this * this }
-    fun isEven(): bool { this % 2 == 0 }
+    fun square() -> int { this * this }
+    fun isEven() -> bool { this % 2 == 0 }
 }
 
 5.square()     // 25
@@ -492,7 +492,7 @@ export fun helper() { 42 }
 
 ```action
 // 声明外部 C 函数
-external fun printf(format: string, ...): int
+external fun printf(format: string, ...) -> int
 
 // 声明外部类型
 external type FileHandle

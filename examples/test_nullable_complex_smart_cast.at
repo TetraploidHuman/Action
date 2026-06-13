@@ -47,13 +47,13 @@ fun main() {
     }
 }
 
-fun process(v: int?): int {
+fun process(v: int?) -> int {
     when v {
         null -> 0
         else -> v * 3
     }
 }
 
-fun get_default(): int {
+fun get_default() -> int {
     42
 }

@@ -1,11 +1,11 @@
 // Comprehensive nullable type system test
 // Tests: null literals, Elvis, smart cast, pattern variable binding, nullable params
 
-fun orDefault(x: int?, default: int): int {
+fun orDefault(x: int?, default: int) -> int {
     x or { default }
 }
 
-fun checkNull(x: int?): int {
+fun checkNull(x: int?) -> int {
     when x {
         null -> -1
         v -> v

@@ -1,6 +1,6 @@
 // Test: JSON FFI — minimal step-by-step
 external type JsonNode
-external fun action_json_parse(s: CString): Ptr[JsonNode]
+external fun action_json_parse(s: CString) -> Ptr[JsonNode]
 external fun action_json_free(node: Ptr[JsonNode])
 
 fun main() {

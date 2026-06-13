@@ -693,7 +693,7 @@ pub enum Stmt {
         value: Expr,
         span: Span,
     },
-    /// Function definition: fun name(params): Type = body
+    /// Function definition: fun name(params) -> Type = body
     Fun {
         name: String,
         params: Vec<Param>,
@@ -756,7 +756,7 @@ pub enum Stmt {
         methods: Vec<Stmt>,
         span: Span,
     },
-    /// External function declaration: external fun name(params): Type
+    /// External function declaration: external fun name(params) -> Type
     External {
         name: String,
         params: Vec<Param>,

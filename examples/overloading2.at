@@ -1,15 +1,15 @@
 // Test function overloading - comprehensive
-fun greet(name: string): string {
+fun greet(name: string) -> string {
     "Hello, " + name
 }
-fun greet(times: int): int {
+fun greet(times: int) -> int {
     times * 2
 }
 
-fun process(x: int): int {
+fun process(x: int) -> int {
     x * 10
 }
-fun process(x: float): float {
+fun process(x: float) -> float {
     x * 10.0
 }
 

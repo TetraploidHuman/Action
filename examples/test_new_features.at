@@ -1,5 +1,5 @@
 // Test nullable type features and functional operations
-fun add(a: int, b: int): int { a + b }
+fun add(a: int, b: int) -> int { a + b }
 
 fun main() {
     // ---- Test nullable value operations ----

@@ -1,11 +1,11 @@
 // Test generic functions with multiple type parameters and mixed types
 // Verifies pickFirst/pickSecond monomorphize correctly for each type combination
 
-fun <T, U> pickFirst(a: T, b: U): T {
+fun <T, U> pickFirst(a: T, b: U) -> T {
     a
 }
 
-fun <T, U> pickSecond(a: T, b: U): U {
+fun <T, U> pickSecond(a: T, b: U) -> U {
     b
 }
 

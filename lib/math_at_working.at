@@ -1,14 +1,14 @@
-fun add(x: int, y: int): int = x + y
-fun sub(x: int, y: int): int = x - y
-fun mul(x: int, y: int): int = x * y
-fun div(x: int, y: int): int = x / y
-fun rem(x: int, y: int): int = x % y
+fun add(x: int, y: int) -> int = x + y
+fun sub(x: int, y: int) -> int = x - y
+fun mul(x: int, y: int) -> int = x * y
+fun div(x: int, y: int) -> int = x / y
+fun rem(x: int, y: int) -> int = x % y
 
-fun abs(x: int): int = when x < 0 { -x else x }
-fun min(x: int, y: int): int = when x < y { x else y }
-fun max(x: int, y: int): int = when x > y { x else y }
+fun abs(x: int) -> int = when x < 0 { -x else x }
+fun min(x: int, y: int) -> int = when x < y { x else y }
+fun max(x: int, y: int) -> int = when x > y { x else y }
 
-fun fadd(x: float, y: float): float = x + y
-fun fsub(x: float, y: float): float = x - y
-fun fmul(x: float, y: float): float = x * y
-fun fdiv(x: float, y: float): float = x / y
+fun fadd(x: float, y: float) -> float = x + y
+fun fsub(x: float, y: float) -> float = x - y
+fun fmul(x: float, y: float) -> float = x * y
+fun fdiv(x: float, y: float) -> float = x / y

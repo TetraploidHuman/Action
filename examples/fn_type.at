@@ -1,10 +1,10 @@
 // Function type examples
 // Higher-order function with typed parameter
-fun apply_twice(f: (int) -> int, x: int): int {
+fun apply_twice(f: (int) -> int, x: int) -> int {
     f(f(x))
 }
 
-fun double(n: int): int {
+fun double(n: int) -> int {
     n * 2
 }
 

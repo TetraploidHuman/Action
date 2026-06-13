@@ -1,7 +1,7 @@
 // Test: JSON error — minimal
 external type JsonNode
-external fun action_json_parse(s: CString): Ptr[JsonNode]
-external fun action_json_type(node: Ptr[JsonNode]): int
+external fun action_json_parse(s: CString) -> Ptr[JsonNode]
+external fun action_json_type(node: Ptr[JsonNode]) -> int
 
 fun main() {
     val bad = action_json_parse(toCString("not json"))

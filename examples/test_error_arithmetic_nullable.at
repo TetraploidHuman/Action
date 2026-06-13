@@ -1,5 +1,5 @@
 // Error: arithmetic/bitwise operations on nullable operands
-fun maybe(): int? { null }
+fun maybe() -> int? { null }
 
 fun main() {
     val a = maybe()

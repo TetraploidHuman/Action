@@ -601,8 +601,8 @@ impl Parser {
         }
         self.expect(TokenKind::RParen)?;
 
-        // Optional return type
-        let return_type = if self.skip(TokenKind::Colon) {
+        // Optional return type (-> syntax)
+        let return_type = if self.skip(TokenKind::Arrow) {
             Some(self.parse_type()?)
         } else {
             None
@@ -2283,8 +2283,8 @@ impl Parser {
         }
         self.expect(TokenKind::RParen)?;
 
-        // Optional return type
-        let return_type = if self.skip(TokenKind::Colon) {
+        // Optional return type (-> syntax)
+        let return_type = if self.skip(TokenKind::Arrow) {
             Some(self.parse_type()?)
         } else {
             None
@@ -2385,7 +2385,7 @@ mod tests {
 
     #[test]
     fn test_fun_single_expr() {
-        let prog = parse("fun add(x: Int, y: Int): Int = x + y").unwrap();
+        let prog = parse("fun add(x: int, y: int) -> int = x + y").unwrap();
         match &prog.stmts[0] {
             Stmt::Fun {
                 name,

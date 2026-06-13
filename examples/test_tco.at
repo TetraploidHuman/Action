@@ -1,15 +1,15 @@
 // Test TCO: tail-recursive functions
 // Without TCO, deep recursion would overflow the stack
 
-fun factorial(n: int, acc: int): int {
+fun factorial(n: int, acc: int) -> int {
     return when n <= 1 { acc else factorial(n - 1, acc * n) }
 }
 
-fun sum_range(n: int, acc: int): int {
+fun sum_range(n: int, acc: int) -> int {
     return when n <= 0 { acc else sum_range(n - 1, acc + n) }
 }
 
-fun countdown(n: int): int {
+fun countdown(n: int) -> int {
     return when n <= 0 { 0 else countdown(n - 1) }
 }
 

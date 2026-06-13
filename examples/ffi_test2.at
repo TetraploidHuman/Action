@@ -1,4 +1,4 @@
-external fun action_test_ping(): int
+external fun action_test_ping() -> int
 
 fun main() {
     print("ping: ")

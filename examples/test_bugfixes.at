@@ -22,6 +22,6 @@ fun main() {
     print((x or { 0 }) + (y or { 20 }))                 // 30
 }
 
-fun ret_nullable(v: int): int? {
+fun ret_nullable(v: int) -> int? {
     when v > 0 { 42 else null }
 }

@@ -1,7 +1,7 @@
 // Test: callback that returns Option, called via typed function
 enum Option { Some(int), None }
 
-fun apply_direct(f: (int) -> Option, x: int): Option = f(x)
+fun apply_direct(f: (int) -> Option, x: int) -> option = f(x)
 
 fun main() {
     val r1 = apply_direct({ x -> Some(x * 2) }, 21)

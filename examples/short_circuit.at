@@ -1,5 +1,5 @@
 // Short-circuit evaluation test for and and or
-fun side_effect(x: int): bool {
+fun side_effect(x: int) -> bool {
     print(x)
     x > 0
 }

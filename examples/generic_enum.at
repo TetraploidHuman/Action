@@ -3,14 +3,14 @@
 
 enum Option { Some(int), None }
 
-fun <T> unwrapOr(opt: Option, default: T): T {
+fun <T> unwrapOr(opt: Option, default: T) -> T {
     when opt {
         Some(v) -> v
         None -> default
     }
 }
 
-fun <T> isSome(opt: Option): bool {
+fun <T> isSome(opt: Option) -> bool {
     when opt {
         Some(_) -> true
         None -> false

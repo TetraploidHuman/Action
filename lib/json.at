@@ -8,13 +8,13 @@ external type JsonNode
 external fun action_json_parse(s: CString): Ptr[JsonNode]
 external fun action_json_stringify(node: Ptr[JsonNode]): CString
 external fun action_json_free(node: Ptr[JsonNode])
-external fun action_json_type(node: Ptr[JsonNode]): int
+external fun action_json_type(node: Ptr[JsonNode]) -> int
 external fun action_json_get(node: Ptr[JsonNode], key: CString): Ptr[JsonNode]
 external fun action_json_get_idx(node: Ptr[JsonNode], idx: int): Ptr[JsonNode]
 external fun action_json_as_str(node: Ptr[JsonNode]): CString
-external fun action_json_as_float(node: Ptr[JsonNode]): float
-external fun action_json_as_bool(node: Ptr[JsonNode]): int
-external fun action_json_len(node: Ptr[JsonNode]): int
+external fun action_json_as_float(node: Ptr[JsonNode]) -> float
+external fun action_json_as_bool(node: Ptr[JsonNode]) -> int
+external fun action_json_len(node: Ptr[JsonNode]) -> int
 
 // ---- Type constants ----
 val JSON_NULL   = 0
@@ -33,7 +33,7 @@ fun jsonParse(s: string): Ptr[JsonNode] = {
 }
 
 // Serialize a JsonNode to JSON string
-fun jsonStringify(node: Ptr[JsonNode]): string = {
+fun jsonStringify(node: Ptr[JsonNode]) -> string = {
     val cstr = action_json_stringify(node)
     return fromCString(cstr)
 }
@@ -44,10 +44,10 @@ fun jsonFree(node: Ptr[JsonNode]) = {
 }
 
 // Get the type of a JsonNode: 0=null, 1=bool, 2=number, 3=string, 4=array, 5=object, -1=error
-fun jsonType(node: Ptr[JsonNode]): int = action_json_type(node)
+fun jsonType(node: Ptr[JsonNode]) -> int = action_json_type(node)
 
 // Check if a JsonNode is null or invalid
-fun jsonIsNull(node: Ptr[JsonNode]): bool = {
+fun jsonIsNull(node: Ptr[JsonNode]) -> bool = {
     val t = action_json_type(node)
     return t == 0 or t == -1
 }
@@ -64,26 +64,26 @@ fun jsonGetIdx(node: Ptr[JsonNode], idx: int): Ptr[JsonNode] = {
 }
 
 // Extract string value from a JsonNode
-fun jsonAsStr(node: Ptr[JsonNode]): string = {
+fun jsonAsStr(node: Ptr[JsonNode]) -> string = {
     val cstr = action_json_as_str(node)
     return fromCString(cstr)
 }
 
 // Extract numeric value from a JsonNode (as float; use int when needed — numbers convert implicitly)
-fun jsonAsFloat(node: Ptr[JsonNode]): float = action_json_as_float(node)
+fun jsonAsFloat(node: Ptr[JsonNode]) -> float = action_json_as_float(node)
 
 // Extract boolean value from a JsonNode
-fun jsonAsBool(node: Ptr[JsonNode]): bool = {
+fun jsonAsBool(node: Ptr[JsonNode]) -> bool = {
     val v = action_json_as_bool(node)
     return v != 0
 }
 
 // Get length of array or object. Returns -1 for other types.
-fun jsonLen(node: Ptr[JsonNode]): int = action_json_len(node)
+fun jsonLen(node: Ptr[JsonNode]) -> int = action_json_len(node)
 
 // Escape special characters for safe inclusion in a JSON string.
 // Escapes: " \ \n \r \t
-fun jsonEscape(s: string): string = {
+fun jsonEscape(s: string) -> string = {
     var r = ""
     var i = 0
     for i < len(s) {

@@ -1,5 +1,5 @@
 module math {
-    export fun add(x: int, y: int): int = x + y
-    export fun sub(x: int, y: int): int = x - y
+    export fun add(x: int, y: int) -> int = x + y
+    export fun sub(x: int, y: int) -> int = x - y
     export const PI = 3.14159
 }
