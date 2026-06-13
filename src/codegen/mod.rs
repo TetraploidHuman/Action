@@ -693,6 +693,66 @@ impl<'ctx> CodeGen<'ctx> {
         self.context.ptr_type(inkwell::AddressSpace::default())
     }
 
+    /// Compute the store size (bytes) of an LLVM type for x86-64 ABI.
+    fn type_store_size(&self, ty: BasicTypeEnum<'ctx>) -> u64 {
+        match ty {
+            BasicTypeEnum::IntType(it) => {
+                let bw = it.get_bit_width() as u64;
+                (bw + 7) / 8
+            }
+            BasicTypeEnum::FloatType(_) => 8,
+            BasicTypeEnum::PointerType(_) => 8,
+            BasicTypeEnum::StructType(st) => self.struct_store_size(st),
+            BasicTypeEnum::ArrayType(at) => {
+                let elem_size = self.type_store_size(at.get_element_type());
+                let len = at.len() as u64;
+                elem_size * len
+            }
+            _ => 8,
+        }
+    }
+
+    fn struct_store_size(&self, st: StructType<'ctx>) -> u64 {
+        let fields = st.get_field_types();
+        if fields.is_empty() {
+            return 0;
+        }
+        let mut max_align: u64 = 1;
+        let mut offset: u64 = 0;
+        for field in &fields {
+            let f_size = self.type_store_size(*field);
+            let f_align = self.type_alignment(*field);
+            max_align = max_align.max(f_align);
+            offset = (offset + f_align - 1) / f_align * f_align;
+            offset += f_size;
+        }
+        (offset + max_align - 1) / max_align * max_align
+    }
+
+    fn type_alignment(&self, ty: BasicTypeEnum<'ctx>) -> u64 {
+        match ty {
+            BasicTypeEnum::IntType(it) => {
+                let bw = it.get_bit_width() as u64;
+                ((bw + 7) / 8).min(8)
+            }
+            BasicTypeEnum::FloatType(_) => 8,
+            BasicTypeEnum::PointerType(_) => 8,
+            BasicTypeEnum::StructType(st) => {
+                let fields = st.get_field_types();
+                if fields.is_empty() {
+                    return 1;
+                }
+                fields
+                    .iter()
+                    .map(|f| self.type_alignment(*f))
+                    .max()
+                    .unwrap_or(8)
+            }
+            BasicTypeEnum::ArrayType(at) => self.type_alignment(at.get_element_type()),
+            _ => 8,
+        }
+    }
+
     fn call_rt(
         &self,
         name: &str,
@@ -1874,8 +1934,13 @@ impl<'ctx> CodeGen<'ctx> {
         // Generate mangled name from type_map
         let type_suffix: Vec<String> = type_params
             .iter()
-            .map(|tp| format!("{}", type_map.get(tp).unwrap()))
-            .collect();
+            .map(|tp| {
+                let resolved = type_map
+                    .get(tp)
+                    .ok_or_else(|| format!("type parameter {} not resolved", tp))?;
+                Ok(format!("{}", resolved))
+            })
+            .collect::<Result<Vec<_>, String>>()?;
         let mangled_name = format!("{}_{}", name, type_suffix.join("_"));
 
         // Generate the monomorphized function if not already done

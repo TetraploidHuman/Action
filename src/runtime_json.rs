@@ -36,7 +36,12 @@ static ACTION_JSON_LEN_PTR: unsafe extern "C" fn(*mut c_void) -> i64 = action_js
 static ACTION_JSON_FREE_CSTR_PTR: unsafe extern "C" fn(*mut c_char) = action_json_free_cstr;
 
 fn to_cstring(s: &str) -> *mut c_char {
-    CString::new(s)
+    // Replace interior NUL bytes with U+FFFD to prevent silent truncation
+    let sanitized: String = s
+        .chars()
+        .map(|c| if c == '\0' { '\u{FFFD}' } else { c })
+        .collect();
+    CString::new(sanitized)
         .unwrap_or_else(|_| CString::new("").unwrap())
         .into_raw()
 }
@@ -46,9 +51,8 @@ fn from_cstr(ptr: *const c_char) -> String {
         return String::new();
     }
     unsafe { std::ffi::CStr::from_ptr(ptr) }
-        .to_str()
-        .unwrap_or("")
-        .to_string()
+        .to_string_lossy()
+        .into_owned()
 }
 
 /// Parse a JSON string. Returns null on parse error.

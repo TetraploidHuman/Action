@@ -447,7 +447,7 @@ impl<'ctx> CodeGen<'ctx> {
             for v in &compiled {
                 offsets.push(total_bytes);
                 let field_ty = v.get_type_for_alloca(self);
-                total_bytes += if field_ty.is_struct_type() { 16 } else { 8 };
+                total_bytes += self.type_store_size(field_ty);
             }
             let buf = self.malloc_rc(i64.const_int(total_bytes as u64, false))?;
 

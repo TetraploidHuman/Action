@@ -1572,7 +1572,10 @@ impl<'ctx> CodeGen<'ctx> {
         // If a Return/Break/Continue was already emitted, the current block already
         // has a terminator and cleanup was done by that handler — skip to avoid
         // double rc_dec on scope variables.
-        let current_block = self.builder.get_insert_block().unwrap();
+        let current_block = self
+            .builder
+            .get_insert_block()
+            .ok_or("compile_block: builder has no insert block")?;
         if current_block.get_terminator().is_none() {
             // RC inc the return value before cleaning up the scope — but only when
             // the last expression is a local variable that cleanup would decrement.
