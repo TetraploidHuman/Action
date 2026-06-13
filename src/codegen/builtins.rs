@@ -1611,34 +1611,40 @@ impl<'ctx> CodeGen<'ctx> {
     fn typed_value_to_bv(&self, av: &TypedValue<'ctx>) -> BasicValueEnum<'ctx> {
         av.to_bv().unwrap_or_else(|| match av {
             TypedValue::Str(ptr) => {
-                let ld = self.builder
+                let ld = self
+                    .builder
                     .build_load(self.string_type, *ptr, "arg_str")
                     .unwrap();
                 ld.into()
             }
             TypedValue::List(ptr) | TypedValue::Map(ptr) | TypedValue::Set(ptr) => {
-                let ld = self.builder
+                let ld = self
+                    .builder
                     .build_load(self.list_type, *ptr, "arg_list")
                     .unwrap();
                 ld.into()
             }
             TypedValue::LazyList(ptr) => {
-                let ld = self.builder
+                let ld = self
+                    .builder
                     .build_load(self.lazylist_type, *ptr, "arg_ll")
                     .unwrap();
                 ld.into()
             }
             TypedValue::Task(ptr) => {
-                let ld = self.builder
+                let ld = self
+                    .builder
                     .build_load(self.task_type, *ptr, "arg_task")
                     .unwrap();
                 ld.into()
             }
             TypedValue::Stream(ptr) => {
-                let lf = self.builder
+                let lf = self
+                    .builder
                     .build_struct_gep(self.stream_type, *ptr, 3, "arg_slf")
                     .unwrap();
-                let ld = self.builder
+                let ld = self
+                    .builder
                     .build_load(self.list_type, lf, "arg_sl")
                     .unwrap();
                 ld.into()
@@ -1651,12 +1657,10 @@ impl<'ctx> CodeGen<'ctx> {
                 let ld = self.builder.build_load(*et, *ptr, "arg_enum").unwrap();
                 ld.into()
             }
-            TypedValue::Nullable(ptr, ty) => self.builder
-                .build_load(*ty, *ptr, "arg_nullable")
-                .unwrap(),
-            TypedValue::CString(p)
-            | TypedValue::Ptr(p)
-            | TypedValue::FileHandle(p) => (*p).into(),
+            TypedValue::Nullable(ptr, ty) => {
+                self.builder.build_load(*ty, *ptr, "arg_nullable").unwrap()
+            }
+            TypedValue::CString(p) | TypedValue::Ptr(p) | TypedValue::FileHandle(p) => (*p).into(),
             _ => self.i64_ty().const_int(0, false).into(),
         })
     }
@@ -1696,10 +1700,10 @@ impl<'ctx> CodeGen<'ctx> {
                 /* print fn/closure pointer as int */
                 if let Some(bv) = v.to_bv() {
                     if let BasicValueEnum::PointerValue(p) = bv {
-                        let int_val =
-                            self.builder
-                                .build_ptr_to_int(p, self.i64_ty(), "fn_ptr_as_int")
-                                .map_err(llvm_err)?;
+                        let int_val = self
+                            .builder
+                            .build_ptr_to_int(p, self.i64_ty(), "fn_ptr_as_int")
+                            .map_err(llvm_err)?;
                         let _ = self.call_rt("action_print_int", &[int_val.into()]);
                     }
                 }
@@ -1738,10 +1742,10 @@ impl<'ctx> CodeGen<'ctx> {
                 // Print pointer value as hex
                 if let Some(bv) = v.to_bv() {
                     if let BasicValueEnum::PointerValue(p) = bv {
-                        let int_val =
-                            self.builder
-                                .build_ptr_to_int(p, self.i64_ty(), "ptr_as_int")
-                                .map_err(llvm_err)?;
+                        let int_val = self
+                            .builder
+                            .build_ptr_to_int(p, self.i64_ty(), "ptr_as_int")
+                            .map_err(llvm_err)?;
                         let _ = self.call_rt("action_print_int", &[int_val.into()]);
                     }
                 }

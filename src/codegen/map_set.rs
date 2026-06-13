@@ -545,8 +545,7 @@ impl<'ctx> CodeGen<'ctx> {
         match &idx_val {
             TypedValue::Int(iv) => {
                 let lv = self.load_list(list_ptr)?;
-                let result =
-                    self.call_rt("action_list_remove", &[lv.into(), (*iv).into()])?;
+                let result = self.call_rt("action_list_remove", &[lv.into(), (*iv).into()])?;
                 let rv = result.try_as_basic_value().basic().ok_or("remove failed")?;
                 let alloca = self
                     .builder
@@ -583,7 +582,9 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_alloca(self.list_type, "appended")
             .map_err(llvm_err)?;
-        self.builder.build_store(alloca, new_list).map_err(llvm_err)?;
+        self.builder
+            .build_store(alloca, new_list)
+            .map_err(llvm_err)?;
         Ok(TypedValue::List(alloca))
     }
 }

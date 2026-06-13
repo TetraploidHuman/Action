@@ -935,7 +935,11 @@ fn load_stdlib() -> Result<Vec<Stmt>, String> {
             let tokens = lexer.tokenize();
             let lexer_errors = lexer.take_errors();
             if !lexer_errors.is_empty() {
-                return Err(format!("Lexer errors in {}:\n{}", file_name, lexer_errors.join("\n")));
+                return Err(format!(
+                    "Lexer errors in {}:\n{}",
+                    file_name,
+                    lexer_errors.join("\n")
+                ));
             }
             let mut parser = parser::Parser::new(tokens);
             let program = parser.parse_program().map_err(|e| {

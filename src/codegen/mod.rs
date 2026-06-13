@@ -1054,8 +1054,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .build_extract_value(sv, 2, "rc_lh")
                             .map_err(llvm_err)?
                             .into_int_value();
-                        let rdl_fn =
-                            self.module.get_function("action_rc_dec_list_node").unwrap();
+                        let rdl_fn = self.module.get_function("action_rc_dec_list_node").unwrap();
                         self.builder
                             .build_call(rdl_fn, &[data_ptr.into(), height.into()], "")
                             .map_err(llvm_err)?;
@@ -1164,10 +1163,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .build_extract_value(inner, 2, "nlh")
                             .map_err(llvm_err)?
                             .into_int_value();
-                        let rdl_fn = self
-                            .module
-                            .get_function("action_rc_dec_list_node")
-                            .unwrap();
+                        let rdl_fn = self.module.get_function("action_rc_dec_list_node").unwrap();
                         self.builder
                             .build_call(rdl_fn, &[data_ptr.into(), height.into()], "")
                             .map_err(llvm_err)?;

@@ -525,7 +525,11 @@ impl Lexer {
                         "Integer literal {} is too large to parse at line {}",
                         clean, self.line
                     ));
-                    TokenKind::IntLiteral(if clean.starts_with('-') { i64::MIN } else { i64::MAX })
+                    TokenKind::IntLiteral(if clean.starts_with('-') {
+                        i64::MIN
+                    } else {
+                        i64::MAX
+                    })
                 }
             }
         }
@@ -713,9 +717,18 @@ impl Lexer {
             let leading: String = l
                 .chars()
                 .take_while(|c| c.is_whitespace() && *c != '\n')
-                .flat_map(|c| if c == '\t' { vec![' ', ' ', ' ', ' '] } else { vec![c] })
+                .flat_map(|c| {
+                    if c == '\t' {
+                        vec![' ', ' ', ' ', ' ']
+                    } else {
+                        vec![c]
+                    }
+                })
                 .collect();
-            let rest: String = l.chars().skip_while(|c| c.is_whitespace() && *c != '\n').collect();
+            let rest: String = l
+                .chars()
+                .skip_while(|c| c.is_whitespace() && *c != '\n')
+                .collect();
             leading + &rest
         };
         // Find minimum indentation among non-empty lines
