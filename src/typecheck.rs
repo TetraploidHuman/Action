@@ -305,8 +305,10 @@ impl TypeChecker {
                     }
 
                     // NOTE: untyped parameters and return types default to Int.
-                    // Full type inference (Hindley-Milner) is not implemented;
-                    // fixing this requires type variable unification across all call sites.
+                    // Untyped parameters are caught as a hard error in check() (line ~375).
+                    // For unannotated return types, check() infers the body type and updates
+                    // type_env accordingly (line ~435), emitting a warning when the inferred
+                    // type differs from Int. Full Hindley-Milner inference is not implemented.
                     let param_tys: Vec<Type> = params
                         .iter()
                         .map(|p| p.ty.clone().unwrap_or(Type::Named("Int".into())))
@@ -434,6 +436,44 @@ impl TypeChecker {
                                 };
                                 errors.push(CompilerError::new(msg).with_span(self.current_span));
                             }
+                        }
+                    }
+
+                    // If no return type annotation, warn when body type differs from the Int default.
+                    // This catches the case where someone writes e.g. `fun f() { "hello" }` —
+                    // the type checker defaults to `Int` for the return type without warning,
+                    // but callers see `Int` when the body actually returns `String`.
+                    if return_type.is_none() && type_params.is_empty() {
+                        let inferred = self.infer_expr_type(body);
+                        // Only warn for clear non-Int, non-Unit types. Int is the default/fallback,
+                        // and Unit is a valid implicit void return.
+                        if !matches!(&inferred, Type::Named(n) if n == "Int")
+                            && !matches!(&inferred, Type::Unit)
+                        {
+                            // Update the function's entry in type_env so subsequent functions
+                            // that call this one get the correct return type.
+                            let param_tys: Vec<Type> = params
+                                .iter()
+                                .map(|p| p.ty.clone().unwrap_or(Type::Named("Int".into())))
+                                .collect();
+                            let fn_type = Type::Function(param_tys, Box::new(inferred.clone()));
+                            self.type_env.insert(name.clone(), fn_type);
+
+                            // Update the function's entry in type_env so subsequent functions
+                            // that call this one get the correct return type.
+                            let param_tys: Vec<Type> = params
+                                .iter()
+                                .map(|p| p.ty.clone().unwrap_or(Type::Named("Int".into())))
+                                .collect();
+                            let fn_type = Type::Function(param_tys, Box::new(inferred.clone()));
+                            self.type_env.insert(name.clone(), fn_type);
+
+                            eprintln!(
+                                "Warning: function '{}' has no return type annotation. \
+                                 Inferred return type is '{}', not 'Int'. \
+                                 Add ': {}' to the function signature to make this explicit.",
+                                name, inferred, inferred
+                            );
                         }
                     }
 

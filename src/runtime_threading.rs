@@ -32,7 +32,6 @@ mod platform {
         ) -> c_int;
         fn pthread_join(thread: u64, retval: *mut *mut u8) -> c_int;
         fn pthread_detach(thread: u64) -> c_int;
-        fn pthread_cancel(thread: u64) -> c_int;
         fn usleep(usec: c_int) -> c_int;
         fn clock_gettime(clockid: c_int, ts: *mut u8) -> c_int;
     }
@@ -104,7 +103,11 @@ mod platform {
 
     #[no_mangle]
     pub extern "C" fn action_thread_cancel(thread: u64) -> c_int {
-        unsafe { pthread_cancel(thread) }
+        // pthread_cancel is unsafe: it kills the thread without running destructors,
+        // releasing critical sections, or freeing memory. Return an error to prevent
+        // use — cooperative cancellation (via a shared flag) should be used instead.
+        let _ = thread;
+        -1
     }
 
     #[no_mangle]

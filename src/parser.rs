@@ -1208,14 +1208,14 @@ impl Parser {
                     });
                 }
                 let mut sub_parser = Parser::new(sub_tokens);
-                let expr = match sub_parser.parse_expr() {
-                    Ok(e) => e,
-                    Err(_) => {
-                        // Keep the raw ${...} text as a literal so the error is visible
-                        let raw = format!("${{{}}}", expr_str);
-                        Expr::string(&raw)
-                    }
-                };
+                // Propagate parse errors from the interpolated expression to the user.
+                // Previously errors were silently swallowed and the raw ${...} text
+                // was emitted as a literal — this made interpolation typos invisible.
+                let expr = sub_parser.parse_expr().map_err(|e| ParseError {
+                    message: format!("In string interpolation: {}", e.message),
+                    line: self.current().span.line,
+                    col: self.current().span.col,
+                })?;
                 parts.push(StringPart::Expr(Box::new(expr)));
             } else {
                 current.push(chars[i]);
@@ -2298,12 +2298,28 @@ impl Parser {
     }
 
     fn skip_to_next_stmt(&mut self) {
-        // Skip tokens until we hit a meaningful statement boundary
-        while self.current_kind() != TokenKind::Eof
-            && self.current_kind() != TokenKind::RBrace
-            && self.current_kind() != TokenKind::Semicolon
-        {
-            self.advance();
+        // Skip tokens until we hit a meaningful statement boundary.
+        // Track brace depth to avoid skipping past } that belongs to a nested block
+        // or function body (e.g., "val x =\nfun foo() { return 42 }" should stop at
+        // the semicolon after `=`, not consume `fun foo() { ... }`).
+        let mut brace_depth: usize = 0;
+        loop {
+            match self.current_kind() {
+                TokenKind::Eof => break,
+                TokenKind::Semicolon if brace_depth == 0 => break,
+                TokenKind::RBrace if brace_depth == 0 => break,
+                TokenKind::LBrace => {
+                    brace_depth = brace_depth.saturating_add(1);
+                    self.advance();
+                }
+                TokenKind::RBrace => {
+                    brace_depth = brace_depth.saturating_sub(1);
+                    self.advance();
+                }
+                _ => {
+                    self.advance();
+                }
+            }
         }
     }
 }

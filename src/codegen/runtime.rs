@@ -6,8 +6,10 @@ use inkwell::{FloatPredicate, IntPredicate};
 use super::{llvm_err, CodeGen};
 
 impl<'ctx> CodeGen<'ctx> {
+    // Repress unused-variable warnings: define_runtime is ~16000 lines and declares >400
+    // runtime function handles, many of which are intentionally reserved for future use or
+    // only used conditionally. Naming each decl `_foo` would obscure readability.
     #[allow(unused_variables)]
-    #[allow(unused_macros)]
     pub(super) fn define_runtime(&self) -> Result<(), String> {
         let i64 = self.i64_ty();
         let f64 = self.f64_ty();
@@ -818,82 +820,6 @@ impl<'ctx> CodeGen<'ctx> {
             // $start: initial loop counter value
             // $cond: loop-continuation check (references `iv` for current counter)
             // $next: next counter value (references `iv` for current counter)
-            macro_rules! rebuild_list_fn {
-                ($func:ident, $src:expr, $len:expr, $start:expr, $cond:expr, $next:expr) => {{
-                    let lc_fn = self.module.get_function("action_list_create").unwrap();
-                    let lg_fn = self.module.get_function("action_list_get").unwrap();
-                    let lp_fn = self.module.get_function("action_list_push").unwrap();
-                    let entry = self.context.append_basic_block($func, "entry");
-                    let loop_bb = self.context.append_basic_block($func, "loop");
-                    let body_bb = self.context.append_basic_block($func, "body");
-                    let next_bb = self.context.append_basic_block($func, "next");
-                    let done_bb = self.context.append_basic_block($func, "done");
-
-                    self.builder.position_at_end(entry);
-                    let src_val = $src;
-                    let len_val = $len;
-                    let new_cc = self
-                        .builder
-                        .build_call(lc_fn, &[i64.const_int(0, false).into()], "new")
-                        .map_err(llvm_err)?;
-                    let cur_a = self
-                        .builder
-                        .build_alloca(list_ty, "cur")
-                        .map_err(llvm_err)?;
-                    self.builder
-                        .build_store(cur_a, new_cc.try_as_basic_value().unwrap_basic())
-                        .map_err(llvm_err)?;
-                    let i_a = self.builder.build_alloca(i64, "i").map_err(llvm_err)?;
-                    self.builder.build_store(i_a, $start).map_err(llvm_err)?;
-                    let _ = self.builder.build_unconditional_branch(loop_bb);
-
-                    self.builder.position_at_end(loop_bb);
-                    let iv = self
-                        .builder
-                        .build_load(i64, i_a, "iv")
-                        .map_err(llvm_err)?
-                        .into_int_value();
-                    let cond: inkwell::values::IntValue = $cond;
-                    let _ = self
-                        .builder
-                        .build_conditional_branch(cond, body_bb, done_bb);
-
-                    self.builder.position_at_end(body_bb);
-                    let gv = self
-                        .builder
-                        .build_call(lg_fn, &[src_val.into(), iv.into()], "gv")
-                        .map_err(llvm_err)?;
-                    let cs = self
-                        .builder
-                        .build_load(list_ty, cur_a, "cs")
-                        .map_err(llvm_err)?
-                        .into_struct_value();
-                    let pv = self
-                        .builder
-                        .build_call(
-                            lp_fn,
-                            &[cs.into(), gv.try_as_basic_value().unwrap_basic().into()],
-                            "pv",
-                        )
-                        .map_err(llvm_err)?;
-                    self.builder
-                        .build_store(cur_a, pv.try_as_basic_value().unwrap_basic())
-                        .map_err(llvm_err)?;
-                    let _ = self.builder.build_unconditional_branch(next_bb);
-
-                    self.builder.position_at_end(next_bb);
-                    let ni: inkwell::values::IntValue = $next;
-                    self.builder.build_store(i_a, ni).map_err(llvm_err)?;
-                    let _ = self.builder.build_unconditional_branch(loop_bb);
-
-                    self.builder.position_at_end(done_bb);
-                    let result = self
-                        .builder
-                        .build_load(list_ty, cur_a, "result")
-                        .map_err(llvm_err)?;
-                    let _ = self.builder.build_return(Some(&result));
-                }};
-            }
 
             // ---- action_string_eq({i64, ptr}, {i64, ptr}) -> i1 ----
             let str_eq_fn = self.module.add_function(

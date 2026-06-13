@@ -45,12 +45,12 @@ static struct curl_slist* add_header_to_slist(struct curl_slist *headers, const 
  * The caller is responsible for freeing the returned string.
  * On error, returns "0\nError message"
  */
-char* atomic_http_request(
+char* action_http_request(
     const char* method,
     const char* url,
     const char* headers,
     const char* body,
-    int body_len
+    long body_len  // must match Rust's i64 (LP64: long is 8 bytes)
 ) {
     CURL *curl = curl_easy_init();
     if (!curl) {
@@ -161,6 +161,7 @@ char* atomic_http_request(
 }
 
 // Free a string returned by atomic_http_request
-void atomic_http_free(char *ptr) {
+// Free a string returned by action_http_request
+void action_http_free(char *ptr) {
     free(ptr);
 }
