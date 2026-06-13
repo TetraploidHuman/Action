@@ -5,14 +5,14 @@ Action 是一门静态类型的多范式编程语言，编译器用 Rust 编写�
 ## 特性
 
 - **可空类型** — Kotlin 风格 `T?` 空安全，方法/字段/索引自动短路传播，`or {}` 默认值，智能转换
-- **泛型** — 泛型函数 `fun <T> id(x: T): T`，泛型枚举 `Option[T]`
+- **泛型** — 泛型函数 `fun <T> id(x: T): T`，泛型枚举 `option[T]`
 - **静态类型系统** — 结构化类型，类型推断，类型别名
 - **模式匹配** — 穷尽性 `when` 表达式，支持枚举/结构体解构，守卫（guard）与或模式
 - **一等函数** — Lambda 表达式，隐式 `it` 参数，闭包捕获
 - **集合类型** — list, set, map 及丰富的方法链
 - **扩展方法** — 为已有类型添加方法
 - **字符串插值** — `"Hello, ${name}!"`
-- **协程与流** — 轻量级 Task/Stream，支持异步通信
+- **协程与流** — 轻量级 task/stream，支持异步通信
 - **HTTP 客户端** — 内建 HTTP 请求支持
 - **JSON 支持** — 解析、序列化、遍历
 - **LSP** — 内置 Language Server Protocol 支持
@@ -190,7 +190,7 @@ fun <T> identity(x: T): T { x }
 fun <T> pickFirst(a: T, b: T): T { a }
 
 // 泛型枚举
-enum Option[T] {
+enum option[T] {
     Some(T),
     None
 }
@@ -271,7 +271,7 @@ val c = when color {
 ### 结构体
 
 ```action
-type Point = { x: int, y: int }
+type point = { x: int, y: int }
 
 // 字面量构造（字段顺序无关）
 val p = { x = 10, y = 20 }
@@ -304,8 +304,8 @@ extension int {
 ### 类型别名
 
 ```action
-type UserId = int
-type Person = { id: UserId, name: string }
+type userid = int
+type person = { id: userid, name: string }
 ```
 
 ### For 循环
