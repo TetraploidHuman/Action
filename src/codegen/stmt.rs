@@ -141,6 +141,7 @@ impl<'ctx> CodeGen<'ctx> {
                         actual_fn_type,
                         closure_ptr: _,
                         closure_ty,
+                        alloca: _,
                     } = &val
                     {
                         self.scope
@@ -1051,6 +1052,65 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_pointer_value();
                         self.rc_inc(pdata)?;
                     }
+                    ValKind::Enum => {
+                        // Enum data pointer was rc_inc'd by the caller;
+                        // scope cleanup will rc_dec it when the parameter goes out of scope
+                    }
+                    ValKind::Struct => {
+                        if let BasicTypeEnum::StructType(st) = pv.get_type() {
+                            let loaded = self
+                                .builder
+                                .build_load(st, alloca, "param_struct_inc")
+                                .map_err(llvm_err)?
+                                .into_struct_value();
+                            self.rc_struct_fields(loaded, st, true)?;
+                        }
+                    }
+                    ValKind::Stream => {
+                        let heap_ptr = self
+                            .builder
+                            .build_load(self.ptr_ty(), alloca, "stream_param_ptr")
+                            .map_err(llvm_err)?
+                            .into_pointer_value();
+                        let list_gep = self
+                            .builder
+                            .build_struct_gep(self.stream_type, heap_ptr, 3, "sp_list_gep")
+                            .map_err(llvm_err)?;
+                        let lv = self
+                            .builder
+                            .build_load(self.list_type, list_gep, "sp_list")
+                            .map_err(llvm_err)?;
+                        let pdata = self
+                            .builder
+                            .build_extract_value(lv.into_struct_value(), 0, "sp_data")
+                            .map_err(llvm_err)?
+                            .into_pointer_value();
+                        self.rc_inc(pdata)?;
+                    }
+                    ValKind::Task => {
+                        let heap_ptr = self
+                            .builder
+                            .build_load(self.ptr_ty(), alloca, "task_param_ptr")
+                            .map_err(llvm_err)?
+                            .into_pointer_value();
+                        let list_gep = self
+                            .builder
+                            .build_struct_gep(self.task_type, heap_ptr, 4, "tp_list_gep")
+                            .map_err(llvm_err)?;
+                        let lv = self
+                            .builder
+                            .build_load(self.list_type, list_gep, "tp_list")
+                            .map_err(llvm_err)?;
+                        let pdata = self
+                            .builder
+                            .build_extract_value(lv.into_struct_value(), 0, "tp_data")
+                            .map_err(llvm_err)?
+                            .into_pointer_value();
+                        self.rc_inc(pdata)?;
+                    }
+                    ValKind::Nullable => {
+                        self.rc_nullable_inner(alloca, pv.get_type(), true)?;
+                    }
                     _ => {}
                 }
             }
@@ -1075,6 +1135,7 @@ impl<'ctx> CodeGen<'ctx> {
             let llvm_void: bool = function.get_type().get_return_type().is_none();
 
             if name == "main" {
+                self.emit_scope_cleanup()?;
                 // Flush stdout before exit so buffered printf output is written
                 // even when the program uses print() (no newline) on Windows.
                 if let Some(fflush_fn) = self.module.get_function("fflush") {
@@ -1088,8 +1149,15 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_return(Some(&self.i64_ty().const_int(0, false)));
             } else if llvm_void {
+                self.emit_scope_cleanup()?;
                 let _ = self.builder.build_return(None);
             } else {
+                // RC inc the return value before cleaning up scope — same
+                // pattern as Stmt::Return.
+                if self.is_scope_variable(&result) {
+                    self.rc_inc_typed_value(&result)?;
+                }
+                self.emit_scope_cleanup()?;
                 match &result {
                     TypedValue::Str(ptr) => {
                         let str_val = self.load_string(*ptr)?;

@@ -151,6 +151,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_and(matches, guard_matches, "guard_and")
                     .map_err(llvm_err)?;
+                self.emit_scope_cleanup()?;
                 let mut parent = Scope::new();
                 std::mem::swap(&mut self.scope, &mut parent);
                 if let Some(p) = parent.parent {
@@ -187,6 +188,12 @@ impl<'ctx> CodeGen<'ctx> {
             if let TypedValue::Enum(_, _, inner, rc) = &body_val {
                 chain_enum_info = Some((*inner, *rc));
             }
+            // RC inc the result before cleaning up the child scope, so
+            // heap-typed pattern variables aren't freed prematurely.
+            if self.is_scope_variable(&body_val) {
+                self.rc_inc_typed_value(&body_val)?;
+            }
+            self.emit_scope_cleanup()?;
             self.store_value_to_alloca(&body_val, result_alloca)?;
             // Restore scope
             let mut parent = Scope::new();
@@ -347,6 +354,12 @@ impl<'ctx> CodeGen<'ctx> {
             if let TypedValue::Enum(_, _, inner, rc) = &body_val {
                 result_enum_info = Some((*inner, *rc));
             }
+            // RC inc the result before cleaning up the child scope, so
+            // heap-typed pattern variables aren't freed prematurely.
+            if self.is_scope_variable(&body_val) {
+                self.rc_inc_typed_value(&body_val)?;
+            }
+            self.emit_scope_cleanup()?;
             self.store_value_to_alloca(&body_val, result_alloca)?;
             let mut parent = Scope::new();
             std::mem::swap(&mut self.scope, &mut parent);

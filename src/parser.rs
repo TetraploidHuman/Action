@@ -1198,6 +1198,15 @@ impl Parser {
                 // Parse the embedded expression
                 let mut sub_lexer = Lexer::new(&expr_str);
                 let sub_tokens = sub_lexer.tokenize();
+                // Propagate lexer errors from interpolated expressions
+                let sub_errors = sub_lexer.take_errors();
+                if !sub_errors.is_empty() {
+                    return Err(ParseError {
+                        message: sub_errors.join("\n"),
+                        line: self.current().span.line,
+                        col: self.current().span.col,
+                    });
+                }
                 let mut sub_parser = Parser::new(sub_tokens);
                 let expr = match sub_parser.parse_expr() {
                     Ok(e) => e,

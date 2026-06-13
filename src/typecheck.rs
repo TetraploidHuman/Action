@@ -23,7 +23,7 @@ pub struct EnumInfo {
 #[derive(Clone, Debug)]
 pub struct EnumVariantInfo {
     pub name: String,
-    pub tag: u8,
+    pub tag: u32,
     pub params: Vec<EnumVariantParam>,
 }
 
@@ -77,7 +77,7 @@ impl TypeRegistry {
                     self.variant_to_enum.insert(v.name.clone(), name.clone());
                     enum_variants.push(EnumVariantInfo {
                         name: v.name.clone(),
-                        tag: i as u8,
+                        tag: i as u32,
                         params: v.params.clone(),
                     });
                 }

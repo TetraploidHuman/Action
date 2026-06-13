@@ -141,6 +141,7 @@ pub fn handle_completion(
     let prefix = get_word_prefix(&doc.source, &pos);
 
     let mut items: Vec<CompletionItem> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     // Keywords
     let keywords = &[
@@ -174,6 +175,7 @@ pub fn handle_completion(
     ];
     for kw in keywords {
         if kw.starts_with(&prefix) {
+            seen.insert(kw.to_string());
             items.push(CompletionItem {
                 label: kw.to_string(),
                 kind: Some(CompletionItemKind::KEYWORD),
@@ -199,7 +201,7 @@ pub fn handle_completion(
         ("false", CompletionItemKind::CONSTANT),
     ];
     for (name, kind) in builtins {
-        if name.starts_with(&prefix) {
+        if name.starts_with(&prefix) && seen.insert(name.to_string()) {
             items.push(CompletionItem {
                 label: name.to_string(),
                 kind: Some(*kind),
@@ -210,7 +212,7 @@ pub fn handle_completion(
 
     // Symbols from current document type_env
     for name in doc.type_env.keys() {
-        if name.starts_with(&prefix) {
+        if name.starts_with(&prefix) && seen.insert(name.clone()) {
             items.push(CompletionItem {
                 label: name.clone(),
                 kind: Some(CompletionItemKind::VARIABLE),
@@ -219,9 +221,9 @@ pub fn handle_completion(
         }
     }
 
-    // Symbols from definition_map
+    // Symbols from definition_map (deduplicate against type_env)
     for name in doc.definition_map.keys() {
-        if name.starts_with(&prefix) {
+        if name.starts_with(&prefix) && seen.insert(name.clone()) {
             items.push(CompletionItem {
                 label: name.clone(),
                 kind: Some(match name.chars().next() {
@@ -596,7 +598,7 @@ pub fn handle_code_actions(
                     || diag.message.contains("Non-exhaustive"))
             {
                 // Find the closing brace of the when expression and insert else branch
-                if let Some(edit) = make_add_else_edit(&doc.source, &diag.range) {
+                if let Some(edit) = make_add_else_edit(&doc.tokens, &doc.source, &diag.range) {
                     let uri_clone = uri.clone();
                     actions.push(lsp_types::CodeActionOrCommand::CodeAction(CodeAction {
                         title: "Add else branch".to_string(),
@@ -624,7 +626,11 @@ pub fn handle_code_actions(
 
 /// Create a TextEdit that inserts `else { ... }` before the closing `}` of a when block.
 /// Searches from the diagnostic position to find the when expression's end.
-fn make_add_else_edit(source: &str, range: &Range) -> Option<TextEdit> {
+fn make_add_else_edit(
+    tokens: &[crate::lexer::Token],
+    source: &str,
+    range: &Range,
+) -> Option<TextEdit> {
     let offset = position::lsp_position_to_offset(
         source,
         &Position {
@@ -633,11 +639,13 @@ fn make_add_else_edit(source: &str, range: &Range) -> Option<TextEdit> {
         },
     );
 
-    // Search forward from the diagnostic position to find the closing `}` of the when block.
-    // We need to match braces starting from the when body's opening `{`.
-    // Strategy: find `when` keyword before the offset, then find its matching `}`.
-    let before = &source[..offset.min(source.len())];
-    let when_pos = before.rfind("when")?;
+    // Use token stream to find the `when` keyword (avoids matching
+    // "when" inside string literals, comments, or identifiers).
+    let when_token = tokens
+        .iter()
+        .rev()
+        .find(|t| matches!(t.kind, TokenKind::When) && t.span.end <= offset)?;
+    let when_pos = when_token.span.start;
 
     // Find the opening `{` of the when body (first `{` after `when` keyword)
     let after_when = &source[when_pos..];

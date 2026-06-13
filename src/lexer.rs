@@ -238,6 +238,7 @@ pub struct Lexer {
     pos: usize,
     line: usize,
     col: usize,
+    errors: Vec<String>,
 }
 
 #[allow(dead_code)]
@@ -248,7 +249,16 @@ impl Lexer {
             pos: 0,
             line: 1,
             col: 1,
+            errors: Vec::new(),
         }
+    }
+
+    pub fn add_error(&mut self, msg: String) {
+        self.errors.push(msg);
+    }
+
+    pub fn take_errors(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.errors)
     }
 
     fn current(&self) -> Option<char> {
@@ -335,13 +345,32 @@ impl Lexer {
                 }
             }
             let clean: String = num_str[2..].chars().filter(|c| *c != '_').collect();
-            // Use u128 to detect overflow before clamping to i64 range
-            let val = u128::from_str_radix(&clean, 16).unwrap_or(u128::MAX);
-            return TokenKind::IntLiteral(if val > i64::MAX as u128 {
-                i64::MAX
-            } else {
-                val as i64
-            });
+            if clean.is_empty() {
+                self.add_error(format!("Empty hex literal at line {}", self.line));
+                return TokenKind::IntLiteral(0);
+            }
+            match u128::from_str_radix(&clean, 16) {
+                Ok(val) => {
+                    if val > i64::MAX as u128 {
+                        self.add_error(format!(
+                            "Hex literal 0x{} overflows i64 range at line {}",
+                            clean, self.line
+                        ));
+                    }
+                    return TokenKind::IntLiteral(if val > i64::MAX as u128 {
+                        i64::MAX
+                    } else {
+                        val as i64
+                    });
+                }
+                Err(_) => {
+                    self.add_error(format!(
+                        "Hex literal 0x{} is too large to parse at line {}",
+                        clean, self.line
+                    ));
+                    return TokenKind::IntLiteral(i64::MAX);
+                }
+            }
         }
 
         // Read binary prefix 0b/0B
@@ -355,12 +384,32 @@ impl Lexer {
                 }
             }
             let clean: String = num_str[2..].chars().filter(|c| *c != '_').collect();
-            let val = u128::from_str_radix(&clean, 2).unwrap_or(u128::MAX);
-            return TokenKind::IntLiteral(if val > i64::MAX as u128 {
-                i64::MAX
-            } else {
-                val as i64
-            });
+            if clean.is_empty() {
+                self.add_error(format!("Empty binary literal at line {}", self.line));
+                return TokenKind::IntLiteral(0);
+            }
+            match u128::from_str_radix(&clean, 2) {
+                Ok(val) => {
+                    if val > i64::MAX as u128 {
+                        self.add_error(format!(
+                            "Binary literal 0b{} overflows i64 range at line {}",
+                            clean, self.line
+                        ));
+                    }
+                    return TokenKind::IntLiteral(if val > i64::MAX as u128 {
+                        i64::MAX
+                    } else {
+                        val as i64
+                    });
+                }
+                Err(_) => {
+                    self.add_error(format!(
+                        "Binary literal 0b{} is too large to parse at line {}",
+                        clean, self.line
+                    ));
+                    return TokenKind::IntLiteral(i64::MAX);
+                }
+            }
         }
 
         // Read octal prefix 0o/0O
@@ -374,12 +423,32 @@ impl Lexer {
                 }
             }
             let clean: String = num_str[2..].chars().filter(|c| *c != '_').collect();
-            let val = u128::from_str_radix(&clean, 8).unwrap_or(u128::MAX);
-            return TokenKind::IntLiteral(if val > i64::MAX as u128 {
-                i64::MAX
-            } else {
-                val as i64
-            });
+            if clean.is_empty() {
+                self.add_error(format!("Empty octal literal at line {}", self.line));
+                return TokenKind::IntLiteral(0);
+            }
+            match u128::from_str_radix(&clean, 8) {
+                Ok(val) => {
+                    if val > i64::MAX as u128 {
+                        self.add_error(format!(
+                            "Octal literal 0o{} overflows i64 range at line {}",
+                            clean, self.line
+                        ));
+                    }
+                    return TokenKind::IntLiteral(if val > i64::MAX as u128 {
+                        i64::MAX
+                    } else {
+                        val as i64
+                    });
+                }
+                Err(_) => {
+                    self.add_error(format!(
+                        "Octal literal 0o{} is too large to parse at line {}",
+                        clean, self.line
+                    ));
+                    return TokenKind::IntLiteral(i64::MAX);
+                }
+            }
         }
 
         let mut is_float = false;
@@ -434,19 +503,31 @@ impl Lexer {
         if is_float {
             TokenKind::FloatLiteral(clean.parse::<f64>().unwrap_or(f64::INFINITY))
         } else {
-            let val = clean.parse::<i128>().unwrap_or(if clean.starts_with('-') {
-                i128::MIN
-            } else {
-                i128::MAX
-            });
-            let clamped = if val > i64::MAX as i128 {
-                i64::MAX
-            } else if val < i64::MIN as i128 {
-                i64::MIN
-            } else {
-                val as i64
-            };
-            TokenKind::IntLiteral(clamped)
+            match clean.parse::<i128>() {
+                Ok(val) => {
+                    if val > i64::MAX as i128 || val < i64::MIN as i128 {
+                        self.add_error(format!(
+                            "Integer literal {} overflows i64 range at line {}",
+                            clean, self.line
+                        ));
+                    }
+                    let clamped = if val > i64::MAX as i128 {
+                        i64::MAX
+                    } else if val < i64::MIN as i128 {
+                        i64::MIN
+                    } else {
+                        val as i64
+                    };
+                    TokenKind::IntLiteral(clamped)
+                }
+                Err(_) => {
+                    self.add_error(format!(
+                        "Integer literal {} is too large to parse at line {}",
+                        clean, self.line
+                    ));
+                    TokenKind::IntLiteral(if clean.starts_with('-') { i64::MIN } else { i64::MAX })
+                }
+            }
         }
     }
 
@@ -621,11 +702,22 @@ impl Lexer {
 
     /// Remove common leading whitespace from multi-line string lines.
     /// The closing """ line's indentation determines the baseline.
+    /// Tabs are expanded to 4 spaces before measuring to avoid mixing issues.
     fn dedent_multiline(s: &str) -> String {
         let lines: Vec<&str> = s.lines().collect();
         if lines.is_empty() {
             return String::new();
         }
+        // Normalize: expand leading tabs to 4 spaces for consistent measurement
+        let normalize_leading = |l: &str| -> String {
+            let leading: String = l
+                .chars()
+                .take_while(|c| c.is_whitespace() && *c != '\n')
+                .flat_map(|c| if c == '\t' { vec![' ', ' ', ' ', ' '] } else { vec![c] })
+                .collect();
+            let rest: String = l.chars().skip_while(|c| c.is_whitespace() && *c != '\n').collect();
+            leading + &rest
+        };
         // Find minimum indentation among non-empty lines
         let min_indent = lines
             .iter()
@@ -633,7 +725,8 @@ impl Lexer {
             .map(|l| {
                 l.chars()
                     .take_while(|c| c.is_whitespace() && *c != '\n')
-                    .count()
+                    .map(|c| if c == '\t' { 4 } else { 1 })
+                    .sum::<usize>()
             })
             .min()
             .unwrap_or(0);
@@ -645,11 +738,12 @@ impl Lexer {
             if i > 0 {
                 result.push('\n');
             }
-            if line.len() <= min_indent {
+            let normalized = normalize_leading(line);
+            if normalized.len() <= min_indent {
                 continue; // empty or whitespace-only line
             }
-            // Strip min_indent characters from the line
-            let stripped: String = line.chars().skip(min_indent).collect();
+            // Strip min_indent characters from the normalized line
+            let stripped: String = normalized.chars().skip(min_indent).collect();
             if stripped.trim().is_empty() && i == lines.len() - 1 {
                 // Last whitespace-only line (closing """ line) — skip it
                 if result.ends_with('\n') {
@@ -1058,6 +1152,7 @@ impl Clone for Lexer {
             pos: self.pos,
             line: self.line,
             col: self.col,
+            errors: Vec::new(),
         }
     }
 }

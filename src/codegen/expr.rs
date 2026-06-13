@@ -405,6 +405,7 @@ impl<'ctx> CodeGen<'ctx> {
                 actual_fn_type: fn_type,
                 closure_ptr,
                 closure_ty: cst,
+                alloca: None,
             })
         } else {
             Ok(TypedValue::Fn(fn_ptr, fn_type))
@@ -859,6 +860,7 @@ impl<'ctx> CodeGen<'ctx> {
                                     actual_fn_type: aft,
                                     closure_ptr: p,
                                     closure_ty: ct,
+                                    alloca: Some(var.ptr),
                                 });
                             }
                             return Err(format!(
@@ -1430,24 +1432,11 @@ impl<'ctx> CodeGen<'ctx> {
         r: &TypedValue<'ctx>,
     ) -> Result<TypedValue<'ctx>, String> {
         match (l, r) {
-            (TypedValue::Int(a), TypedValue::Int(b)) => {
-                let zero = self.i64_ty().const_int(0, false);
-                let is_zero = self
-                    .builder
-                    .build_int_compare(inkwell::IntPredicate::EQ, *b, zero, "div_zero")
-                    .map_err(llvm_err)?;
-                let one = self.i64_ty().const_int(1, false);
-                let safe_divisor = self
-                    .builder
-                    .build_select(is_zero, one, *b, "safe_div")
-                    .map_err(llvm_err)?
-                    .into_int_value();
-                Ok(TypedValue::Int(
-                    self.builder
-                        .build_int_signed_div(*a, safe_divisor, "div")
-                        .map_err(llvm_err)?,
-                ))
-            }
+            (TypedValue::Int(a), TypedValue::Int(b)) => Ok(TypedValue::Int(
+                self.builder
+                    .build_int_signed_div(*a, *b, "div")
+                    .map_err(llvm_err)?,
+            )),
             (TypedValue::Float(a), TypedValue::Float(b)) => Ok(TypedValue::Float(
                 self.builder
                     .build_float_div(*a, *b, "div")
@@ -1472,25 +1461,11 @@ impl<'ctx> CodeGen<'ctx> {
         r: &TypedValue<'ctx>,
     ) -> Result<TypedValue<'ctx>, String> {
         match (l, r) {
-            (TypedValue::Int(a), TypedValue::Int(b)) => {
-                // Guard against modulo by zero
-                let zero = self.i64_ty().const_int(0, false);
-                let is_zero = self
-                    .builder
-                    .build_int_compare(inkwell::IntPredicate::EQ, *b, zero, "mod_zero")
-                    .map_err(llvm_err)?;
-                let one = self.i64_ty().const_int(1, false);
-                let safe_divisor = self
-                    .builder
-                    .build_select(is_zero, one, *b, "safe_mod")
-                    .map_err(llvm_err)?
-                    .into_int_value();
-                Ok(TypedValue::Int(
-                    self.builder
-                        .build_int_signed_rem(*a, safe_divisor, "mod")
-                        .map_err(llvm_err)?,
-                ))
-            }
+            (TypedValue::Int(a), TypedValue::Int(b)) => Ok(TypedValue::Int(
+                self.builder
+                    .build_int_signed_rem(*a, *b, "mod")
+                    .map_err(llvm_err)?,
+            )),
             _ => Err("Modulo requires integer operands".to_string()),
         }
     }

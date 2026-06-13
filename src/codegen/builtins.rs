@@ -515,7 +515,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let mut direct_arg_vals: Vec<TypedValue<'ctx>> = Vec::new();
                 for (i, a) in args.iter().enumerate() {
                     let av = self.compile_expr(a)?;
-                    let bv = self.compile_and_load(a)?;
+                    let bv = self.typed_value_to_bv(&av);
                     let casted = self.coerce_arg(bv, param_tys.get(i))?;
                     ca.push(casted.into());
                     direct_arg_vals.push(av);
@@ -563,7 +563,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let mut tracked_args: Vec<TypedValue<'ctx>> = Vec::new();
                     for (i, a) in args.iter().enumerate() {
                         let av = self.compile_expr(a)?;
-                        let bv = self.compile_and_load(a)?;
+                        let bv = self.typed_value_to_bv(&av);
                         let casted = self.coerce_arg(bv, param_tys.get(i))?;
                         ca.push(casted.into());
                         tracked_args.push(av);
@@ -606,34 +606,41 @@ impl<'ctx> CodeGen<'ctx> {
 
             // Handle Map builtin methods inline
             if matches!(recv_val, TypedValue::Map(_)) {
+                let map_ptr = match &recv_val {
+                    TypedValue::Map(p) => *p,
+                    _ => unreachable!(),
+                };
                 if method == "insert" {
-                    return self.builtin_map_insert(receiver, args);
+                    return self.builtin_map_insert(map_ptr, args);
                 }
                 if method == "remove" {
-                    return self.builtin_map_remove(receiver, args);
+                    return self.builtin_map_remove(map_ptr, args);
                 }
                 if method == "contains" {
-                    return self.builtin_map_contains(receiver, args);
+                    return self.builtin_map_contains(map_ptr, args);
                 }
                 if method == "len" || method == "isEmpty" {
+                    self.rc_free_method_receiver(&recv_val)?;
                     let new_func = Expr::Ident(method.to_string());
                     return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                 }
                 if method == "keys" {
+                    self.rc_free_method_receiver(&recv_val)?;
                     let new_func = Expr::Ident("mapKeys".to_string());
                     return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                 }
                 if method == "values" {
-                    // map.values() -> get all values as a list
+                    self.rc_free_method_receiver(&recv_val)?;
                     let new_func = Expr::Ident("mapValues".to_string());
                     return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                 }
                 if method == "mapValues" {
-                    // map.mapValues(transform) -> mapMapValues(map, transform)
+                    self.rc_free_method_receiver(&recv_val)?;
                     let new_func = Expr::Ident("mapMapValues".to_string());
                     return self.compile_call(&new_func, &[receiver.as_ref().clone()], trailing);
                 }
                 if method == "entries" {
+                    self.rc_free_method_receiver(&recv_val)?;
                     let new_func = Expr::Ident("mapEntries".to_string());
                     return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                 }
@@ -641,6 +648,7 @@ impl<'ctx> CodeGen<'ctx> {
                     if args.len() != 1 {
                         return Err("map.union expects 1 argument (other map)".to_string());
                     }
+                    self.rc_free_method_receiver(&recv_val)?;
                     let new_func = Expr::Ident("mapUnion".to_string());
                     return self.compile_call(
                         &new_func,
@@ -649,12 +657,12 @@ impl<'ctx> CodeGen<'ctx> {
                     );
                 }
                 if method == "filter" {
-                    // map.filter(predicate) -> mapFilter(map, predicate)
+                    self.rc_free_method_receiver(&recv_val)?;
                     let new_func = Expr::Ident("mapFilter".to_string());
                     return self.compile_call(&new_func, &[receiver.as_ref().clone()], trailing);
                 }
                 if method == "fold" {
-                    // map.fold(init, folder) -> mapFold(map, init, folder)
+                    self.rc_free_method_receiver(&recv_val)?;
                     let new_func = Expr::Ident("mapFold".to_string());
                     let mut new_args = vec![receiver.as_ref().clone()];
                     new_args.extend(args.iter().cloned());
@@ -663,16 +671,21 @@ impl<'ctx> CodeGen<'ctx> {
             }
             // Handle Set builtin methods inline
             if matches!(recv_val, TypedValue::Set(_)) {
+                let set_ptr = match &recv_val {
+                    TypedValue::Set(p) => *p,
+                    _ => unreachable!(),
+                };
                 if method == "insert" {
-                    return self.builtin_set_insert(receiver, args);
+                    return self.builtin_set_insert(set_ptr, args);
                 }
                 if method == "remove" {
-                    return self.builtin_set_remove(receiver, args);
+                    return self.builtin_set_remove(set_ptr, args);
                 }
                 if method == "contains" {
-                    return self.builtin_set_contains(receiver, args);
+                    return self.builtin_set_contains(set_ptr, args);
                 }
                 if method == "len" || method == "isEmpty" {
+                    self.rc_free_method_receiver(&recv_val)?;
                     let new_func = Expr::Ident(method.to_string());
                     return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                 }
@@ -680,6 +693,7 @@ impl<'ctx> CodeGen<'ctx> {
                     if args.len() != 1 {
                         return Err("set.union expects 1 argument (other set)".to_string());
                     }
+                    self.rc_free_method_receiver(&recv_val)?;
                     let new_func = Expr::Ident("setUnion".to_string());
                     return self.compile_call(
                         &new_func,
@@ -691,6 +705,7 @@ impl<'ctx> CodeGen<'ctx> {
                     if args.len() != 1 {
                         return Err("set.intersection expects 1 argument (other set)".to_string());
                     }
+                    self.rc_free_method_receiver(&recv_val)?;
                     let new_func = Expr::Ident("setIntersection".to_string());
                     return self.compile_call(
                         &new_func,
@@ -702,6 +717,7 @@ impl<'ctx> CodeGen<'ctx> {
                     if args.len() != 1 {
                         return Err("set.difference expects 1 argument (other set)".to_string());
                     }
+                    self.rc_free_method_receiver(&recv_val)?;
                     let new_func = Expr::Ident("setDifference".to_string());
                     return self.compile_call(
                         &new_func,
@@ -713,6 +729,7 @@ impl<'ctx> CodeGen<'ctx> {
                     if args.len() != 1 {
                         return Err("set.isSubset expects 1 argument (other set)".to_string());
                     }
+                    self.rc_free_method_receiver(&recv_val)?;
                     let new_func = Expr::Ident("setIsSubset".to_string());
                     return self.compile_call(
                         &new_func,
@@ -721,6 +738,7 @@ impl<'ctx> CodeGen<'ctx> {
                     );
                 }
                 if method == "toList" {
+                    self.rc_free_method_receiver(&recv_val)?;
                     let new_func = Expr::Ident("toList".to_string());
                     return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                 }
@@ -728,6 +746,7 @@ impl<'ctx> CodeGen<'ctx> {
             // Handle Range builtin methods inline (range is a Struct with 3 i64 fields)
             if let TypedValue::Struct(_, st) = &recv_val {
                 if *st == self.range_type {
+                    self.rc_free_method_receiver(&recv_val)?;
                     match method.as_str() {
                         "contains" => {
                             if args.len() != 1 {
@@ -749,6 +768,7 @@ impl<'ctx> CodeGen<'ctx> {
             // Enum dispatch for user-defined enums only
             // Handle LazyList builtin methods inline
             if matches!(recv_val, TypedValue::LazyList(_)) {
+                self.rc_free_method_receiver(&recv_val)?;
                 match method.as_str() {
                     "toList" => {
                         let new_func = Expr::Ident("toList".to_string());
@@ -824,6 +844,9 @@ impl<'ctx> CodeGen<'ctx> {
             }
             // Handle String builtin methods inline
             if matches!(recv_val, TypedValue::Str(_)) {
+                // All paths recompile via compile_call; free the first compilation's
+                // intermediate data. Scope variables: no-op.
+                self.rc_free_method_receiver(&recv_val)?;
                 match method.as_str() {
                     // No-arg methods
                     "len" | "isEmpty" | "toUpper" | "toLower" | "trim" | "trimStart"
@@ -888,6 +911,7 @@ impl<'ctx> CodeGen<'ctx> {
                 recv_val,
                 TypedValue::Ptr(_) | TypedValue::CString(_) | TypedValue::FileHandle(_)
             ) {
+                self.rc_free_method_receiver(&recv_val)?;
                 match method.as_str() {
                     "isNull" => {
                         let new_func = Expr::Ident("isNull".to_string());
@@ -1335,6 +1359,24 @@ impl<'ctx> CodeGen<'ctx> {
             }
             // Handle List builtin methods inline — UFCS: list.method(args) ≡ method(list, args...)
             if matches!(recv_val, TypedValue::List(_) | TypedValue::LazyList(_)) {
+                let list_ptr = match &recv_val {
+                    TypedValue::List(p) => Some(*p),
+                    _ => None,
+                };
+                // Methods that operate on the list alloca directly — no recompilation needed
+                if let Some(lp) = list_ptr {
+                    if method == "insert" {
+                        return self.builtin_list_insert(lp, args);
+                    }
+                    if method == "remove" {
+                        return self.builtin_list_remove(lp, args);
+                    }
+                    if method == "append" {
+                        return self.builtin_list_append(lp, args);
+                    }
+                }
+                // Remaining methods: free intermediate then recompile via compile_call
+                self.rc_free_method_receiver(&recv_val)?;
                 match method.as_str() {
                     // No-arg methods: f(list)
                     "len" | "isEmpty" | "head" | "last" | "tail" | "init" | "reverse" | "sum"
@@ -1402,13 +1444,13 @@ impl<'ctx> CodeGen<'ctx> {
                 let mut ca: Vec<BasicMetadataValueEnum> = Vec::new();
                 let mut tracked_args: Vec<TypedValue<'ctx>> = Vec::new();
                 let recv_val = self.compile_expr(receiver)?;
-                let recv_bv = self.compile_and_load(receiver)?;
+                let recv_bv = self.typed_value_to_bv(&recv_val);
                 let casted_recv = self.coerce_arg(recv_bv, param_tys.first())?;
                 ca.push(casted_recv.into());
                 tracked_args.push(recv_val);
                 for (i, a) in args.iter().enumerate() {
                     let av = self.compile_expr(a)?;
-                    let bv = self.compile_and_load(a)?;
+                    let bv = self.typed_value_to_bv(&av);
                     let casted = self.coerce_arg(bv, param_tys.get(i + 1))?;
                     ca.push(casted.into());
                     tracked_args.push(av);
@@ -1460,7 +1502,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let mut tracked_args: Vec<TypedValue<'ctx>> = Vec::new();
                 for a in args {
                     let av = self.compile_expr(a)?;
-                    let bv = self.compile_and_load(a)?;
+                    let bv = self.typed_value_to_bv(&av);
                     ca.push(bv.into());
                     tracked_args.push(av);
                 }
@@ -1485,7 +1527,8 @@ impl<'ctx> CodeGen<'ctx> {
                 fn_ptr,
                 actual_fn_type,
                 closure_ptr,
-                closure_ty: _,
+                closure_ty,
+                alloca,
             } => {
                 let mut ca: Vec<BasicMetadataValueEnum> = Vec::new();
                 let mut tracked_args: Vec<TypedValue<'ctx>> = Vec::new();
@@ -1493,7 +1536,7 @@ impl<'ctx> CodeGen<'ctx> {
                 ca.push(closure_ptr.into());
                 for a in args {
                     let av = self.compile_expr(a)?;
-                    let bv = self.compile_and_load(a)?;
+                    let bv = self.typed_value_to_bv(&av);
                     ca.push(bv.into());
                     tracked_args.push(av);
                 }
@@ -1508,6 +1551,12 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?;
                 for av in &tracked_args {
                     self.rc_free_intermediate(av)?;
+                }
+                // Free intermediate closure's captures struct after the call.
+                // Scope-variable closures (alloca = Some) are handled by scope cleanup.
+                if alloca.is_none() {
+                    self.rc_inc(closure_ptr)?;
+                    self.rc_dec_closure_captures(closure_ptr, closure_ty)?;
                 }
                 match cc.try_as_basic_value().basic() {
                     Some(bv) => self.unpack_fat_return(bv, actual_fn_type.get_return_type()),
@@ -1533,7 +1582,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let mut tracked_args: Vec<TypedValue<'ctx>> = Vec::new();
                 for a in args {
                     let av = self.compile_expr(a)?;
-                    let bv = self.compile_and_load(a)?;
+                    let bv = self.typed_value_to_bv(&av);
                     ca.push(bv.into());
                     tracked_args.push(av);
                 }
@@ -1555,6 +1604,61 @@ impl<'ctx> CodeGen<'ctx> {
             }
             _ => Err("Call target is not a function".to_string()),
         }
+    }
+
+    /// Convert a TypedValue to a BasicValueEnum suitable for passing as a
+    /// function call argument, without re-compiling the expression.
+    fn typed_value_to_bv(&self, av: &TypedValue<'ctx>) -> BasicValueEnum<'ctx> {
+        av.to_bv().unwrap_or_else(|| match av {
+            TypedValue::Str(ptr) => {
+                let ld = self.builder
+                    .build_load(self.string_type, *ptr, "arg_str")
+                    .unwrap();
+                ld.into()
+            }
+            TypedValue::List(ptr) | TypedValue::Map(ptr) | TypedValue::Set(ptr) => {
+                let ld = self.builder
+                    .build_load(self.list_type, *ptr, "arg_list")
+                    .unwrap();
+                ld.into()
+            }
+            TypedValue::LazyList(ptr) => {
+                let ld = self.builder
+                    .build_load(self.lazylist_type, *ptr, "arg_ll")
+                    .unwrap();
+                ld.into()
+            }
+            TypedValue::Task(ptr) => {
+                let ld = self.builder
+                    .build_load(self.task_type, *ptr, "arg_task")
+                    .unwrap();
+                ld.into()
+            }
+            TypedValue::Stream(ptr) => {
+                let lf = self.builder
+                    .build_struct_gep(self.stream_type, *ptr, 3, "arg_slf")
+                    .unwrap();
+                let ld = self.builder
+                    .build_load(self.list_type, lf, "arg_sl")
+                    .unwrap();
+                ld.into()
+            }
+            TypedValue::Struct(ptr, st) => {
+                let ld = self.builder.build_load(*st, *ptr, "arg_struct").unwrap();
+                ld.into()
+            }
+            TypedValue::Enum(ptr, et, ..) => {
+                let ld = self.builder.build_load(*et, *ptr, "arg_enum").unwrap();
+                ld.into()
+            }
+            TypedValue::Nullable(ptr, ty) => self.builder
+                .build_load(*ty, *ptr, "arg_nullable")
+                .unwrap(),
+            TypedValue::CString(p)
+            | TypedValue::Ptr(p)
+            | TypedValue::FileHandle(p) => (*p).into(),
+            _ => self.i64_ty().const_int(0, false).into(),
+        })
     }
 
     pub(super) fn builtin_print(
@@ -1751,6 +1855,7 @@ impl<'ctx> CodeGen<'ctx> {
         if name == "println" {
             let _ = self.call_rt("action_println", &[]);
         }
+        self.rc_free_intermediate(&v)?;
         Ok(TypedValue::Unit)
     }
 
@@ -1771,6 +1876,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         for arg in args {
             let v = self.compile_expr(arg)?;
+            // action_list_push handles rc_inc of the element data_ptr internally
             let elem_fat = self.to_fat_struct(&v)?;
             let list_val = self.load_list(list_alloca)?;
             let cc = self.call_rt("action_list_push", &[list_val.into(), elem_fat.into()])?;
@@ -4657,6 +4763,7 @@ impl<'ctx> CodeGen<'ctx> {
         collector_alloca: inkwell::values::PointerValue<'ctx>,
         value: &TypedValue<'ctx>,
     ) -> Result<(), String> {
+        // action_list_push handles rc_inc of the element data_ptr internally
         let elem_fat = self.to_fat_struct(value)?;
         let list_val = self.load_list(collector_alloca)?;
         let cc = self.call_rt("action_list_push", &[list_val.into(), elem_fat.into()])?;
@@ -8604,6 +8711,7 @@ impl<'ctx> CodeGen<'ctx> {
                     _ => return Err("append: first argument must be a list".to_string()),
                 };
                 let elem_val = self.compile_expr(&args[1])?;
+                // action_list_push handles rc_inc of the element data_ptr internally
                 let elem_fat = self.to_fat_struct(&elem_val)?;
                 let list = self.load_list(list_ptr)?;
                 let cc = self.call_rt("action_list_push", &[list.into(), elem_fat.into()])?;

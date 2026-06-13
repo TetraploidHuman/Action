@@ -137,8 +137,10 @@ mod platform {
         ) -> *mut u8; // HANDLE
         fn WaitForSingleObject(hHandle: *mut u8, dwMilliseconds: u32) -> u32;
         fn CloseHandle(hObject: *mut u8) -> i32;
-        fn TerminateThread(hThread: *mut u8, dwExitCode: u32) -> i32;
         fn Sleep(dwMilliseconds: u32);
+        fn GetSystemTimePreciseAsFileTime(lpSystemTimeAsFileTime: *mut u64);
+        fn QueryPerformanceCounter(lpPerformanceCount: *mut i64) -> i32;
+        fn QueryPerformanceFrequency(lpFrequency: *mut i64) -> i32;
         fn InitializeCriticalSection(lpCriticalSection: *mut u8);
         fn EnterCriticalSection(lpCriticalSection: *mut u8);
         fn LeaveCriticalSection(lpCriticalSection: *mut u8);
@@ -271,11 +273,11 @@ mod platform {
     }
 
     #[no_mangle]
-    pub extern "C" fn action_thread_cancel(thread: u64) -> c_int {
-        unsafe {
-            TerminateThread(thread as *mut u8, 0);
-        }
-        0
+    pub extern "C" fn action_thread_cancel(_thread: u64) -> c_int {
+        // TerminateThread is unsafe: it kills the thread without running
+        // destructors, releasing critical sections, or freeing memory.
+        // Return an error — cooperative cancellation should be used instead.
+        -1
     }
 
     #[no_mangle]
@@ -292,9 +294,50 @@ mod platform {
     }
 
     #[no_mangle]
-    pub extern "C" fn action_clock_gettime(_clockid: c_int, _ts: *mut u8) -> c_int {
-        // clock_gettime is not available on Windows.
-        // Not currently called by any codegen path.
+    pub extern "C" fn action_clock_gettime(clockid: c_int, ts: *mut u8) -> c_int {
+        if ts.is_null() {
+            return -1;
+        }
+        const CLOCK_REALTIME: c_int = 0;
+        const CLOCK_MONOTONIC: c_int = 1; // also CLOCK_MONOTONIC_RAW on Linux
+
+        // timespec layout: two i64 fields (tv_sec, tv_nsec), 16 bytes total.
+        // Even though Windows c_long is 4 bytes, we match the Linux layout
+        // because the JIT-generated caller expects two 8-byte fields.
+        unsafe {
+            match clockid {
+                CLOCK_REALTIME => {
+                    let mut ft: u64 = 0;
+                    GetSystemTimePreciseAsFileTime(&mut ft);
+                    // FILETIME: 100-nanosecond intervals since 1601-01-01.
+                    // Unix epoch offset: 11644473600 seconds from 1601 to 1970.
+                    const EPOCH_100NS: u64 = 116444736000000000;
+                    if ft < EPOCH_100NS {
+                        return -1;
+                    }
+                    let since_epoch = ft - EPOCH_100NS;
+                    let sec = (since_epoch / 10_000_000) as i64;
+                    let nsec = ((since_epoch % 10_000_000) * 100) as i64;
+                    std::ptr::write(ts as *mut i64, sec);
+                    std::ptr::write(ts.add(8) as *mut i64, nsec);
+                }
+                CLOCK_MONOTONIC => {
+                    let mut count: i64 = 0;
+                    let mut freq: i64 = 0;
+                    if QueryPerformanceCounter(&mut count) == 0 {
+                        return -1;
+                    }
+                    if QueryPerformanceFrequency(&mut freq) == 0 || freq == 0 {
+                        return -1;
+                    }
+                    let sec = count / freq;
+                    let nsec = ((count % freq).abs() * 1_000_000_000) / freq.abs();
+                    std::ptr::write(ts as *mut i64, sec);
+                    std::ptr::write(ts.add(8) as *mut i64, nsec);
+                }
+                _ => return -1,
+            }
+        }
         0
     }
 }

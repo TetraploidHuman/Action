@@ -311,6 +311,9 @@ pub(super) enum TypedValue<'ctx> {
         actual_fn_type: FunctionType<'ctx>,
         closure_ptr: PointerValue<'ctx>,
         closure_ty: StructType<'ctx>,
+        /// Scope-variable alloca when this closure was loaded from a variable.
+        /// None for lambda-created closures (which are not scope variables).
+        alloca: Option<PointerValue<'ctx>>,
     },
     /// List value (pointer to {ptr, i64, i64} alloca)
     List(PointerValue<'ctx>),
@@ -857,6 +860,20 @@ impl<'ctx> CodeGen<'ctx> {
                         self.rc_dec(cap_ptr)?;
                     }
                 }
+                ValKind::Struct => {
+                    // Struct has heap-typed fields stored inline; rc_dec each
+                    if let BasicTypeEnum::StructType(st) = var.ty {
+                        let loaded = self
+                            .builder
+                            .build_load(st, var.ptr, "struct_cleanup")
+                            .map_err(llvm_err)?
+                            .into_struct_value();
+                        self.rc_struct_fields(loaded, st, false)?;
+                    }
+                }
+                ValKind::Nullable => {
+                    self.rc_nullable_inner(var.ptr, var.ty, false)?;
+                }
                 _ => {}
             }
         }
@@ -929,8 +946,255 @@ impl<'ctx> CodeGen<'ctx> {
                     .into_pointer_value();
                 self.rc_dec(data_ptr)?;
             }
+            ValKind::Struct => {
+                if let BasicTypeEnum::StructType(st) = ty {
+                    let loaded = self
+                        .builder
+                        .build_load(st, ptr, "struct_old_dec")
+                        .map_err(llvm_err)?
+                        .into_struct_value();
+                    self.rc_struct_fields(loaded, st, false)?;
+                }
+            }
+            ValKind::Nullable => {
+                self.rc_nullable_inner(ptr, ty, false)?;
+            }
             _ => {}
         }
+        Ok(())
+    }
+
+    /// RC-dec the old value at a struct field pointer before overwriting.
+    /// The field's LLVM type determines how to extract and release heap pointers.
+    pub(super) fn rc_dec_field_val(
+        &self,
+        field_ptr: PointerValue<'ctx>,
+        field_type: inkwell::types::BasicTypeEnum<'ctx>,
+    ) -> Result<(), String> {
+        match field_type {
+            BasicTypeEnum::StructType(ft_st) if ft_st == self.string_type => {
+                let old = self
+                    .builder
+                    .build_load(ft_st, field_ptr, "fd_old")
+                    .map_err(llvm_err)?
+                    .into_struct_value();
+                let data_ptr = self
+                    .builder
+                    .build_extract_value(old, 1, "fd_data")
+                    .map_err(llvm_err)?
+                    .into_pointer_value();
+                self.rc_dec(data_ptr)?;
+            }
+            BasicTypeEnum::StructType(ft_st) if ft_st == self.list_type => {
+                let old = self
+                    .builder
+                    .build_load(ft_st, field_ptr, "fd_old")
+                    .map_err(llvm_err)?
+                    .into_struct_value();
+                let data_ptr = self
+                    .builder
+                    .build_extract_value(old, 0, "fd_data")
+                    .map_err(llvm_err)?
+                    .into_pointer_value();
+                let height = self
+                    .builder
+                    .build_extract_value(old, 2, "fd_height")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                let rdl_fn = self
+                    .module
+                    .get_function("action_rc_dec_list_node")
+                    .ok_or("action_rc_dec_list_node not found")?;
+                self.builder
+                    .build_call(rdl_fn, &[data_ptr.into(), height.into()], "")
+                    .map_err(llvm_err)?;
+            }
+            _ => {} // scalar or user struct (Bug #1 handles recursive field RC)
+        }
+        Ok(())
+    }
+
+    /// Recursively rc_inc or rc_dec heap-typed fields of a struct (or sub-struct).
+    fn rc_struct_fields(
+        &self,
+        struct_val: inkwell::values::StructValue<'ctx>,
+        struct_ty: StructType<'ctx>,
+        inc: bool,
+    ) -> Result<(), String> {
+        for (i, field_type) in struct_ty.get_field_types().iter().enumerate() {
+            let field = self
+                .builder
+                .build_extract_value(struct_val, i as u32, "rc_sf")
+                .map_err(llvm_err)?;
+            match field_type {
+                BasicTypeEnum::StructType(ft_st) if *ft_st == self.string_type => {
+                    let data_ptr = self
+                        .builder
+                        .build_extract_value(field.into_struct_value(), 1, "rc_sd")
+                        .map_err(llvm_err)?
+                        .into_pointer_value();
+                    if inc {
+                        self.rc_inc(data_ptr)?;
+                    } else {
+                        self.rc_dec(data_ptr)?;
+                    }
+                }
+                BasicTypeEnum::StructType(ft_st) if *ft_st == self.list_type => {
+                    let sv = field.into_struct_value();
+                    let data_ptr = self
+                        .builder
+                        .build_extract_value(sv, 0, "rc_ld")
+                        .map_err(llvm_err)?
+                        .into_pointer_value();
+                    if inc {
+                        self.rc_inc(data_ptr)?;
+                    } else {
+                        let height = self
+                            .builder
+                            .build_extract_value(sv, 2, "rc_lh")
+                            .map_err(llvm_err)?
+                            .into_int_value();
+                        let rdl_fn =
+                            self.module.get_function("action_rc_dec_list_node").unwrap();
+                        self.builder
+                            .build_call(rdl_fn, &[data_ptr.into(), height.into()], "")
+                            .map_err(llvm_err)?;
+                    }
+                }
+                BasicTypeEnum::StructType(ft_st)
+                    if *ft_st != self.string_type && *ft_st != self.list_type =>
+                {
+                    // Recursively handle nested user struct or nullable/enum types
+                    self.rc_struct_fields(field.into_struct_value(), *ft_st, inc)?;
+                }
+                BasicTypeEnum::PointerType(_) => {
+                    let inner_ptr = field.into_pointer_value();
+                    if inc {
+                        self.rc_inc(inner_ptr)?;
+                    } else {
+                        self.rc_dec(inner_ptr)?;
+                    }
+                }
+                _ => {} // scalar
+            }
+        }
+        Ok(())
+    }
+
+    /// RC-inc or RC-dec the inner value of a nullable, skipping the null case.
+    /// Null nullables have zero-filled inners, and rc_inc/rc_dec are null-safe,
+    /// so we skip the conditional branch on the null flag for simplicity.
+    fn rc_nullable_inner(
+        &self,
+        ptr: PointerValue<'ctx>,
+        nullable_ty: inkwell::types::BasicTypeEnum<'ctx>,
+        inc: bool,
+    ) -> Result<(), String> {
+        let st = nullable_ty.into_struct_type();
+        let field_types = st.get_field_types();
+        if field_types.len() < 2 {
+            return Ok(());
+        }
+        let inner_ft = field_types[1];
+
+        // Load the nullable struct and check the null flag before touching inner.
+        let loaded = self
+            .builder
+            .build_load(st, ptr, "nul_ld")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let null_flag = self
+            .builder
+            .build_extract_value(loaded, 0, "nul_flag")
+            .map_err(llvm_err)?
+            .into_int_value();
+
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("rc_nullable_inner: not in a function")?;
+        let is_not_null = self
+            .builder
+            .build_int_compare(
+                inkwell::IntPredicate::EQ,
+                null_flag,
+                null_flag.get_type().const_int(0, false),
+                "nul_is_not_null",
+            )
+            .map_err(llvm_err)?;
+
+        let process_bb = self.context.append_basic_block(current_fn, "nul_process");
+        let merge_bb = self.context.append_basic_block(current_fn, "nul_merge");
+        self.builder
+            .build_conditional_branch(is_not_null, process_bb, merge_bb)
+            .map_err(llvm_err)?;
+
+        // Process inner value only when not null
+        self.builder.position_at_end(process_bb);
+        match inner_ft {
+            BasicTypeEnum::StructType(inner_st) => {
+                let inner = self
+                    .builder
+                    .build_extract_value(loaded, 1, "nul_inner")
+                    .map_err(llvm_err)?
+                    .into_struct_value();
+                if inner_st == self.string_type {
+                    let data_ptr = self
+                        .builder
+                        .build_extract_value(inner, 1, "nsd")
+                        .map_err(llvm_err)?
+                        .into_pointer_value();
+                    if inc {
+                        self.rc_inc(data_ptr)?;
+                    } else {
+                        self.rc_dec(data_ptr)?;
+                    }
+                } else if inner_st == self.list_type {
+                    let data_ptr = self
+                        .builder
+                        .build_extract_value(inner, 0, "nld")
+                        .map_err(llvm_err)?
+                        .into_pointer_value();
+                    if inc {
+                        self.rc_inc(data_ptr)?;
+                    } else {
+                        let height = self
+                            .builder
+                            .build_extract_value(inner, 2, "nlh")
+                            .map_err(llvm_err)?
+                            .into_int_value();
+                        let rdl_fn = self
+                            .module
+                            .get_function("action_rc_dec_list_node")
+                            .unwrap();
+                        self.builder
+                            .build_call(rdl_fn, &[data_ptr.into(), height.into()], "")
+                            .map_err(llvm_err)?;
+                    }
+                } else {
+                    self.rc_struct_fields(inner, inner_st, inc)?;
+                }
+            }
+            BasicTypeEnum::PointerType(_) => {
+                let inner_ptr = self
+                    .builder
+                    .build_extract_value(loaded, 1, "nul_inner_ptr")
+                    .map_err(llvm_err)?
+                    .into_pointer_value();
+                if inc {
+                    self.rc_inc(inner_ptr)?;
+                } else {
+                    self.rc_dec(inner_ptr)?;
+                }
+            }
+            _ => {} // scalar inners don't have heap data
+        }
+        self.builder
+            .build_unconditional_branch(merge_bb)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(merge_bb);
         Ok(())
     }
 
@@ -973,6 +1237,18 @@ impl<'ctx> CodeGen<'ctx> {
             }
             TypedValue::Closure { closure_ptr, .. } => {
                 self.rc_inc(*closure_ptr)?;
+            }
+            TypedValue::Struct(ptr, st) => {
+                let bt: BasicTypeEnum = (*st).into();
+                let loaded = self
+                    .builder
+                    .build_load(bt, *ptr, "rc_struct_inc")
+                    .map_err(llvm_err)?
+                    .into_struct_value();
+                self.rc_struct_fields(loaded, *st, true)?;
+            }
+            TypedValue::Nullable(ptr, ty) => {
+                self.rc_nullable_inner(*ptr, *ty, true)?;
             }
             _ => {}
         }
@@ -1063,7 +1339,19 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_extract_value(list_val, 0, "data")
                     .map_err(llvm_err)?
                     .into_pointer_value();
-                self.rc_dec(data_ptr)?;
+                let height = self
+                    .builder
+                    .build_extract_value(list_val, 2, "height")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                let rdl_fn = self
+                    .module
+                    .get_function("action_rc_dec_list_node")
+                    .ok_or("action_rc_dec_list_node not found")?;
+                let _ = self
+                    .builder
+                    .build_call(rdl_fn, &[data_ptr.into(), height.into()], "")
+                    .map_err(llvm_err)?;
             }
             TypedValue::LazyList(_) => {}
             TypedValue::Enum(alloca, enum_ty, _, true) => {
@@ -1086,17 +1374,54 @@ impl<'ctx> CodeGen<'ctx> {
             } => {
                 self.rc_dec_closure_captures(*closure_ptr, *closure_ty)?;
             }
+            TypedValue::Struct(ptr, st) => {
+                let bt: BasicTypeEnum = (*st).into();
+                let loaded = self
+                    .builder
+                    .build_load(bt, *ptr, "rc_struct_dec")
+                    .map_err(llvm_err)?
+                    .into_struct_value();
+                self.rc_struct_fields(loaded, *st, false)?;
+            }
+            TypedValue::Nullable(ptr, ty) => {
+                self.rc_nullable_inner(*ptr, *ty, false)?;
+            }
             _ => {}
         }
         Ok(())
     }
 
     /// Free an intermediate heap-typed value that is not a scope variable.
-    /// Intermediates start with RC=0; rc_inc+rc_dec triggers the free at RC=0.
+    /// Uses rc_inc+rc_dec to safely release. For tree values (List/Map/Set) with RC=1,
+    /// this keeps the node alive (1→2→1) — the final scope cleanup handles actual freeing.
+    /// Non-tree heap values (String, etc.) start at RC=0, so rc_inc+rc_dec triggers 0→1→0→free.
     pub(super) fn rc_free_intermediate(&self, val: &TypedValue<'ctx>) -> Result<(), String> {
         if !self.is_scope_variable(val) {
             self.rc_inc_typed_value(val)?;
             self.rc_dec_typed_value(val)?;
+        }
+        Ok(())
+    }
+
+    /// Free a method receiver intermediate. Tree types (List/Map/Set/Enum) start at
+    /// RC≥1 and use direct rc_dec (1→0→free). Other types (String with RC=0) use
+    /// rc_inc+rc_dec (0→1→0→free). Only for method dispatch where the receiver is
+    /// recompiled independently — NOT for function call argument cleanup.
+    pub(super) fn rc_free_method_receiver(&self, val: &TypedValue<'ctx>) -> Result<(), String> {
+        if self.is_scope_variable(val) {
+            return Ok(());
+        }
+        match val {
+            TypedValue::List(_)
+            | TypedValue::Map(_)
+            | TypedValue::Set(_)
+            | TypedValue::Enum(..) => {
+                self.rc_dec_typed_value(val)?;
+            }
+            _ => {
+                self.rc_inc_typed_value(val)?;
+                self.rc_dec_typed_value(val)?;
+            }
         }
         Ok(())
     }
@@ -1134,7 +1459,7 @@ impl<'ctx> CodeGen<'ctx> {
             TypedValue::Enum(p, _, _, _) => Some(*p),
             TypedValue::Nullable(p, _) => Some(*p),
             TypedValue::Fn(p, _) => Some(*p),
-            TypedValue::Closure { closure_ptr, .. } => Some(*closure_ptr),
+            TypedValue::Closure { alloca, .. } => *alloca,
             _ => None,
         };
         match alloca {

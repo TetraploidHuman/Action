@@ -226,9 +226,12 @@ impl<'ctx> CodeGen<'ctx> {
             Box::new(Expr::Ident(synthetic_name.clone())),
             method.to_string(),
         );
+        // compile_call may fail when the inner type is generic (e.g. null literal
+        // with no type annotation) because the method can't be resolved on i64.
+        // The null path is always taken at runtime, so the method result is unused.
         let method_result = match self.compile_call(&syn_func, args, trailing) {
             Ok(v) => v,
-            Err(_e) => TypedValue::Int(self.i64_ty().const_int(0, false)),
+            Err(_) => TypedValue::Int(self.i64_ty().const_int(0, false)),
         };
         self.scope.remove_var(&synthetic_name);
 
@@ -1342,8 +1345,7 @@ impl<'ctx> CodeGen<'ctx> {
             .module
             .get_function("action_map_get")
             .ok_or("action_map_get not found")?;
-        let key_val2 = self.compile_expr(idx)?;
-        let key_fat2 = self.to_fat_struct(&key_val2)?;
+        let key_fat2 = self.to_fat_struct(&key_val)?;
         let gc = self
             .builder
             .build_call(get_fn, &[map_loaded2.into(), key_fat2.into()], "get")
@@ -1453,8 +1455,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Some path: extract field 0 from fat struct, wrap as nullable {flag=0, val}
         self.builder.position_at_end(some_bb);
-        let elem_val2 = self.compile_expr(idx)?;
-        let elem_fat2 = self.to_fat_struct(&elem_val2)?;
+        let elem_fat2 = self.to_fat_struct(&elem_val)?;
         // Extract actual value (field 0) from fat struct {val, ptr}
         let actual_val = self
             .builder
@@ -1717,6 +1718,11 @@ impl<'ctx> CodeGen<'ctx> {
                             .builder
                             .build_struct_gep(st, ptr, idx, "field_gep")
                             .map_err(llvm_err)?;
+                        // RC-dec old value before overwriting (Bug #6)
+                        let field_types = st.get_field_types();
+                        if (idx as usize) < field_types.len() {
+                            self.rc_dec_field_val(field_ptr, field_types[idx as usize])?;
+                        }
                         if let Some(bv) = v.to_bv() {
                             self.builder.build_store(field_ptr, bv).map_err(llvm_err)?;
                         }
@@ -1741,6 +1747,11 @@ impl<'ctx> CodeGen<'ctx> {
                                     .builder
                                     .build_struct_gep(st, ptr, idx, "field_gep2")
                                     .map_err(llvm_err)?;
+                                // RC-dec old value before overwriting (Bug #6)
+                                let field_types = st.get_field_types();
+                                if (idx as usize) < field_types.len() {
+                                    self.rc_dec_field_val(field_ptr, field_types[idx as usize])?;
+                                }
                                 if let Some(bv) = v.to_bv() {
                                     self.builder.build_store(field_ptr, bv).map_err(llvm_err)?;
                                 }

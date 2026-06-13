@@ -32,6 +32,8 @@ static ACTION_JSON_AS_FLOAT_PTR: unsafe extern "C" fn(*mut c_void) -> f64 = acti
 static ACTION_JSON_AS_BOOL_PTR: unsafe extern "C" fn(*mut c_void) -> i64 = action_json_as_bool;
 #[used]
 static ACTION_JSON_LEN_PTR: unsafe extern "C" fn(*mut c_void) -> i64 = action_json_len;
+#[used]
+static ACTION_JSON_FREE_CSTR_PTR: unsafe extern "C" fn(*mut c_char) = action_json_free_cstr;
 
 fn to_cstring(s: &str) -> *mut c_char {
     CString::new(s)
@@ -39,13 +41,14 @@ fn to_cstring(s: &str) -> *mut c_char {
         .into_raw()
 }
 
-fn from_cstr<'a>(ptr: *const c_char) -> &'a str {
+fn from_cstr(ptr: *const c_char) -> String {
     if ptr.is_null() {
-        return "";
+        return String::new();
     }
     unsafe { std::ffi::CStr::from_ptr(ptr) }
         .to_str()
         .unwrap_or("")
+        .to_string()
 }
 
 /// Parse a JSON string. Returns null on parse error.
@@ -53,14 +56,14 @@ fn from_cstr<'a>(ptr: *const c_char) -> &'a str {
 #[no_mangle]
 pub extern "C" fn action_json_parse(json_str: *const c_char) -> *mut c_void {
     let s = from_cstr(json_str);
-    match serde_json::from_str::<Value>(s) {
+    match serde_json::from_str::<Value>(&s) {
         Ok(value) => Box::into_raw(Box::new(value)) as *mut c_void,
         Err(_) => std::ptr::null_mut(),
     }
 }
 
 /// Serialize a JsonNode to a JSON string.
-/// The returned C string must be freed with free() (or action_json_free_cstr).
+/// The returned C string must be freed with action_json_free_cstr().
 #[no_mangle]
 pub extern "C" fn action_json_stringify(node: *mut c_void) -> *mut c_char {
     if node.is_null() {
@@ -70,9 +73,7 @@ pub extern "C" fn action_json_stringify(node: *mut c_void) -> *mut c_char {
     to_cstring(&value.to_string())
 }
 
-/// Free a JsonNode tree created by action_json_parse.
-/// Also frees the nodes obtained via action_json_get / action_json_get_idx
-/// (which are internal pointers into the same tree).
+/// Free a JsonNode created by action_json_parse, action_json_get, or action_json_get_idx.
 #[no_mangle]
 pub extern "C" fn action_json_free(node: *mut c_void) {
     if node.is_null() {
@@ -80,6 +81,16 @@ pub extern "C" fn action_json_free(node: *mut c_void) {
     }
     unsafe {
         drop(Box::from_raw(node as *mut Value));
+    }
+}
+
+/// Free a C string returned by action_json_stringify or action_json_as_str.
+#[no_mangle]
+pub extern "C" fn action_json_free_cstr(ptr: *mut c_char) {
+    if !ptr.is_null() {
+        unsafe {
+            drop(CString::from_raw(ptr));
+        }
     }
 }
 
@@ -102,7 +113,7 @@ pub extern "C" fn action_json_type(node: *mut c_void) -> i64 {
 }
 
 /// Get an object field by key. Returns null if not an object or key not found.
-/// The returned pointer is an internal reference — it lives as long as the root node.
+/// The returned pointer is an independently allocated copy — must be freed with action_json_free().
 #[no_mangle]
 pub extern "C" fn action_json_get(node: *mut c_void, key: *const c_char) -> *mut c_void {
     if node.is_null() {
@@ -112,15 +123,15 @@ pub extern "C" fn action_json_get(node: *mut c_void, key: *const c_char) -> *mut
     let key_str = from_cstr(key);
     match value {
         Value::Object(map) => map
-            .get(key_str)
-            .map(|v| v as *const Value as *mut c_void)
+            .get(key_str.as_str())
+            .map(|v| Box::into_raw(Box::new(v.clone())) as *mut c_void)
             .unwrap_or(std::ptr::null_mut()),
         _ => std::ptr::null_mut(),
     }
 }
 
 /// Get an array element by index. Returns null if not an array or index out of bounds.
-/// The returned pointer is an internal reference — it lives as long as the root node.
+/// The returned pointer is an independently allocated copy — must be freed with action_json_free().
 #[no_mangle]
 pub extern "C" fn action_json_get_idx(node: *mut c_void, idx: i64) -> *mut c_void {
     if node.is_null() || idx < 0 {
@@ -130,14 +141,14 @@ pub extern "C" fn action_json_get_idx(node: *mut c_void, idx: i64) -> *mut c_voi
     match value {
         Value::Array(arr) => arr
             .get(idx as usize)
-            .map(|v| v as *const Value as *mut c_void)
+            .map(|v| Box::into_raw(Box::new(v.clone())) as *mut c_void)
             .unwrap_or(std::ptr::null_mut()),
         _ => std::ptr::null_mut(),
     }
 }
 
 /// Extract string value. Returns null if not a string.
-/// The returned C string must be freed with free().
+/// The returned C string must be freed with action_json_free_cstr().
 #[no_mangle]
 pub extern "C" fn action_json_as_str(node: *mut c_void) -> *mut c_char {
     if node.is_null() {

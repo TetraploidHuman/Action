@@ -470,6 +470,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Collect result if needed
         if let Some(list_ptr) = result_list {
+            // action_list_push handles rc_inc of the element data_ptr internally
             let list_loaded = self.load_list(list_ptr)?;
             let elem_fat = self.to_fat_struct(&body_val)?;
             let push_cc =
@@ -700,6 +701,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Collect result
         if let Some(list_ptr) = result_list {
+            // action_list_push handles rc_inc of the element data_ptr internally
             let list_loaded = self.load_list(list_ptr)?;
             let elem_fat = self.to_fat_struct(&body_val)?;
             let push_cc =

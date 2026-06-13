@@ -62,25 +62,82 @@ fn validate_url(url: &str) -> Result<(), String> {
     if let Some(authority) = url.split("://").nth(1).and_then(|s| s.split('/').next()) {
         let host = authority.split(':').next().unwrap_or("");
         let host_lower = host.to_lowercase();
-        if host_lower == "localhost"
-            || host_lower == "127.0.0.1"
-            || host_lower == "[::1]"
-            || host_lower == "::1"
-            || host_lower.starts_with("127.")
-            || host_lower.starts_with("10.")
-            || host_lower.starts_with("192.168.")
-            || host_lower.starts_with("172.") && {
-                let parts: Vec<&str> = host_lower.split('.').collect();
-                parts.len() == 4
-                    && parts[1]
-                        .parse::<u32>()
-                        .map_or(false, |n| n >= 16 && n <= 31)
-            }
-        {
+
+        // Check for localhost by name
+        if host_lower == "localhost" {
             return Err(format!("URL targets a private/internal address: {}", host));
+        }
+
+        // Strip brackets from IPv6 addresses
+        let ip_str = if host_lower.starts_with('[') && host_lower.ends_with(']') {
+            &host_lower[1..host_lower.len() - 1]
+        } else {
+            &host_lower
+        };
+
+        // Parse as IP address to catch octal/hex/decimal notation and IPv4-mapped IPv6
+        if let Ok(ip) = ip_str.parse::<std::net::IpAddr>() {
+            if is_private_or_special_ip(ip) {
+                return Err(format!("URL targets a private/internal address: {}", host));
+            }
+        } else {
+            // Hostname: check for known-bad string patterns as fallback
+            if host_lower == "0.0.0.0"
+                || host_lower.starts_with("127.")
+                || host_lower.starts_with("10.")
+                || host_lower.starts_with("192.168.")
+                || host_lower.starts_with("169.254.")
+                || host_lower.starts_with("100.")
+                || host_lower == "[::1]"
+                || host_lower == "::1"
+                || host_lower.starts_with("172.") && {
+                    let parts: Vec<&str> = host_lower.split('.').collect();
+                    parts.len() == 4
+                        && parts[1]
+                            .parse::<u32>()
+                            .map_or(false, |n| (16..=31).contains(&n))
+                }
+            {
+                return Err(format!("URL targets a private/internal address: {}", host));
+            }
         }
     }
     Ok(())
+}
+
+fn is_private_or_special_ip(ip: std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(v4) => {
+            v4.is_loopback()
+                || v4.is_private()
+                || v4.is_link_local()
+                || v4.is_unspecified() // 0.0.0.0
+                || v4.is_broadcast()
+                || v4.is_documentation()
+                || v4.octets()[0] == 100 && (64..=127).contains(&v4.octets()[1]) // 100.64.0.0/10 CGN
+                || v4.is_multicast()
+        }
+        std::net::IpAddr::V6(v6) => {
+            v6.is_loopback()
+                || v6.is_unspecified()
+                || v6.is_multicast()
+                || v6.is_unique_local() // fc00::/7
+                // IPv4-mapped IPv6: ::ffff:x.x.x.x
+                || (v6.segments()[0] == 0 && v6.segments()[1] == 0
+                    && v6.segments()[2] == 0 && v6.segments()[3] == 0
+                    && v6.segments()[4] == 0 && v6.segments()[5] == 0xffff
+                    && {
+                        let v4_octets = [
+                            (v6.segments()[6] >> 8) as u8,
+                            v6.segments()[6] as u8,
+                            (v6.segments()[7] >> 8) as u8,
+                            v6.segments()[7] as u8,
+                        ];
+                        let v4 = std::net::Ipv4Addr::from(v4_octets);
+                        v4.is_loopback() || v4.is_private() || v4.is_link_local() || v4.is_unspecified()
+                    })
+        }
+    }
 }
 
 fn validate_method(method: &str) -> Result<(), String> {

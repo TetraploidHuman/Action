@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 use typecheck::{TypeChecker, TypeRegistry};
 
 #[derive(ClapParser)]
-#[command(name = "action", about = "Action Language Compiler", version = "0.2.0")]
+#[command(name = "action", about = "Action Language Compiler", version = env!("CARGO_PKG_VERSION"))]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -362,6 +362,14 @@ fn load_module(module_name: &str, search_dirs: &[PathBuf]) -> Result<Vec<Stmt>, 
                     .map_err(|e| format!("Cannot read '{}': {}", path.display(), e))?;
                 let mut lexer = lexer::Lexer::new(&source);
                 let tokens = lexer.tokenize();
+                let lexer_errors = lexer.take_errors();
+                if !lexer_errors.is_empty() {
+                    return Err(format!(
+                        "Lexer errors in {}:\n{}",
+                        file_name,
+                        lexer_errors.join("\n")
+                    ));
+                }
                 let mut parser = parser::Parser::new(tokens);
                 let program = parser.parse_program().map_err(|e| {
                     format!(
@@ -925,6 +933,10 @@ fn load_stdlib() -> Result<Vec<Stmt>, String> {
                 .map_err(|e| format!("Cannot read '{}': {}", path.display(), e))?;
             let mut lexer = lexer::Lexer::new(&source);
             let tokens = lexer.tokenize();
+            let lexer_errors = lexer.take_errors();
+            if !lexer_errors.is_empty() {
+                return Err(format!("Lexer errors in {}:\n{}", file_name, lexer_errors.join("\n")));
+            }
             let mut parser = parser::Parser::new(tokens);
             let program = parser.parse_program().map_err(|e| {
                 format!(
@@ -963,6 +975,13 @@ fn load_program(
 
     let mut lexer = lexer::Lexer::new(&source);
     let tokens = lexer.tokenize();
+    let lexer_errors = lexer.take_errors();
+    if !lexer_errors.is_empty() {
+        return Err(lexer_errors
+            .into_iter()
+            .map(|e| CompilerError::new(e))
+            .collect());
+    }
 
     let mut parser = parser::Parser::new(tokens);
     let mut program = parser.parse_program().map_err(|e| {

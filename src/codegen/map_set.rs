@@ -2,7 +2,7 @@
 
 use crate::ast::*;
 use inkwell::types::BasicTypeEnum;
-use inkwell::values::{BasicValue, BasicValueEnum};
+use inkwell::values::{BasicValue, BasicValueEnum, PointerValue};
 
 use super::{llvm_err, CodeGen, InnerType, TypedValue};
 
@@ -26,10 +26,17 @@ impl<'ctx> CodeGen<'ctx> {
             let key_fat = self.to_fat_struct(&key_val)?;
             let val_fat = self.to_fat_struct(&val_val)?;
             let map_loaded = self.load_list(alloca)?;
-            let cc = self.call_rt(
+            let cc = match self.call_rt(
                 "action_map_insert",
                 &[map_loaded.into(), key_fat.into(), val_fat.into()],
-            )?;
+            ) {
+                Ok(v) => v,
+                Err(e) => {
+                    let _ = self.rc_free_intermediate(&val_val);
+                    let _ = self.rc_free_intermediate(&key_val);
+                    return Err(e);
+                }
+            };
             let new_map = cc.try_as_basic_value().basic().ok_or("map_insert failed")?;
             self.builder
                 .build_store(alloca, new_map)
@@ -71,10 +78,16 @@ impl<'ctx> CodeGen<'ctx> {
             let elem_val = self.compile_expr(elem_expr)?;
             let elem_fat = self.to_fat_struct(&elem_val)?;
             let set_loaded = self.load_list(alloca)?;
-            let cc = self.call_rt(
+            let cc = match self.call_rt(
                 "action_map_insert",
                 &[set_loaded.into(), elem_fat.into(), null_val.into()],
-            )?;
+            ) {
+                Ok(v) => v,
+                Err(e) => {
+                    let _ = self.rc_free_intermediate(&elem_val);
+                    return Err(e);
+                }
+            };
             let new_set = cc.try_as_basic_value().basic().ok_or("map_insert failed")?;
             self.builder
                 .build_store(alloca, new_set)
@@ -110,12 +123,20 @@ impl<'ctx> CodeGen<'ctx> {
 
         for elem_expr in args {
             let elem_val = self.compile_expr(elem_expr)?;
+            self.rc_inc_typed_value(&elem_val)?;
             let elem_fat = self.to_fat_struct(&elem_val)?;
             let set_loaded = self.load_list(alloca)?;
-            let cc = self.call_rt(
+            let cc = match self.call_rt(
                 "action_map_insert",
                 &[set_loaded.into(), elem_fat.into(), null_val.into()],
-            )?;
+            ) {
+                Ok(v) => v,
+                Err(e) => {
+                    let _ = self.rc_dec_typed_value(&elem_val);
+                    let _ = self.rc_free_intermediate(&elem_val);
+                    return Err(e);
+                }
+            };
             let new_set = cc.try_as_basic_value().basic().ok_or("map_insert failed")?;
             self.builder
                 .build_store(alloca, new_set)
@@ -125,36 +146,31 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::Set(alloca))
     }
 
+    /// map.insert(key, val) — receiver alloca is pre-compiled to avoid double compilation.
     pub(super) fn builtin_map_insert(
         &mut self,
-        receiver: &Expr,
+        map_ptr: PointerValue<'ctx>,
         args: &[Expr],
     ) -> Result<TypedValue<'ctx>, String> {
         if args.len() != 2 {
             return Err("map.insert expects 2 arguments (key, value)".to_string());
         }
-        let map_ptr = if let Expr::Ident(name) = receiver {
-            if let Some(var) = self.scope.get(name) {
-                var.ptr
-            } else {
-                return Err(format!("Undefined variable: {}", name));
-            }
-        } else {
-            let map_val = self.compile_expr(receiver)?;
-            match map_val {
-                TypedValue::Map(p) => p,
-                _ => return Err("insert: receiver must be a map".to_string()),
-            }
-        };
         let key_val = self.compile_expr(&args[0])?;
         let val_val = self.compile_expr(&args[1])?;
         let key_fat = self.to_fat_struct(&key_val)?;
         let val_fat = self.to_fat_struct(&val_val)?;
         let map_loaded = self.load_list(map_ptr)?;
-        let cc = self.call_rt(
+        let cc = match self.call_rt(
             "action_map_insert",
             &[map_loaded.into(), key_fat.into(), val_fat.into()],
-        )?;
+        ) {
+            Ok(v) => v,
+            Err(e) => {
+                let _ = self.rc_free_intermediate(&val_val);
+                let _ = self.rc_free_intermediate(&key_val);
+                return Err(e);
+            }
+        };
         let new_map = cc.try_as_basic_value().basic().ok_or("map_insert failed")?;
         self.builder
             .build_store(map_ptr, new_map)
@@ -162,27 +178,15 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::Map(map_ptr))
     }
 
+    /// map.remove(key) — receiver alloca is pre-compiled to avoid double compilation.
     pub(super) fn builtin_map_remove(
         &mut self,
-        receiver: &Expr,
+        map_ptr: PointerValue<'ctx>,
         args: &[Expr],
     ) -> Result<TypedValue<'ctx>, String> {
         if args.len() != 1 {
             return Err("map.remove expects 1 argument (key)".to_string());
         }
-        let map_ptr = if let Expr::Ident(name) = receiver {
-            if let Some(var) = self.scope.get(name) {
-                var.ptr
-            } else {
-                return Err(format!("Undefined variable: {}", name));
-            }
-        } else {
-            let map_val = self.compile_expr(receiver)?;
-            match map_val {
-                TypedValue::Map(p) => p,
-                _ => return Err("remove: receiver must be a map".to_string()),
-            }
-        };
         let key_val = self.compile_expr(&args[0])?;
         let key_fat = self.to_fat_struct(&key_val)?;
         let map_loaded = self.load_list(map_ptr)?;
@@ -190,10 +194,16 @@ impl<'ctx> CodeGen<'ctx> {
             .module
             .get_function("action_map_remove")
             .ok_or("action_map_remove not found")?;
-        let rc = self
+        let rc = match self
             .builder
             .build_call(remove_fn, &[map_loaded.into(), key_fat.into()], "remove")
-            .map_err(llvm_err)?;
+            .map_err(|e| {
+                let _ = self.rc_free_intermediate(&key_val);
+                llvm_err(e)
+            }) {
+            Ok(v) => v,
+            Err(e) => return Err(e),
+        };
         let new_map = rc.try_as_basic_value().basic().ok_or("remove failed")?;
         self.builder
             .build_store(map_ptr, new_map)
@@ -201,19 +211,15 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::Map(map_ptr))
     }
 
+    /// map.contains(key) — receiver alloca is pre-compiled to avoid double compilation.
     pub(super) fn builtin_map_contains(
         &mut self,
-        receiver: &Expr,
+        map_ptr: PointerValue<'ctx>,
         args: &[Expr],
     ) -> Result<TypedValue<'ctx>, String> {
         if args.len() != 1 {
             return Err("map.contains expects 1 argument (key)".to_string());
         }
-        let map_val = self.compile_expr(receiver)?;
-        let map_ptr = match map_val {
-            TypedValue::Map(p) => p,
-            _ => return Err("contains: receiver must be a map".to_string()),
-        };
         let key_val = self.compile_expr(&args[0])?;
         let key_fat = self.to_fat_struct(&key_val)?;
         let map_loaded = self.load_list(map_ptr)?;
@@ -221,14 +227,20 @@ impl<'ctx> CodeGen<'ctx> {
             .module
             .get_function("action_map_contains")
             .ok_or("action_map_contains not found")?;
-        let cc = self
+        let cc = match self
             .builder
             .build_call(
                 contains_fn,
                 &[map_loaded.into(), key_fat.into()],
                 "contains",
             )
-            .map_err(llvm_err)?;
+            .map_err(|e| {
+                let _ = self.rc_free_intermediate(&key_val);
+                llvm_err(e)
+            }) {
+            Ok(v) => v,
+            Err(e) => return Err(e),
+        };
         let contains = cc
             .try_as_basic_value()
             .basic()
@@ -237,29 +249,18 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::Bool(contains))
     }
 
+    /// set.insert(elem) — receiver alloca is pre-compiled to avoid double compilation.
     pub(super) fn builtin_set_insert(
         &mut self,
-        receiver: &Expr,
+        set_ptr: PointerValue<'ctx>,
         args: &[Expr],
     ) -> Result<TypedValue<'ctx>, String> {
         if args.len() != 1 {
             return Err("set.insert expects 1 argument (element)".to_string());
         }
-        let set_ptr = if let Expr::Ident(name) = receiver {
-            if let Some(var) = self.scope.get(name) {
-                var.ptr
-            } else {
-                return Err(format!("Undefined variable: {}", name));
-            }
-        } else {
-            let set_val = self.compile_expr(receiver)?;
-            match set_val {
-                TypedValue::Set(p) => p,
-                _ => return Err("insert: receiver must be a set".to_string()),
-            }
-        };
         let elem_val = self.compile_expr(&args[0])?;
         let elem_fat = self.to_fat_struct(&elem_val)?;
+
         let null_val: BasicValueEnum = {
             let undef = self.string_type.get_undef();
             let r1 = self
@@ -299,15 +300,22 @@ impl<'ctx> CodeGen<'ctx> {
             .ok_or("not in function")?;
         let insert_bb = self.context.append_basic_block(current_fn, "si_insert");
         let skip_bb = self.context.append_basic_block(current_fn, "si_skip");
+        let merge_bb = self.context.append_basic_block(current_fn, "si_merge");
         let _ = self
             .builder
             .build_conditional_branch(contains, skip_bb, insert_bb);
         self.builder.position_at_end(insert_bb);
         let set_loaded2 = self.load_list(set_ptr)?;
-        let cc2 = self.call_rt(
+        let cc2 = match self.call_rt(
             "action_map_insert",
             &[set_loaded2.into(), elem_fat.into(), null_val.into()],
-        )?;
+        ) {
+            Ok(v) => v,
+            Err(e) => {
+                let _ = self.rc_free_intermediate(&elem_val);
+                return Err(e);
+            }
+        };
         let new_set = cc2
             .try_as_basic_value()
             .basic()
@@ -315,32 +323,23 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(set_ptr, new_set)
             .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(skip_bb);
+        let _ = self.builder.build_unconditional_branch(merge_bb);
+        // Skip path: element was a duplicate, no insert happened
         self.builder.position_at_end(skip_bb);
+        let _ = self.builder.build_unconditional_branch(merge_bb);
+        self.builder.position_at_end(merge_bb);
         Ok(TypedValue::Set(set_ptr))
     }
 
+    /// set.remove(elem) — receiver alloca is pre-compiled to avoid double compilation.
     pub(super) fn builtin_set_remove(
         &mut self,
-        receiver: &Expr,
+        set_ptr: PointerValue<'ctx>,
         args: &[Expr],
     ) -> Result<TypedValue<'ctx>, String> {
         if args.len() != 1 {
             return Err("set.remove expects 1 argument (element)".to_string());
         }
-        let set_ptr = if let Expr::Ident(name) = receiver {
-            if let Some(var) = self.scope.get(name) {
-                var.ptr
-            } else {
-                return Err(format!("Undefined variable: {}", name));
-            }
-        } else {
-            let set_val = self.compile_expr(receiver)?;
-            match set_val {
-                TypedValue::Set(p) => p,
-                _ => return Err("remove: receiver must be a set".to_string()),
-            }
-        };
         let elem_val = self.compile_expr(&args[0])?;
         let elem_fat = self.to_fat_struct(&elem_val)?;
         let set_loaded = self.load_list(set_ptr)?;
@@ -348,10 +347,16 @@ impl<'ctx> CodeGen<'ctx> {
             .module
             .get_function("action_map_remove")
             .ok_or("action_map_remove not found")?;
-        let rc = self
+        let rc = match self
             .builder
             .build_call(remove_fn, &[set_loaded.into(), elem_fat.into()], "remove")
-            .map_err(llvm_err)?;
+            .map_err(|e| {
+                let _ = self.rc_free_intermediate(&elem_val);
+                llvm_err(e)
+            }) {
+            Ok(v) => v,
+            Err(e) => return Err(e),
+        };
         let new_set = rc.try_as_basic_value().basic().ok_or("remove failed")?;
         self.builder
             .build_store(set_ptr, new_set)
@@ -359,27 +364,15 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::Set(set_ptr))
     }
 
+    /// set.contains(elem) — receiver alloca is pre-compiled to avoid double compilation.
     pub(super) fn builtin_set_contains(
         &mut self,
-        receiver: &Expr,
+        set_ptr: PointerValue<'ctx>,
         args: &[Expr],
     ) -> Result<TypedValue<'ctx>, String> {
         if args.len() != 1 {
             return Err("set.contains expects 1 argument (element)".to_string());
         }
-        let set_ptr = if let Expr::Ident(name) = receiver {
-            if let Some(var) = self.scope.get(name) {
-                var.ptr
-            } else {
-                return Err(format!("Undefined variable: {}", name));
-            }
-        } else {
-            let set_val = self.compile_expr(receiver)?;
-            match set_val {
-                TypedValue::Set(p) => p,
-                _ => return Err("contains: receiver must be a set".to_string()),
-            }
-        };
         let elem_val = self.compile_expr(&args[0])?;
         let elem_fat = self.to_fat_struct(&elem_val)?;
         let set_loaded = self.load_list(set_ptr)?;
@@ -387,14 +380,20 @@ impl<'ctx> CodeGen<'ctx> {
             .module
             .get_function("action_map_contains")
             .ok_or("action_map_contains not found")?;
-        let cc = self
+        let cc = match self
             .builder
             .build_call(
                 contains_fn,
                 &[set_loaded.into(), elem_fat.into()],
                 "contains",
             )
-            .map_err(llvm_err)?;
+            .map_err(|e| {
+                let _ = self.rc_free_intermediate(&elem_val);
+                llvm_err(e)
+            }) {
+            Ok(v) => v,
+            Err(e) => return Err(e),
+        };
         let contains = cc
             .try_as_basic_value()
             .basic()
@@ -484,6 +483,107 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         self.builder.build_store(alloca, r2).map_err(llvm_err)?;
 
+        // The heap buffer starts with RC=0 (from malloc_rc). rc_inc to 1 so the
+        // enum owns its data. Scope cleanup will rc_dec it when the enum goes out
+        // of scope. Without this, passing the enum to a function would leak or
+        // double-free: function entry rc_inc→1, function exit rc_dec→0→free, but
+        // the caller still holds a reference to the freed data.
+        if !variant.params.is_empty() {
+            self.rc_inc(data_ptr)?;
+        }
+
         Ok(TypedValue::Enum(alloca, enum_ty, inner_type, true))
+    }
+
+    /// list.insert(index, elem) — receiver alloca is pre-compiled to avoid double compilation.
+    pub(super) fn builtin_list_insert(
+        &mut self,
+        list_ptr: PointerValue<'ctx>,
+        args: &[Expr],
+    ) -> Result<TypedValue<'ctx>, String> {
+        if args.len() != 2 {
+            return Err("list.insert expects 2 arguments (index, element)".to_string());
+        }
+        let idx_val = self.compile_expr(&args[0])?;
+        let elem_val = self.compile_expr(&args[1])?;
+        match (&idx_val, &elem_val) {
+            (TypedValue::Int(iv), _) => {
+                let elem_fat = self.to_fat_struct(&elem_val)?;
+                let lv = self.load_list(list_ptr)?;
+                let result = match self.call_rt(
+                    "action_list_insert",
+                    &[lv.into(), (*iv).into(), elem_fat.into()],
+                ) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let _ = self.rc_free_intermediate(&elem_val);
+                        return Err(e);
+                    }
+                };
+                let rv = result.try_as_basic_value().basic().ok_or("insert failed")?;
+                let alloca = self
+                    .builder
+                    .build_alloca(self.list_type, "insert_result")
+                    .map_err(llvm_err)?;
+                self.builder.build_store(alloca, rv).map_err(llvm_err)?;
+                Ok(TypedValue::List(alloca))
+            }
+            _ => Err("list.insert expects an integer index".to_string()),
+        }
+    }
+
+    /// list.remove(index) — receiver alloca is pre-compiled to avoid double compilation.
+    pub(super) fn builtin_list_remove(
+        &mut self,
+        list_ptr: PointerValue<'ctx>,
+        args: &[Expr],
+    ) -> Result<TypedValue<'ctx>, String> {
+        if args.len() != 1 {
+            return Err("list.remove expects 1 argument (index)".to_string());
+        }
+        let idx_val = self.compile_expr(&args[0])?;
+        match &idx_val {
+            TypedValue::Int(iv) => {
+                let lv = self.load_list(list_ptr)?;
+                let result =
+                    self.call_rt("action_list_remove", &[lv.into(), (*iv).into()])?;
+                let rv = result.try_as_basic_value().basic().ok_or("remove failed")?;
+                let alloca = self
+                    .builder
+                    .build_alloca(self.list_type, "remove_result")
+                    .map_err(llvm_err)?;
+                self.builder.build_store(alloca, rv).map_err(llvm_err)?;
+                Ok(TypedValue::List(alloca))
+            }
+            _ => Err("list.remove expects an integer index".to_string()),
+        }
+    }
+
+    /// list.append(elem) — receiver alloca is pre-compiled to avoid double compilation.
+    pub(super) fn builtin_list_append(
+        &mut self,
+        list_ptr: PointerValue<'ctx>,
+        args: &[Expr],
+    ) -> Result<TypedValue<'ctx>, String> {
+        if args.len() != 1 {
+            return Err("list.append expects 1 argument (element)".to_string());
+        }
+        let elem_val = self.compile_expr(&args[0])?;
+        let elem_fat = self.to_fat_struct(&elem_val)?;
+        let lv = self.load_list(list_ptr)?;
+        let cc = match self.call_rt("action_list_push", &[lv.into(), elem_fat.into()]) {
+            Ok(v) => v,
+            Err(e) => {
+                let _ = self.rc_free_intermediate(&elem_val);
+                return Err(e);
+            }
+        };
+        let new_list = cc.try_as_basic_value().basic().ok_or("list_push failed")?;
+        let alloca = self
+            .builder
+            .build_alloca(self.list_type, "appended")
+            .map_err(llvm_err)?;
+        self.builder.build_store(alloca, new_list).map_err(llvm_err)?;
+        Ok(TypedValue::List(alloca))
     }
 }
