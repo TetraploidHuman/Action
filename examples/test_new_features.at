@@ -1,10 +1,10 @@
 // Test nullable type features and functional operations
-fun add(a: int, b: int) -> int { a + b }
+fun add(a: Int, b: Int) -> Int { a + b }
 
 fun main() {
     // ---- Test nullable value operations ----
-    val s int? = 42
-    val n int? = null
+    val s Int? = 42
+    val n Int? = null
 
     print("s != null: ")
     println(s != null)
@@ -38,8 +38,8 @@ fun main() {
     println(n or { 99 })
 
     // ---- Test nullable as Result replacement ----
-    val ok int? = 10
-    val err int? = null
+    val ok Int? = 10
+    val err Int? = null
 
     print("ok != null: ")
     println(ok != null)
@@ -66,7 +66,7 @@ fun main() {
     when isNotNull { true -> println(true); else -> println(false) }
 
     // ---- Test toLazyList and toList ----
-    val lst = list[1, 2, 3]
+    val lst = List[1, 2, 3]
     val ll = toLazyList(lst)
     print("toLazyList + len: ")
     println(len(ll))
@@ -80,7 +80,7 @@ fun main() {
     val h1 = lazyHead(ll)
     println(h1 != null)
 
-    val empty_ll = toLazyList(list[])
+    val empty_ll = toLazyList(List[])
     print("lazyHead of empty == null: ")
     val h2 = lazyHead(empty_ll)
     println(h2 == null)

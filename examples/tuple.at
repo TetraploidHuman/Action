@@ -8,5 +8,5 @@ fun main() {
     // Mixed types
     val m = (42, "hello")
     print(m[0])
-    // string printing will show empty since strings aren't printable
+    // String printing will show empty since strings aren't printable
 }

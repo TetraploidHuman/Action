@@ -1,4 +1,4 @@
-// Test list builtin functions
+// Test List builtin functions
 fun main() {
     // Test range
     val nums = range(1, 5)

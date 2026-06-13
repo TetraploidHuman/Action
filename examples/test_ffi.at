@@ -1,5 +1,5 @@
 // Test: FFI - CString conversion
-external fun puts(s: CString) -> int
+external fun puts(s: CString) -> Int
 
 fun main() {
     val msg = "Hello from Atomic FFI!"

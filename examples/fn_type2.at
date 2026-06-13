@@ -1,5 +1,5 @@
 // Function types with lambdas
-fun map_int(f: (int) -> int, x: int) -> int {
+fun map_int(f: (Int) -> Int, x: Int) -> Int {
     f(x)
 }
 
@@ -13,6 +13,6 @@ fun main() {
     print(r2)  // 21
 }
 
-fun double(n: int) -> int {
+fun double(n: Int) -> Int {
     n * 2
 }

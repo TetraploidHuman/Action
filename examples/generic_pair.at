@@ -10,21 +10,21 @@ fun <T, U> pickSecond(a: T, b: U) -> U {
 }
 
 fun main() {
-    // int + string
+    // Int + String
     val r1 = pickFirst(10, "world")
     println("pickFirst(10, \"world\"): ${r1}")
 
     val r2 = pickSecond(10, "world")
     println("pickSecond(10, \"world\"): ${r2}")
 
-    // bool + int
+    // Bool + Int
     val r3 = pickFirst(false, 99)
     println("pickFirst(false, 99): ${r3}")
 
     val r4 = pickSecond(false, 99)
     println("pickSecond(false, 99): ${r4}")
 
-    // string + string (same type for both params)
+    // String + String (same type for both params)
     val r5 = pickFirst("a", "b")
     println("pickFirst(\"a\", \"b\"): ${r5}")
 

@@ -50,7 +50,7 @@ impl<'ctx> CodeGen<'ctx> {
                 return self.builtin_with_timeout(args, trailing);
             }
             // Stream<T> operations
-            if name == "stream" {
+            if name == "Stream" {
                 return self.builtin_stream_create();
             }
             if name == "send" || name == "receive" || name == "close" {

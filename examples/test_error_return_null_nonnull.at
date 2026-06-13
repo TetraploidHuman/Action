@@ -1,6 +1,6 @@
 // Error: returning null from non-nullable function
-fun getNumber() -> int {
-    null   // can't return null from int function
+fun getNumber() -> Int {
+    null   // can't return null from Int function
 }
 
 fun main() {

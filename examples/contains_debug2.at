@@ -1,5 +1,5 @@
 fun main() {
-    val xs = list["a", "b", "c"]
+    val xs = List["a", "b", "c"]
 
     val c1 = contains(xs, "a")
     print("contains a: ")
@@ -11,7 +11,7 @@ fun main() {
     print(c2)
     println("")
 
-    val ys = list[1, 2, 3]
+    val ys = List[1, 2, 3]
     val c3 = contains(ys, 2)
     print("contains 2: ")
     print(c3)

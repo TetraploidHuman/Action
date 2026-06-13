@@ -1269,7 +1269,7 @@ impl<'ctx> CodeGen<'ctx> {
                 }?;
                 let char_val = self
                     .builder
-                    .build_load(i8, char_ptr, "char")
+                    .build_load(i8, char_ptr, "Char")
                     .map_err(llvm_err)?
                     .into_int_value();
                 let raw = self

@@ -1,8 +1,8 @@
 // Test function overloading
-fun add(x: int, y: int) -> int {
+fun add(x: Int, y: Int) -> Int {
     x + y
 }
-fun add(x: float, y: float) -> float {
+fun add(x: Float, y: Float) -> Float {
     x + y
 }
 

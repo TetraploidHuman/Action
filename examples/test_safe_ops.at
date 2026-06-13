@@ -1,7 +1,7 @@
 // Test: nullable field access and elvis
 fun main() {
-    val p int? = 10
-    val n int? = null
+    val p Int? = 10
+    val n Int? = null
 
     // Test 1: Elvis on non-null
     val r1 = p or { 0 }

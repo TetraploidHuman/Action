@@ -5,7 +5,7 @@ Action 是一门静态类型的多范式编程语言，编译器用 Rust 编写�
 ## 特性
 
 - **可空类型** — Kotlin 风格 `T?` 空安全，方法/字段/索引自动短路传播，`or {}` 默认值，智能转换
-- **泛型** — 泛型函数 `fun <T> id(x: T) -> T`，泛型枚举 `option[T]`
+- **泛型** — 泛型函数 `fun <T> id(x: T) -> T`，泛型枚举 `Option[T]`
 - **静态类型系统** — 结构化类型，类型推断，类型别名
 - **模式匹配** — 穷尽性 `when` 表达式，支持枚举/结构体解构，守卫（guard）与或模式
 - **一等函数** — Lambda 表达式，隐式 `it` 参数，闭包捕获
@@ -50,7 +50,7 @@ action run hello.at
 ```action
 val x = 42              // 不可变绑定
 var y = 0               // 可变绑定
-val name string = "Action"  // 带类型标注
+val name String = "Action"  // 带类型标注
 val lazy big = heavyComputation()  // 惰性初始化
 
 y += 1                  // 复合赋值: += -= *= /= %=
@@ -60,11 +60,11 @@ y = y + 1               // 普通赋值
 ### 基本类型
 
 ```action
-val i int = 42
-val f float = 3.14
-val b bool = true           // true / false
-val s string = "hello"
-val c char = 'A'
+val i Int = 42
+val f Float = 3.14
+val b Bool = true           // true / false
+val s String = "hello"
+val c Char = 'A'
 ```
 
 ### 运算符
@@ -95,20 +95,20 @@ s.toUpper()                 // "HELLO"
 s.toLower()                 // "hello"
 s.len()                     // 5
 s.substring(0, 2)           // "he"
-s.split(",")                // list["a", "b", "c"]
+s.split(",")                // List["a", "b", "c"]
 s.startsWith("he")          // true
 s.endsWith("lo")            // true
 s.contains("ell")           // true
 s.charAt(1)                 // char 'e'
 s.charCode(0)               // int 104
-s.chars()                   // list['h', 'e', 'l', 'l', 'o']
-s.indexOf("el")             // int? = 1（可空）
+s.chars()                   // List['h', 'e', 'l', 'l', 'o']
+s.indexOf("el")             // Int? = 1（可空）
 s.replace("foo", "bar")     // 替换
 s.repeat(3)                 // 重复
 s.trimStart()               // 去除左端空白
 s.trimEnd()                 // 去除右端空白
-s.join(list["x", "y"])      // list[string] → string: "hello"
-"42".toInt()                // int? = 42（可空）
+s.join(List["x", "y"])      // List[String] → string: "hello"
+"42".toInt()                // Int? = 42（可空）
 "3.14".toFloat()            // float? = 3.14（可空）
 
 // 字符串插值
@@ -148,20 +148,20 @@ val r = when x {
 
 ```action
 // 单表达式函数
-fun add(a: int, b: int) -> int { a + b }
+fun add(a: Int, b: Int) -> Int { a + b }
 
 // 多语句函数
-fun greet(name: string) {
+fun greet(name: String) {
     println("Hello, " + name)
 }
 
 // 递归函数
-fun fib(n: int) -> int {
+fun fib(n: Int) -> Int {
     when n <= 1 { n else fib(n - 1) + fib(n - 2) }
 }
 
 // 尾递归优化
-fun sum(n: int, acc: int) -> int {
+fun sum(n: Int, acc: Int) -> Int {
     when n <= 0 { acc else sum(n - 1, acc + n) }
 }
 ```
@@ -173,7 +173,7 @@ val double = { x -> x * 2 }       // 显式参数
 val triple = { it * 3 }           // 隐式 it 参数
 
 // 高阶函数
-val nums = list[1, 2, 3, 4, 5]
+val nums = List[1, 2, 3, 4, 5]
 val doubled = nums.map { it * 2 }
 val evens = nums.filter { it % 2 == 0 }
 val sum = nums.fold(0) { acc, x -> acc + x }
@@ -190,40 +190,40 @@ fun <T> identity(x: T) -> T { x }
 fun <T> pickFirst(a: T, b: T) -> T { a }
 
 // 泛型枚举
-enum option[T] {
+enum Option[T] {
     Some(T),
     None
 }
 
 // 使用泛型函数（自动推断类型参数）
-val x = identity(42)        // int
-val y = identity("hello")   // string
-val z = identity(3.14)      // float
+val x = identity(42)        // Int
+val y = identity("hello")   // String
+val z = identity(3.14)      // Float
 ```
 
 ### 可空类型
 
 ```action
 // T? 表示可空类型，null 表示空值
-val name string? = "Alice"
-val empty string? = null
+val name String? = "Alice"
+val empty String? = null
 
 // 对可空接收者的方法调用自动短路（接收者为 null 时直接返回 null）
-val upper = name.toUpper()         // string? = "ALICE"
-val none = empty.toUpper()         // string? = null
+val upper = name.toUpper()         // String? = "ALICE"
+val none = empty.toUpper()         // String? = null
 
 // 字段访问自动短路
-val city = user.address.city       // string? — 任一环节为 null 则整体为 null
+val city = user.address.city       // String? — 任一环节为 null 则整体为 null
 
 // 索引操作自动短路
-val item = list[0]                 // 若 list 为 null，返回 null
+val item = List[0]                 // 若 list 为 null，返回 null
 
 // or { } 提供默认值
 val display = name or { "Guest" }
 val cityName = user?.address?.city or { "Unknown" }
 
 // or { } 允许 return 提前终止，实现错误传播
-fun process() -> string? {
+fun process() -> String? {
     val x = maybe() or { return null }
     val y = another(x) or { return null }
     toUpper(x + y)
@@ -251,8 +251,8 @@ enum Color {
 }
 
 enum Shape {
-    Circle(int),        // 半径
-    Rectangle(int, int) // 宽, 高
+    Circle(Int),        // 半径
+    Rectangle(Int, Int) // 宽, 高
 }
 
 // 模式匹配解构
@@ -271,7 +271,7 @@ val c = when color {
 ### 结构体
 
 ```action
-type point = { x: int, y: int }
+type Point = { x: Int, y: Int }
 
 // 字面量构造（字段顺序无关）
 val p = { x = 10, y = 20 }
@@ -292,9 +292,9 @@ val {x as px, y as py} = p  // 重命名
 
 ```action
 // 为现有类型添加方法
-extension int {
-    fun square() -> int { this * this }
-    fun isEven() -> bool { this % 2 == 0 }
+extension Int {
+    fun square() -> Int { this * this }
+    fun isEven() -> Bool { this % 2 == 0 }
 }
 
 5.square()     // 25
@@ -304,15 +304,15 @@ extension int {
 ### 类型别名
 
 ```action
-type userid = int
-type person = { id: userid, name: string }
+type UserId = Int
+type Person = { id: UserId, name: String }
 ```
 
 ### For 循环
 
 ```action
 // 遍历集合
-for item in list[1, 2, 3] {
+for item in List[1, 2, 3] {
     println(item)
 }
 
@@ -346,43 +346,43 @@ val evens = for x in list if x % 2 == 0 { x }
 
 ```action
 // list — 构建与链式操作
-val list = list[1, 2, 3, 4, 5]
+val list = List[1, 2, 3, 4, 5]
 
 list.len()              // 5
-list[0]                 // 1（索引访问）
+List[0]                 // 1（索引访问）
 list.head()             // 1
 list.last()             // 5
-list.tail()             // list[2, 3, 4, 5]
+list.tail()             // List[2, 3, 4, 5]
 list.contains(3)        // true
-list.indexOf(3)         // int? = 2
-list.reverse()          // list[5, 4, 3, 2, 1]
-list.take(2)            // list[1, 2]
-list.drop(2)            // list[3, 4, 5]
-list.append(6)          // list[1, 2, 3, 4, 5, 6]
-list.map { it * 2 }     // list[2, 4, 6, 8, 10]
-list.filter { it % 2 == 0 } // list[2, 4]
+list.indexOf(3)         // Int? = 2
+list.reverse()          // List[5, 4, 3, 2, 1]
+list.take(2)            // List[1, 2]
+list.drop(2)            // List[3, 4, 5]
+list.append(6)          // List[1, 2, 3, 4, 5, 6]
+list.map { it * 2 }     // List[2, 4, 6, 8, 10]
+list.filter { it % 2 == 0 } // List[2, 4]
 list.fold(0) { acc, x -> acc + x }  // 15
 list.isEmpty()          // true/false
-list.sorted()           // list[1, 2, 3, 4, 5]
+list.sorted()           // List[1, 2, 3, 4, 5]
 list.unique()           // 去重
-list.find { it == 3 }   // int? = 3
+list.find { it == 3 }   // Int? = 3
 list.sum()              // 15
 list.product()          // 120
-list.zip(list["a", "b", "c"])  // list[{1, "a"}, {2, "b"}, {3, "c"}]
+list.zip(List["a", "b", "c"])  // List[{1, "a"}, {2, "b"}, {3, "c"}]
 
 // set
-val s = set[1, 2, 3, 3, 2]  // set[1, 2, 3]
+val s = Set[1, 2, 3, 3, 2]  // Set[1, 2, 3]
 s.contains(2)            // true
 
 // map
-val m = map["a": 1, "b": 2]
-m.get("a")               // int? = 1
+val m = Map["a": 1, "b": 2]
+m.get("a")               // Int? = 1
 m.contains("a")          // true
-m.insert("c", 3)         // map["a": 1, "b": 2, "c": 3]
-m.remove("a")            // map["b": 2]
+m.insert("c", 3)         // Map["a": 1, "b": 2, "c": 3]
+m.remove("a")            // Map["b": 2]
 m.len()                  // 2
-m.keys()                 // list["a", "b"]
-m.values()               // list[1, 2]
+m.keys()                 // List["a", "b"]
+m.values()               // List[1, 2]
 ```
 
 ### 文件 I/O
@@ -429,7 +429,7 @@ val str = action_json_stringify(json)  // "{\"a\":1,\"b\":2}"
 ```action
 val f = toFloat(42)              // int → float: 42.0
 val i = toInt(3.14)              // float → int: 3
-"42".toInt()                     // int? = 42（可空，解析失败为 null）
+"42".toInt()                     // Int? = 42（可空，解析失败为 null）
 "3.14".toFloat()                 // float? = 3.14
 ```
 
@@ -492,7 +492,7 @@ export fun helper() { 42 }
 
 ```action
 // 声明外部 C 函数
-external fun printf(format: string, ...) -> int
+external fun printf(format: string, ...) -> Int
 
 // 声明外部类型
 external type FileHandle
@@ -513,7 +513,7 @@ unsafe {
 | `.toLower()` | string | 转小写 |
 | `.trim()` | string | 去除两端空白 |
 | `.trimStart()` / `.trimEnd()` | string | 去除左/右端空白 |
-| `.split(delim)` | list[string] | 分割 |
+| `.split(delim)` | List[String] | 分割 |
 | `.join(list)` | string | 连接列表 |
 | `.substring(from, to)` | string | 取子串 |
 | `.startsWith(prefix)` | bool | 前缀匹配 |
@@ -523,9 +523,9 @@ unsafe {
 | `.repeat(n)` | string | 重复拼接 |
 | `.charAt(idx)` | char | 取字符 |
 | `.charCode(idx)` | int | 取 ASCII 码 |
-| `.chars()` | list[char] | 转字符列表 |
-| `.indexOf(sub)` | int? | 查找子串位置 |
-| `.toInt()` | int? | 解析为整数 |
+| `.chars()` | List[Char] | 转字符列表 |
+| `.indexOf(sub)` | Int? | 查找子串位置 |
+| `.toInt()` | Int? | 解析为整数 |
 | `.toFloat()` | float? | 解析为浮点数 |
 
 ### list 方法
@@ -534,28 +534,28 @@ unsafe {
 | `.len()` | int | 长度 |
 | `.head()` | T? | 首元素 |
 | `.last()` | T? | 尾元素 |
-| `.tail()` | list[T]? | 除首元素外的子列表 |
-| `.init()` | list[T]? | 除尾元素外的子列表 |
+| `.tail()` | List[T]? | 除首元素外的子列表 |
+| `.init()` | List[T]? | 除尾元素外的子列表 |
 | `.get(idx)` | T? | 索引访问 |
 | `.contains(elem)` | bool | 包含检查 |
-| `.indexOf(elem)` | int? | 查找索引 |
-| `.append(elem)` | list[T] | 追加 |
-| `.reverse()` | list[T] | 反转 |
-| `.take(n)` | list[T] | 取前 n 个 |
-| `.drop(n)` | list[T] | 去掉前 n 个 |
-| `.sorted()` | list[T] | 排序 |
-| `.unique()` | list[T] | 去重 |
+| `.indexOf(elem)` | Int? | 查找索引 |
+| `.append(elem)` | List[T] | 追加 |
+| `.reverse()` | List[T] | 反转 |
+| `.take(n)` | List[T] | 取前 n 个 |
+| `.drop(n)` | List[T] | 去掉前 n 个 |
+| `.sorted()` | List[T] | 排序 |
+| `.unique()` | List[T] | 去重 |
 | `.isEmpty()` | bool | 判空 |
-| `.map(fn)` | list[U] | 映射 |
-| `.filter(fn)` | list[T] | 过滤 |
+| `.map(fn)` | List[U] | 映射 |
+| `.filter(fn)` | List[T] | 过滤 |
 | `.fold(init, fn)` | U | 折叠 |
 | `.any(fn)` | bool | 任一满足 |
 | `.all(fn)` | bool | 全部满足 |
 | `.find(fn)` | T? | 查找 |
 | `.sum()` | int/float | 求和 |
 | `.product()` | int/float | 求积 |
-| `.zip(other)` | list[{T, U}] | 压缩 |
-| `.flatten()` | list[T] | 展平嵌套列表 |
+| `.zip(other)` | List[{T, U}] | 压缩 |
+| `.flatten()` | List[T] | 展平嵌套列表 |
 
 ### map 方法
 | 方法 | 返回 | 说明 |
@@ -565,8 +565,8 @@ unsafe {
 | `.contains(key)` | bool | 键存在 |
 | `.insert(key, val)` | map | 插入/更新 |
 | `.remove(key)` | map | 删除键 |
-| `.keys()` | list[K] | 所有键 |
-| `.values()` | list[V] | 所有值 |
+| `.keys()` | List[K] | 所有键 |
+| `.values()` | List[V] | 所有值 |
 
 ### set 方法
 | 方法 | 返回 | 说明 |

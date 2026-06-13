@@ -1,4 +1,4 @@
-val s = stream()
+val s = Stream()
 println("before send")
 send(s, 42)
 println("after send")

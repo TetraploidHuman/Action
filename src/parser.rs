@@ -688,10 +688,9 @@ impl Parser {
         match self.current_kind() {
             TokenKind::Ident(ref name) => {
                 let original_name = name.clone();
-                let lowered = original_name.to_lowercase();
                 self.advance();
 
-                // Check for generic instantiation: list[int]
+                // Check for generic instantiation: List[Int]
                 if self.skip(TokenKind::LBracket) {
                     let mut args = Vec::new();
                     while self.current_kind() != TokenKind::RBracket {
@@ -701,11 +700,14 @@ impl Parser {
                         args.push(self.parse_type()?);
                     }
                     self.expect(TokenKind::RBracket)?;
-                    Ok(Type::Generic(Box::new(Type::Named(lowered)), args))
+                    Ok(Type::Generic(
+                        Box::new(Type::Named(original_name.clone())),
+                        args,
+                    ))
                 } else if self.current_type_params.contains(&original_name) {
                     Ok(Type::TypeVar(original_name))
                 } else {
-                    Ok(Type::Named(lowered))
+                    Ok(Type::Named(original_name))
                 }
             }
             TokenKind::Task => {
@@ -715,7 +717,7 @@ impl Parser {
                     self.expect(TokenKind::RBracket)?;
                     Ok(Type::Task(Box::new(inner)))
                 } else {
-                    Ok(Type::Named("task".into()))
+                    Ok(Type::Named("Task".into()))
                 }
             }
             TokenKind::LParen => {
@@ -1070,7 +1072,7 @@ impl Parser {
                 self.advance();
 
                 // Collection literals: List[...], Set[...], Map[...]
-                if (name == "list" || name == "set" || name == "map")
+                if (name == "List" || name == "Set" || name == "Map")
                     && self.current_kind() == TokenKind::LBracket
                 {
                     return self.parse_collection_literal(&name);
@@ -1305,7 +1307,7 @@ impl Parser {
         self.expect(TokenKind::LBracket)?; // consume '['
 
         match kind {
-            "list" => {
+            "List" => {
                 let mut items = Vec::new();
                 while self.current_kind() != TokenKind::RBracket {
                     if !items.is_empty() {
@@ -1319,7 +1321,7 @@ impl Parser {
                 self.expect(TokenKind::RBracket)?;
                 Ok(Expr::call(Expr::Ident("__list".to_string()), items))
             }
-            "set" => {
+            "Set" => {
                 let mut elements = Vec::new();
                 while self.current_kind() != TokenKind::RBracket {
                     if !elements.is_empty() {
@@ -1334,7 +1336,7 @@ impl Parser {
                 self.expect(TokenKind::RBracket)?;
                 Ok(Expr::SetLiteral(elements))
             }
-            "map" => {
+            "Map" => {
                 let mut entries = Vec::new();
                 while self.current_kind() != TokenKind::RBracket {
                     if !entries.is_empty() {
@@ -1869,7 +1871,7 @@ impl Parser {
 
         // Check for shorthand: for List[...] / Set[...] / Map[...] { body } uses implicit "it"
         if let TokenKind::Ident(ref name) = self.current_kind() {
-            if (name == "list" || name == "set" || name == "map")
+            if (name == "List" || name == "Set" || name == "Map")
                 && self.peek2() == TokenKind::LBracket
             {
                 let collection_kind = name.clone();
@@ -1961,7 +1963,7 @@ impl Parser {
         self.advance(); // skip 'type'
 
         let name = match &self.current_kind() {
-            TokenKind::Ident(s) => s.to_lowercase(),
+            TokenKind::Ident(s) => s.clone(),
             _ => return Err(self.error("Expected type name")),
         };
         self.advance();
@@ -2001,7 +2003,7 @@ impl Parser {
         self.advance(); // skip 'enum'
 
         let name = match &self.current_kind() {
-            TokenKind::Ident(s) => s.to_lowercase(),
+            TokenKind::Ident(s) => s.clone(),
             _ => return Err(self.error("Expected enum name")),
         };
         self.advance();
@@ -2466,7 +2468,7 @@ mod tests {
 
     #[test]
     fn test_for_iterate() {
-        let prog = parse("for item in list[1,2,3] { println(item) }").unwrap();
+        let prog = parse("for item in List[1,2,3] { println(item) }").unwrap();
         match &prog.stmts[0] {
             Stmt::Expr {
                 expr: Expr::For(f), ..
@@ -2482,7 +2484,7 @@ mod tests {
 
     #[test]
     fn test_for_expression() {
-        let expr = parse_expr("for x in list[1,2,3,4,5] { x * x }").unwrap();
+        let expr = parse_expr("for x in List[1,2,3,4,5] { x * x }").unwrap();
         match expr {
             Expr::For(f) => match &f.kind {
                 ForKind::Iterate { var, .. } => {
@@ -2504,7 +2506,7 @@ mod tests {
                 variants,
                 ..
             } => {
-                assert_eq!(name, "option");
+                assert_eq!(name, "Option");
                 assert_eq!(type_params, &vec!["T"]);
                 assert_eq!(variants.len(), 2);
                 assert_eq!(variants[0].name, "Some");
@@ -2521,7 +2523,7 @@ mod tests {
             Stmt::TypeAlias {
                 name, type_params, ..
             } => {
-                assert_eq!(name, "point");
+                assert_eq!(name, "Point");
                 assert!(type_params.is_empty());
             }
             _ => panic!("Expected TypeAlias"),
@@ -2564,7 +2566,7 @@ mod tests {
                 assert_eq!(name, "x");
                 assert_eq!(
                     type_ann,
-                    &Some(Type::Nullable(Box::new(Type::Named("int".into()))))
+                    &Some(Type::Nullable(Box::new(Type::Named("Int".into()))))
                 );
             }
             _ => panic!("Expected Let with nullable type"),

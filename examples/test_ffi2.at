@@ -1,10 +1,10 @@
 // Test: FFI - External C function call + CString + unsafe
-external fun puts(s: CString) -> int
+external fun puts(s: CString) -> Int
 
 fun main() {
     val msg = "Hello from Atomic FFI!"
     val cstr = toCString(msg)
-    // Call external C puts() - this prints the string
+    // Call external C puts() - this prints the String
     val ret = puts(cstr)
     println("puts returned:")
     println(ret)

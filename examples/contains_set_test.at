@@ -1,5 +1,5 @@
 fun main() {
-    val s = set["a", "b", "c"]
+    val s = Set["a", "b", "c"]
 
     val c1 = contains(s, "a")
     print("contains a: ")

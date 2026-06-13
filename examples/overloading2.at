@@ -1,32 +1,32 @@
 // Test function overloading - comprehensive
-fun greet(name: string) -> string {
+fun greet(name: String) -> String {
     "Hello, " + name
 }
-fun greet(times: int) -> int {
+fun greet(times: Int) -> Int {
     times * 2
 }
 
-fun process(x: int) -> int {
+fun process(x: Int) -> Int {
     x * 10
 }
-fun process(x: float) -> float {
+fun process(x: Float) -> Float {
     x * 10.0
 }
 
 fun main() {
-    // string overload
+    // String overload
     println(greet("World"))
 
-    // int overload
+    // Int overload
     println(greet(5))
 
-    // int overload via identifier
+    // Int overload via identifier
     val n = 3
     println(process(n))
 
-    // float overload
+    // Float overload
     println(process(2.5))
 
-    // int overload with expression arg
+    // Int overload with expression arg
     println(process(1 + 2))
 }

@@ -1,5 +1,5 @@
 // Test: enum when + callback combination
-fun apply_when(opt: Option, f) -> option {
+fun apply_when(opt: Option, f) -> Option {
     when opt {
         Some(v) -> f(v)
         None -> None

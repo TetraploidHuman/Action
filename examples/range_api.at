@@ -7,8 +7,8 @@ fun main() {
     val contains15 = r.contains(15)
     println("0..10.contains(15): ${contains15}")
 
-    val list = r.toList()
-    println("0..10.toList().len: ${len(list)}")
+    val List = r.toList()
+    println("0..10.toList().len: ${len(List)}")
 
     println("Range API works")
 }

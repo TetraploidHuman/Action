@@ -1609,44 +1609,44 @@ impl<'ctx> CodeGen<'ctx> {
     fn infer_expr_type(&self, expr: &Expr) -> Type {
         match expr {
             Expr::Literal(Literal::String(_)) | Expr::StringInterpolate(_) => {
-                Type::Named("string".into())
+                Type::Named("String".into())
             }
-            Expr::Literal(Literal::Int(_)) => Type::Named("int".into()),
-            Expr::Literal(Literal::Float(_)) => Type::Named("float".into()),
-            Expr::Literal(Literal::Bool(_)) => Type::Named("bool".into()),
-            Expr::Literal(Literal::Char(_)) => Type::Named("char".into()),
+            Expr::Literal(Literal::Int(_)) => Type::Named("Int".into()),
+            Expr::Literal(Literal::Float(_)) => Type::Named("Float".into()),
+            Expr::Literal(Literal::Bool(_)) => Type::Named("Bool".into()),
+            Expr::Literal(Literal::Char(_)) => Type::Named("Char".into()),
             Expr::Binary(left, op, _) => {
                 if *op == BinaryOp::Add {
                     // If either side is a string, result is string
-                    if matches!(self.infer_expr_type(left), Type::Named(ref n) if n == "string") {
-                        return Type::Named("string".into());
+                    if matches!(self.infer_expr_type(left), Type::Named(ref n) if n == "String") {
+                        return Type::Named("String".into());
                     }
                 }
-                Type::Named("int".into())
+                Type::Named("Int".into())
             }
             Expr::Call { func, .. } => {
                 if let Expr::Ident(name) = func.as_ref() {
                     match name.as_str() {
                         "print" | "println" | "action_json_free" => Type::Unit,
-                        "toString" | "toUpper" | "toLower" => Type::Named("string".into()),
+                        "toString" | "toUpper" | "toLower" => Type::Named("String".into()),
                         "substring" | "unwrapOr" | "readLine" | "jsonEscape" | "httpRequest"
                         | "str" | "chatOnce" | "storeMessages" | "extractContent"
-                        | "handleChat" => Type::Named("string".into()),
+                        | "handleChat" => Type::Named("String".into()),
                         "parseDate" | "date" => {
                             Type::Nullable(Box::new(Type::Named("Date".into())))
                         }
                         "datetime" => Type::Nullable(Box::new(Type::Named("DateTime".into()))),
-                        "format" => Type::Named("string".into()),
+                        "format" => Type::Named("String".into()),
                         "now" => Type::Named("DateTime".into()),
                         "today" => Type::Named("Date".into()),
-                        "find" => Type::Nullable(Box::new(Type::Named("int".into()))),
-                        "flip" | "constant" | "identity" => Type::Named("int".into()),
+                        "find" => Type::Nullable(Box::new(Type::Named("Int".into()))),
+                        "flip" | "constant" | "identity" => Type::Named("Int".into()),
                         "Random_new" => Type::Named("Random".into()),
                         "nextInt" => Type::Generic(
                             Box::new(Type::Named("Tuple".into())),
-                            vec![Type::Named("Random".into()), Type::Named("int".into())],
+                            vec![Type::Named("Random".into()), Type::Named("Int".into())],
                         ),
-                        "count" => Type::Named("int".into()),
+                        "count" => Type::Named("Int".into()),
                         "partition" => Type::Generic(
                             Box::new(Type::Named("Tuple".into())),
                             vec![Type::Named("list".into()), Type::Named("list".into())],
@@ -1663,12 +1663,12 @@ impl<'ctx> CodeGen<'ctx> {
                                     .unwrap_or_default();
                                 Type::Named(enum_name)
                             } else {
-                                Type::Named("int".into())
+                                Type::Named("Int".into())
                             }
                         }
                     }
                 } else {
-                    Type::Named("int".into())
+                    Type::Named("Int".into())
                 }
             }
             Expr::When(w) => self.infer_when_type(&w.kind),
@@ -1696,15 +1696,15 @@ impl<'ctx> CodeGen<'ctx> {
                                     return Type::Named(enum_name.clone());
                                 }
                             }
-                            Type::Named("int".into())
+                            Type::Named("Int".into())
                         }
-                        ValKind::Str => Type::Named("string".into()),
-                        ValKind::Struct => Type::Named("int".into()), // ambiguous, default
+                        ValKind::Str => Type::Named("String".into()),
+                        ValKind::Struct => Type::Named("Int".into()), // ambiguous, default
                         ValKind::List => Type::Named("list".into()),
                         ValKind::Map => Type::Named("map".into()),
                         ValKind::Set => Type::Named("set".into()),
-                        ValKind::Fn => Type::Named("int".into()),
-                        _ => Type::Named("int".into()),
+                        ValKind::Fn => Type::Named("Int".into()),
+                        _ => Type::Named("Int".into()),
                     }
                 } else if self.registry.lookup_variant(name).is_some() {
                     let enum_name = self
@@ -1715,14 +1715,14 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap_or_default();
                     Type::Named(enum_name)
                 } else {
-                    Type::Named("int".into())
+                    Type::Named("Int".into())
                 }
             }
             Expr::MapLiteral(_) => Type::Map(
-                Box::new(Type::Named("string".into())),
-                Box::new(Type::Named("int".into())),
+                Box::new(Type::Named("String".into())),
+                Box::new(Type::Named("Int".into())),
             ),
-            Expr::SetLiteral(_) => Type::Set(Box::new(Type::Named("int".into()))),
+            Expr::SetLiteral(_) => Type::Set(Box::new(Type::Named("Int".into()))),
             Expr::Null => Type::Nullable(Box::new(Type::Named("Nothing".into()))),
             Expr::OrBlock { nullable, fallback } => {
                 let cond_ty = self.infer_expr_type(nullable);
@@ -1731,7 +1731,7 @@ impl<'ctx> CodeGen<'ctx> {
                     _ => self.infer_expr_type(fallback),
                 }
             }
-            _ => Type::Named("int".into()),
+            _ => Type::Named("Int".into()),
         }
     }
 
@@ -1765,11 +1765,11 @@ impl<'ctx> CodeGen<'ctx> {
         match ret_ast {
             Some(Type::Unit) => self.void_ty().fn_type(param_tys, false),
             Some(Type::Named(n)) => match n.as_str() {
-                "float" | "Double" => self.f64_ty().fn_type(param_tys, false),
-                "bool" => self.bool_ty().fn_type(param_tys, false),
-                "string" | "Str" => self.string_type.fn_type(param_tys, false),
+                "Float" | "Double" => self.f64_ty().fn_type(param_tys, false),
+                "Bool" => self.bool_ty().fn_type(param_tys, false),
+                "String" | "Str" => self.string_type.fn_type(param_tys, false),
                 "Unit" => self.void_ty().fn_type(param_tys, false),
-                "int" => self.i64_ty().fn_type(param_tys, false),
+                "Int" => self.i64_ty().fn_type(param_tys, false),
                 "list" | "set" | "map" => self.list_type.fn_type(param_tys, false),
                 "LazyList" => self.lazylist_type.fn_type(param_tys, false),
                 name => {
@@ -1832,10 +1832,10 @@ impl<'ctx> CodeGen<'ctx> {
     /// Map a TypedValue to a type name string for overload resolution.
     pub(super) fn typed_value_type_name(&self, v: &TypedValue<'ctx>) -> String {
         match v {
-            TypedValue::Int(_) => "int".to_string(),
-            TypedValue::Float(_) => "float".to_string(),
-            TypedValue::Bool(_) => "bool".to_string(),
-            TypedValue::Str(_) => "string".to_string(),
+            TypedValue::Int(_) => "Int".to_string(),
+            TypedValue::Float(_) => "Float".to_string(),
+            TypedValue::Bool(_) => "Bool".to_string(),
+            TypedValue::Str(_) => "String".to_string(),
             TypedValue::Fn(_, _) | TypedValue::Closure { .. } => "Fn".to_string(),
             TypedValue::List(_) => "list".to_string(),
             TypedValue::Struct(_, st) => {
@@ -1919,7 +1919,7 @@ impl<'ctx> CodeGen<'ctx> {
             if matches!(&args[i], Expr::Lambda { .. }) {
                 continue;
             }
-            let param_ty = param.ty.clone().unwrap_or(Type::Named("int".into()));
+            let param_ty = param.ty.clone().unwrap_or(Type::Named("Int".into()));
             let arg_type_name = self.typed_value_type_name(&arg_vals[i]);
             self.collect_type_args(&param_ty, &arg_type_name, &mut type_map);
         }
@@ -1928,7 +1928,7 @@ impl<'ctx> CodeGen<'ctx> {
         for tp in type_params {
             type_map
                 .entry(tp.clone())
-                .or_insert_with(|| Type::Named("int".into()));
+                .or_insert_with(|| Type::Named("Int".into()));
         }
 
         // Generate mangled name from type_map
@@ -2095,7 +2095,7 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 let param_types: Vec<Type> = params
                     .iter()
-                    .map(|p| p.ty.clone().unwrap_or(Type::Named("int".into())))
+                    .map(|p| p.ty.clone().unwrap_or(Type::Named("Int".into())))
                     .collect();
                 let all_typed = params.iter().all(|p| p.ty.is_some());
                 let mangled = if all_typed && overloaded_names.contains(name.as_str()) {
@@ -2117,7 +2117,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .map(|p| self.ast_type_to_llvm(p.ty.as_ref()))
                     .collect();
                 let ret_type = if name == "main" {
-                    Some(Type::Named("int".into()))
+                    Some(Type::Named("Int".into()))
                 } else {
                     return_type.as_ref().cloned().or_else(|| {
                         if all_typed {

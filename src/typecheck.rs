@@ -311,9 +311,9 @@ impl TypeChecker {
                     // type differs from Int. Full Hindley-Milner inference is not implemented.
                     let param_tys: Vec<Type> = params
                         .iter()
-                        .map(|p| p.ty.clone().unwrap_or(Type::Named("int".into())))
+                        .map(|p| p.ty.clone().unwrap_or(Type::Named("Int".into())))
                         .collect();
-                    let ret_ty = return_type.clone().unwrap_or(Type::Named("int".into()));
+                    let ret_ty = return_type.clone().unwrap_or(Type::Named("Int".into()));
                     let fn_type = Type::Function(param_tys, Box::new(ret_ty));
 
                     let all_typed = params.iter().all(|p| p.ty.is_some());
@@ -323,7 +323,7 @@ impl TypeChecker {
                             name,
                             &params
                                 .iter()
-                                .map(|p| p.ty.clone().unwrap_or(Type::Named("int".into())))
+                                .map(|p| p.ty.clone().unwrap_or(Type::Named("Int".into())))
                                 .collect::<Vec<_>>(),
                         );
                         self.type_env.insert(mangled, fn_type);
@@ -345,7 +345,7 @@ impl TypeChecker {
                 Stmt::Destructure { names, .. } => {
                     for name in names {
                         self.type_env
-                            .insert(name.clone(), Type::Named("int".into()));
+                            .insert(name.clone(), Type::Named("Int".into()));
                     }
                 }
                 Stmt::Const {
@@ -404,7 +404,7 @@ impl TypeChecker {
                     // Temporarily add function parameters to the type environment
                     let mut saved: Vec<(String, Option<Type>)> = Vec::new();
                     for p in params {
-                        let param_ty = p.ty.clone().unwrap_or(Type::Named("int".into()));
+                        let param_ty = p.ty.clone().unwrap_or(Type::Named("Int".into()));
                         let old = self.type_env.insert(p.name.clone(), param_ty);
                         saved.push((p.name.clone(), old));
                     }
@@ -423,7 +423,7 @@ impl TypeChecker {
                         if type_params.is_empty() || !matches!(declared_ret, Type::TypeVar(_)) {
                             let inferred = self.infer_expr_type(body);
                             // Skip check when inferred type is Int (fallback for unknown types)
-                            if !matches!(&inferred, Type::Named(n) if n == "int")
+                            if !matches!(&inferred, Type::Named(n) if n == "Int")
                                 && !self.types_compatible(declared_ret, &inferred)
                             {
                                 let msg = if let Some(hint) =
@@ -447,14 +447,14 @@ impl TypeChecker {
                         let inferred = self.infer_expr_type(body);
                         // Only warn for clear non-Int, non-Unit types. Int is the default/fallback,
                         // and Unit is a valid implicit void return.
-                        if !matches!(&inferred, Type::Named(n) if n == "int")
+                        if !matches!(&inferred, Type::Named(n) if n == "Int")
                             && !matches!(&inferred, Type::Unit)
                         {
                             // Update the function's entry in type_env so subsequent functions
                             // that call this one get the correct return type.
                             let param_tys: Vec<Type> = params
                                 .iter()
-                                .map(|p| p.ty.clone().unwrap_or(Type::Named("int".into())))
+                                .map(|p| p.ty.clone().unwrap_or(Type::Named("Int".into())))
                                 .collect();
                             let fn_type = Type::Function(param_tys, Box::new(inferred.clone()));
                             self.type_env.insert(name.clone(), fn_type);
@@ -463,7 +463,7 @@ impl TypeChecker {
                             // that call this one get the correct return type.
                             let param_tys: Vec<Type> = params
                                 .iter()
-                                .map(|p| p.ty.clone().unwrap_or(Type::Named("int".into())))
+                                .map(|p| p.ty.clone().unwrap_or(Type::Named("Int".into())))
                                 .collect();
                             let fn_type = Type::Function(param_tys, Box::new(inferred.clone()));
                             self.type_env.insert(name.clone(), fn_type);
@@ -834,8 +834,8 @@ impl TypeChecker {
             let is_add_string = op == BinaryOp::Add
                 && (format!("{}", lt).starts_with("Nullable<String")
                     || format!("{}", rt).starts_with("Nullable<String")
-                    || format!("{}", lt).starts_with("string")
-                    || format!("{}", rt).starts_with("string"));
+                    || format!("{}", lt).starts_with("String")
+                    || format!("{}", rt).starts_with("String"));
             match op {
                 BinaryOp::Add if is_add_string => {} // allow
                 BinaryOp::Eq | BinaryOp::Neq | BinaryOp::And | BinaryOp::Or => {} // comparison/logical allow
@@ -854,21 +854,21 @@ impl TypeChecker {
             BinaryOp::Add => {
                 let ls = format!("{}", lt);
                 let rs = format!("{}", rt);
-                if ls == "string" || rs == "string" {
+                if ls == "String" || rs == "String" {
                     return Ok(());
                 }
             }
             BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div | BinaryOp::Mod | BinaryOp::Pow => {
                 let ls = format!("{}", lt);
                 let rs = format!("{}", rt);
-                if ls == "string" || rs == "string" || ls == "bool" || rs == "bool" {
+                if ls == "String" || rs == "String" || ls == "Bool" || rs == "Bool" {
                     return Err(CompilerError::new(format!(
                         "Arithmetic operation '{}' not supported for {}",
                         op,
-                        if ls == "bool" || rs == "bool" {
-                            "bool"
+                        if ls == "Bool" || rs == "Bool" {
+                            "Bool"
                         } else {
-                            "string"
+                            "String"
                         }
                     ))
                     .with_span(self.current_span));
@@ -881,7 +881,7 @@ impl TypeChecker {
                 let ls = format!("{}", lt);
                 let rs = format!("{}", rt);
                 // Allow Bool comparison (True > False), but disallow mixed Bool/other types
-                if (ls == "bool" || rs == "bool") && ls != rs {
+                if (ls == "Bool" || rs == "Bool") && ls != rs {
                     return Err(CompilerError::new(format!(
                         "Cannot compare '{}' with '{}'",
                         ls, rs
@@ -890,7 +890,7 @@ impl TypeChecker {
                 }
             }
             BinaryOp::And | BinaryOp::Or => {
-                if format!("{}", lt) != "bool" || format!("{}", rt) != "bool" {
+                if format!("{}", lt) != "Bool" || format!("{}", rt) != "Bool" {
                     return Err(CompilerError::new(format!(
                         "Logical operator '{}' requires Bool operands, got '{}' and '{}'",
                         op, lt, rt
@@ -905,7 +905,7 @@ impl TypeChecker {
             | BinaryOp::Shr => {
                 let ls = format!("{}", lt);
                 let rs = format!("{}", rt);
-                if ls != "int" || rs != "int" {
+                if ls != "Int" || rs != "Int" {
                     return Err(CompilerError::new(format!(
                         "Bitwise operator '{}' requires Int operands, got '{}' and '{}'",
                         op, lt, rs
@@ -946,7 +946,7 @@ impl TypeChecker {
                     if !type_params.is_empty() {
                         let param_tys: Vec<Type> = params
                             .iter()
-                            .map(|p| p.ty.clone().unwrap_or(Type::Named("int".into())))
+                            .map(|p| p.ty.clone().unwrap_or(Type::Named("Int".into())))
                             .collect();
                         if args.len() != param_tys.len() {
                             return Err(CompilerError::new(format!(
@@ -1037,13 +1037,13 @@ impl TypeChecker {
         let first = &types[0];
 
         // If first type is Int, it might be a fallback — skip arm checking
-        if matches!(first, Type::Named(ref n) if n == "int") {
+        if matches!(first, Type::Named(ref n) if n == "Int") {
             return Ok(());
         }
 
         for (i, t) in types.iter().enumerate().skip(1) {
             // Skip Int fallback arms
-            if matches!(t, Type::Named(ref n) if n == "int") {
+            if matches!(t, Type::Named(ref n) if n == "Int") {
                 continue;
             }
             if !self.types_compatible(first, t) {
@@ -1063,26 +1063,26 @@ impl TypeChecker {
     fn infer_expr_type(&self, expr: &Expr) -> Type {
         match expr {
             Expr::Literal(Literal::String(_)) | Expr::StringInterpolate(_) => {
-                Type::Named("string".into())
+                Type::Named("String".into())
             }
-            Expr::Literal(Literal::Int(_)) => Type::Named("int".into()),
-            Expr::Literal(Literal::Float(_)) => Type::Named("float".into()),
-            Expr::Literal(Literal::Bool(_)) => Type::Named("bool".into()),
-            Expr::Literal(Literal::Char(_)) => Type::Named("char".into()),
+            Expr::Literal(Literal::Int(_)) => Type::Named("Int".into()),
+            Expr::Literal(Literal::Float(_)) => Type::Named("Float".into()),
+            Expr::Literal(Literal::Bool(_)) => Type::Named("Bool".into()),
+            Expr::Literal(Literal::Char(_)) => Type::Named("Char".into()),
             Expr::Literal(Literal::Unit) => Type::Unit,
             Expr::MapLiteral(_) => Type::Map(
-                Box::new(Type::Named("string".into())),
-                Box::new(Type::Named("int".into())),
+                Box::new(Type::Named("String".into())),
+                Box::new(Type::Named("Int".into())),
             ),
-            Expr::SetLiteral(_) => Type::Set(Box::new(Type::Named("int".into()))),
+            Expr::SetLiteral(_) => Type::Set(Box::new(Type::Named("Int".into()))),
             Expr::Binary(lhs, op, rhs) => {
                 let lt = self.infer_expr_type(lhs);
                 let rt = self.infer_expr_type(rhs);
                 if *op == BinaryOp::Add {
-                    if matches!(&lt, Type::Named(ref n) if n == "string")
-                        || matches!(&rt, Type::Named(ref n) if n == "string")
+                    if matches!(&lt, Type::Named(ref n) if n == "String")
+                        || matches!(&rt, Type::Named(ref n) if n == "String")
                     {
-                        return Type::Named("string".into());
+                        return Type::Named("String".into());
                     }
                 }
                 if *op == BinaryOp::And
@@ -1096,7 +1096,7 @@ impl TypeChecker {
                     || *op == BinaryOp::In
                     || *op == BinaryOp::Is
                 {
-                    return Type::Named("bool".into());
+                    return Type::Named("Bool".into());
                 }
                 if *op == BinaryOp::BitAnd
                     || *op == BinaryOp::BitOr
@@ -1104,42 +1104,42 @@ impl TypeChecker {
                     || *op == BinaryOp::Shl
                     || *op == BinaryOp::Shr
                 {
-                    return Type::Named("int".into());
+                    return Type::Named("Int".into());
                 }
                 if *op == BinaryOp::Pow {
                     // Return Float if either operand is Float
-                    if matches!(&lt, Type::Named(ref n) if n == "float")
-                        || matches!(&rt, Type::Named(ref n) if n == "float")
+                    if matches!(&lt, Type::Named(ref n) if n == "Float")
+                        || matches!(&rt, Type::Named(ref n) if n == "Float")
                     {
-                        return Type::Named("float".into());
+                        return Type::Named("Float".into());
                     }
                     return lt;
                 }
                 // Arithmetic: return Float if either operand is Float, else Int
-                if matches!(&lt, Type::Named(ref n) if n == "float")
-                    || matches!(&rt, Type::Named(ref n) if n == "float")
+                if matches!(&lt, Type::Named(ref n) if n == "Float")
+                    || matches!(&rt, Type::Named(ref n) if n == "Float")
                 {
-                    return Type::Named("float".into());
+                    return Type::Named("Float".into());
                 }
-                Type::Named("int".into())
+                Type::Named("Int".into())
             }
             Expr::Call { func, args, .. } => {
                 if let Expr::Ident(name) = func.as_ref() {
                     match name.as_str() {
                         "print" | "println" | "send" | "close" | "cancel" => Type::Unit,
-                        "toString" | "toUpper" | "toLower" => Type::Named("string".into()),
-                        "receive" | "wait" => Type::Named("int".into()),
-                        "launch" => Type::Task(Box::new(Type::Named("int".into()))),
-                        "stream" => Type::Stream(Box::new(Type::Named("int".into()))),
-                        "is_done" | "is_cancelled" => Type::Named("bool".into()),
-                        "withTimeout" => Type::Nullable(Box::new(Type::Named("int".into()))),
+                        "toString" | "toUpper" | "toLower" => Type::Named("String".into()),
+                        "receive" | "wait" => Type::Named("Int".into()),
+                        "launch" => Type::Task(Box::new(Type::Named("Int".into()))),
+                        "Stream" => Type::Stream(Box::new(Type::Named("Int".into()))),
+                        "is_done" | "is_cancelled" => Type::Named("Bool".into()),
+                        "withTimeout" => Type::Nullable(Box::new(Type::Named("Int".into()))),
                         "coroutineScope" => Type::Named("list".into()),
                         // Callback-based list functions
-                        "any" | "all" => Type::Named("bool".into()),
+                        "any" | "all" => Type::Named("Bool".into()),
                         "find" | "findIndex" | "reduce" => {
-                            Type::Nullable(Box::new(Type::Named("int".into())))
+                            Type::Nullable(Box::new(Type::Named("Int".into())))
                         }
-                        "foldRight" => Type::Named("int".into()),
+                        "foldRight" => Type::Named("Int".into()),
                         "takeWhile" | "dropWhile" | "sortedBy" => Type::Named("list".into()),
                         _ => {
                             if self.registry.lookup_variant(name).is_some() {
@@ -1156,7 +1156,7 @@ impl TypeChecker {
                             } else if let Some(Type::Function(_, ret)) = self.type_env.get(name) {
                                 *ret.clone()
                             } else {
-                                Type::Named("int".into())
+                                Type::Named("Int".into())
                             }
                         }
                     }
@@ -1167,27 +1167,27 @@ impl TypeChecker {
                         (Type::Map(_, _), "contains")
                         | (Type::Set(_), "contains")
                         | (Type::Map(_, _), "isEmpty")
-                        | (Type::Set(_), "isEmpty") => Type::Named("bool".into()),
+                        | (Type::Set(_), "isEmpty") => Type::Named("Bool".into()),
                         (Type::Map(_, _), "insert") | (Type::Set(_), "insert") => Type::Unit,
                         (Type::Map(_, _), "remove")
                         | (Type::Map(_, _), "get")
                         | (Type::Set(_), "remove") => {
-                            Type::Nullable(Box::new(Type::Named("int".into())))
+                            Type::Nullable(Box::new(Type::Named("Int".into())))
                         }
                         // Stream UFCS methods
                         (Type::Stream(_), "send") => Type::Unit,
-                        (Type::Stream(_), "receive") => Type::Named("int".into()),
+                        (Type::Stream(_), "receive") => Type::Named("Int".into()),
                         (Type::Stream(_), "close") => Type::Unit,
                         // Task UFCS methods
                         (Type::Task(_), "cancel") => Type::Unit,
                         (Type::Task(_), "is_done") | (Type::Task(_), "is_cancelled") => {
-                            Type::Named("bool".into())
+                            Type::Named("Bool".into())
                         }
-                        (Type::Task(_), "wait") => Type::Named("int".into()),
-                        _ => Type::Named("int".into()),
+                        (Type::Task(_), "wait") => Type::Named("Int".into()),
+                        _ => Type::Named("Int".into()),
                     }
                 } else {
-                    Type::Named("int".into())
+                    Type::Named("Int".into())
                 }
             }
             Expr::When(w) => {
@@ -1208,8 +1208,8 @@ impl TypeChecker {
                     ty.clone()
                 } else {
                     Type::Function(
-                        vec![Type::Named("int".into())],
-                        Box::new(Type::Named("int".into())),
+                        vec![Type::Named("Int".into())],
+                        Box::new(Type::Named("Int".into())),
                     )
                 }
             }
@@ -1260,7 +1260,7 @@ impl TypeChecker {
                     }
                     ty.clone()
                 } else {
-                    Type::Named("int".into())
+                    Type::Named("Int".into())
                 }
             }
             Expr::Lambda { body, .. } => self.infer_expr_type(body),
@@ -1270,15 +1270,15 @@ impl TypeChecker {
                     // Map/Set indexing returns nullable T? (was Option<T>)
                     Type::Map(_, v) => Type::Nullable(v.clone()),
                     Type::Set(e) => Type::Nullable(e.clone()),
-                    Type::Named(ref n) if n == "string" => Type::Named("int".into()),
+                    Type::Named(ref n) if n == "String" => Type::Named("Int".into()),
                     // If obj is nullable, indexing auto short-circuits to nullable
                     Type::Nullable(inner) => match *inner {
                         Type::Map(_, v) => Type::Nullable(v),
                         Type::Set(e) => Type::Nullable(e),
-                        Type::Named(ref n) if n == "string" => Type::Named("int".into()),
-                        _ => Type::Nullable(Box::new(Type::Named("int".into()))),
+                        Type::Named(ref n) if n == "String" => Type::Named("Int".into()),
+                        _ => Type::Nullable(Box::new(Type::Named("Int".into()))),
                     },
-                    _ => Type::Named("int".into()),
+                    _ => Type::Named("Int".into()),
                 }
             }
             Expr::FieldAccess(obj, field) => {
@@ -1290,21 +1290,21 @@ impl TypeChecker {
                 };
                 let field_type = if let Type::Named(type_name) = inner_obj_type {
                     let struct_name = match type_name.as_str() {
-                        "Str" => "string",
-                        "Double" => "float",
+                        "Str" => "String",
+                        "Double" => "Float",
                         other => other,
                     };
                     if let Some(struct_info) = self.registry.structs.get(struct_name) {
                         if let Some(index) = struct_info.field_index.get(field) {
                             struct_info.fields[*index].1.clone()
                         } else {
-                            Type::Named("int".into())
+                            Type::Named("Int".into())
                         }
                     } else {
-                        Type::Named("int".into())
+                        Type::Named("Int".into())
                     }
                 } else {
-                    Type::Named("int".into())
+                    Type::Named("Int".into())
                 };
                 if is_nullable {
                     Type::Nullable(Box::new(field_type))
@@ -1317,15 +1317,15 @@ impl TypeChecker {
                 if let Some(struct_info) = self.registry.find_struct_by_fields(&field_names) {
                     Type::Named(struct_info.name.clone())
                 } else {
-                    Type::Named("int".into())
+                    Type::Named("Int".into())
                 }
             }
             Expr::Assign { value, .. } => self.infer_expr_type(value),
             Expr::Unary(op, inner) => match op {
-                UnaryOp::Not => Type::Named("bool".into()),
+                UnaryOp::Not => Type::Named("Bool".into()),
                 UnaryOp::Neg | UnaryOp::BitNot => self.infer_expr_type(inner),
             },
-            _ => Type::Named("int".into()),
+            _ => Type::Named("Int".into()),
         }
     }
 
@@ -1340,7 +1340,7 @@ impl TypeChecker {
         {
             let param_tys: Vec<Type> = params
                 .iter()
-                .map(|p| p.ty.clone().unwrap_or(Type::Named("int".into())))
+                .map(|p| p.ty.clone().unwrap_or(Type::Named("Int".into())))
                 .collect();
             let mut arg_tys = Vec::new();
             let mut filtered_params = Vec::new();
@@ -1357,7 +1357,7 @@ impl TypeChecker {
                 }
             }
         }
-        Type::Named("int".into())
+        Type::Named("Int".into())
     }
 
     /// Unify an expected type (may contain TypeVars) with an actual concrete type,
@@ -1390,13 +1390,13 @@ impl TypeChecker {
                 } else {
                     // Normalize aliases
                     let norm_a = match a.as_str() {
-                        "Str" => "string",
-                        "Double" => "float",
+                        "Str" => "String",
+                        "Double" => "Float",
                         o => o,
                     };
                     let norm_b = match b.as_str() {
-                        "Str" => "string",
-                        "Double" => "float",
+                        "Str" => "String",
+                        "Double" => "Float",
                         o => o,
                     };
                     if norm_a == norm_b {
@@ -1504,13 +1504,13 @@ impl TypeChecker {
                 }
                 // Normalize type aliases: Str=String, Double=Float
                 let norm_a = match a.as_str() {
-                    "Str" => "string",
-                    "Double" => "float",
+                    "Str" => "String",
+                    "Double" => "Float",
                     other => other,
                 };
                 let norm_b = match b.as_str() {
-                    "Str" => "string",
-                    "Double" => "float",
+                    "Str" => "String",
+                    "Double" => "Float",
                     other => other,
                 };
                 norm_a == norm_b

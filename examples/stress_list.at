@@ -1,9 +1,9 @@
-// stress_list.at - Large list stress test (1000+ elements)
+// stress_list.at - Large List stress test (1000+ elements)
 // Verifies correctness of push, get, insert, remove, reverse, take, slice
 
 fun main() {
-    // Build large list 0..999
-    var lst = list[]
+    // Build large List 0..999
+    var lst = List[]
     var i = 0
     for i < 1000 {
         lst = append(lst, i)

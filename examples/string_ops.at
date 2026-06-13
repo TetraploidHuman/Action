@@ -1,4 +1,4 @@
-// Test split, join, replace string functions
+// Test split, join, replace String functions
 fun main() {
     // Test split
     val parts = split("a,b,c", ",")
@@ -24,7 +24,7 @@ fun main() {
     print(copied)
     println("")
 
-    // Test split with single char
+    // Test split with single Char
     val words = split("hello world", " ")
     print("words count: ")
     print(len(words))

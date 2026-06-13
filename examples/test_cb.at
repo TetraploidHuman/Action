@@ -1,5 +1,5 @@
 // Test: untyped callback parameter used inside when pattern
-fun apply(opt: Option, f) -> option {
+fun apply(opt: Option, f) -> Option {
     when opt {
         Some(v) -> f(v)
         None -> None

@@ -1,11 +1,11 @@
 // Test: Option enum operations - pattern matching, unwrapping, chaining
-enum Option { Some(int), None }
+enum Option { Some(Int), None }
 
-fun safe_div(a: int, b: int) -> option {
+fun safe_div(a: Int, b: Int) -> Option {
     when b == 0 { None else Some(a / b) }
 }
 
-fun add_one(opt: Option) -> option {
+fun add_one(opt: Option) -> Option {
     when opt {
         Some(v) -> Some(v + 1)
         None -> None

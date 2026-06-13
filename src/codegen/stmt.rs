@@ -521,7 +521,7 @@ impl<'ctx> CodeGen<'ctx> {
                 {
                     let param_types: Vec<Type> = params
                         .iter()
-                        .map(|p| p.ty.clone().unwrap_or(Type::Named("int".into())))
+                        .map(|p| p.ty.clone().unwrap_or(Type::Named("Int".into())))
                         .collect();
                     Self::mangle_name(name, &param_types)
                 } else {
@@ -703,7 +703,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .iter()
                     .map(|p| {
                         let bt = self.ast_type_to_basic_type(
-                            p.ty.as_ref().unwrap_or(&Type::Named("int".to_string())),
+                            p.ty.as_ref().unwrap_or(&Type::Named("Int".to_string())),
                         );
                         bt.into()
                     })
@@ -1372,9 +1372,9 @@ impl<'ctx> CodeGen<'ctx> {
         match ty {
             None | Some(Type::Unit) => self.i64_ty().into(),
             Some(Type::Named(n)) => match n.as_str() {
-                "float" | "Double" => self.f64_ty().into(),
-                "bool" => self.bool_ty().into(),
-                "string" | "Str" => self.string_type.into(),
+                "Float" | "Double" => self.f64_ty().into(),
+                "Bool" => self.bool_ty().into(),
+                "String" | "Str" => self.string_type.into(),
                 "Unit" => self.i64_ty().into(),
                 name => {
                     if let Some(st) = self.named_structs.get(name) {
@@ -1411,10 +1411,10 @@ impl<'ctx> CodeGen<'ctx> {
     pub(super) fn ast_type_to_basic_type(&mut self, ty: &Type) -> BasicTypeEnum<'ctx> {
         match ty {
             Type::Named(n) => match n.as_str() {
-                "int" => self.i64_ty().into(),
-                "float" | "Double" => self.f64_ty().into(),
-                "bool" => self.bool_ty().into(),
-                "string" | "Str" => self.string_type.into(),
+                "Int" => self.i64_ty().into(),
+                "Float" | "Double" => self.f64_ty().into(),
+                "Bool" => self.bool_ty().into(),
+                "String" | "Str" => self.string_type.into(),
                 "Unit" => self.i64_ty().into(),
                 "list" | "set" | "map" => self.list_type.into(),
                 "LazyList" => self.lazylist_type.into(),
@@ -1471,9 +1471,9 @@ impl<'ctx> CodeGen<'ctx> {
     pub(super) fn param_val_kind(&self, ty: Option<&Type>) -> ValKind {
         match ty {
             Some(Type::Named(n)) => match n.as_str() {
-                "float" => ValKind::Float,
-                "bool" => ValKind::Bool,
-                "string" | "Str" => ValKind::Str,
+                "Float" => ValKind::Float,
+                "Bool" => ValKind::Bool,
+                "String" | "Str" => ValKind::Str,
                 name => {
                     if self.named_structs.contains_key(name) {
                         ValKind::Struct
@@ -1493,9 +1493,9 @@ impl<'ctx> CodeGen<'ctx> {
             Some(Type::Nullable(_)) => ValKind::Nullable,
             Some(Type::Generic(base, _)) => match base.as_ref() {
                 Type::Named(n) => match n.as_str() {
-                    "float" => ValKind::Float,
-                    "bool" => ValKind::Bool,
-                    "string" | "Str" => ValKind::Str,
+                    "Float" => ValKind::Float,
+                    "Bool" => ValKind::Bool,
+                    "String" | "Str" => ValKind::Str,
                     "list" => ValKind::List,
                     "set" => ValKind::Set,
                     "map" => ValKind::Map,

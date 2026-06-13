@@ -1,12 +1,12 @@
 fun main() {
     // Test with different length strings
-    val r = setIsSubset(set["aa", "d"], set["aa", "bbb", "c"])
+    val r = setIsSubset(Set["aa", "d"], Set["aa", "bbb", "c"])
     print("subset (aa,d) in (aa,bbb,c): ")
     print(r)
     println("")
 
     // Test with ints
-    val r2 = setIsSubset(set[1, 5], set[1, 2, 3])
+    val r2 = setIsSubset(Set[1, 5], Set[1, 2, 3])
     print("subset (1,5) in (1,2,3): ")
     print(r2)
     println("")

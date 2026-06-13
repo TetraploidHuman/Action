@@ -2,7 +2,7 @@
 fun main() {
     val xs = range(1, 5)
 
-    // Test tail (now returns Option<list<int>>)
+    // Test tail (now returns Option<List<Int>>)
     val t = tail(xs)
     print("tail isSome: ")
     println(isSome(t))
@@ -20,7 +20,7 @@ fun main() {
     print(len(lines))
     println("")
 
-    // Test indexOf (string) - signature is indexOf(needle, haystack)
+    // Test indexOf (String) - signature is indexOf(needle, haystack)
     print("indexOf: ")
     val idx = indexOf("world", "hello world")
     print(unwrapOr(idx, -1))

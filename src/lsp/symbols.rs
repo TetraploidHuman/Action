@@ -350,11 +350,11 @@ fn extract_body_symbols(body: &Expr, source: &str) -> Vec<DocumentSymbol> {
 
 fn infer_value_type(value: &Expr) -> String {
     match value {
-        Expr::Literal(Literal::Int(_)) => "int".to_string(),
-        Expr::Literal(Literal::Float(_)) => "float".to_string(),
-        Expr::Literal(Literal::Bool(_)) => "bool".to_string(),
-        Expr::Literal(Literal::String(_)) => "string".to_string(),
-        Expr::Literal(Literal::Char(_)) => "char".to_string(),
+        Expr::Literal(Literal::Int(_)) => "Int".to_string(),
+        Expr::Literal(Literal::Float(_)) => "Float".to_string(),
+        Expr::Literal(Literal::Bool(_)) => "Bool".to_string(),
+        Expr::Literal(Literal::String(_)) => "String".to_string(),
+        Expr::Literal(Literal::Char(_)) => "Char".to_string(),
         Expr::Literal(Literal::Unit) => "()".to_string(),
         Expr::MapLiteral(_) => "map".to_string(),
         Expr::SetLiteral(_) => "set".to_string(),

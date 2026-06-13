@@ -1,11 +1,11 @@
 // Comprehensive nullable type system test
 // Tests: null literals, Elvis, smart cast, pattern variable binding, nullable params
 
-fun orDefault(x: int?, default: int) -> int {
+fun orDefault(x: Int?, default: Int) -> Int {
     x or { default }
 }
 
-fun checkNull(x: int?) -> int {
+fun checkNull(x: Int?) -> Int {
     when x {
         null -> -1
         v -> v
@@ -14,38 +14,38 @@ fun checkNull(x: int?) -> int {
 
 fun main() {
     // 1. Null literal and Elvis
-    val a int? = null
+    val a Int? = null
     print(a or { 100 })                           // 100
 
     // 2. Non-null with Elvis (should not use default)
-    val b int? = 42
+    val b Int? = 42
     print(b or { 0 })                             // 42
 
     // 3. Smart cast in when-else
-    val c int? = 50
+    val c Int? = 50
     when c {
         null -> print(0)
         else -> print(c + 1)                  // 51
     }
 
     // 4. Pattern variable binding from nullable
-    val d int? = 30
+    val d Int? = 30
     when d {
         null -> print(0)
         v -> print(v)                         // 30
     }
 
-    // 5. Function expecting int? getting null
+    // 5. Function expecting Int? getting null
     print(checkNull(null))                    // -1
 
-    // 6. Function expecting int? getting value
+    // 6. Function expecting Int? getting value
     print(checkNull(99))                      // 99
 
     // 7. Elvis with function call
     print(orDefault(null, 77))                // 77
     print(orDefault(33, 0))                   // 33
 
-    // 8. Non-null int used where int? expected (auto-wrapping)
-    val e int? = 55
+    // 8. Non-null Int used where Int? expected (auto-wrapping)
+    val e Int? = 55
     print(e or { 0 })                             // 55
 }

@@ -1,7 +1,7 @@
 // Test Stream<T> and Task<T> builtins
 fun main() {
     // --- Stream tests ---
-    val s = stream()
+    val s = Stream()
     send(s, 42)
     send(s, 99)
     val v1 = receive(s)
@@ -21,7 +21,7 @@ fun main() {
     cancel(t)
 
     // --- UFCS Stream ---
-    val s2 = stream()
+    val s2 = Stream()
     s2.send(7)
     s2.send(8)
     val r1 = s2.receive()

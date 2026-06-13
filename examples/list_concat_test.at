@@ -3,20 +3,20 @@
 
 fun main() {
     // Test 1: concat two lists
-    val a = list[1, 2, 3]
-    val b = list[4, 5, 6]
+    val a = List[1, 2, 3]
+    val b = List[4, 5, 6]
     var c = concat(a, b)
-    print("concat list len (expect 6): ")
+    print("concat List len (expect 6): ")
     println(c.len())
-    print("concat list [0] (expect 1): ")
+    print("concat List [0] (expect 1): ")
     println(c.get(0))
-    print("concat list [3] (expect 4): ")
+    print("concat List [3] (expect 4): ")
     println(c.get(3))
-    print("concat list [5] (expect 6): ")
+    print("concat List [5] (expect 6): ")
     println(c.get(5))
 
-    // Test 2: concat with empty list
-    var empty = list[]
+    // Test 2: concat with empty List
+    var empty = List[]
     var d = concat(a, empty)
     print("concat empty len (expect 3): ")
     println(d.len())
@@ -36,8 +36,8 @@ fun main() {
     println(f.len())
 
     // Test 5: CoW - original lists unaffected
-    val g = list[10, 20]
-    val h = list[30, 40]
+    val g = List[10, 20]
+    val h = List[30, 40]
     var i = concat(g, h)
     print("CoW orig a len (expect 2): ")
     println(g.len())
@@ -50,31 +50,31 @@ fun main() {
 
     // Test 6: concat strings (existing functionality)
     val s = concat("hello", " world")
-    print("concat string (expect 'hello world'): ")
+    print("concat String (expect 'hello world'): ")
     println(s)
 
     // Test 7: concat maps
-    val m1 = map["a": 1, "b": 2]
-    val m2 = map["b": 99, "c": 3]
+    val m1 = Map["a": 1, "b": 2]
+    val m2 = Map["b": 99, "c": 3]
     var m3 = concat(m1, m2)
-    print("concat map len (expect 3): ")
+    print("concat Map len (expect 3): ")
     println(m3.len())
 
     // Test 8: concat sets
-    val s1 = set[1, 2, 3]
-    val s2 = set[3, 4, 5]
+    val s1 = Set[1, 2, 3]
+    val s2 = Set[3, 4, 5]
     var s3 = concat(s1, s2)
-    print("concat set len (expect 5): ")
+    print("concat Set len (expect 5): ")
     println(s3.len())
 
     // Test 9: Large concat
-    var big1 = list[]
+    var big1 = List[]
     var x = 0
     for x < 100 {
         big1 = append(big1, x)
         x = x + 1
     }
-    var big2 = list[]
+    var big2 = List[]
     x = 0
     for x < 100 {
         big2 = append(big2, x + 100)

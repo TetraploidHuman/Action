@@ -1,7 +1,7 @@
-// Test map/set builtins: keys, values, entries, union, intersection, difference, is_subset
+// Test Map/Set builtins: keys, values, entries, union, intersection, difference, is_subset
 fun main() {
-    // Create a map
-    val m = map["a": 1, "b": 2, "c": 3]
+    // Create a Map
+    val m = Map["a": 1, "b": 2, "c": 3]
 
     // Test mapKeys
     val k = mapKeys(m)
@@ -22,8 +22,8 @@ fun main() {
     println("")
 
     // Create sets
-    val s1 = set["x", "y", "z"]
-    val s2 = set["y", "z", "w"]
+    val s1 = Set["x", "y", "z"]
+    val s2 = Set["y", "z", "w"]
 
     // Test setUnion
     val u = setUnion(s1, s2)
@@ -44,12 +44,12 @@ fun main() {
     println("")
 
     // Test setIsSubset
-    val sub1 = setIsSubset(set["a", "b"], set["a", "b", "c"])
+    val sub1 = setIsSubset(Set["a", "b"], Set["a", "b", "c"])
     print("subset true: ")
     print(sub1)
     println("")
 
-    val sub2 = setIsSubset(set["a", "d"], set["a", "b", "c"])
+    val sub2 = setIsSubset(Set["a", "d"], Set["a", "b", "c"])
     print("subset false: ")
     print(sub2)
     println("")

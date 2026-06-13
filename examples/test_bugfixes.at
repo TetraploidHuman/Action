@@ -1,11 +1,11 @@
 // Comprehensive test for bug fixes
 fun main() {
     // Bug #5: when with null in else branch
-    val r int? = when true { 100 else null }
+    val r Int? = when true { 100 else null }
     println(r or { 0 })                              // 100
 
     // Bug #5: when with null when condition is false
-    val r2 int? = when false { 999 else null }
+    val r2 Int? = when false { 999 else null }
     println(r2 or { -1 })                            // -1
 
     // Bug #4: function returning nullable (value case)
@@ -17,11 +17,11 @@ fun main() {
     println(f2 or { -1 })                            // -1
 
     // Nullable variable operations
-    val x int? = 10
-    val y int? = null
+    val x Int? = 10
+    val y Int? = null
     print((x or { 0 }) + (y or { 20 }))                 // 30
 }
 
-fun ret_nullable(v: int) -> int? {
+fun ret_nullable(v: Int) -> Int? {
     when v > 0 { 42 else null }
 }

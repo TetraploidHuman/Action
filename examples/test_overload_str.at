@@ -1,8 +1,8 @@
-// Simple overload test - string
-fun greet(name: string) -> string {
+// Simple overload test - String
+fun greet(name: String) -> String {
     "Hello, " + name
 }
-fun greet(x: int) -> int {
+fun greet(x: Int) -> Int {
     x
 }
 

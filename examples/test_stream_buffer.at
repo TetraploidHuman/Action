@@ -1,9 +1,9 @@
-// Test: stream send/receive with multiple cycles to stress leaf buffer shifting.
-// Verifies BUG #3 fix: memmove in stream receive uses correct pointer offset
+// Test: Stream send/receive with multiple cycles to stress leaf buffer shifting.
+// Verifies BUG #3 fix: memmove in Stream receive uses correct pointer offset
 // to preserve leaf header (count+pad) instead of corrupting it.
 
 fun main() {
-    val s = stream()
+    val s = Stream()
 
     // Round 1: send 4 values, receive all 4
     send(s, 10)

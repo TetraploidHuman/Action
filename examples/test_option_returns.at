@@ -1,17 +1,17 @@
 // Test functions returning nullable types: tail, init, indexOf, toInt, toFloat, parseInt
 fun main() {
-    // ---- Test tail: returns list<int>? ----
-    val lst = list[1, 2, 3]
+    // ---- Test tail: returns List<Int>? ----
+    val lst = List[1, 2, 3]
     val t = tail(lst)
     print("tail([1,2,3]) != null: ")
     println(t != null)
 
-    val empty = list[]
+    val empty = List[]
     val t2 = tail(empty)
     print("tail([]) == null: ")
     println(t2 == null)
 
-    // ---- Test init: returns list<int>? ----
+    // ---- Test init: returns List<Int>? ----
     val i = init(lst)
     print("init([1,2,3]) != null: ")
     println(i != null)
@@ -20,7 +20,7 @@ fun main() {
     print("init([]) == null: ")
     println(i2 == null)
 
-    // ---- Test indexOf for list: returns int? ----
+    // ---- Test indexOf for List: returns Int? ----
     val idx = indexOf(2, lst)
     print("indexOf(2, [1,2,3]) != null: ")
     println(idx != null)
@@ -31,7 +31,7 @@ fun main() {
     print("indexOf(99, [1,2,3]) == null: ")
     println(idx2 == null)
 
-    // ---- Test indexOf for string: returns int? ----
+    // ---- Test indexOf for String: returns Int? ----
     val sidx = indexOf("bc", "abcde")
     print("indexOf('bc', 'abcde') != null: ")
     println(sidx != null)
@@ -42,7 +42,7 @@ fun main() {
     print("indexOf('xyz', 'abcde') == null: ")
     println(sidx2 == null)
 
-    // ---- Test toInt: returns int? ----
+    // ---- Test toInt: returns Int? ----
     val ti1 = toInt("42")
     print("toInt('42') != null: ")
     println(ti1 != null)
@@ -57,7 +57,7 @@ fun main() {
     print("toInt(3.14) != null: ")
     println(ti3 != null)
 
-    // ---- Test toFloat: returns float? ----
+    // ---- Test toFloat: returns Float? ----
     val tf1 = toFloat("3.14")
     print("toFloat('3.14') != null: ")
     println(tf1 != null)
@@ -70,7 +70,7 @@ fun main() {
     print("toFloat(42) != null: ")
     println(tf3 != null)
 
-    // ---- Test parseInt: returns int? ----
+    // ---- Test parseInt: returns Int? ----
     val pi1 = parseInt("123")
     print("parseInt('123') != null: ")
     println(pi1 != null)
@@ -81,18 +81,18 @@ fun main() {
     print("parseInt('not_a_number') == null: ")
     println(pi2 == null)
 
-    // ---- Test string slice ----
+    // ---- Test String slice ----
     val ss = slice("hello world", 0, 5)
     print("slice('hello world', 0, 5): ")
     println(ss)
 
     // ---- Test fromList alias ----
-    val s = fromList(list[1, 2, 3])
+    val s = fromList(List[1, 2, 3])
     print("fromList([1,2,3]) contains 2: ")
     println(contains(s, 2))
 
-    // ---- Test containsKey for map ----
-    val m = map["a": 1, "b": 2]
+    // ---- Test containsKey for Map ----
+    val m = Map["a": 1, "b": 2]
     print("containsKey(m, 'a'): ")
     println(containsKey(m, "a"))
     print("containsKey(m, 'c'): ")

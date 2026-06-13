@@ -1,5 +1,5 @@
 fun main() {
-    var lst = list[]
+    var lst = List[]
     var i = 0
     for i < 3000 {
         lst = lst.append(i)

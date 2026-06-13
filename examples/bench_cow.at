@@ -1,14 +1,14 @@
 // CoW benchmark: share + modify pattern
 fun main() {
-    // Build a shared list of 2000 elements
-    var base = list[]
+    // Build a shared List of 2000 elements
+    var base = List[]
     var i = 0
     for i < 2000 {
         base = base.append(i)
         i = i + 1
     }
 
-    // Share the list 100 times, each time modify one element
+    // Share the List 100 times, each time modify one element
     // This triggers CoW - B-tree should be much faster (copies only blocks)
     var result = base
     i = 0
@@ -16,7 +16,7 @@ fun main() {
         // Create a modified copy: take first K, append new element, concat with rest
         var prefix = result.take(10)
         var suffix = result
-        // "modify" by creating a new list based on the shared one
+        // "modify" by creating a new List based on the shared one
         var modified = prefix.append(9999)
         result = modified
         i = i + 1

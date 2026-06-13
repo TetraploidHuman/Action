@@ -1891,10 +1891,10 @@ impl<'ctx> CodeGen<'ctx> {
     /// Map a TypedValue to its type name string for UFCS lookup
     pub(super) fn type_name_from_typed_value(&self, v: &TypedValue<'ctx>) -> String {
         match v {
-            TypedValue::Int(_) => "int".to_string(),
-            TypedValue::Float(_) => "float".to_string(),
-            TypedValue::Bool(_) => "bool".to_string(),
-            TypedValue::Str(_) => "string".to_string(),
+            TypedValue::Int(_) => "Int".to_string(),
+            TypedValue::Float(_) => "Float".to_string(),
+            TypedValue::Bool(_) => "Bool".to_string(),
+            TypedValue::Str(_) => "String".to_string(),
             TypedValue::Struct(_, st) => {
                 for (name, ty) in &self.named_structs {
                     if *ty == *st {
@@ -2056,19 +2056,19 @@ impl<'ctx> CodeGen<'ctx> {
             // Many builtins have corresponding action_* runtime functions
             let rt_name = match (type_name, method) {
                 // Int/Float/Bool -> String conversions
-                ("int", "toString") | ("bool", "toString") => "action_int_to_string",
-                ("float", "toString") => "action_float_to_string",
+                ("Int", "toString") | ("Bool", "toString") => "action_int_to_string",
+                ("Float", "toString") => "action_float_to_string",
                 // String methods
-                ("string", "len") | ("string", "length") => "action_string_len",
-                ("string", "toUpper") => "action_string_to_upper",
-                ("string", "toLower") => "action_string_to_lower",
-                ("string", "trim") => "action_string_trim",
-                ("string", "substring") => "action_string_substring",
-                ("string", "startsWith") => "action_string_starts_with",
-                ("string", "endsWith") => "action_string_ends_with",
-                ("string", "split") => "action_string_split",
-                ("string", "contains") => "action_string_contains",
-                ("string", "toInt") | ("string", "toFloat") => {
+                ("String", "len") | ("String", "length") => "action_string_len",
+                ("String", "toUpper") => "action_string_to_upper",
+                ("String", "toLower") => "action_string_to_lower",
+                ("String", "trim") => "action_string_trim",
+                ("String", "substring") => "action_string_substring",
+                ("String", "startsWith") => "action_string_starts_with",
+                ("String", "endsWith") => "action_string_ends_with",
+                ("String", "split") => "action_string_split",
+                ("String", "contains") => "action_string_contains",
+                ("String", "toInt") | ("String", "toFloat") => {
                     return Err(format!(
                         "::{}::{} cannot be used as a function reference (requires parsing)",
                         type_name, method
@@ -2094,12 +2094,12 @@ impl<'ctx> CodeGen<'ctx> {
                 ("map", "insert") => "action_map_insert",
                 ("map", "remove") => "action_map_remove",
                 // Other String methods with runtime functions
-                ("string", "chars") => "action_string_chars",
-                ("string", "join") => "action_string_join",
-                ("string", "replace") => "action_string_replace",
-                ("string", "repeat") => "action_string_repeat",
-                ("string", "trimStart") => "action_string_trim_start",
-                ("string", "trimEnd") => "action_string_trim_end",
+                ("String", "chars") => "action_string_chars",
+                ("String", "join") => "action_string_join",
+                ("String", "replace") => "action_string_replace",
+                ("String", "repeat") => "action_string_repeat",
+                ("String", "trimStart") => "action_string_trim_start",
+                ("String", "trimEnd") => "action_string_trim_end",
                 // Methods without simple runtime function counterparts
                 ("list", "map")
                 | ("list", "filter")

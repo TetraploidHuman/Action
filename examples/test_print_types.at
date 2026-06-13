@@ -1,5 +1,5 @@
 // Test print support for Task, Stream, LazyList, and Struct types
-type Point = {x: int, y: int}
+type Point = {x: Int, y: Int}
 
 fun main() {
     // ---- Print Task ----
@@ -8,7 +8,7 @@ fun main() {
     println(t)
 
     // ---- Print Stream ----
-    val s = stream()
+    val s = Stream()
     send(s, 1)
     send(s, 2)
     print("Stream print: ")
@@ -16,7 +16,7 @@ fun main() {
     close(s)
 
     // ---- Print LazyList ----
-    val lst = list[10, 20, 30]
+    val lst = List[10, 20, 30]
     val ll = toLazyList(lst)
     print("LazyList print: ")
     println(ll)

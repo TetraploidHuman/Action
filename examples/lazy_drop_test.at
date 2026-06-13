@@ -1,19 +1,19 @@
 // Test truly lazyDrop
 fun main() {
-    // Test 1: drop from step-function lazy list
+    // Test 1: drop from step-function lazy List
     // lazy_list(0){it+1}.drop(3).take(4) = [3,4,5,6]
     val r1 = toList(lazyTake(4, lazyDrop(3, lazy_list(0){it+1})))
     print("drop3_take4: ")
     println(r1)
 
-    // Test 2: drop then map then filter
-    // lazy_list(0){it+1}.drop(5).map{it*2}.take(3) = [10,12,14]
+    // Test 2: drop then Map then filter
+    // lazy_list(0){it+1}.drop(5).Map{it*2}.take(3) = [10,12,14]
     val r2 = toList(lazyTake(3, lazyMap({it*2}, lazyDrop(5, lazy_list(0){it+1}))))
     print("drop_map_take: ")
     println(r2)
 
-    // Test 3: drop from list-backed lazy list
-    val lst = list[10, 20, 30, 40, 50]
+    // Test 3: drop from List-backed lazy List
+    val lst = List[10, 20, 30, 40, 50]
     val ll = toLazyList(lst)
     val dropped = lazyDrop(2, ll)
     val r3 = toList(dropped)
@@ -21,7 +21,7 @@ fun main() {
     println(r3)
 
     // Test 4: drop all elements
-    val lst2 = list[1, 2, 3]
+    val lst2 = List[1, 2, 3]
     val ll2 = toLazyList(lst2)
     val all_dropped = lazyDrop(3, ll2)
     print("drop_all len: ")

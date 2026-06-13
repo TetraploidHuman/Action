@@ -1,4 +1,4 @@
-val s = stream()
+val s = Stream()
 send(s, 42)
 println("sent ok")
 val a = receive(s)

@@ -1,8 +1,8 @@
 // Integration test: stdlib functions (Phase 5)
-// Tests: Option, Result, list, string builtins
+// Tests: Option, Result, List, String builtins
 
-enum Option { Some(int), None }
-enum Result { Ok(int), Err(int) }
+enum Option { Some(Int), None }
+enum Result { Ok(Int), Err(Int) }
 
 fun main() {
     // === Option stdlib ===
@@ -24,15 +24,15 @@ fun main() {
     val err_val Result = Err("boom")
     print(orElseResult(err_val, 100))  // 100
 
-    // === list builtins ===
-    val xs = list[10, 20, 30]
+    // === List builtins ===
+    val xs = List[10, 20, 30]
     print(len(xs))                      // 3
     print(isEmpty(xs))                 // 0 (false)
 
     val ys = append(xs, 40)
     print(len(ys))                      // 4
 
-    // === string builtins ===
+    // === String builtins ===
     print(len("hello"))                 // 5
     print(len(concat("foo", "bar")))    // 6
 

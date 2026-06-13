@@ -1,5 +1,5 @@
 fun main() {
-    val opt int? = 10
+    val opt Int? = 10
     when opt {
         null -> print(0)
         else -> print(opt)

@@ -1,6 +1,6 @@
 fun main() {
-    val a = list[1, 2]
-    val b = list[3, 4]
+    val a = List[1, 2]
+    val b = List[3, 4]
     var c = concat(a, b)
     print("len: ")
     println(c.len())
