@@ -1753,7 +1753,7 @@ impl TypeChecker {
 #[cfg(test)]
 mod tests {
     use super::*;
-        use crate::lexer::Lexer;
+    use crate::lexer::Lexer;
     use crate::parser::Parser;
 
     fn check_source(source: &str) -> Vec<CompilerError> {
