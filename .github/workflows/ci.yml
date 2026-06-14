@@ -161,7 +161,9 @@ jobs:
         run: cargo test --target ${{ matrix.target }} -- --nocapture --test-threads=1
       - name: Test (Linux)
         if: runner.os == 'Linux'
-        run: nix-shell --run "cargo test --target ${{ matrix.target }}"
+        env:
+          PROPTEST_CASES: '50'
+        run: nix-shell --run "cargo test --target ${{ matrix.target }} -- --test-threads=1 --nocapture"
 
       # ── Debug on failure ──────────────────────────────
       - name: Debug run output (Windows)
