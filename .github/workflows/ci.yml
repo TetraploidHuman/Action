@@ -208,8 +208,3 @@ jobs:
       - name: Format check
         run: cargo fmt -- --check
 
-      - name: Clippy
-        run: |
-          # Run clippy with LLVM from nix-shell
-          export LLVM_SYS_211_PREFIX=$(nix-shell --run "echo $LLVM_SYS_211_PREFIX" 2>/dev/null)
-          nix-shell --run "cargo clippy 2>nix-shell --run "cargo clippy 2>&1; true"1 || true"
