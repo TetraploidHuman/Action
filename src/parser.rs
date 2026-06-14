@@ -153,7 +153,6 @@ pub struct Parser {
     current_type_params: Vec<String>,
 }
 
-#[allow(dead_code)]
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
         Parser {
@@ -1224,8 +1223,9 @@ impl Parser {
                 // Propagate lexer errors from interpolated expressions
                 let sub_errors = sub_lexer.take_errors();
                 if !sub_errors.is_empty() {
+                    let msgs: Vec<String> = sub_errors.iter().map(|e| e.to_string()).collect();
                     return Err(ParseError {
-                        message: sub_errors.join("\n"),
+                        message: msgs.join("\n"),
                         line: str_span.line,
                         col: str_span.col,
                     });
@@ -2597,4 +2597,125 @@ mod tests {
             _ => panic!("Expected Let with nullable type"),
         }
     }
+
+    #[test]
+    fn test_parse_malformed_module_name() {
+        // Module name with invalid characters should produce errors
+        let result = crate::parser::Parser::new(crate::lexer::Lexer::new("module 123invalid {}").tokenize()).parse_program();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_deeply_nested_blocks() {
+        // Build deeply nested blocks: {{{{...}}}}
+        let depth = 100;
+        let open = "{".repeat(depth);
+        let close = "}".repeat(depth);
+        let source = format!("val x = {}42{}", open, close);
+        let mut parser = crate::parser::Parser::new(crate::lexer::Lexer::new(&source).tokenize());
+        let result = parser.parse_program();
+        assert!(result.is_ok(), "deeply nested blocks should parse: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_parse_deeply_nested_binary_expr() {
+        // Build deeply nested: 1 + 1 + 1 + ... (100 times)
+        let expr = (0..100).map(|_| "1 +").collect::<String>() + "1";
+        let source = format!("val x = {}", expr);
+        let mut parser = crate::parser::Parser::new(crate::lexer::Lexer::new(&source).tokenize());
+        let result = parser.parse_program();
+        assert!(result.is_ok(), "deeply nested binary expr should parse: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_parse_empty_program() {
+        let mut parser = crate::parser::Parser::new(crate::lexer::Lexer::new("").tokenize());
+        let result = parser.parse_program().unwrap();
+        assert!(result.stmts.is_empty());
+    }
+
+    #[test]
+    fn test_parse_only_comments() {
+        let mut parser = crate::parser::Parser::new(
+            crate::lexer::Lexer::new("// just a comment\n/* block comment */").tokenize()
+        );
+        let result = parser.parse_program().unwrap();
+        assert!(result.stmts.is_empty());
+    }
+
+    #[test]
+    fn test_parse_incomplete_fun_def() {
+        // Missing body should produce error
+        let mut parser = crate::parser::Parser::new(
+            crate::lexer::Lexer::new("fun foo() -> Int").tokenize()
+        );
+        let result = parser.parse_program();
+        assert!(result.is_err(), "incomplete function def should error");
+    }
+
+    #[test]
+    fn test_parse_when_with_missing_arms() {
+        // Empty when should error
+        let mut parser = crate::parser::Parser::new(
+            crate::lexer::Lexer::new("when x {}").tokenize()
+        );
+        let result = parser.parse_program();
+        assert!(result.is_err(), "empty when should error");
+    }
+
+    #[test]
+    fn test_parse_double_comma_in_list() {
+        let source = "val x = List[1,,2]";
+        let mut parser = crate::parser::Parser::new(crate::lexer::Lexer::new(source).tokenize());
+        // Should not panic; may produce error or recover
+        let _ = parser.parse_program();
+    }
+
+    #[test]
+    fn test_parse_unclosed_paren() {
+        let source = "val x = (1 + 2";
+        let mut parser = crate::parser::Parser::new(crate::lexer::Lexer::new(source).tokenize());
+        let result = parser.parse_program();
+        assert!(result.is_err(), "unclosed paren should error");
+    }
+
+    #[test]
+    fn test_parse_modulo_op() {
+        let source = "val x = 10 % 3";
+        let mut parser = crate::parser::Parser::new(crate::lexer::Lexer::new(source).tokenize());
+        let result = parser.parse_program().unwrap();
+        assert_eq!(result.stmts.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_power_op() {
+        let source = "val x = 2 ** 10";
+        let mut parser = crate::parser::Parser::new(crate::lexer::Lexer::new(source).tokenize());
+        let result = parser.parse_program().unwrap();
+        assert_eq!(result.stmts.len(), 1);
+    }
+
+    use proptest::prelude::*;
+
+    proptest! {
+
+        #[test]
+        fn proptest_parse_never_panics(s in ".*") {
+            let mut lexer = crate::lexer::Lexer::new(&s);
+            let tokens = lexer.tokenize();
+            let mut parser = Parser::new(tokens);
+            let (_stmts, _errors) = parser.parse_program_recover();
+        }
+
+        #[test]
+        fn proptest_parse_simple_val(name in "[a-zA-Z_][a-zA-Z0-9_]{0,20}", n in 0i64..10000i64) {
+            let s = format!("val {} = {}", name, n);
+            let tokens = crate::lexer::Lexer::new(&s).tokenize();
+            let mut parser = Parser::new(tokens);
+            let (stmts, errors) = parser.parse_program_recover();
+            prop_assert!(errors.is_empty() || stmts.len() == 1,
+                "expected 1 statement or parse errors for '{}', got {} stmts, {} errors", s, stmts.len(), errors.len());
+        }
+    }
+
 }

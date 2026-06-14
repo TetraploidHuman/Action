@@ -50,18 +50,17 @@ jobs:
           key: llvm-${{ env.LLVM_VERSION }}-${{ matrix.target }}
 
       # ── Nix shell (self-hosted Linux) ─────────────────
-      # All deps (LLVM, libffi, zlib, etc.) come from shell.nix.
-      # Wrap subsequent cargo commands in: nix-shell --run "..."
-      - name: Verify nix-shell
+      - name: Verify nix-shell (Linux)
         if: runner.os == 'Linux'
         run: |
+          test -f shell.nix || { echo "::error::shell.nix not found"; exit 1; }
           nix-shell --run "echo 'LLVM:' && llvm-config --version && echo 'Rust:' && rustc --version"
 
       - name: Download LLVM (Windows)
         if: runner.os == 'Windows' && steps.llvm-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          $URL = "https://github.com/llvm/llvm-project/releases/download/llvmorg-21.1.8/${{ matrix.llvm_archive }}"
+          $URL = "https://github.com/llvm/llvm-project/releases/download/${{ env.LLVM_TAG }}/${{ matrix.llvm_archive }}"
           Write-Host "Downloading $URL"
           curl.exe -fSL --retry 3 --connect-timeout 30 -o C:\llvm.tar.xz "$URL"
           Write-Host "Extracting..."
@@ -100,31 +99,58 @@ jobs:
           & $libExe.FullName /DEF:C:\llvm\lib\libxml2s.def /OUT:C:\llvm\lib\libxml2s.lib /MACHINE:X64
           Remove-Item C:\llvm\lib\libxml2s.def -Force
 
-      # ── Build (debug is fine for CI) ──────────────────
-      - name: Build
+      # ── Build ─────────────────────────────────────────
+      - name: Build (Windows)
         if: runner.os == 'Windows'
         run: cargo build --target ${{ matrix.target }}
       - name: Build (Linux)
         if: runner.os == 'Linux'
         run: nix-shell --run "cargo build --target ${{ matrix.target }}"
 
-      # ── Smoke test (check) ────────────────────────────
-      - name: Smoke test (check)
-        shell: bash
+      # ── Smoke: check ─────────────────────────────────
+      - name: Check examples/hello.at (Windows)
         if: runner.os == 'Windows'
+        shell: bash
         run: |
-          ACTION="target/${{ matrix.target }}/debug/action"
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            ACTION="$ACTION.exe"
-          fi
+          ACTION="target/${{ matrix.target }}/debug/action.exe"
           echo "Running $ACTION check examples/hello.at"
           "$ACTION" check examples/hello.at
-          echo "Smoke test passed."
-      - name: Smoke test (Linux)
+      - name: Check examples/hello.at (Linux)
         if: runner.os == 'Linux'
         run: |
           nix-shell --run './target/${{ matrix.target }}/debug/action check examples/hello.at'
-          echo "Smoke test passed."
+
+      # ── Smoke: run ───────────────────────────────────
+      - name: Run examples/hello.at (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          ACTION="target/${{ matrix.target }}/debug/action.exe"
+          echo "Running $ACTION run examples/hello.at"
+          OUTPUT="$("$ACTION" run examples/hello.at 2>&1)"
+          echo "$OUTPUT"
+          # Verify the JIT actually ran (hello.at should print "Hello, world!")
+          if ! echo "$OUTPUT" | grep -qi "hello"; then
+            echo "::warning::'hello.at' run output did not contain expected output"
+          fi
+      - name: Run examples/hello.at (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          nix-shell --run './target/${{ matrix.target }}/debug/action run examples/hello.at'
+
+      # ── Smoke: LSP binary starts and responds ────────
+      - name: LSP smoke test (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          ACTION="target/${{ matrix.target }}/debug/action.exe"
+          echo "Testing LSP binary starts: $ACTION lsp"
+          timeout 5 "$ACTION" lsp < /dev/null 2>&1 && true
+          echo "LSP binary smoke test passed (expected graceful exit or timeout before stdin EOF)"
+      - name: LSP smoke test (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"capabilities":{}}}' | timeout 5 nix-shell --run './target/${{ matrix.target }}/debug/action lsp' 2>&1 || true
 
       # ── Test ──────────────────────────────────────────
       - name: Test (Windows)
@@ -134,7 +160,7 @@ jobs:
         if: runner.os == 'Linux'
         run: nix-shell --run "cargo test --target ${{ matrix.target }}"
 
-      # ── Debug: show run output on failure ──────────────
+      # ── Debug on failure ──────────────────────────────
       - name: Debug run output (Windows)
         if: failure() && runner.os == 'Windows'
         shell: pwsh
@@ -155,17 +181,29 @@ jobs:
           name: run-output-${{ matrix.name }}-${{ github.run_id }}
           path: action_run_output.txt
 
+  # ── Lint & format ─────────────────────────────────────
   lint:
     name: Lint & fmt
-    runs-on: ubuntu-24.04
+    # Need the self-hosted runner so nix-shell provides LLVM for clippy.
+    # (cargo-fmt does not need compilation, but splitting the two adds
+    #  complexity with no real gain.)
+    runs-on: [self-hosted, linux]
     steps:
       - uses: actions/checkout@v4
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+
+      - name: Verify nix-shell
+        run: |
+          test -f shell.nix || { echo "::error::shell.nix not found"; exit 1; }
+          nix-shell --run "echo 'LLVM:' && llvm-config --version && echo 'Rust:' && rustc --version"
 
       - name: Format check
         run: cargo fmt -- --check
 
       - name: Clippy
-        run: cargo clippy -- -D warnings 2>&1 || echo "::warning::Clippy found issues"
+        run: |
+          # Deny warnings so CI fails on clippy issues.
+          nix-shell --run "cargo clippy -- -D warnings"

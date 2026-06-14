@@ -397,3 +397,177 @@ fn type_to_detail(ty: &Type) -> String {
         Type::Unit => "()".to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lexer::{Lexer, TokenKind};
+
+    fn tokenize(source: &str) -> Vec<Token> {
+        let mut lexer = Lexer::new(source);
+        lexer.tokenize()
+    }
+
+    #[test]
+    fn test_classify_keyword() {
+        let tokens = tokenize("val x = 42");
+        // Token "val" is a keyword
+        let token = &tokens[0];
+        let result = classify_token(token, None);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().0, TYPE_KEYWORD);
+    }
+
+    #[test]
+    fn test_classify_ident_as_declaration() {
+        let tokens = tokenize("fun hello() {}");
+        // Token "hello" follows "fun"
+        let fun_token = &tokens[0];
+        let hello_token = &tokens[1];
+        let result = classify_token(hello_token, Some(&fun_token.kind));
+        assert!(result.is_some());
+        let (ttype, mods) = result.unwrap();
+        assert_eq!(ttype, TYPE_FUNCTION);
+        assert_eq!(mods & MOD_DECLARATION, MOD_DECLARATION);
+    }
+
+    #[test]
+    fn test_classify_ident_as_val() {
+        let tokens = tokenize("val x = 42");
+        let val_token = &tokens[0];
+        let x_token = &tokens[1];
+        let result = classify_token(x_token, Some(&val_token.kind));
+        assert!(result.is_some());
+        let (ttype, mods) = result.unwrap();
+        assert_eq!(ttype, TYPE_VARIABLE);
+        assert_eq!(mods & MOD_DECLARATION, MOD_DECLARATION);
+        assert_eq!(mods & MOD_READONLY, MOD_READONLY);
+    }
+
+    #[test]
+    fn test_classify_number() {
+        let tokens = tokenize("42");
+        let result = classify_token(&tokens[0], None);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().0, TYPE_NUMBER);
+    }
+
+    #[test]
+    fn test_classify_string() {
+        let tokens = tokenize("\"hello\"");
+        let result = classify_token(&tokens[0], None);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().0, TYPE_STRING);
+    }
+
+    #[test]
+    fn test_classify_operator() {
+        let tokens = tokenize("a + b");
+        let result = classify_token(&tokens[1], None);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().0, TYPE_OPERATOR);
+    }
+
+    #[test]
+    fn test_classify_delimiter_none() {
+        let tokens = tokenize("(x)");
+        // LParen and RParen should return None
+        for t in &tokens {
+            if matches!(t.kind, TokenKind::LParen | TokenKind::RParen) {
+                assert!(classify_token(t, None).is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn test_compute_semantic_tokens_empty() {
+        let result = compute_semantic_tokens(&[]);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_compute_semantic_tokens_basic() {
+        let tokens = tokenize("val x = 42");
+        let result = compute_semantic_tokens(&tokens);
+        assert!(!result.is_empty(), "should produce semantic tokens");
+        // First token "val" should be a keyword
+        assert_eq!(result[0].token_type, TYPE_KEYWORD);
+    }
+
+    #[test]
+    fn test_type_to_detail_named() {
+        assert_eq!(type_to_detail(&Type::Named("Int".into())), "Int");
+    }
+
+    #[test]
+    fn test_type_to_detail_generic() {
+        let ty = Type::Generic(
+            Box::new(Type::Named("List".into())),
+            vec![Type::Named("Int".into())],
+        );
+        assert_eq!(type_to_detail(&ty), "List[Int]");
+    }
+
+    #[test]
+    fn test_type_to_detail_nullable() {
+        let ty = Type::Nullable(Box::new(Type::Named("String".into())));
+        assert_eq!(type_to_detail(&ty), "String?");
+    }
+
+    #[test]
+    fn test_type_to_detail_function() {
+        let ty = Type::Function(
+            vec![Type::Named("Int".into()), Type::Named("String".into())],
+            Box::new(Type::Named("Bool".into())),
+        );
+        assert_eq!(type_to_detail(&ty), "(Int, String) -> Bool");
+    }
+
+    #[test]
+    fn test_infer_value_type_int() {
+        let expr = Expr::Literal(Literal::Int(42));
+        assert_eq!(infer_value_type(&expr), "Int");
+    }
+
+    #[test]
+    fn test_infer_value_type_float() {
+        let expr = Expr::Literal(Literal::Float(3.14));
+        assert_eq!(infer_value_type(&expr), "Float");
+    }
+
+    #[test]
+    fn test_infer_value_type_string() {
+        let expr = Expr::Literal(Literal::String("hi".into()));
+        assert_eq!(infer_value_type(&expr), "String");
+    }
+
+    #[test]
+    fn test_extract_document_symbols_empty() {
+        let result = extract_document_symbols(&[], "");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_extract_document_symbols_fun() {
+        let source = "fun hello() {}";
+        let tokens = tokenize(source);
+        let mut parser = crate::parser::Parser::new(tokens);
+        let (stmts, _) = parser.parse_program_recover();
+        let symbols = extract_document_symbols(&stmts, source);
+        assert!(!symbols.is_empty(), "should extract function symbol");
+        assert_eq!(symbols[0].name, "hello");
+        assert_eq!(symbols[0].kind, SymbolKind::FUNCTION);
+    }
+
+    #[test]
+    fn test_extract_document_symbols_val() {
+        let source = "val x = 42";
+        let tokens = tokenize(source);
+        let mut parser = crate::parser::Parser::new(tokens);
+        let (stmts, _) = parser.parse_program_recover();
+        let symbols = extract_document_symbols(&stmts, source);
+        assert!(!symbols.is_empty(), "should extract val symbol");
+        assert_eq!(symbols[0].name, "x");
+        assert_eq!(symbols[0].kind, SymbolKind::VARIABLE);
+    }
+}

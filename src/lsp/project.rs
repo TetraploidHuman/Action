@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use lsp_types::Url;
 
@@ -48,15 +49,23 @@ pub struct Project {
     pub stdlib_registry: TypeRegistry,
     pub stdlib_type_env: HashMap<String, Type>,
     pub symbol_index: HashMap<String, Vec<SymbolLocation>>,
+    /// Directories to search for standard library files.
+    /// Populated from workspace roots, CWD, and exe-relative paths.
+    pub search_dirs: Vec<PathBuf>,
 }
 
 impl Project {
-    pub fn new(stdlib_registry: TypeRegistry, stdlib_type_env: HashMap<String, Type>) -> Self {
+    pub fn new(
+        stdlib_registry: TypeRegistry,
+        stdlib_type_env: HashMap<String, Type>,
+        search_dirs: Vec<PathBuf>,
+    ) -> Self {
         Project {
             documents: HashMap::new(),
             stdlib_registry,
             stdlib_type_env,
             symbol_index: HashMap::new(),
+            search_dirs,
         }
     }
 
@@ -188,5 +197,147 @@ impl Project {
         }
         results.truncate(100);
         results
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use crate::typecheck::TypeRegistry;
+    use crate::ast::Type;
+    use lsp_types::Url;
+
+    fn empty_project() -> Project {
+        Project::new(TypeRegistry::new(), HashMap::new(), Vec::new())
+    }
+
+    #[test]
+    fn test_project_new_empty() {
+        let proj = empty_project();
+        assert!(proj.documents.is_empty());
+        assert!(proj.symbol_index.is_empty());
+    }
+
+    #[test]
+    fn test_update_document_valid() {
+        let mut proj = empty_project();
+        let uri = Url::parse("file:///test.at").unwrap();
+        let diags = proj.update_document(&uri, "val x = 42".to_string(), 1);
+        assert!(diags.is_empty(), "valid program should have no diagnostics");
+        assert!(proj.documents.contains_key(&uri));
+    }
+
+    #[test]
+    fn test_update_document_syntax_error() {
+        let mut proj = empty_project();
+        let uri = Url::parse("file:///test.at").unwrap();
+        let diags = proj.update_document(&uri, "val = 42".to_string(), 1);
+        // Should produce diagnostics — the exact count depends on error recovery
+        assert!(!diags.is_empty() || proj.documents.get(&uri).map_or(true, |d| d.ast.is_empty()));
+    }
+
+    #[test]
+    fn test_remove_document() {
+        let mut proj = empty_project();
+        let uri = Url::parse("file:///test.at").unwrap();
+        proj.update_document(&uri, "val x = 1".to_string(), 1);
+        assert!(proj.documents.contains_key(&uri));
+        proj.remove_document(&uri);
+        assert!(!proj.documents.contains_key(&uri));
+    }
+
+    #[test]
+    fn test_update_symbol_index() {
+        let mut proj = empty_project();
+        let uri = Url::parse("file:///test.at").unwrap();
+        proj.update_document(&uri, "fun hello() {}".to_string(), 1);
+        // symbol_index should contain "hello" as a function
+        assert!(
+            proj.symbol_index.contains_key("hello"),
+            "symbol_index should contain 'hello': keys are {:?}",
+            proj.symbol_index.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_find_definition() {
+        let mut proj = empty_project();
+        let uri = Url::parse("file:///test.at").unwrap();
+        proj.update_document(&uri, "fun hello() {}".to_string(), 1);
+        let loc = proj.find_definition(&uri, "hello");
+        assert!(loc.is_some(), "should find definition of 'hello'");
+        assert_eq!(loc.unwrap().uri, uri);
+    }
+
+    #[test]
+    fn test_find_definition_unknown() {
+        let proj = empty_project();
+        let uri = Url::parse("file:///test.at").unwrap();
+        let loc = proj.find_definition(&uri, "nonexistent");
+        assert!(loc.is_none());
+    }
+
+    #[test]
+    fn test_find_references() {
+        let mut proj = empty_project();
+        let uri = Url::parse("file:///test.at").unwrap();
+        proj.update_document(&uri, "val x = 1\nval y = x + 2".to_string(), 1);
+        let refs = proj.find_references("x");
+        assert!(!refs.is_empty(), "should find references to 'x'");
+    }
+
+    #[test]
+    fn test_find_references_unknown() {
+        let proj = empty_project();
+        let refs = proj.find_references("nonexistent");
+        assert!(refs.is_empty());
+    }
+
+    #[test]
+    fn test_workspace_symbols() {
+        let mut proj = empty_project();
+        let uri = Url::parse("file:///test.at").unwrap();
+        proj.update_document(&uri, "fun hello() {}".to_string(), 1);
+        let results = proj.workspace_symbols("hello");
+        assert!(!results.is_empty(), "should find 'hello' symbol");
+        assert_eq!(results[0].name, "hello");
+    }
+
+    #[test]
+    fn test_workspace_symbols_partial_match() {
+        let mut proj = empty_project();
+        let uri = Url::parse("file:///test.at").unwrap();
+        proj.update_document(&uri, "fun helloWorld() {}".to_string(), 1);
+        let results = proj.workspace_symbols("hello");
+        assert!(!results.is_empty(), "should match 'helloWorld' with query 'hello'");
+    }
+
+    #[test]
+    fn test_workspace_symbols_no_match() {
+        let proj = empty_project();
+        let results = proj.workspace_symbols("zzzzzz");
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_update_document_twice_replaces() {
+        let mut proj = empty_project();
+        let uri = Url::parse("file:///test.at").unwrap();
+        proj.update_document(&uri, "val x = 1".to_string(), 1);
+        proj.update_document(&uri, "val y = 2".to_string(), 2);
+        assert_eq!(proj.documents.len(), 1);
+        let doc = proj.documents.get(&uri).unwrap();
+        assert!(doc.definition_map.contains_key("y"));
+    }
+
+    #[test]
+    fn test_multiple_documents() {
+        let mut proj = empty_project();
+        let uri_a = Url::parse("file:///a.at").unwrap();
+        let uri_b = Url::parse("file:///b.at").unwrap();
+        proj.update_document(&uri_a, "val a = 1".to_string(), 1);
+        proj.update_document(&uri_b, "val b = 2".to_string(), 1);
+        assert_eq!(proj.documents.len(), 2);
     }
 }

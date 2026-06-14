@@ -8,14 +8,12 @@ use std::collections::{HashMap, HashSet};
 pub struct StructInfo {
     pub name: String,
     pub fields: Vec<(String, Type)>,
-    #[allow(dead_code)]
     pub field_index: HashMap<String, usize>,
 }
 
 #[derive(Clone, Debug)]
 pub struct EnumInfo {
     pub name: String,
-    #[allow(dead_code)]
     pub type_params: Vec<String>,
     pub variants: Vec<EnumVariantInfo>,
 }
@@ -138,11 +136,6 @@ impl TypeRegistry {
 
     pub fn get_struct(&self, name: &str) -> Option<&StructInfo> {
         self.structs.get(name)
-    }
-
-    #[allow(dead_code)]
-    pub fn get_enum(&self, name: &str) -> Option<&EnumInfo> {
-        self.enums.get(name)
     }
 
     /// Check that a set of when arms covers all variants of the enum they match on.
@@ -338,7 +331,7 @@ impl TypeChecker {
                     value,
                     ..
                 } => {
-                    let inferred = self.infer_expr_type(value);
+                    let inferred = self.infer_expr_type(value).unwrap_or(Type::Named("Int".into()));
                     let ty = type_ann.clone().unwrap_or(inferred);
                     self.type_env.insert(name.clone(), ty);
                 }
@@ -354,7 +347,7 @@ impl TypeChecker {
                     value,
                     ..
                 } => {
-                    let inferred = self.infer_expr_type(value);
+                    let inferred = self.infer_expr_type(value).unwrap_or(Type::Named("Int".into()));
                     let ty = type_ann.clone().unwrap_or(inferred);
                     self.type_env.insert(name.clone(), ty);
                 }
@@ -421,7 +414,7 @@ impl TypeChecker {
                     if let Some(declared_ret) = return_type {
                         // Skip return type check for generic functions (validated per-instantiation)
                         if type_params.is_empty() || !matches!(declared_ret, Type::TypeVar(_)) {
-                            let inferred = self.infer_expr_type(body);
+                            let inferred = self.infer_expr_type(body).unwrap_or(Type::Named("Int".into()));
                             if !self.types_compatible(declared_ret, &inferred) {
                                 let msg = if let Some(hint) =
                                     Self::check_termination(declared_ret, &inferred)
@@ -441,7 +434,7 @@ impl TypeChecker {
                     // the type checker defaults to `Int` for the return type without warning,
                     // but callers see `Int` when the body actually returns `String`.
                     if return_type.is_none() && type_params.is_empty() {
-                        let inferred = self.infer_expr_type(body);
+                        let inferred = self.infer_expr_type(body).unwrap_or(Type::Named("Int".into()));
                         // Only warn for clear non-Int, non-Unit types. Int is the default/fallback,
                         // and Unit is a valid implicit void return.
                         if !matches!(&inferred, Type::Named(n) if n == "Int")
@@ -493,7 +486,7 @@ impl TypeChecker {
                 } => {
                     self.collect_expr_errors(value, &mut errors);
                     if let Some(ann) = type_ann {
-                        let inferred = self.infer_expr_type(value);
+                        let inferred = self.infer_expr_type(value).unwrap_or(Type::Named("Int".into()));
                         if !self.types_compatible(ann, &inferred) {
                             let msg = if let Some(hint) = Self::check_termination(ann, &inferred) {
                                 hint
@@ -518,7 +511,7 @@ impl TypeChecker {
                 } => {
                     self.collect_expr_errors(value, &mut errors);
                     if let Some(ann) = type_ann {
-                        let inferred = self.infer_expr_type(value);
+                        let inferred = self.infer_expr_type(value).unwrap_or(Type::Named("Int".into()));
                         if !self.types_compatible(ann, &inferred) {
                             let msg = if let Some(hint) = Self::check_termination(ann, &inferred) {
                                 hint
@@ -571,7 +564,7 @@ impl TypeChecker {
                     let smart_var: Option<String> = match &w.kind {
                         WhenKind::ValueMatch { value, .. } => {
                             if let Expr::Ident(name) = value.as_ref() {
-                                let ty = self.infer_expr_type(value);
+                                let ty = self.infer_expr_type(value).unwrap_or(Type::Named("Int".into()));
                                 if matches!(ty, Type::Nullable(_)) {
                                     Some(name.clone())
                                 } else {
@@ -612,7 +605,7 @@ impl TypeChecker {
                             match (lhs.as_ref(), rhs.as_ref()) {
                                 (Expr::Ident(name), Expr::Null)
                                 | (Expr::Null, Expr::Ident(name)) => {
-                                    let ty = self.infer_expr_type(lhs);
+                                    let ty = self.infer_expr_type(lhs).unwrap_or(Type::Named("Int".into()));
                                     if matches!(ty, Type::Nullable(_)) {
                                         Some(name.clone())
                                     } else {
@@ -627,7 +620,7 @@ impl TypeChecker {
                             match (lhs.as_ref(), rhs.as_ref()) {
                                 (Expr::Ident(name), Expr::Null)
                                 | (Expr::Null, Expr::Ident(name)) => {
-                                    let ty = self.infer_expr_type(lhs);
+                                    let ty = self.infer_expr_type(lhs).unwrap_or(Type::Named("Int".into()));
                                     if matches!(ty, Type::Nullable(_)) {
                                         Some(name.clone())
                                     } else {
@@ -784,7 +777,7 @@ impl TypeChecker {
                 ..
             } => {
                 self.collect_expr_errors(value, errors);
-                let inferred = self.infer_expr_type(value);
+                let inferred = self.infer_expr_type(value).unwrap_or(Type::Named("Int".into()));
                 let ty = type_ann.clone().unwrap_or(inferred);
                 self.type_env.insert(name.clone(), ty);
             }
@@ -795,7 +788,7 @@ impl TypeChecker {
                 ..
             } => {
                 self.collect_expr_errors(value, errors);
-                let inferred = self.infer_expr_type(value);
+                let inferred = self.infer_expr_type(value).unwrap_or(Type::Named("Int".into()));
                 let ty = type_ann.clone().unwrap_or(inferred);
                 self.type_env.insert(name.clone(), ty);
             }
@@ -812,8 +805,8 @@ impl TypeChecker {
     }
 
     fn check_binary_op(&self, lhs: &Expr, op: BinaryOp, rhs: &Expr) -> Result<(), CompilerError> {
-        let lt = self.infer_expr_type(lhs);
-        let rt = self.infer_expr_type(rhs);
+        let lt = self.infer_expr_type(lhs)?;
+        let rt = self.infer_expr_type(rhs)?;
 
         // Reject nullable operands in arithmetic/bitwise operations.
         // String concatenation (Add) with nullable is allowed.
@@ -952,7 +945,7 @@ impl TypeChecker {
                             if matches!(arg, Expr::Lambda { .. }) {
                                 continue;
                             }
-                            arg_tys.push(self.infer_expr_type(arg));
+                            arg_tys.push(self.infer_expr_type(arg).unwrap_or(Type::Named("Int".into())));
                             filtered_params.push(param_ty.clone());
                         }
                         if !filtered_params.is_empty() {
@@ -986,7 +979,7 @@ impl TypeChecker {
                             if matches!(arg, Expr::Lambda { .. }) {
                                 continue;
                             }
-                            let arg_ty = self.infer_expr_type(arg);
+                            let arg_ty = self.infer_expr_type(arg)?;
                             if !self.types_compatible(param_ty, &arg_ty) {
                                 let msg = if let Some(hint) =
                                     Self::check_termination(param_ty, &arg_ty)
@@ -1021,7 +1014,7 @@ impl TypeChecker {
         }
 
         // Collect arm types, but be lenient with Int (fallback) when mixed with enums
-        let types: Vec<Type> = arms.iter().map(|a| self.infer_expr_type(&a.body)).collect();
+        let types: Vec<Type> = arms.iter().map(|a| self.infer_expr_type(&a.body)).collect::<Result<Vec<Type>, _>>()?;
         let first = &types[0];
 
         // If first type is Int, it might be a fallback — skip arm checking
@@ -1048,29 +1041,29 @@ impl TypeChecker {
     }
 
     /// Infer the type of an expression (structural, not full HM inference)
-    fn infer_expr_type(&self, expr: &Expr) -> Type {
+    fn infer_expr_type(&self, expr: &Expr) -> Result<Type, CompilerError> {
         match expr {
             Expr::Literal(Literal::String(_)) | Expr::StringInterpolate(_) => {
-                Type::Named("String".into())
+                Ok(Type::Named("String".into()))
             }
-            Expr::Literal(Literal::Int(_)) => Type::Named("Int".into()),
-            Expr::Literal(Literal::Float(_)) => Type::Named("Float".into()),
-            Expr::Literal(Literal::Bool(_)) => Type::Named("Bool".into()),
-            Expr::Literal(Literal::Char(_)) => Type::Named("Char".into()),
-            Expr::Literal(Literal::Unit) => Type::Unit,
-            Expr::MapLiteral(_) => Type::Map(
+            Expr::Literal(Literal::Int(_)) => Ok(Type::Named("Int".into())),
+            Expr::Literal(Literal::Float(_)) => Ok(Type::Named("Float".into())),
+            Expr::Literal(Literal::Bool(_)) => Ok(Type::Named("Bool".into())),
+            Expr::Literal(Literal::Char(_)) => Ok(Type::Named("Char".into())),
+            Expr::Literal(Literal::Unit) => Ok(Type::Unit),
+            Expr::MapLiteral(_) => Ok(Type::Map(
                 Box::new(Type::Named("String".into())),
                 Box::new(Type::Named("Int".into())),
-            ),
-            Expr::SetLiteral(_) => Type::Set(Box::new(Type::Named("Int".into()))),
+            )),
+            Expr::SetLiteral(_) => Ok(Type::Set(Box::new(Type::Named("Int".into())))),
             Expr::Binary(lhs, op, rhs) => {
-                let lt = self.infer_expr_type(lhs);
-                let rt = self.infer_expr_type(rhs);
+                let lt = self.infer_expr_type(lhs)?;
+                let rt = self.infer_expr_type(rhs)?;
                 if *op == BinaryOp::Add {
                     if matches!(&lt, Type::Named(ref n) if n == "String")
                         || matches!(&rt, Type::Named(ref n) if n == "String")
                     {
-                        return Type::Named("String".into());
+                        return Ok(Type::Named("String".into()));
                     }
                 }
                 if *op == BinaryOp::And
@@ -1084,7 +1077,7 @@ impl TypeChecker {
                     || *op == BinaryOp::In
                     || *op == BinaryOp::Is
                 {
-                    return Type::Named("Bool".into());
+                    return Ok(Type::Named("Bool".into()));
                 }
                 if *op == BinaryOp::BitAnd
                     || *op == BinaryOp::BitOr
@@ -1092,43 +1085,43 @@ impl TypeChecker {
                     || *op == BinaryOp::Shl
                     || *op == BinaryOp::Shr
                 {
-                    return Type::Named("Int".into());
+                    return Ok(Type::Named("Int".into()));
                 }
                 if *op == BinaryOp::Pow {
                     // Return Float if either operand is Float
                     if matches!(&lt, Type::Named(ref n) if n == "Float")
                         || matches!(&rt, Type::Named(ref n) if n == "Float")
                     {
-                        return Type::Named("Float".into());
+                        return Ok(Type::Named("Float".into()));
                     }
-                    return lt;
+                    return Ok(lt);
                 }
                 // Arithmetic: return Float if either operand is Float, else Int
                 if matches!(&lt, Type::Named(ref n) if n == "Float")
                     || matches!(&rt, Type::Named(ref n) if n == "Float")
                 {
-                    return Type::Named("Float".into());
+                    return Ok(Type::Named("Float".into()));
                 }
-                Type::Named("Int".into())
+                Ok(Type::Named("Int".into()))
             }
             Expr::Call { func, args, .. } => {
                 if let Expr::Ident(name) = func.as_ref() {
                     match name.as_str() {
-                        "print" | "println" | "send" | "close" | "cancel" => Type::Unit,
-                        "toString" | "toUpper" | "toLower" => Type::Named("String".into()),
-                        "receive" | "wait" => Type::Named("Int".into()),
-                        "launch" => Type::Task(Box::new(Type::Named("Int".into()))),
-                        "Stream" => Type::Stream(Box::new(Type::Named("Int".into()))),
-                        "is_done" | "is_cancelled" => Type::Named("Bool".into()),
-                        "withTimeout" => Type::Nullable(Box::new(Type::Named("Int".into()))),
-                        "coroutineScope" => Type::Named("list".into()),
+                        "print" | "println" | "send" | "close" | "cancel" => Ok(Type::Unit),
+                        "toString" | "toUpper" | "toLower" => Ok(Type::Named("String".into())),
+                        "receive" | "wait" => Ok(Type::Named("Int".into())),
+                        "launch" => Ok(Type::Task(Box::new(Type::Named("Int".into())))),
+                        "Stream" => Ok(Type::Stream(Box::new(Type::Named("Int".into())))),
+                        "is_done" | "is_cancelled" => Ok(Type::Named("Bool".into())),
+                        "withTimeout" => Ok(Type::Nullable(Box::new(Type::Named("Int".into())))),
+                        "coroutineScope" => Ok(Type::Named("list".into())),
                         // Callback-based list functions
-                        "any" | "all" => Type::Named("Bool".into()),
+                        "any" | "all" => Ok(Type::Named("Bool".into())),
                         "find" | "findIndex" | "reduce" => {
-                            Type::Nullable(Box::new(Type::Named("Int".into())))
+                            Ok(Type::Nullable(Box::new(Type::Named("Int".into()))))
                         }
-                        "foldRight" => Type::Named("Int".into()),
-                        "takeWhile" | "dropWhile" | "sortedBy" => Type::Named("list".into()),
+                        "foldRight" => Ok(Type::Named("Int".into())),
+                        "takeWhile" | "dropWhile" | "sortedBy" => Ok(Type::Named("list".into())),
                         _ => {
                             if self.registry.lookup_variant(name).is_some() {
                                 let enum_name = self
@@ -1137,45 +1130,45 @@ impl TypeChecker {
                                     .get(name)
                                     .cloned()
                                     .unwrap_or_default();
-                                Type::Named(enum_name)
+                                Ok(Type::Named(enum_name))
                             } else if let Some(generic_stmt) = self.generic_funs.get(name) {
                                 // Generic function: infer type args and resolve return type
-                                self.infer_generic_return_type(generic_stmt, args)
+                                Ok(self.infer_generic_return_type(generic_stmt, args))
                             } else if let Some(Type::Function(_, ret)) = self.type_env.get(name) {
-                                *ret.clone()
+                                Ok(*ret.clone())
                             } else {
-                                Type::Named("Int".into())
+                                Ok(Type::Named("Int".into()))
                             }
                         }
                     }
                 } else if let Expr::FieldAccess(receiver, method) = func.as_ref() {
-                    let recv_type = self.infer_expr_type(receiver);
+                    let recv_type = self.infer_expr_type(receiver)?;
                     match (recv_type, method.as_str()) {
                         // Map/Set UFCS methods
                         (Type::Map(_, _), "contains")
                         | (Type::Set(_), "contains")
                         | (Type::Map(_, _), "isEmpty")
-                        | (Type::Set(_), "isEmpty") => Type::Named("Bool".into()),
-                        (Type::Map(_, _), "insert") | (Type::Set(_), "insert") => Type::Unit,
+                        | (Type::Set(_), "isEmpty") => Ok(Type::Named("Bool".into())),
+                        (Type::Map(_, _), "insert") | (Type::Set(_), "insert") => Ok(Type::Unit),
                         (Type::Map(_, _), "remove")
                         | (Type::Map(_, _), "get")
                         | (Type::Set(_), "remove") => {
-                            Type::Nullable(Box::new(Type::Named("Int".into())))
+                            Ok(Type::Nullable(Box::new(Type::Named("Int".into()))))
                         }
                         // Stream UFCS methods
-                        (Type::Stream(_), "send") => Type::Unit,
-                        (Type::Stream(_), "receive") => Type::Named("Int".into()),
-                        (Type::Stream(_), "close") => Type::Unit,
+                        (Type::Stream(_), "send") => Ok(Type::Unit),
+                        (Type::Stream(_), "receive") => Ok(Type::Named("Int".into())),
+                        (Type::Stream(_), "close") => Ok(Type::Unit),
                         // Task UFCS methods
-                        (Type::Task(_), "cancel") => Type::Unit,
+                        (Type::Task(_), "cancel") => Ok(Type::Unit),
                         (Type::Task(_), "is_done") | (Type::Task(_), "is_cancelled") => {
-                            Type::Named("Bool".into())
+                            Ok(Type::Named("Bool".into()))
                         }
-                        (Type::Task(_), "wait") => Type::Named("Int".into()),
-                        _ => Type::Named("Int".into()),
+                        (Type::Task(_), "wait") => Ok(Type::Named("Int".into())),
+                        _ => Err(CompilerError::new(format!("Cannot infer type for expression: {:?}", expr))),
                     }
                 } else {
-                    Type::Named("Int".into())
+                    Ok(Type::Named("Int".into()))
                 }
             }
             Expr::When(w) => {
@@ -1187,27 +1180,27 @@ impl TypeChecker {
                 if let WhenKind::OneLine { then_expr, .. } = &w.kind {
                     return self.infer_expr_type(then_expr);
                 }
-                Type::Unit
+                Ok(Type::Unit)
             }
-            Expr::Continue | Expr::Break => Type::Unit,
-            Expr::For(_) => Type::Unit,
+            Expr::Continue | Expr::Break => Ok(Type::Unit),
+            Expr::For(_) => Ok(Type::Unit),
             Expr::FunctionRef(name) => {
                 if let Some(ty) = self.type_env.get(name) {
-                    ty.clone()
+                    Ok(ty.clone())
                 } else {
-                    Type::Function(
+                    Ok(Type::Function(
                         vec![Type::Named("Int".into())],
                         Box::new(Type::Named("Int".into())),
-                    )
+                    ))
                 }
             }
             Expr::Copy(inner) => self.infer_expr_type(inner),
-            Expr::Null => Type::Nullable(Box::new(Type::Named("Nothing".into()))),
+            Expr::Null => Ok(Type::Nullable(Box::new(Type::Named("Nothing".into())))),
             Expr::OrBlock { nullable, fallback } => {
-                let nullable_ty = self.infer_expr_type(nullable);
-                let fallback_ty = self.infer_expr_type(fallback);
+                let nullable_ty = self.infer_expr_type(nullable)?;
+                let fallback_ty = self.infer_expr_type(fallback)?;
                 // Or-block unwraps nullable: T? or { ... } -> T
-                match nullable_ty {
+                Ok(match nullable_ty {
                     Type::Nullable(inner) => {
                         if self.types_compatible(&inner, &fallback_ty) {
                             *inner
@@ -1216,7 +1209,7 @@ impl TypeChecker {
                         }
                     }
                     _ => nullable_ty,
-                }
+                })
             }
             Expr::Unsafe(inner) => self.infer_expr_type(inner),
             Expr::Block(stmts) => stmts
@@ -1226,10 +1219,10 @@ impl TypeChecker {
                     Stmt::Return { value: e, .. } => e
                         .as_ref()
                         .map(|re| self.infer_expr_type(re))
-                        .unwrap_or(Type::Unit),
-                    _ => Type::Unit,
+                        .unwrap_or(Ok(Type::Unit)),
+                    _ => Ok(Type::Unit),
                 })
-                .unwrap_or(Type::Unit),
+                .unwrap_or(Ok(Type::Unit)),
             Expr::Ident(name) => {
                 if self.registry.lookup_variant(name).is_some() {
                     let enum_name = self
@@ -1238,45 +1231,45 @@ impl TypeChecker {
                         .get(name)
                         .cloned()
                         .unwrap_or_default();
-                    Type::Named(enum_name)
+                    Ok(Type::Named(enum_name))
                 } else if let Some(ty) = self.type_env.get(name) {
                     // Smart cast: if variable is known non-null, unwrap nullable type
                     if self.not_null_set.borrow().contains(name) {
                         if let Type::Nullable(inner) = ty {
-                            return *inner.clone();
+                            return Ok(*inner.clone());
                         }
                     }
-                    ty.clone()
+                    Ok(ty.clone())
                 } else {
-                    Type::Named("Int".into())
+                    Ok(Type::Named("Int".into()))
                 }
             }
             Expr::Lambda { body, .. } => self.infer_expr_type(body),
             Expr::Index(obj, _) => {
-                let obj_type = self.infer_expr_type(obj);
+                let obj_type = self.infer_expr_type(obj)?;
                 match obj_type {
                     // Map/Set indexing returns nullable T? (was Option<T>)
-                    Type::Map(_, v) => Type::Nullable(v.clone()),
-                    Type::Set(e) => Type::Nullable(e.clone()),
-                    Type::Named(ref n) if n == "String" => Type::Named("Int".into()),
+                    Type::Map(_, v) => Ok(Type::Nullable(v.clone())),
+                    Type::Set(e) => Ok(Type::Nullable(e.clone())),
+                    Type::Named(ref n) if n == "String" => Ok(Type::Named("Int".into())),
                     // If obj is nullable, indexing auto short-circuits to nullable
                     Type::Nullable(inner) => match *inner {
-                        Type::Map(_, v) => Type::Nullable(v),
-                        Type::Set(e) => Type::Nullable(e),
-                        Type::Named(ref n) if n == "String" => Type::Named("Int".into()),
-                        _ => Type::Nullable(Box::new(Type::Named("Int".into()))),
+                        Type::Map(_, v) => Ok(Type::Nullable(v)),
+                        Type::Set(e) => Ok(Type::Nullable(e)),
+                        Type::Named(ref n) if n == "String" => Ok(Type::Named("Int".into())),
+                        _ => Ok(Type::Nullable(Box::new(Type::Named("Int".into())))),
                     },
-                    _ => Type::Named("Int".into()),
+                    _ => Ok(Type::Named("Int".into())),
                 }
             }
             Expr::FieldAccess(obj, field) => {
-                let obj_type = self.infer_expr_type(obj);
+                let obj_type = self.infer_expr_type(obj)?;
                 // If obj is nullable, field access short-circuits to nullable result
                 let (inner_obj_type, is_nullable) = match &obj_type {
                     Type::Nullable(inner) => (inner.as_ref(), true),
                     other => (other, false),
                 };
-                let field_type = if let Type::Named(type_name) = inner_obj_type {
+                let field_type: Type = if let Type::Named(type_name) = inner_obj_type {
                     let struct_name = match type_name.as_str() {
                         "Str" => "String",
                         "Double" => "Float",
@@ -1295,25 +1288,25 @@ impl TypeChecker {
                     Type::Named("Int".into())
                 };
                 if is_nullable {
-                    Type::Nullable(Box::new(field_type))
+                    Ok(Type::Nullable(Box::new(field_type)))
                 } else {
-                    field_type
+                    Ok(field_type)
                 }
             }
             Expr::StructLiteral(fields) => {
                 let field_names: Vec<String> = fields.iter().map(|(n, _)| n.clone()).collect();
                 if let Some(struct_info) = self.registry.find_struct_by_fields(&field_names) {
-                    Type::Named(struct_info.name.clone())
+                    Ok(Type::Named(struct_info.name.clone()))
                 } else {
-                    Type::Named("Int".into())
+                    Ok(Type::Named("Int".into()))
                 }
             }
             Expr::Assign { value, .. } => self.infer_expr_type(value),
             Expr::Unary(op, inner) => match op {
-                UnaryOp::Not => Type::Named("Bool".into()),
-                UnaryOp::Neg | UnaryOp::BitNot => self.infer_expr_type(inner),
+                UnaryOp::Not => Ok(Type::Named("Bool".into())),
+                UnaryOp::Neg | UnaryOp::BitNot => Ok(self.infer_expr_type(inner)?),
             },
-            _ => Type::Named("Int".into()),
+            _ => Ok(Type::Named("Int".into())),
         }
     }
 
@@ -1336,7 +1329,7 @@ impl TypeChecker {
                 if matches!(arg, Expr::Lambda { .. }) {
                     continue;
                 }
-                arg_tys.push(self.infer_expr_type(arg));
+                arg_tys.push(self.infer_expr_type(arg).unwrap_or(Type::Named("Int".into())));
                 filtered_params.push(param_ty.clone());
             }
             if let Ok(type_map) = self.infer_type_args(&filtered_params, &arg_tys) {
@@ -1736,5 +1729,87 @@ mod tests {
             "Expected arithmetic-on-string error, got: {}",
             errors[0].message
         );
+    }
+
+    #[test]
+    fn test_type_mismatch_in_when_arms() {
+        let errors = check_source("when true { 1 -> \"one\"; true -> 42 }");
+        assert!(!errors.is_empty(), "expected type error for mismatched when arms");
+    }
+
+    #[test]
+    fn test_for_loop_non_iterable() {
+        let errors = check_source("for x in 42 { x }");
+        assert!(!errors.is_empty(), "expected type error for non-iterable in for loop");
+    }
+
+    #[test]
+    fn test_invalid_generic_instantiation() {
+        let errors = check_source("val x: List = List[1, 2, 3]");
+        // List without type parameter - may warn or error
+        // Just ensure no panic
+        let _ = errors;
+    }
+
+    #[test]
+    fn test_struct_field_type_mismatch() {
+        let src = r#"
+            type Person = { name: String, age: Int }
+            val p = Person { name: "Alice", age: "twenty" }
+        "#;
+        let errors = check_source(src);
+        assert!(!errors.is_empty(), "expected type error for struct field mismatch");
+    }
+
+    #[test]
+    fn test_nullable_assignment_to_non_nullable() {
+        let errors = check_source("val x: Int = null");
+        assert!(!errors.is_empty(), "expected type error for nullable to non-nullable");
+    }
+
+    #[test]
+    fn test_reassignment_to_immutable() {
+        let errors = check_source("val x = 1\nx = 2");
+        assert!(!errors.is_empty(), "expected error for reassignment to val");
+    }
+
+    #[test]
+    fn test_undefined_variable_usage() {
+        let errors = check_source("val y = undefinedVar + 1");
+        assert!(!errors.is_empty(), "expected error for undefined variable");
+    }
+
+    #[test]
+    fn test_complex_recursive_type_annotation() {
+        // List of lists - should type check without panic
+        let errors = check_source("val x: List[List[Int]] = List[List[1, 2], List[3, 4]]");
+        // This may or may not error depending on generics support
+        let _ = errors;
+    }
+
+    #[test]
+    fn test_division_by_zero_constant() {
+        // Division by zero in constant folding should be caught
+        let errors = check_source("val x = 1 / 0");
+        // We may or may not catch this at type-check time
+        let _ = errors;
+    }
+
+    #[test]
+    fn test_return_type_mismatch_complex() {
+        let errors = check_source("fun f(x: Int) -> String { x + 1 }");
+        assert!(!errors.is_empty(), "expected return type mismatch error");
+    }
+
+    #[test]
+    fn test_call_non_function() {
+        let errors = check_source("val x = 42\nval y = x(10)");
+        assert!(!errors.is_empty(), "expected error for calling non-function");
+    }
+
+    #[test]
+    fn test_char_type_mismatch() {
+        let errors = check_source("val x: Int = 'a'");
+        assert!(!errors.is_empty(), "expected type error for char-to-int assignment");
     }
 }

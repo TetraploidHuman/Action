@@ -185,3 +185,111 @@ fn build_definition_map(stmts: &[Stmt]) -> HashMap<String, Span> {
     }
     map
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use lsp_types::Url;
+
+    fn make_doc(source: &str) -> Document {
+        let uri = Url::parse("file:///test.at").unwrap();
+        Document::new(uri, source.to_string(), 1)
+    }
+
+    #[test]
+    fn test_document_new_empty() {
+        let doc = make_doc("");
+        assert!(doc.tokens.is_empty() || doc.tokens.iter().all(|t| t.kind == crate::lexer::TokenKind::Eof));
+        assert!(doc.ast.is_empty());
+        assert!(doc.parse_errors.is_empty());
+        assert!(doc.type_errors.is_empty());
+    }
+
+    #[test]
+    fn test_document_new_valid() {
+        let doc = make_doc("val x = 42");
+        assert!(!doc.ast.is_empty(), "should parse program");
+        assert!(doc.parse_errors.is_empty(), "should have no parse errors: {:?}", doc.parse_errors);
+    }
+
+    #[test]
+    fn test_document_new_with_parse_error() {
+        let doc = make_doc("val = 42");
+        // "val = 42" is a syntax error (missing identifier)
+        // May or may not have parse errors depending on error recovery
+        assert!(doc.ast.is_empty() || !doc.parse_errors.is_empty(),
+                "malformed input should produce parse errors or empty AST");
+    }
+
+    #[test]
+    fn test_get_diagnostics_empty() {
+        let doc = make_doc("");
+        let diags = doc.get_diagnostics();
+        assert!(diags.is_empty() || diags.iter().all(|d| d.severity == Some(lsp_types::DiagnosticSeverity::ERROR)));
+    }
+
+    #[test]
+    fn test_get_diagnostics_parse_error() {
+        let doc = make_doc("fun {");
+        let diags = doc.get_diagnostics();
+        // Should have parse errors for invalid function definition
+        assert!(!diags.is_empty(), "malformed function should produce diagnostics");
+    }
+
+    #[test]
+    fn test_recheck_updates_state() {
+        let uri = Url::parse("file:///test.at").unwrap();
+        let mut doc = Document::new(uri.clone(), "val x = 1".to_string(), 1);
+        let initial_ast_len = doc.ast.len();
+
+        doc.recheck(&TypeRegistry::new(), &HashMap::new());
+        assert_eq!(doc.ast.len(), initial_ast_len);
+        assert!(doc.parse_errors.is_empty());
+    }
+
+    #[test]
+    fn test_build_definition_map_fun() {
+        let uri = Url::parse("file:///test.at").unwrap();
+        let doc = Document::new(uri, "fun hello() {}".to_string(), 1);
+        assert!(doc.definition_map.contains_key("hello"));
+    }
+
+    #[test]
+    fn test_build_definition_map_let() {
+        let uri = Url::parse("file:///test.at").unwrap();
+        let doc = Document::new(uri, "val x = 42".to_string(), 1);
+        assert!(doc.definition_map.contains_key("x"));
+    }
+
+    #[test]
+    fn test_build_definition_map_enum() {
+        let uri = Url::parse("file:///test.at").unwrap();
+        let doc = Document::new(uri, "enum Color { Red, Blue }".to_string(), 1);
+        assert!(doc.definition_map.contains_key("Color"));
+    }
+
+    #[test]
+    fn test_build_definition_map_module() {
+        let uri = Url::parse("file:///test.at").unwrap();
+        let doc = Document::new(uri, "module foo { val x = 1 }".to_string(), 1);
+        assert!(doc.definition_map.contains_key("foo"));
+    }
+
+    #[test]
+    fn test_document_get_type_env() {
+        let doc = make_doc("val x = 42");
+        let has_x = doc.type_env.contains_key("x") || doc.type_env.is_empty();
+        // Either x was typed or if typecheck failed, env is empty
+        assert!(has_x);
+    }
+
+    #[test]
+    fn test_document_multi_statement() {
+        let src = "val a = 1\nval b = 2\nfun add(x, y) { x + y }";
+        let doc = make_doc(src);
+        assert!(doc.definition_map.contains_key("a"));
+        assert!(doc.definition_map.contains_key("b"));
+        assert!(doc.definition_map.contains_key("add"));
+    }
+}

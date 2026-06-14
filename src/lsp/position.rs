@@ -140,3 +140,134 @@ pub fn find_node_at(tokens: &[Token], source: &str, pos: &Position) -> Option<Fo
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lexer::{Lexer, TokenKind};
+
+    fn tokenize(source: &str) -> Vec<Token> {
+        let mut lexer = Lexer::new(source);
+        lexer.tokenize()
+    }
+
+    #[test]
+    fn test_line_col_to_offset_empty() {
+        assert_eq!(line_col_to_offset("", 1, 1), 0);
+    }
+
+    #[test]
+    fn test_line_col_to_offset_basic() {
+        let src = "hello\nworld";
+        assert_eq!(line_col_to_offset(src, 1, 1), 0);
+        assert_eq!(line_col_to_offset(src, 1, 3), 2);
+        assert_eq!(line_col_to_offset(src, 2, 1), 6);
+        assert_eq!(line_col_to_offset(src, 2, 5), 10);
+    }
+
+    #[test]
+    fn test_line_col_to_offset_beyond_end() {
+        assert_eq!(line_col_to_offset("hi", 99, 1), 2);
+    }
+
+    #[test]
+    fn test_offset_to_line_col_simple() {
+        let src = "abc";
+        assert_eq!(offset_to_line_col(src, 0), (1, 1));
+        assert_eq!(offset_to_line_col(src, 2), (1, 3));
+        assert_eq!(offset_to_line_col(src, 3), (1, 4));
+    }
+
+    #[test]
+    fn test_offset_to_line_col_newlines() {
+        let src = "ab\ncd\nef";
+        assert_eq!(offset_to_line_col(src, 0), (1, 1));
+        assert_eq!(offset_to_line_col(src, 2), (1, 3));
+        assert_eq!(offset_to_line_col(src, 3), (2, 1));
+        assert_eq!(offset_to_line_col(src, 5), (2, 3));
+        assert_eq!(offset_to_line_col(src, 6), (3, 1));
+    }
+
+    #[test]
+    fn test_offset_to_lsp_position() {
+        let src = "val x = 1\nval y = 2";
+        let pos = offset_to_lsp_position(src, 0);
+        assert_eq!(pos.line, 0);
+        assert_eq!(pos.character, 0);
+        let pos2 = offset_to_lsp_position(src, 10);
+        assert_eq!(pos2.line, 1);
+        assert_eq!(pos2.character, 0);
+    }
+
+    #[test]
+    fn test_lsp_position_to_offset_roundtrip() {
+        let src = "hello world\nfoo bar\nbaz";
+        let offsets = [0, 5, 11, 14];
+        for &offset in &offsets {
+            let pos = offset_to_lsp_position(src, offset);
+            let got = lsp_position_to_offset(src, &pos);
+            assert_eq!(got, offset, "roundtrip failed at offset {}", offset);
+        }
+    }
+
+    #[test]
+    fn test_span_to_lsp_range() {
+        let src = "val x = 42";
+        let span = Span::new(0, 1, 1).with_end(3);
+        let range = span_to_lsp_range(&span, src);
+        assert_eq!(range.start.line, 0);
+        assert_eq!(range.start.character, 0);
+        assert_eq!(range.end.line, 0);
+        assert_eq!(range.end.character, 2);
+    }
+
+    #[test]
+    fn test_find_token_at_exact() {
+        let tokens = tokenize("val x = 42");
+        let tok = find_token_at(&tokens, 0).unwrap();
+        assert_eq!(tok.kind, TokenKind::Val);
+    }
+
+    #[test]
+    fn test_find_token_at_middle() {
+        let tokens = tokenize("val x = 42");
+        let tok = find_token_at(&tokens, 6).unwrap();
+        assert_eq!(tok.kind, TokenKind::Eq);
+    }
+
+    #[test]
+    fn test_find_token_at_out_of_range() {
+        let tokens = tokenize("val x");
+        assert!(find_token_at(&tokens, 999).is_none());
+    }
+
+    #[test]
+    fn test_find_token_at_empty() {
+        let tokens: Vec<Token> = vec![];
+        assert!(find_token_at(&tokens, 0).is_none());
+    }
+
+    #[test]
+    fn test_find_node_at_keyword() {
+        let tokens = tokenize("val x = 1");
+        let pos = Position { line: 0, character: 0 };
+        let node = find_node_at(&tokens, "val x = 1", &pos);
+        assert!(node.is_some());
+        match node.unwrap() {
+            FoundNode::Keyword(_) => {}
+            _ => panic!("expected Keyword, got something else"),
+        }
+    }
+
+    #[test]
+    fn test_find_node_at_ident() {
+        let tokens = tokenize("val x = 1");
+        let pos = Position { line: 0, character: 4 };
+        let node = find_node_at(&tokens, "val x = 1", &pos);
+        assert!(node.is_some());
+        match node.unwrap() {
+            FoundNode::Ident(name) => assert_eq!(name, "x"),
+            _ => panic!("expected Ident, got something else"),
+        }
+    }
+}

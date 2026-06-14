@@ -5,7 +5,7 @@ pub mod project;
 pub mod symbols;
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::PathBuf;
 
 use lsp_server::{Connection, Message, Notification, Request, Response};
 use lsp_types::{
@@ -29,7 +29,7 @@ pub fn start_lsp() -> Result<(), Box<dyn std::error::Error>> {
     let (connection, io_threads) = Connection::stdio();
 
     // Initialize
-    let (init_id, _init_params) = connection.initialize_start()?;
+    let (init_id, init_params) = connection.initialize_start()?;
 
     let capabilities = ServerCapabilities {
         text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
@@ -79,10 +79,21 @@ pub fn start_lsp() -> Result<(), Box<dyn std::error::Error>> {
 
     connection.initialize_finish(init_id, serde_json::to_value(&init_result)?)?;
 
-    // Load stdlib
-    let (stdlib_registry, stdlib_type_env) = load_stdlib_context();
+    // Extract workspace roots from initialize params
+    let root_uri = init_params
+        .get("rootUri")
+        .and_then(|v| serde_json::from_value::<Option<lsp_types::Url>>(v.clone()).ok())
+        .flatten();
+    let workspace_folders: Option<Vec<lsp_types::WorkspaceFolder>> = init_params
+        .get("workspaceFolders")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .flatten();
 
-    let project = Project::new(stdlib_registry, stdlib_type_env);
+    // Load stdlib
+    let (stdlib_registry, stdlib_type_env) = load_stdlib_context(root_uri.as_ref(), workspace_folders.as_deref());
+
+    let search_dirs = build_search_dirs(root_uri.as_ref(), workspace_folders.as_deref());
+    let project = Project::new(stdlib_registry, stdlib_type_env, search_dirs);
     let mut state = ServerState::new(project);
 
     // Main loop
@@ -223,8 +234,51 @@ fn parse_params<T: serde::de::DeserializeOwned>(req: &Request) -> Result<T, Resp
 
 // ---- Stdlib loading ----
 
-/// Pre-load stdlib modules and build a combined TypeRegistry + type_env
-fn load_stdlib_context() -> (TypeRegistry, HashMap<String, Type>) {
+/// Build a list of directories to search for stdlib files.
+/// Uses the same multi-path strategy as `load_program()` in main.rs:
+/// workspace root lib/, cwd lib/, exe-relative lib/ and stdlib/.
+fn build_search_dirs(
+    root_uri: Option<&lsp_types::Url>,
+    workspace_folders: Option<&[lsp_types::WorkspaceFolder]>,
+) -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = Vec::new();
+
+    // Workspace roots from the client
+    if let Some(folders) = workspace_folders {
+        for wf in folders {
+            if let Ok(path) = wf.uri.to_file_path() {
+                dirs.push(path.join("lib"));
+            }
+        }
+    }
+    if let Some(uri) = root_uri {
+        if let Ok(path) = uri.to_file_path() {
+            dirs.push(path.join("lib"));
+        }
+    }
+
+    // CWD lib/ (fallback for editors launched from project root)
+    if let Ok(cwd) = std::env::current_dir() {
+        dirs.push(cwd.join("lib"));
+    }
+
+    // Exe-relative dirs (for release packages)
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(exe_dir) = exe.parent() {
+            dirs.push(exe_dir.join("..").join("lib"));
+            dirs.push(exe_dir.join("..").join("stdlib"));
+        }
+    }
+
+    dirs
+}
+
+/// Pre-load stdlib modules and build a combined TypeRegistry + type_env.
+/// Searches the given directories for stdlib files.
+fn load_stdlib_context(
+    root_uri: Option<&lsp_types::Url>,
+    workspace_folders: Option<&[lsp_types::WorkspaceFolder]>,
+) -> (TypeRegistry, HashMap<String, Type>) {
     let mut registry = TypeRegistry::new();
 
     // Always register built-in types
@@ -233,10 +287,13 @@ fn load_stdlib_context() -> (TypeRegistry, HashMap<String, Type>) {
     let mut type_env: HashMap<String, Type> = HashMap::new();
 
     // Try to load stdlib files
-    let stdlib_dir = Path::new("lib");
+    let search_dirs = build_search_dirs(root_uri, workspace_folders);
     for filename in &["math.at"] {
-        let path = stdlib_dir.join(filename);
-        if let Ok(source) = std::fs::read_to_string(&path) {
+        let source = search_dirs.iter()
+            .map(|d| d.join(filename))
+            .find(|p| p.exists())
+            .and_then(|p| std::fs::read_to_string(&p).ok());
+        if let Some(source) = source {
             let mut lexer = Lexer::new(&source);
             let tokens = lexer.tokenize();
             let mut parser = Parser::new(tokens);

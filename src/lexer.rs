@@ -1,4 +1,5 @@
 use std::fmt;
+use crate::error::CompilerError;
 
 /// Position in source code
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -220,7 +221,6 @@ pub struct Token {
     pub span: Span,
 }
 
-#[allow(dead_code)]
 impl Token {
     pub fn new(kind: TokenKind, span: Span) -> Self {
         Token { kind, span }
@@ -240,10 +240,9 @@ pub struct Lexer {
     pos: usize,
     line: usize,
     col: usize,
-    errors: Vec<String>,
+    errors: Vec<CompilerError>,
 }
 
-#[allow(dead_code)]
 impl Lexer {
     pub fn new(source: &str) -> Self {
         Lexer {
@@ -256,10 +255,10 @@ impl Lexer {
     }
 
     pub fn add_error(&mut self, msg: String) {
-        self.errors.push(msg);
+        self.errors.push(CompilerError::new(msg).with_span(Span { line: self.line, col: self.col, ..Span::default() }));
     }
 
-    pub fn take_errors(&mut self) -> Vec<String> {
+    pub fn take_errors(&mut self) -> Vec<CompilerError> {
         std::mem::take(&mut self.errors)
     }
 
@@ -1248,6 +1247,7 @@ impl Clone for Lexer {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
 
     fn tokenize(source: &str) -> Vec<TokenKind> {
@@ -1468,7 +1468,7 @@ mod tests {
         let errors = lexer.take_errors();
         assert!(!errors.is_empty(), "Expected error for empty hex literal");
         assert!(
-            errors[0].to_lowercase().contains("empty hex"),
+            errors[0].message.to_lowercase().contains("empty hex"),
             "Expected 'empty hex' error, got: {}",
             errors[0]
         );
@@ -1484,7 +1484,7 @@ mod tests {
         let errors = lexer.take_errors();
         assert!(!errors.is_empty(), "Expected error for integer overflow");
         assert!(
-            errors[0].to_lowercase().contains("overflow"),
+            errors[0].message.to_lowercase().contains("overflow"),
             "Expected 'overflow' error, got: {}",
             errors[0]
         );
@@ -1500,4 +1500,179 @@ mod tests {
         assert_eq!(tokens[3], TokenKind::Minus);
         assert_eq!(tokens[4], TokenKind::Gt);
     }
+
+    #[test]
+    fn test_lexer_empty_line_comment() {
+        let tokens = tokenize("//\nval x = 1");
+        assert_eq!(tokens[0], TokenKind::Val);
+    }
+
+    #[test]
+    fn test_lexer_empty_block_comment() {
+        let tokens = tokenize("/**/val x = 1");
+        assert_eq!(tokens[0], TokenKind::Val);
+    }
+
+    #[test]
+    fn test_lexer_deeply_nested_parens() {
+        let input = format!("{}42", "(".repeat(100) + &")".repeat(100));
+        let tokens = tokenize(&input);
+        // Should not crash, final token should be IntLiteral
+        assert_eq!(tokens[tokens.len() - 1], TokenKind::IntLiteral(42));
+    }
+
+    #[test]
+    fn test_lexer_malformed_string_unterminated() {
+        let mut lexer = Lexer::new("\"hello world");
+        let tokens = lexer.tokenize();
+        let errors = lexer.take_errors();
+        assert!(!errors.is_empty(), "expected error for unterminated string");
+    }
+
+    #[test]
+    fn test_lexer_malformed_char_unterminated() {
+        let mut lexer = Lexer::new("'x");
+        let _ = lexer.tokenize();
+        let errors = lexer.take_errors();
+        assert!(!errors.is_empty(), "expected error for unterminated char literal");
+    }
+
+    #[test]
+    fn test_lexer_malformed_char_empty() {
+        let mut lexer = Lexer::new("''");
+        let _ = lexer.tokenize();
+        let errors = lexer.take_errors();
+        assert!(!errors.is_empty(), "expected error for empty char literal");
+    }
+
+    #[test]
+    fn test_lexer_unicode_mixed_with_operators() {
+        let tokens = tokenize("名字 + 测试 - 数据");
+        assert_eq!(tokens[0], TokenKind::Ident("名字".to_string()));
+        assert_eq!(tokens[1], TokenKind::Plus);
+        assert_eq!(tokens[2], TokenKind::Ident("测试".to_string()));
+        assert_eq!(tokens[3], TokenKind::Minus);
+        assert_eq!(tokens[4], TokenKind::Ident("数据".to_string()));
+    }
+
+    #[test]
+    fn test_lexer_float_overflow() {
+        let mut lexer = Lexer::new("1e9999");
+        let tokens = lexer.tokenize();
+        let errors = lexer.take_errors();
+        // Should not panic, may report overflow or parse as inf
+        assert!(
+            !errors.is_empty() || tokens[0].kind == TokenKind::FloatLiteral(f64::INFINITY),
+            "expected overflow error or infinity for huge float"
+        );
+    }
+
+    #[test]
+    fn test_lexer_only_whitespace() {
+        let tokens = tokenize("   \n  \t  ");
+        assert!(tokens.is_empty());
+    }
+
+    #[test]
+    fn test_lexer_ident_with_numbers() {
+        let tokens = tokenize("x1 var2 fun3");
+        assert_eq!(tokens[0], TokenKind::Ident("x1".to_string()));
+        assert_eq!(tokens[1], TokenKind::Ident("var2".to_string()));
+        assert_eq!(tokens[2], TokenKind::Ident("fun3".to_string()));
+    }
+
+    #[test]
+    fn test_lexer_ident_starting_with_underscore() {
+        let tokens = tokenize("_hidden __private");
+        assert_eq!(tokens[0], TokenKind::Ident("_hidden".to_string()));
+        assert_eq!(tokens[1], TokenKind::Ident("__private".to_string()));
+    }
+
+    #[test]
+    fn test_lexer_block_comment_with_nested() {
+        let tokens = tokenize("/* outer /* inner */ */ 42");
+        // Block comment should consume everything including nested
+        assert_eq!(tokens[0], TokenKind::IntLiteral(42));
+    }
+
+    #[test]
+    fn test_lexer_unterminated_block_comment() {
+        let mut lexer = Lexer::new("val x = 1 /* unterminated");
+        let tokens = lexer.tokenize();
+        let errors = lexer.take_errors();
+        assert!(!errors.is_empty(), "expected error for unterminated block comment");
+        // Should still produce EOF and not crash
+        assert!(!tokens.is_empty());
+    }
+
+    #[test]
+    fn test_lexer_floating_point_modulo() {
+        let tokens = tokenize("5.5 % 2.0");
+        assert_eq!(tokens[0], TokenKind::FloatLiteral(5.5));
+        assert_eq!(tokens[1], TokenKind::Percent);
+        assert_eq!(tokens[2], TokenKind::FloatLiteral(2.0));
+    }
+
+    #[test]
+    fn test_lexer_consecutive_dots() {
+        let tokens = tokenize(".. ... ..<");
+        assert_eq!(tokens[0], TokenKind::DotDot);
+        assert_eq!(tokens[1], TokenKind::DotDotDot);
+        assert_eq!(tokens[2], TokenKind::DotDotLt);
+    }
+
+use proptest::prelude::*;
+
+    proptest! {
+        
+
+        #[test]
+        fn proptest_lexer_never_panics(s in ".*") {
+            let mut lexer = Lexer::new(&s);
+            let _tokens = lexer.tokenize();
+        }
+
+        #[test]
+        fn proptest_lexer_valid_spans(s in ".*") {
+            let mut lexer = Lexer::new(&s);
+            let tokens = lexer.tokenize();
+            for t in &tokens {
+                prop_assert!(t.span.start <= t.span.end, "span start {} > end {}", t.span.start, t.span.end);
+                prop_assert!(t.span.end <= s.len(), "span end {} > len {}", t.span.end, s.len());
+            }
+        }
+
+        #[test]
+        fn proptest_lexer_whitespace_only(n in 0usize..256) {
+            let s = " ".repeat(n);
+            let mut lexer = Lexer::new(&s);
+            let tokens = lexer.tokenize();
+            let non_eof: Vec<_> = tokens.into_iter().filter(|t| t.kind != TokenKind::Eof).collect();
+            prop_assert!(non_eof.is_empty(), "whitespace-only input should produce no tokens");
+        }
+
+        #[test]
+        fn proptest_lexer_repeated_chars(ch in "[a-zA-Z]", count in 0usize..128) {
+            let s: String = std::iter::repeat(ch).take(count).collect();
+            let mut lexer = Lexer::new(&s);
+            let _tokens = lexer.tokenize();
+        }
+
+        #[test]
+        fn proptest_identifiers(name in "[a-zA-Z_][a-zA-Z0-9_]{0,30}") {
+            let s = format!("val {} = 42", name);
+            let mut lexer = Lexer::new(&s);
+            let tokens = lexer.tokenize();
+            let kinds: Vec<_> = tokens.iter().map(|t| &t.kind).collect();
+            prop_assert!(kinds.contains(&&TokenKind::Ident(name.clone())),
+                "expected Ident({}) in tokens: {:?}", name, kinds);
+        }
+
+        #[test]
+        fn proptest_numbers(num_str in "[0-9]{1,15}") {
+            let mut lexer = Lexer::new(&num_str);
+            let _tokens = lexer.tokenize();
+        }
+    }
+
 }

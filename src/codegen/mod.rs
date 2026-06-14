@@ -51,11 +51,8 @@ pub(super) enum ValKind {
     Set,
     Task,
     Stream,
-    #[allow(dead_code)]
     LazyList,
-    #[allow(dead_code)]
     CString,
-    #[allow(dead_code)]
     Ptr,
     FileHandle,
     Struct,
@@ -388,6 +385,7 @@ pub struct CodeGen<'ctx> {
     pub(super) child_entry_type: StructType<'ctx>,
     /// ConcatNode: {i64 depth, i64 total_len, list_type left, list_type right}
     /// height = -1 is the sentinel; node_ptr points to this heap-allocated struct
+    /// TODO: reserved for lazy list concatenation — remove once full lazy-list codegen is wired
     #[allow(dead_code)]
     pub(super) concat_node_type: StructType<'ctx>,
     pub(super) lambda_count: usize,
@@ -436,6 +434,7 @@ pub struct CodeGen<'ctx> {
     /// Whether we are currently compiling inside an `unsafe { }` block
     pub(super) in_unsafe: bool,
     /// External C functions declared via `external fun`: name → LLVM function value
+    /// TODO: reserved for cross-module FFI — remove once external fun codegen is fully wired
     #[allow(dead_code)]
     pub(super) external_fns: HashMap<String, inkwell::values::FunctionValue<'ctx>>,
     /// Builtin wrappers needed for :: function references (e.g., List::head)
@@ -908,7 +907,8 @@ mod jit;
 mod map_set;
 mod misc;
 mod pattern;
-mod runtime;
+mod runtime_decl;
+mod runtime_io;
 mod stmt;
 
 #[cfg(test)]
@@ -1007,5 +1007,72 @@ mod tests {
             ir.contains("i64 1") || ir.contains("i64 true"),
             "IR should contain bool constant"
         );
+    }
+
+    #[test]
+    fn test_codegen_string_constant() {
+        let ir = compile_program("val x = \"hello\"");
+        assert!(!ir.is_empty(), "IR should not be empty");
+        assert!(ir.contains("hello") || ir.contains("string"), "IR should contain string reference");
+    }
+
+    #[test]
+    fn test_codegen_when_match_int() {
+        let ir = compile_program("val x = when 42 { 1 -> 10; 2 -> 20; else -> 0 }");
+        assert!(!ir.is_empty(), "IR should not be empty");
+        assert!(ir.contains("@main"), "IR should contain main function");
+    }
+
+    #[test]
+    fn test_codegen_lambda() {
+        let ir = compile_program("val f = { x -> x * 2 }");
+        assert!(!ir.is_empty(), "IR should not be empty");
+        // Lambda generates a function — at minimum main should exist
+        assert!(ir.contains("@main"), "IR should contain main");
+    }
+
+    #[test]
+    fn test_codegen_type_annotated_variable() {
+        let ir = compile_program("val x: Int = 42");
+        assert!(!ir.is_empty(), "IR should not be empty");
+        assert!(ir.contains("i64 42"), "IR should contain i64 42");
+    }
+
+    #[test]
+    fn test_codegen_multiple_statements() {
+        let ir = compile_program("val a = 1\nval b = 2\nval c = a + b");
+        assert!(!ir.is_empty(), "IR should not be empty");
+        assert!(ir.contains("@main"), "IR should contain main");
+        assert!(ir.contains("add"), "IR should contain add instruction");
+    }
+
+    #[test]
+    fn test_codegen_negation() {
+        let ir = compile_program("val x = -42");
+        assert!(!ir.is_empty(), "IR should not be empty");
+        // Check for either sub instruction (0 - 42) or the i64 42 constant
+        assert!(ir.contains("i64 42") || ir.contains("sub"), "IR should negate 42");
+    }
+
+    #[test]
+    fn test_codegen_comparison() {
+        let ir = compile_program("val x = 1 < 2");
+        assert!(!ir.is_empty(), "IR should not be empty");
+        assert!(ir.contains("icmp"), "IR should contain icmp instruction for comparison");
+    }
+
+    #[test]
+    fn test_codegen_string_interpolation() {
+        let ir = compile_program(r#"val name = "world"\nval msg = "hello, ${name}""#);
+        assert!(!ir.is_empty(), "IR should not be empty");
+        assert!(ir.contains("@main"), "IR should contain main function");
+    }
+
+    #[test]
+    fn test_codegen_function_call() {
+        let ir = compile_program("fun double(x: Int) -> Int { x * 2 }\nval y = double(21)");
+        assert!(!ir.is_empty(), "IR should not be empty");
+        assert!(ir.contains("@double"), "IR should contain double function");
+        assert!(ir.contains("@main"), "IR should contain main function");
     }
 }

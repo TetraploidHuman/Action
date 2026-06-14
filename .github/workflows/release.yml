@@ -10,6 +10,10 @@ on:
         required: false
         default: ''
 
+env:
+  LLVM_VERSION: '21.1.8'
+  LLVM_TAG: llvmorg-21.1.8
+
 permissions:
   contents: write
 
@@ -55,16 +59,31 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - uses: Swatinem/rust-cache@v2
+        if: runner.os == 'Windows'
+        with:
+          key: ${{ matrix.name }}
+
+      # ── LLVM cache (Windows) ──────────────────────────
+      - name: Cache LLVM (Windows)
+        if: runner.os == 'Windows'
+        id: llvm-cache
+        uses: actions/cache@v4
+        with:
+          path: C:\llvm
+          key: llvm-${{ env.LLVM_VERSION }}-${{ matrix.target }}
+
       - name: Verify nix-shell (Linux)
         if: runner.os == 'Linux'
         run: |
+          test -f shell.nix || { echo "::error::shell.nix not found"; exit 1; }
           nix-shell --run "echo 'LLVM:' && llvm-config --version && echo 'Rust:' && rustc --version"
 
-      - name: Setup LLVM (Windows)
-        if: runner.os == 'Windows'
+      - name: Download LLVM (Windows)
+        if: runner.os == 'Windows' && steps.llvm-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          $URL = "https://github.com/llvm/llvm-project/releases/download/llvmorg-21.1.8/${{ matrix.llvm_archive }}"
+          $URL = "https://github.com/llvm/llvm-project/releases/download/${{ env.LLVM_TAG }}/${{ matrix.llvm_archive }}"
           Write-Host "Downloading $URL"
           curl.exe -fSL --retry 3 --connect-timeout 30 -o C:\llvm.tar.xz "$URL"
           Write-Host "Extracting..."
@@ -78,18 +97,29 @@ jobs:
             Rename-Item C:\llvm-extract C:\llvm -Force
           }
           Remove-Item C:\llvm-extract -Recurse -Force -ErrorAction SilentlyContinue
+
+      - name: Set LLVM env (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
           echo "LLVM_SYS_211_PREFIX=C:\llvm" >> $env:GITHUB_ENV
+          echo "C:\llvm\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Create libxml2 stub (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $libExe = Get-ChildItem "$env:ProgramFiles\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC" -Recurse -Filter "lib.exe" -Depth 6 -ErrorAction SilentlyContinue | Where-Object { $_.Directory.Name -eq "x64" -and $_.Directory.Parent.Name -eq "HostX64" } | Select-Object -First 1
+          if (-not $libExe) {
+            # Fallback: search more broadly
+            $libExe = Get-ChildItem "${env:ProgramFiles}\Microsoft Visual Studio" -Recurse -Filter "lib.exe" -Depth 8 -ErrorAction SilentlyContinue | Where-Object { $_.Directory.Name -eq "x64" -and $_.Directory.Parent.Name -eq "HostX64" } | Select-Object -First 1
+          }
           if (-not $libExe) { throw "Cannot find lib.exe" }
           "LIBRARY libxml2`nEXPORTS" | Out-File -Encoding ASCII C:\llvm\lib\libxml2s.def
           & $libExe.FullName /DEF:C:\llvm\lib\libxml2s.def /OUT:C:\llvm\lib\libxml2s.lib /MACHINE:X64
           Remove-Item C:\llvm\lib\libxml2s.def -Force
 
+      # ── Build ─────────────────────────────────────────
       - name: Build (Windows)
         if: runner.os == 'Windows'
         run: cargo build --release --target ${{ matrix.target }}
@@ -97,7 +127,7 @@ jobs:
         if: runner.os == 'Linux'
         run: nix-shell --run "cargo build --release --target ${{ matrix.target }}"
 
-      - name: Smoke test (Linux)
+      - name: Test (Linux)
         if: runner.os == 'Linux'
         run: nix-shell --run "cargo test --release 2>&1 | tail -5"
 

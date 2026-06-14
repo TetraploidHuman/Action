@@ -3505,20 +3505,6 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         Ok(loaded.into_struct_value())
     }
-
-    /// Extract list data pointer from a loaded list struct
-    #[allow(dead_code)]
-    pub(super) fn list_data_ptr(
-        &self,
-        list: inkwell::values::StructValue<'ctx>,
-    ) -> Result<PointerValue<'ctx>, String> {
-        Ok(self
-            .builder
-            .build_extract_value(list, 0, "list_data")
-            .map_err(llvm_err)?
-            .into_pointer_value())
-    }
-
     /// Extract list length from a loaded list struct
     pub(super) fn list_len_val(
         &self,
@@ -3529,6 +3515,18 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(list, 1, "list_len")
             .map_err(llvm_err)?
             .into_int_value())
+    }
+
+    /// Extract the data pointer from a loaded list struct (field 0)
+    pub(super) fn list_data_ptr(
+        &self,
+        list: inkwell::values::StructValue<'ctx>,
+    ) -> Result<PointerValue<'ctx>, String> {
+        Ok(self
+            .builder
+            .build_extract_value(list, 0, "list_data")
+            .map_err(llvm_err)?
+            .into_pointer_value())
     }
 
     /// Guess the return type from the function body expression when no annotation is provided.

@@ -25,16 +25,12 @@ pub enum Type {
     /// Stream type: Stream<T> (coroutine channel)
     Stream(Box<Type>),
     /// LazyList type: LazyList<T> (lazy evaluation sequence)
-    #[allow(dead_code)]
     LazyList(Box<Type>),
     /// CString type: null-terminated C string pointer
-    #[allow(dead_code)]
     CString,
     /// Ptr<T>: typed pointer for FFI
-    #[allow(dead_code)]
     Ptr(Box<Type>),
     /// FileHandle type: streaming file handle
-    #[allow(dead_code)]
     FileHandle,
     /// Unit type: ()
     Unit,
@@ -242,7 +238,6 @@ impl fmt::Display for UnaryOp {
 
 // ---- Patterns (for when arms) ----
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Pattern {
     /// Wildcard: _
@@ -323,7 +318,6 @@ impl fmt::Display for Pattern {
 // ---- Expressions ----
 
 #[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)]
 pub enum Expr {
     /// Literal value: 42, true, "hello"
     Literal(Literal),
@@ -431,7 +425,6 @@ pub struct For {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)]
 pub enum ForKind {
     /// for var in iterable { body } (collect = true for for-expression)
     Iterate {
@@ -1082,7 +1075,6 @@ impl fmt::Display for Program {
 
 // ---- Useful constructors ----
 
-#[allow(dead_code)]
 impl Expr {
     pub fn int(n: i64) -> Self {
         Expr::Literal(Literal::Int(n))
@@ -1145,49 +1137,3 @@ impl Expr {
     }
 }
 
-#[allow(dead_code)]
-impl Stmt {
-    pub fn val(name: &str, value: Expr) -> Self {
-        Stmt::Let {
-            mutable: false,
-            lazy_init: false,
-            name: name.to_string(),
-            type_ann: None,
-            value,
-            span: Span::default(),
-        }
-    }
-
-    pub fn var(name: &str, value: Expr) -> Self {
-        Stmt::Let {
-            mutable: true,
-            lazy_init: false,
-            name: name.to_string(),
-            type_ann: None,
-            value,
-            span: Span::default(),
-        }
-    }
-
-    pub fn fun(name: &str, params: Vec<Param>, return_type: Option<Type>, body: Expr) -> Self {
-        Stmt::Fun {
-            name: name.to_string(),
-            params,
-            return_type,
-            body,
-            type_params: vec![],
-            is_single_expr: false,
-            is_test: false,
-            span: Span::default(),
-        }
-    }
-
-    pub fn const_(name: &str, type_ann: Option<Type>, value: Expr) -> Self {
-        Stmt::Const {
-            name: name.to_string(),
-            type_ann,
-            value,
-            span: Span::default(),
-        }
-    }
-}
