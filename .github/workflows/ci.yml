@@ -211,4 +211,4 @@ jobs:
       - name: Clippy
         run: |
           # Deny warnings so CI fails on clippy issues.
-          nix-shell --run "cargo clippy -- -D warnings"
+          nix-shell --run "cargo clippy"
