@@ -1,22 +1,8 @@
-mod ast;
-mod codegen;
-mod config;
-mod error;
-mod http_runtime;
-mod lexer;
-mod loader;
-mod lsp;
-mod parser;
-mod repl;
-mod runtime_json;
-mod runtime_threading;
-mod test_runner;
-mod typecheck;
-
+use action::*;
+use action::config::ProjectConfig;
+use action::error::CompilerError;
 use ariadne::{Color, Label, Report, ReportKind, Source};
 use clap::{Parser as ClapParser, Subcommand};
-use config::ProjectConfig;
-use error::CompilerError;
 use inkwell::context::Context;
 use std::fs;
 use std::path::{Path, PathBuf};
