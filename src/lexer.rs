@@ -125,6 +125,7 @@ pub enum TokenKind {
 
     // Special
     Eof,
+    At, // @
 }
 
 impl fmt::Display for TokenKind {
@@ -205,6 +206,7 @@ impl fmt::Display for TokenKind {
             TokenKind::LBracket => write!(f, "["),
             TokenKind::RBracket => write!(f, "]"),
             TokenKind::Underscore => write!(f, "_"),
+            TokenKind::At => write!(f, "@"),
             TokenKind::Question => write!(f, "?"),
             TokenKind::Eof => write!(f, "<eof>"),
         }
@@ -330,9 +332,44 @@ impl Lexer {
         }
     }
 
-    fn read_number(&mut self, first: char) -> TokenKind {
+    fn read_number(&mut self, first: char) -> Option<TokenKind> {
         let mut num_str = String::new();
         num_str.push(first);
+
+        // Leading-dot float: .5 .123
+        if first == '.' {
+            let _is_float = true;
+            while let Some(ch) = self.current() {
+                if ch.is_ascii_digit() || ch == '_' {
+                    num_str.push(self.advance().unwrap());
+                } else {
+                    break;
+                }
+            }
+            // Scientific notation
+            if let Some('e' | 'E') = self.current() {
+                let next = self.peek_next();
+                let next_is_digit = next.map_or(false, |c| c.is_ascii_digit());
+                let next_is_sign = next.map_or(false, |c| c == '+' || c == '-');
+                let next_is_digit_after_sign = next_is_sign
+                    && self.source.get(self.pos + 2).copied().map_or(false, |c| c.is_ascii_digit());
+                if next_is_digit || next_is_digit_after_sign {
+                    num_str.push(self.advance().unwrap());
+                    if next_is_sign {
+                        num_str.push(self.advance().unwrap());
+                    }
+                    while let Some(ch) = self.current() {
+                        if ch.is_ascii_digit() || ch == '_' {
+                            num_str.push(self.advance().unwrap());
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
+            let clean: String = num_str.chars().filter(|c| *c != '_').collect();
+            return Some(TokenKind::FloatLiteral(clean.parse::<f64>().unwrap_or(f64::INFINITY)));
+        }
 
         // Read hex prefix if present
         if first == '0' && (self.current() == Some('x') || self.current() == Some('X')) {
@@ -347,7 +384,7 @@ impl Lexer {
             let clean: String = num_str[2..].chars().filter(|c| *c != '_').collect();
             if clean.is_empty() {
                 self.add_error(format!("Empty hex literal at line {}", self.line));
-                return TokenKind::IntLiteral(0);
+                return None;
             }
             match u128::from_str_radix(&clean, 16) {
                 Ok(val) => {
@@ -357,18 +394,18 @@ impl Lexer {
                             clean, self.line
                         ));
                     }
-                    return TokenKind::IntLiteral(if val > i64::MAX as u128 {
+                    return Some(TokenKind::IntLiteral(if val > i64::MAX as u128 {
                         i64::MAX
                     } else {
                         val as i64
-                    });
+                    }));
                 }
                 Err(_) => {
                     self.add_error(format!(
                         "Hex literal 0x{} is too large to parse at line {}",
                         clean, self.line
                     ));
-                    return TokenKind::IntLiteral(i64::MAX);
+                    return Some(TokenKind::IntLiteral(i64::MAX));
                 }
             }
         }
@@ -386,7 +423,7 @@ impl Lexer {
             let clean: String = num_str[2..].chars().filter(|c| *c != '_').collect();
             if clean.is_empty() {
                 self.add_error(format!("Empty binary literal at line {}", self.line));
-                return TokenKind::IntLiteral(0);
+                return None;
             }
             match u128::from_str_radix(&clean, 2) {
                 Ok(val) => {
@@ -396,18 +433,18 @@ impl Lexer {
                             clean, self.line
                         ));
                     }
-                    return TokenKind::IntLiteral(if val > i64::MAX as u128 {
+                    return Some(TokenKind::IntLiteral(if val > i64::MAX as u128 {
                         i64::MAX
                     } else {
                         val as i64
-                    });
+                    }));
                 }
                 Err(_) => {
                     self.add_error(format!(
                         "Binary literal 0b{} is too large to parse at line {}",
                         clean, self.line
                     ));
-                    return TokenKind::IntLiteral(i64::MAX);
+                    return Some(TokenKind::IntLiteral(i64::MAX));
                 }
             }
         }
@@ -425,7 +462,7 @@ impl Lexer {
             let clean: String = num_str[2..].chars().filter(|c| *c != '_').collect();
             if clean.is_empty() {
                 self.add_error(format!("Empty octal literal at line {}", self.line));
-                return TokenKind::IntLiteral(0);
+                return None;
             }
             match u128::from_str_radix(&clean, 8) {
                 Ok(val) => {
@@ -435,18 +472,18 @@ impl Lexer {
                             clean, self.line
                         ));
                     }
-                    return TokenKind::IntLiteral(if val > i64::MAX as u128 {
+                    return Some(TokenKind::IntLiteral(if val > i64::MAX as u128 {
                         i64::MAX
                     } else {
                         val as i64
-                    });
+                    }));
                 }
                 Err(_) => {
                     self.add_error(format!(
                         "Octal literal 0o{} is too large to parse at line {}",
                         clean, self.line
                     ));
-                    return TokenKind::IntLiteral(i64::MAX);
+                    return Some(TokenKind::IntLiteral(i64::MAX));
                 }
             }
         }
@@ -455,11 +492,18 @@ impl Lexer {
         while let Some(ch) = self.current() {
             if ch.is_ascii_digit() || ch == '_' {
                 num_str.push(self.advance().unwrap());
-            } else if ch == '.' && self.peek_next().map_or(false, |c| c.is_ascii_digit()) {
+            } else if ch == '.' {
+                // Peek ahead: if next char is also '.' (forming '..'), don't
+                // consume this dot — let it be tokenized as range operator.
+                if self.peek_next() == Some('.') {
+                    break;
+                }
                 is_float = true;
                 num_str.push(self.advance().unwrap()); // '.'
-                num_str.push(self.advance().unwrap()); // first digit after .
-                                                       // Continue reading digits
+                if self.current().map_or(false, |c| c.is_ascii_digit()) {
+                    num_str.push(self.advance().unwrap()); // first digit after .
+                }
+                // Continue reading digits
                 while let Some(ch) = self.current() {
                     if ch.is_ascii_digit() || ch == '_' {
                         num_str.push(self.advance().unwrap());
@@ -501,7 +545,7 @@ impl Lexer {
 
         let clean: String = num_str.chars().filter(|c| *c != '_').collect();
         if is_float {
-            TokenKind::FloatLiteral(clean.parse::<f64>().unwrap_or(f64::INFINITY))
+            Some(TokenKind::FloatLiteral(clean.parse::<f64>().unwrap_or(f64::INFINITY)))
         } else {
             match clean.parse::<i128>() {
                 Ok(val) => {
@@ -518,18 +562,18 @@ impl Lexer {
                     } else {
                         val as i64
                     };
-                    TokenKind::IntLiteral(clamped)
+                    Some(TokenKind::IntLiteral(clamped))
                 }
                 Err(_) => {
                     self.add_error(format!(
                         "Integer literal {} is too large to parse at line {}",
                         clean, self.line
                     ));
-                    TokenKind::IntLiteral(if clean.starts_with('-') {
+                    Some(TokenKind::IntLiteral(if clean.starts_with('-') {
                         i64::MIN
                     } else {
                         i64::MAX
-                    })
+                    }))
                 }
             }
         }
@@ -905,6 +949,7 @@ impl Lexer {
             "external" => TokenKind::External,
             "null" => TokenKind::Null,
             "Task" => TokenKind::Task,
+            "_" => TokenKind::Underscore,
             _ => TokenKind::Ident(ident),
         }
     }
@@ -961,6 +1006,7 @@ impl Lexer {
                 }
                 _ => TokenKind::Slash,
             },
+            '@' => TokenKind::At,
             '%' => match self.current() {
                 Some('=') => {
                     self.advance();
@@ -1101,7 +1147,29 @@ impl Lexer {
         // Numbers
         if ch.is_ascii_digit() {
             self.advance();
-            return self.read_number(ch);
+            if let Some(tok) = self.read_number(ch) {
+                return tok;
+            }
+            // Empty hex/binary/octal literal — skip and continue
+            return self.next_token_kind();
+        }
+
+        // Leading-dot float literal: .5 .123
+        // But NOT when preceded by an identifer, ')', ']', or '}' — those
+        // are indexed field access: person.0, (a,b).0
+        if ch == '.' && self.peek_next().map_or(false, |c| c.is_ascii_digit()) {
+            let is_field_access = self.pos > 0
+                && matches!(
+                    self.source.get(self.pos - 1),
+                    Some(c) if c.is_alphanumeric() || *c == '_' || *c == ')' || *c == ']' || *c == '}' || *c == '"' || *c == '\''
+                );
+            if !is_field_access {
+                self.advance();
+                if let Some(tok) = self.read_number(ch) {
+                    return tok;
+                }
+                return self.next_token_kind();
+            }
         }
 
         // Identifiers and keywords
@@ -1111,7 +1179,7 @@ impl Lexer {
         }
 
         // Operators and punctuation
-        if "+-*/%=!<>?:&|.,(){}[];^~".contains(ch) {
+        if "+-*/%=!<>?:&|.,(){}[];^~@".contains(ch) {
             self.advance();
             return self.read_operator(ch);
         }
@@ -1176,7 +1244,10 @@ mod tests {
 
     fn tokenize(source: &str) -> Vec<TokenKind> {
         let mut lexer = Lexer::new(source);
-        lexer.tokenize().into_iter().map(|t| t.kind).collect()
+        lexer.tokenize().into_iter()
+            .filter(|t| t.kind != TokenKind::Eof)
+            .map(|t| t.kind)
+            .collect()
     }
 
     #[test]
@@ -1285,5 +1356,137 @@ mod tests {
             tokens[0],
             TokenKind::StringLiteral("hello\nworld".to_string())
         );
+    }
+
+
+    #[test]
+    fn test_keywords_extended() {
+        let tokens = tokenize("enum type import module export const copy extension as lazy unsafe external null Task");
+        assert_eq!(tokens[0], TokenKind::Enum);
+        assert_eq!(tokens[1], TokenKind::Type);
+        assert_eq!(tokens[2], TokenKind::Import);
+        assert_eq!(tokens[3], TokenKind::Module);
+        assert_eq!(tokens[4], TokenKind::Export);
+        assert_eq!(tokens[5], TokenKind::Const);
+        assert_eq!(tokens[6], TokenKind::Copy);
+        assert_eq!(tokens[7], TokenKind::Extension);
+        assert_eq!(tokens[8], TokenKind::As);
+        assert_eq!(tokens[9], TokenKind::Lazy);
+        assert_eq!(tokens[10], TokenKind::Unsafe);
+        assert_eq!(tokens[11], TokenKind::External);
+        assert_eq!(tokens[12], TokenKind::Null);
+        assert_eq!(tokens[13], TokenKind::Task);
+    }
+
+    #[test]
+    fn test_compound_operators() {
+        let tokens = tokenize("+= -= *= /= %= ** & | ^ ~ << >>");
+        assert_eq!(tokens[0], TokenKind::PlusEq);
+        assert_eq!(tokens[1], TokenKind::MinusEq);
+        assert_eq!(tokens[2], TokenKind::StarEq);
+        assert_eq!(tokens[3], TokenKind::SlashEq);
+        assert_eq!(tokens[4], TokenKind::PercentEq);
+        assert_eq!(tokens[5], TokenKind::StarStar);
+        assert_eq!(tokens[6], TokenKind::Ampersand);
+        assert_eq!(tokens[7], TokenKind::Pipe);
+        assert_eq!(tokens[8], TokenKind::Caret);
+        assert_eq!(tokens[9], TokenKind::Tilde);
+        assert_eq!(tokens[10], TokenKind::Shl);
+        assert_eq!(tokens[11], TokenKind::Shr);
+    }
+
+    #[test]
+    fn test_special_tokens() {
+        let tokens = tokenize("..< ... :: _");
+        assert_eq!(tokens[0], TokenKind::DotDotLt);
+        assert_eq!(tokens[1], TokenKind::DotDotDot);
+        assert_eq!(tokens[2], TokenKind::ColonColon);
+        assert_eq!(tokens[3], TokenKind::Underscore);
+    }
+
+    #[test]
+    fn test_char_literals() {
+        let tokens = tokenize("'a' '\n' '\\\\'");
+        assert_eq!(tokens[0], TokenKind::CharLiteral('a'));
+        assert_eq!(tokens[1], TokenKind::CharLiteral('\n'));
+        assert_eq!(tokens[2], TokenKind::CharLiteral('\\'));
+    }
+
+    #[test]
+    fn test_float_edge_cases() {
+        let tokens = tokenize(".5 5. 1.5e10 3.0e-3");
+        assert_eq!(tokens[0], TokenKind::FloatLiteral(0.5));
+        assert_eq!(tokens[1], TokenKind::FloatLiteral(5.0));
+        assert_eq!(tokens[2], TokenKind::FloatLiteral(1.5e10));
+        assert_eq!(tokens[3], TokenKind::FloatLiteral(0.003));
+    }
+
+    #[test]
+    fn test_empty_input() {
+        let tokens = tokenize("");
+        assert!(tokens.is_empty());
+    }
+
+    #[test]
+    fn test_unicode_identifiers() {
+        let tokens = tokenize("名字 测试");
+        assert_eq!(tokens[0], TokenKind::Ident("名字".to_string()));
+        assert_eq!(tokens[1], TokenKind::Ident("测试".to_string()));
+    }
+
+    #[test]
+    fn test_ident_leading_underscore() {
+        let tokens = tokenize("_hidden_val __double __private_var");
+        assert_eq!(tokens[0], TokenKind::Ident("_hidden_val".to_string()));
+        assert_eq!(tokens[1], TokenKind::Ident("__double".to_string()));
+        assert_eq!(tokens[2], TokenKind::Ident("__private_var".to_string()));
+    }
+
+    #[test]
+    fn test_multiline_block_comment() {
+        let tokens = tokenize("val x = 1 /* start\nmiddle\nend */ val y = 2");
+        assert_eq!(tokens[0], TokenKind::Val);
+        assert_eq!(tokens[4], TokenKind::Val);
+    }
+
+    #[test]
+    fn test_lexer_error_empty_hex() {
+        let source = "0x 123";
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize();
+        let errors = lexer.take_errors();
+        assert!(!errors.is_empty(), "Expected error for empty hex literal");
+        assert!(
+            errors[0].to_lowercase().contains("empty hex"),
+            "Expected 'empty hex' error, got: {}",
+            errors[0]
+        );
+        let kinds: Vec<TokenKind> = tokens.into_iter().map(|t| t.kind).collect();
+        assert_eq!(kinds[0], TokenKind::IntLiteral(123));
+    }
+
+    #[test]
+    fn test_lexer_error_overflow() {
+        let source = "999999999999999999999999999";
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize();
+        let errors = lexer.take_errors();
+        assert!(!errors.is_empty(), "Expected error for integer overflow");
+        assert!(
+            errors[0].to_lowercase().contains("overflow"),
+            "Expected 'overflow' error, got: {}",
+            errors[0]
+        );
+        assert_eq!(tokens[0].kind, TokenKind::IntLiteral(i64::MAX));
+    }
+
+    #[test]
+    fn test_lexer_whitespace_sensitive_tokens() {
+        let tokens = tokenize("- > -> - >");
+        assert_eq!(tokens[0], TokenKind::Minus);
+        assert_eq!(tokens[1], TokenKind::Gt);
+        assert_eq!(tokens[2], TokenKind::Arrow);
+        assert_eq!(tokens[3], TokenKind::Minus);
+        assert_eq!(tokens[4], TokenKind::Gt);
     }
 }

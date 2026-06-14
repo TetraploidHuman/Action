@@ -703,6 +703,8 @@ pub enum Stmt {
         type_params: Vec<String>,
         /// For single-expression functions (no block)
         is_single_expr: bool,
+        /// Whether this function is a test function (@test)
+        is_test: bool,
         span: Span,
     },
     /// Expression statement
@@ -1175,6 +1177,7 @@ impl Stmt {
             body,
             type_params: vec![],
             is_single_expr: false,
+            is_test: false,
             span: Span::default(),
         }
     }

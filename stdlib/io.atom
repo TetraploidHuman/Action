@@ -1,81 +1,93 @@
-// Atomic Streaming I/O Library
+// Action Standard I/O Library
 // File handle type and streaming read/write operations
 // Binary mode supported via "b" suffix in mode string
 
-type FileHandle = {}
+external type FileHandle
 
 // ---- File Operations ----
 
 // openFile(path: String, mode: String) -> FileHandle
 // Opens a file. Mode: "r" read, "w" write, "a" append,
 // add "b" for binary: "rb", "wb", "ab"
-// Returns a FileHandle (null/zero if failed)
+// Returns a FileHandle (0 if failed)
+external fun openFile(path: String, mode: String) -> FileHandle
 
 // closeFile(file: FileHandle) -> Bool
 // Closes the file. Returns true on success.
+external fun closeFile(file: FileHandle) -> Bool
 
 // isEof(file: FileHandle) -> Bool
 // Returns true if file is at end-of-file.
+external fun isEof(file: FileHandle) -> Bool
 
 // fileFlush(file: FileHandle) -> Bool
 // Flushes buffered writes to disk.
+external fun fileFlush(file: FileHandle) -> Bool
 
 // fileSeek(file: FileHandle, offset: Int, whence: Int) -> Bool
 // Seeks in file. whence: 0=SET, 1=CUR, 2=END
+external fun fileSeek(file: FileHandle, offset: Int, whence: Int) -> Bool
 
 // fileTell(file: FileHandle) -> Int
 // Returns current file position.
+external fun fileTell(file: FileHandle) -> Int
 
 // ---- Text Mode Reading ----
 
-// fileReadLine(file: FileHandle) -> String
-// Reads one line (without trailing newline). Returns empty string on EOF.
+// readFile(path: String) -> String
+// Reads entire text file. Returns empty string on error.
+external fun readFile(path: String) -> String
 
-// ---- Binary/Chunked Reading ----
+// readLine() -> String?
+// Reads one line from stdin. Returns null on EOF.
+external fun readLine() -> String?
 
-// fileReadBytes(file: FileHandle, size: Int) -> String
-// Reads up to size bytes. Returns empty string on EOF.
-// Works in both text and binary mode.
+// fileReadLine(file: FileHandle) -> String?
+// Reads one line from file. Returns null on EOF.
+external fun fileReadLine(file: FileHandle) -> String?
 
-// ---- Writing ----
+// ---- Text Mode Writing ----
 
-// fileWrite(file: FileHandle, data: String) -> Bool
-// Writes raw data to file. Does NOT add newline.
+// writeFile(path: String, content: String) -> Bool
+// Writes content to a file, overwriting if exists. Returns true on success.
+external fun writeFile(path: String, content: String) -> Bool
 
-// fileWriteLine(file: FileHandle, data: String) -> Bool
-// Writes data + newline to file.
+// appendFile(path: String, content: String) -> Bool
+// Appends content to a file. Returns true on success.
+external fun appendFile(path: String, content: String) -> Bool
 
-// ---- Convenience Functions ----
+// fileWrite(file: FileHandle, content: String) -> Bool
+// Writes string to an open file.
+external fun fileWrite(file: FileHandle, content: String) -> Bool
 
-fun readFileLines(path: String): List[String] = {
-    var lines = List[]
-    val f = openFile(path, "r")
-    for not isEof(f) {
-        var line = fileReadLine(f)
-        when len(line) > 0 {
-            lines = append(lines, line)
-        }
-    }
-    closeFile(f)
-    return lines
-}
+// ---- Binary Mode Reading ----
 
-fun writeFileLines(path: String, lines: List[String]): Bool = {
-    val f = openFile(path, "w")
-    for line in lines {
-        fileWriteLine(f, line)
-    }
-    return closeFile(f)
-}
+// readBytes(path: String) -> String
+// Reads entire binary file. Returns bytes as a string (each byte as char).
+external fun readBytes(path: String) -> String
 
-fun copyFile(src: String, dst: String): Bool = {
-    val r = openFile(src, "rb")
-    val w = openFile(dst, "wb")
-    var chunk = fileReadBytes(r, 4096)
-    for len(chunk) > 0 {
-        fileWrite(w, chunk)
-        chunk = fileReadBytes(r, 4096)
-    }
-    closeFile(r)
-    return closeFile(w)
-}
+// ---- File Properties ----
+
+// exists(path: String) -> Bool
+// Returns true if a file or directory exists at the given path.
+external fun exists(path: String) -> Bool
+
+// deleteFile(path: String) -> Bool
+// Deletes a file. Returns true on success.
+external fun deleteFile(path: String) -> Bool
+
+// fileSize(path: String) -> Int
+// Returns file size in bytes, or -1 on error.
+external fun fileSize(path: String) -> Int
+
+// mkdir(path: String) -> Bool
+// Creates a directory. Returns true on success.
+external fun mkdir(path: String) -> Bool
+
+// removeDir(path: String) -> Bool
+// Removes an empty directory. Returns true on success.
+external fun removeDir(path: String) -> Bool
+
+// listDir(path: String) -> List[String]?
+// Lists directory entries. Returns null on error.
+external fun listDir(path: String) -> List[String]?

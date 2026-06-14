@@ -57,7 +57,7 @@ impl<'ctx> CodeGen<'ctx> {
                             // A generic null ({i8, i64}) needs conversion to the declared
                             // type (e.g. {i8, list_type}).
                             let declared_bt =
-                                self.ast_type_to_basic_type(type_ann.as_ref().unwrap());
+                                self.ast_type_to_basic_type(type_ann.as_ref().ok_or_else(|| "Missing type annotation".to_string())?);
                             if null_bt == declared_bt {
                                 raw_val
                             } else {
@@ -252,7 +252,7 @@ impl<'ctx> CodeGen<'ctx> {
                         let loop_body_block =
                             self.context.append_basic_block(current_fn, "rest_bdy");
                         let done_block = self.context.append_basic_block(current_fn, "rest_done");
-                        let cur_block = self.builder.get_insert_block().unwrap();
+                        let cur_block = self.builder.get_insert_block().ok_or_else(|| "No insert block")?;
                         let _ = self.builder.build_unconditional_branch(loop_header_block);
                         // Loop header: phi + condition
                         self.builder.position_at_end(loop_header_block);
@@ -753,6 +753,7 @@ impl<'ctx> CodeGen<'ctx> {
                 return_type,
                 body,
                 is_single_expr,
+                is_test,
                 span,
                 type_params,
             } => Stmt::Fun {
@@ -762,6 +763,7 @@ impl<'ctx> CodeGen<'ctx> {
                 body: body.clone(),
                 type_params: type_params.clone(),
                 is_single_expr: *is_single_expr,
+                is_test: *is_test,
                 span: *span,
             },
             Stmt::Const {
@@ -1130,7 +1132,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // If the body already ended with a return/break/continue, the current block
         // already has a terminator — skip the fallback ret.
-        let current_block = self.builder.get_insert_block().unwrap();
+        let current_block = self.builder.get_insert_block().ok_or_else(|| "No insert block")?;
         if current_block.get_terminator().is_none() {
             let llvm_void: bool = function.get_type().get_return_type().is_none();
 
@@ -1259,7 +1261,7 @@ impl<'ctx> CodeGen<'ctx> {
                             let ret_ty_opt = function.get_type().get_return_type();
                             let need_pack = ret_ty_opt.map_or(false, |rt| rt.is_struct_type());
                             if need_pack {
-                                let struct_ty = ret_ty_opt.unwrap().into_struct_type();
+                                let struct_ty = ret_ty_opt.ok_or_else(|| "Missing return type".to_string())?.into_struct_type();
                                 let field_types = struct_ty.get_field_types();
                                 // Detect nullable struct: 2 fields, first is i1 (null flag)
                                 let is_nullable = field_types.len() == 2

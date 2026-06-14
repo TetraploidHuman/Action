@@ -400,3 +400,162 @@ fn map_host_symbols(cg: &CodeGen, engine: &inkwell::execution_engine::ExecutionE
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Output methods: emit bitcode, assembly, object files
+// ---------------------------------------------------------------------------
+
+
+impl<'ctx> CodeGen<'ctx> {
+    pub fn emit_bitcode(&self, path: &std::path::Path) -> Result<(), String> {
+        if !self.module.write_bitcode_to_path(path) {
+            return Err(format!("Failed to write bitcode to {}", path.display()));
+        }
+        Ok(())
+    }
+
+    /// Write assembly or object file via target machine
+    fn emit_via_target_machine(
+        &self,
+        path: &std::path::Path,
+        file_type: inkwell::targets::FileType,
+    ) -> Result<(), String> {
+        use inkwell::targets::{InitializationConfig, Target, TargetMachine};
+        let triple_str = self.target_triple.as_deref().unwrap_or("native");
+        let (target, cpu, features, target_triple) = match triple_str {
+            "native" | "" => {
+                // Only initialize X86 to avoid pulling in all-target symbols
+                // that may not be linked in static Windows builds.
+                Target::initialize_x86(&InitializationConfig::default());
+                let tt = TargetMachine::get_default_triple();
+                let t =
+                    Target::from_triple(&tt).map_err(|e| format!("Failed to get target: {}", e))?;
+                let cpu = TargetMachine::get_host_cpu_name().to_string();
+                let features = TargetMachine::get_host_cpu_features().to_string();
+                (t, cpu, features, tt)
+            }
+            "linux-x64" | "x86_64-unknown-linux-gnu" => {
+                Target::initialize_x86(&InitializationConfig::default());
+                let tt = inkwell::targets::TargetTriple::create("x86_64-unknown-linux-gnu");
+                let t =
+                    Target::from_triple(&tt).map_err(|e| format!("Failed to get target: {}", e))?;
+                (t, "generic".to_string(), "".to_string(), tt)
+            }
+            "linux-arm64" | "aarch64-unknown-linux-gnu" => {
+                Target::initialize_aarch64(&InitializationConfig::default());
+                let tt = inkwell::targets::TargetTriple::create("aarch64-unknown-linux-gnu");
+                let t =
+                    Target::from_triple(&tt).map_err(|e| format!("Failed to get target: {}", e))?;
+                (t, "generic".to_string(), "".to_string(), tt)
+            }
+            "windows-x64" | "x86_64-pc-windows-gnu" => {
+                Target::initialize_x86(&InitializationConfig::default());
+                let tt = inkwell::targets::TargetTriple::create("x86_64-pc-windows-gnu");
+                let t =
+                    Target::from_triple(&tt).map_err(|e| format!("Failed to get target: {}", e))?;
+                (t, "generic".to_string(), "".to_string(), tt)
+            }
+            "wasm" | "wasm32-unknown-unknown" => {
+                Target::initialize_webassembly(&InitializationConfig::default());
+                let tt = inkwell::targets::TargetTriple::create("wasm32-unknown-unknown");
+                let t =
+                    Target::from_triple(&tt).map_err(|e| format!("Failed to get target: {}", e))?;
+                (t, "generic".to_string(), "".to_string(), tt)
+            }
+            other => {
+                // Try as a raw LLVM triple: initialize common targets individually
+                // (avoid initialize_native which can pull in all-target symbols)
+                Target::initialize_x86(&InitializationConfig::default());
+                Target::initialize_aarch64(&InitializationConfig::default());
+                Target::initialize_webassembly(&InitializationConfig::default());
+                let tt = inkwell::targets::TargetTriple::create(other);
+                let t = Target::from_triple(&tt)
+                    .map_err(|e| format!("Unknown target '{}': {}", other, e))?;
+                (t, "generic".to_string(), "".to_string(), tt)
+            }
+        };
+        let opt = match self.opt_level {
+            0 => inkwell::OptimizationLevel::None,
+            1 => inkwell::OptimizationLevel::Less,
+            2 => inkwell::OptimizationLevel::Default,
+            _ => inkwell::OptimizationLevel::Aggressive,
+        };
+        let target_machine = target
+            .create_target_machine(
+                &target_triple,
+                &cpu,
+                &features,
+                opt,
+                inkwell::targets::RelocMode::Default,
+                inkwell::targets::CodeModel::Default,
+            )
+            .ok_or_else(|| "Failed to create target machine".to_string())?;
+        target_machine
+            .write_to_file(&self.module, file_type, path)
+            .map_err(|e| format!("Failed to write to {}: {}", path.display(), e))
+    }
+
+    pub fn emit_assembly(&self, path: &std::path::Path) -> Result<(), String> {
+        self.emit_via_target_machine(path, inkwell::targets::FileType::Assembly)
+    }
+
+    pub fn emit_object(&self, path: &std::path::Path) -> Result<(), String> {
+        self.emit_via_target_machine(path, inkwell::targets::FileType::Object)
+    }
+}
+    /// Run all test functions via JIT and return results as (name, passed, output) triples
+impl<'ctx> CodeGen<'ctx> {
+    pub fn run_tests(&self, test_names: &[String]) -> Result<Vec<(String, bool, String)>, String> {
+        #[cfg(not(target_os = "windows"))]
+        if let Err(e) = self.module.verify() {
+            return Err(format!("LLVM module verification failed: {}", e));
+        }
+
+        let opt = match self.opt_level {
+            0 => inkwell::OptimizationLevel::None,
+            1 => inkwell::OptimizationLevel::Less,
+            2 => inkwell::OptimizationLevel::Default,
+            _ => inkwell::OptimizationLevel::Aggressive,
+        };
+        let engine = self
+            .module
+            .create_jit_execution_engine(opt)
+            .map_err(|e| e.to_string())?;
+
+        map_host_symbols(self, &engine);
+
+        let mut results = Vec::new();
+        for name in test_names {
+            // Capture stdout for each test
+            let mut output = String::new();
+            let passed = unsafe {
+                // Try to get the function; test functions have signature () -> u64
+                let func_result: Result<
+                    inkwell::execution_engine::JitFunction<unsafe extern "C" fn() -> u64>,
+                    _,
+                > = engine.get_function(name);
+                match func_result {
+                    Ok(func) => {
+                        // We can't easily capture stdout in JIT, so just run and check exit code
+                        let code = func.call();
+                        extern "C" {
+                            fn fflush(stream: *mut std::ffi::c_void) -> std::ffi::c_int;
+                        }
+                        fflush(std::ptr::null_mut());
+                        code == 0
+                    }
+                    Err(_) => {
+                        output = format!("Function '{}' not found in compiled module", name);
+                        false
+                    }
+                }
+            };
+            std::io::stdout().flush().ok();
+            results.push((name.clone(), passed, output));
+        }
+
+        Ok(results)
+    }
+
+
+}

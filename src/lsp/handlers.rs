@@ -13,7 +13,9 @@ use lsp_types::{
     WorkspaceSymbolParams,
 };
 
-use crate::lexer::TokenKind;
+use crate::ast::{Expr, Stmt, Type};
+use crate::lexer::{Span, Token, TokenKind};
+use crate::typecheck::TypeRegistry;
 
 use super::position::{self, find_node_at, FoundNode};
 use super::project::Project;
@@ -48,7 +50,6 @@ pub fn handle_did_change(
 ) -> Vec<Diagnostic> {
     let uri = params.text_document.uri.clone();
     let version = params.text_document.version;
-    // Full text sync: take the last content change
     let source = params
         .content_changes
         .last()
@@ -68,9 +69,7 @@ pub fn handle_hover(state: &ServerState, params: HoverParams) -> Option<Hover> {
     let uri = &params.text_document_position_params.text_document.uri;
     let doc = state.project.documents.get(uri)?;
 
-    let offset = position::lsp_position_to_offset(&doc.source, &pos);
     let node = find_node_at(&doc.tokens, &doc.source, &pos)?;
-
     let name = match &node {
         FoundNode::Ident(name) => name.clone(),
         FoundNode::Keyword(kw) => kw.clone(),
@@ -82,14 +81,31 @@ pub fn handle_hover(state: &ServerState, params: HoverParams) -> Option<Hover> {
         .type_env
         .get(&name)
         .or_else(|| state.project.stdlib_type_env.get(&name))
-        .map(|t| format!("{}", t))
-        .unwrap_or_else(|| "unknown".to_string());
+        .map(|t| format!("```action\n{}: {}\n```", name, t))
+        .unwrap_or_else(|| format!("```action\n{}\n```", name));
+
+    // Extract doc comment from source
+    let doc_comment = extract_doc_comment(&doc.source, &doc.ast, &name);
+
+    // Get function signature if applicable
+    let signature = extract_function_signature(&doc.ast, &name);
+
+    // Build markdown content
+    let mut parts: Vec<String> = Vec::new();
+    parts.push(type_str);
+    if let Some(sig) = signature {
+        parts.push(format!("---\n**Signature**\n```action\n{}\n```", sig));
+    }
+    if let Some(comment) = doc_comment {
+        parts.push(format!("---\n{}", comment));
+    }
 
     let contents = HoverContents::Markup(MarkupContent {
         kind: MarkupKind::Markdown,
-        value: format!("`{}: {}`", name, type_str),
+        value: parts.join("\n\n"),
     });
 
+    let offset = position::lsp_position_to_offset(&doc.source, &pos);
     let token = position::find_token_at(&doc.tokens, offset);
     let range = token.map(|t| position::span_to_lsp_range(&t.span, &doc.source));
 
@@ -110,7 +126,15 @@ pub fn handle_goto_definition(
         _ => return None,
     };
 
-    // Search current document first
+    // 1. Try AST scope-aware lookup (handles shadowing correctly)
+    if let Some(span) = find_scope_aware_definition(&doc.ast, &doc.source, &pos, &name) {
+        return Some(GotoDefinitionResponse::Scalar(Location {
+            uri: uri.clone(),
+            range: position::span_to_lsp_range(&span, &doc.source),
+        }));
+    }
+
+    // 2. Try current document's flat definition_map
     if let Some(span) = doc.definition_map.get(&name) {
         return Some(GotoDefinitionResponse::Scalar(Location {
             uri: uri.clone(),
@@ -118,7 +142,7 @@ pub fn handle_goto_definition(
         }));
     }
 
-    // Search all open documents
+    // 3. Search all open documents
     if let Some(loc) = state.project.find_definition(uri, &name) {
         return Some(GotoDefinitionResponse::Scalar(loc));
     }
@@ -140,38 +164,26 @@ pub fn handle_completion(
 
     let prefix = get_word_prefix(&doc.source, &pos);
 
+    // Try member completion first (after `.` or `::`)
+    if let Some(member_items) = member_completion_items(
+        &doc.tokens,
+        &doc.source,
+        &pos,
+        &doc.type_env,
+        &state.project.stdlib_type_env,
+        &state.project.stdlib_registry,
+        &prefix,
+    ) {
+        return Some(CompletionResponse::Array(member_items));
+    }
+
     let mut items: Vec<CompletionItem> = Vec::new();
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
 
-    // Keywords
     let keywords = &[
-        "val",
-        "var",
-        "fun",
-        "when",
-        "else",
-        "for",
-        "in",
-        "is",
-        "break",
-        "continue",
-        "return",
-        "enum",
-        "type",
-        "import",
-        "module",
-        "export",
-        "const",
-        "copy",
-        "lazy",
-        "unsafe",
-        "external",
-        "extension",
-        "and",
-        "or",
-        "not",
-        "as",
-        "task",
+        "val", "var", "fun", "when", "else", "for", "in", "is", "break", "continue",
+        "return", "enum", "type", "import", "module", "export", "const", "copy", "lazy",
+        "unsafe", "external", "extension", "and", "or", "not", "as", "task",
     ];
     for kw in keywords {
         if kw.starts_with(&prefix) {
@@ -184,7 +196,6 @@ pub fn handle_completion(
         }
     }
 
-    // Builtins
     let builtins = &[
         ("print", CompletionItemKind::FUNCTION),
         ("println", CompletionItemKind::FUNCTION),
@@ -210,18 +221,22 @@ pub fn handle_completion(
         }
     }
 
-    // Symbols from current document type_env
     for name in doc.type_env.keys() {
         if name.starts_with(&prefix) && seen.insert(name.clone()) {
+            let kind = if matches!(doc.type_env.get(name), Some(Type::Function(..))) {
+                CompletionItemKind::FUNCTION
+            } else {
+                CompletionItemKind::VARIABLE
+            };
             items.push(CompletionItem {
                 label: name.clone(),
-                kind: Some(CompletionItemKind::VARIABLE),
+                kind: Some(kind),
+                detail: doc.type_env.get(name).map(|t| format!("{}", t)),
                 ..Default::default()
             });
         }
     }
 
-    // Symbols from definition_map (deduplicate against type_env)
     for name in doc.definition_map.keys() {
         if name.starts_with(&prefix) && seen.insert(name.clone()) {
             items.push(CompletionItem {
@@ -268,17 +283,15 @@ pub fn handle_signature_help(
     let pos = params.text_document_position_params.position;
     let uri = &params.text_document_position_params.text_document.uri;
     let doc = state.project.documents.get(uri)?;
-
     let func_name = find_call_target(&doc.tokens, &doc.source, &pos)?;
 
-    // Look up the function's type
     let func_type = doc
         .type_env
         .get(&func_name)
         .or_else(|| state.project.stdlib_type_env.get(&func_name));
 
     match func_type {
-        Some(crate::ast::Type::Function(param_types, ret_type)) => {
+        Some(Type::Function(param_types, ret_type)) => {
             let label = format!(
                 "{}({}) -> {}",
                 func_name,
@@ -427,7 +440,7 @@ pub fn handle_folding_range(
     let doc = state.project.documents.get(uri)?;
 
     let source = &doc.source;
-    let mut stack: Vec<(usize, u32)> = Vec::new(); // (byte_offset, line)
+    let mut stack: Vec<(usize, u32)> = Vec::new();
     let mut ranges = Vec::new();
 
     for (byte_offset, ch) in source.char_indices() {
@@ -470,7 +483,6 @@ pub fn handle_inlay_hints(state: &ServerState, params: InlayHintParams) -> Optio
 
     for i in 0..doc.tokens.len() {
         let token = &doc.tokens[i];
-        // Look for val/var keyword followed by an identifier
         if matches!(token.kind, TokenKind::Val | TokenKind::Var) {
             if let Some(next_token) = doc.tokens.get(i + 1) {
                 if let TokenKind::Ident(name) = &next_token.kind {
@@ -517,7 +529,6 @@ pub fn handle_formatting(
         "\t".to_string()
     };
 
-    // Build per-line brace counts from tokens (avoids counting braces in strings/comments)
     let mut line_braces: HashMap<u32, (u32, u32)> = HashMap::new();
     for token in &doc.tokens {
         let line = (token.span.line as u32).saturating_sub(1);
@@ -586,7 +597,6 @@ pub fn handle_code_actions(
 
     let mut actions = Vec::new();
 
-    // Offer "Add else branch" for non-exhaustive when diagnostics
     for diag in &params.context.diagnostics {
         if let Some(ref code) = diag.code {
             let code_str = match code {
@@ -597,7 +607,6 @@ pub fn handle_code_actions(
                 && (diag.message.contains("non-exhaustive")
                     || diag.message.contains("Non-exhaustive"))
             {
-                // Find the closing brace of the when expression and insert else branch
                 if let Some(edit) = make_add_else_edit(&doc.tokens, &doc.source, &diag.range) {
                     let uri_clone = uri.clone();
                     actions.push(lsp_types::CodeActionOrCommand::CodeAction(CodeAction {
@@ -624,8 +633,6 @@ pub fn handle_code_actions(
     }
 }
 
-/// Create a TextEdit that inserts `else { ... }` before the closing `}` of a when block.
-/// Searches from the diagnostic position to find the when expression's end.
 fn make_add_else_edit(
     tokens: &[crate::lexer::Token],
     source: &str,
@@ -639,24 +646,18 @@ fn make_add_else_edit(
         },
     );
 
-    // Use token stream to find the `when` keyword (avoids matching
-    // "when" inside string literals, comments, or identifiers).
     let when_token = tokens
         .iter()
         .rev()
         .find(|t| matches!(t.kind, TokenKind::When) && t.span.end <= offset)?;
     let when_pos = when_token.span.start;
 
-    // Find the opening `{` of the when body (first `{` after `when` keyword)
     let after_when = &source[when_pos..];
     let open_brace = after_when.find('{')?;
     let open_pos = when_pos + open_brace;
 
-    // Find matching closing `}`
     let close_pos = find_matching_brace(source, open_pos)?;
 
-    // Insert `else { ... }` just before the closing `}`
-    // Preserve indentation: use the indentation of the closing brace line
     let line_start = source[..close_pos].rfind('\n').map(|p| p + 1).unwrap_or(0);
     let indent = &source[line_start..close_pos];
     let indent_str = if indent.chars().all(|c| c == ' ' || c == '\t') {
@@ -678,7 +679,6 @@ fn make_add_else_edit(
     })
 }
 
-/// Find the matching `}` for the `{` at open_pos. Returns the byte offset of the `}`.
 fn find_matching_brace(source: &str, open_pos: usize) -> Option<usize> {
     let mut depth = 0u32;
     for (i, ch) in source[open_pos..].char_indices() {
@@ -703,9 +703,665 @@ pub fn handle_workspace_symbol(
     Some(state.project.workspace_symbols(&params.query))
 }
 
+// ============================================================
+//  FEATURE 1: Member completion after `.` / `::`
+// ============================================================
+
+fn member_completion_items(
+    tokens: &[Token],
+    source: &str,
+    pos: &Position,
+    type_env: &HashMap<String, Type>,
+    stdlib_type_env: &HashMap<String, Type>,
+    _registry: &TypeRegistry,
+    prefix: &str,
+) -> Option<Vec<CompletionItem>> {
+    let offset = position::lsp_position_to_offset(source, pos);
+
+    // Find the last token at or before the cursor
+    let cursor_idx = tokens.iter().rposition(|t| t.span.end <= offset)?;
+
+    // If the token at cursor is an Ident (partial word), skip it to look for the `.`
+    let sep_idx = if matches!(tokens[cursor_idx].kind, TokenKind::Ident(_))
+        && cursor_idx > 0
+    {
+        cursor_idx - 1
+    } else {
+        cursor_idx
+    };
+
+    let is_dot = match &tokens[sep_idx].kind {
+        TokenKind::Dot => true,
+        TokenKind::ColonColon => false,
+        _ => return None,
+    };
+
+    if sep_idx == 0 {
+        return None;
+    }
+    let receiver_idx = sep_idx - 1;
+
+    let receiver_name = match &tokens[receiver_idx].kind {
+        TokenKind::Ident(name) => name.clone(),
+        _ => return None,
+    };
+
+    let receiver_type = type_env
+        .get(&receiver_name)
+        .or_else(|| stdlib_type_env.get(&receiver_name))?;
+
+    let items = if is_dot {
+        dot_member_items(receiver_type, prefix)
+    } else {
+        Vec::new()
+    };
+
+    if items.is_empty() {
+        None
+    } else {
+        Some(items)
+    }
+}
+
+fn dot_member_items(receiver_type: &Type, prefix: &str) -> Vec<CompletionItem> {
+    let mut items = Vec::new();
+
+    match receiver_type {
+        Type::Named(type_name) => {
+            // Suggest UFCS methods for known types
+            let struct_name = type_name.as_str();
+            let methods = known_type_methods(struct_name);
+            for (method, detail) in &methods {
+                if method.starts_with(prefix) {
+                    items.push(CompletionItem {
+                        label: method.clone(),
+                        detail: Some(detail.clone()),
+                        kind: Some(CompletionItemKind::METHOD),
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+        Type::Map(_, v) => {
+            let methods: Vec<(&str, String)> = vec![
+                ("contains", format!("contains(key) -> Bool")),
+                ("isEmpty", "isEmpty -> Bool".to_string()),
+                ("insert", format!("insert(key, value)")),
+                ("remove", format!("remove(key) -> {}?", v)),
+                ("get", format!("get(key) -> {}?", v)),
+            ];
+            for (name, detail) in &methods {
+                if name.starts_with(prefix) {
+                    items.push(CompletionItem {
+                        label: name.to_string(),
+                        detail: Some(detail.clone()),
+                        kind: Some(CompletionItemKind::METHOD),
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+        Type::Set(e) => {
+            let methods: Vec<(&str, String)> = vec![
+                ("contains", format!("contains(elem) -> Bool")),
+                ("isEmpty", "isEmpty -> Bool".to_string()),
+                ("insert", format!("insert(elem)")),
+                ("remove", format!("remove(elem) -> {}?", e)),
+            ];
+            for (name, detail) in &methods {
+                if name.starts_with(prefix) {
+                    items.push(CompletionItem {
+                        label: name.to_string(),
+                        detail: Some(detail.clone()),
+                        kind: Some(CompletionItemKind::METHOD),
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+        Type::Stream(_) => {
+            let methods = ["send", "receive", "close"];
+            for name in &methods {
+                if name.starts_with(prefix) {
+                    items.push(CompletionItem {
+                        label: name.to_string(),
+                        kind: Some(CompletionItemKind::METHOD),
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+        Type::Task(_) => {
+            let methods = ["cancel", "is_done", "is_cancelled", "wait"];
+            for name in &methods {
+                if name.starts_with(prefix) {
+                    items.push(CompletionItem {
+                        label: name.to_string(),
+                        kind: Some(CompletionItemKind::METHOD),
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+        Type::Nullable(inner) => {
+            if "or".starts_with(prefix) {
+                items.push(CompletionItem {
+                    label: "or".to_string(),
+                    detail: Some("or { fallback } -> T".to_string()),
+                    kind: Some(CompletionItemKind::METHOD),
+                    ..Default::default()
+                });
+            }
+            let inner_items = dot_member_items(inner, prefix);
+            items.extend(inner_items);
+        }
+        _ => {}
+    }
+
+    items
+}
+
+fn known_type_methods(type_name: &str) -> Vec<(String, String)> {
+    match type_name {
+        "String" | "Str" => vec![
+            ("len".into(), "len() -> Int".into()),
+            ("contains".into(), "contains(substr: String) -> Bool".into()),
+            ("startsWith".into(), "startsWith(prefix: String) -> Bool".into()),
+            ("endsWith".into(), "endsWith(suffix: String) -> Bool".into()),
+            ("substring".into(), "substring(start: Int, end: Int) -> String".into()),
+            ("toUpper".into(), "toUpper() -> String".into()),
+            ("toLower".into(), "toLower() -> String".into()),
+            ("trim".into(), "trim() -> String".into()),
+            ("split".into(), "split(delim: String) -> List<String>".into()),
+            ("replace".into(), "replace(old: String, new: String) -> String".into()),
+            ("isEmpty".into(), "isEmpty() -> Bool".into()),
+        ],
+        "Int" => vec![
+            ("toFloat".into(), "toFloat() -> Float".into()),
+            ("toString".into(), "toString() -> String".into()),
+            ("abs".into(), "abs() -> Int".into()),
+            ("min".into(), "min(other: Int) -> Int".into()),
+            ("max".into(), "max(other: Int) -> Int".into()),
+        ],
+        "Float" | "Double" => vec![
+            ("toInt".into(), "toInt() -> Int".into()),
+            ("toString".into(), "toString() -> String".into()),
+            ("round".into(), "round() -> Int".into()),
+            ("floor".into(), "floor() -> Int".into()),
+            ("ceil".into(), "ceil() -> Int".into()),
+        ],
+        _ if type_name.starts_with("List") || type_name.starts_with("list")
+            || type_name.starts_with("Array") || type_name.starts_with("Vec") =>
+        {
+            vec![
+                ("len".into(), "len() -> Int".into()),
+                ("isEmpty".into(), "isEmpty() -> Bool".into()),
+                ("push".into(), "push(value: T)".into()),
+                ("pop".into(), "pop() -> T".into()),
+                ("get".into(), "get(index: Int) -> T".into()),
+                ("map".into(), "map(fn: T -> U) -> List<U>".into()),
+                ("filter".into(), "filter(fn: T -> Bool) -> List<T>".into()),
+                ("reduce".into(), "reduce(fn: (T, T) -> T) -> T".into()),
+                ("fold".into(), "fold(initial: T, fn: (T, T) -> T) -> T".into()),
+                ("any".into(), "any(fn: T -> Bool) -> Bool".into()),
+                ("all".into(), "all(fn: T -> Bool) -> Bool".into()),
+                ("find".into(), "find(fn: T -> Bool) -> T?".into()),
+                ("contains".into(), "contains(value: T) -> Bool".into()),
+                ("sorted".into(), "sorted() -> List<T>".into()),
+                ("reversed".into(), "reversed() -> List<T>".into()),
+            ]
+        }
+        _ => vec![],
+    }
+}
+
+// ============================================================
+//  FEATURE 2: AST scope-aware definition lookup
+// ============================================================
+
+fn find_scope_aware_definition(
+    stmts: &[Stmt],
+    source: &str,
+    pos: &Position,
+    target_name: &str,
+) -> Option<Span> {
+    let target_offset = position::lsp_position_to_offset(source, pos);
+
+    let mut walker = ScopeWalker {
+        target_offset,
+        target_name,
+        scope_stack: vec![HashMap::new()],
+        result: None,
+    };
+
+    add_stmts_to_scope(stmts, &mut walker.scope_stack[0]);
+    walker.walk_stmts(stmts);
+    walker.result
+}
+
+struct ScopeWalker<'a> {
+    target_offset: usize,
+    target_name: &'a str,
+    scope_stack: Vec<HashMap<String, Span>>,
+    result: Option<Span>,
+}
+
+impl<'a> ScopeWalker<'a> {
+    fn enter_scope(&mut self, defs: HashMap<String, Span>) {
+        self.scope_stack.push(defs);
+    }
+
+    fn exit_scope(&mut self) {
+        self.scope_stack.pop();
+    }
+
+    fn lookup(&self) -> Option<Span> {
+        for frame in self.scope_stack.iter().rev() {
+            if let Some(span) = frame.get(self.target_name) {
+                return Some(*span);
+            }
+        }
+        None
+    }
+
+    fn contains(&self, span: &Span) -> bool {
+        self.target_offset >= span.start && self.target_offset <= span.end
+    }
+
+    fn walk_stmts(&mut self, stmts: &[Stmt]) {
+        for stmt in stmts {
+            if self.result.is_some() {
+                return;
+            }
+            self.walk_stmt(stmt);
+        }
+    }
+
+    fn walk_stmt(&mut self, stmt: &Stmt) {
+        if self.result.is_some() {
+            return;
+        }
+        let span = stmt.span();
+        if !self.contains(&span) {
+            return;
+        }
+
+        match stmt {
+            Stmt::Let { name, value, span, .. } => {
+                self.walk_expr(value);
+                if name == self.target_name {
+                    self.result = Some(*span);
+                }
+            }
+            Stmt::Destructure { names, renames, value, span, .. } => {
+                self.walk_expr(value);
+                for n in names {
+                    if n == self.target_name {
+                        self.result = Some(*span);
+                        return;
+                    }
+                }
+                for (_, local) in renames {
+                    if local == self.target_name {
+                        self.result = Some(*span);
+                        return;
+                    }
+                }
+            }
+            Stmt::Const { name, value, span, .. } => {
+                self.walk_expr(value);
+                if name == self.target_name {
+                    self.result = Some(*span);
+                }
+            }
+            Stmt::Fun { name: fn_name, params, body, span, .. } => {
+                if fn_name == self.target_name && self.contains(span) {
+                    self.result = Some(*span);
+                    return;
+                }
+                let mut fn_scope = HashMap::new();
+                for p in params {
+                    fn_scope.insert(p.name.clone(), *span);
+                }
+                self.enter_scope(fn_scope);
+                self.walk_expr(body);
+                self.exit_scope();
+            }
+            Stmt::Expr { expr, .. } => {
+                self.walk_expr(expr);
+            }
+            Stmt::Return { value: Some(expr), .. } => {
+                self.walk_expr(expr);
+            }
+            Stmt::Return { value: None, .. } => {}
+            Stmt::Break { .. } | Stmt::Continue { .. } => {}
+            Stmt::Module { body, .. } => {
+                self.walk_stmts(body);
+            }
+            Stmt::Export { stmt: inner, .. } => {
+                self.walk_stmt(inner);
+            }
+            Stmt::Extension { methods, .. } => {
+                self.walk_stmts(methods);
+            }
+            Stmt::Enum { .. }
+            | Stmt::TypeAlias { .. }
+            | Stmt::Import { .. }
+            | Stmt::External { .. }
+            | Stmt::ExternalType { .. } => {}
+        }
+    }
+
+    fn walk_expr(&mut self, expr: &Expr) {
+        if self.result.is_some() {
+            return;
+        }
+        match expr {
+            Expr::Block(stmts) => {
+                self.enter_scope(HashMap::new());
+                self.walk_stmts(stmts);
+                self.exit_scope();
+            }
+            Expr::Call { func, args, trailing_lambda, .. } => {
+                self.walk_expr(func);
+                for a in args {
+                    self.walk_expr(a);
+                }
+                if let Some(lam) = trailing_lambda {
+                    self.walk_expr(lam);
+                }
+            }
+            Expr::Lambda { params, body, .. } => {
+                let mut lam_scope = HashMap::new();
+                for p in params {
+                    lam_scope.insert(p.clone(), Span::default());
+                }
+                self.enter_scope(lam_scope);
+                self.walk_expr(body);
+                self.exit_scope();
+            }
+            Expr::Binary(lhs, _, rhs) => {
+                self.walk_expr(lhs);
+                self.walk_expr(rhs);
+            }
+            Expr::Unary(_, inner) => self.walk_expr(inner),
+            Expr::FieldAccess(obj, _) => self.walk_expr(obj),
+            Expr::Index(obj, idx) => {
+                self.walk_expr(obj);
+                self.walk_expr(idx);
+            }
+            Expr::When(w) => {
+                match &w.kind {
+                    crate::ast::WhenKind::OneLine { condition, then_expr, else_expr } => {
+                        self.walk_expr(condition);
+                        self.walk_expr(then_expr);
+                        self.walk_expr(else_expr);
+                    }
+                    crate::ast::WhenKind::ValueMatch { value, arms } => {
+                        self.walk_expr(value);
+                        for arm in arms {
+                            let mut arm_scope = HashMap::new();
+                            collect_pattern_bindings(&arm.pattern, &mut arm_scope);
+                            self.enter_scope(arm_scope);
+                            self.walk_expr(&arm.body);
+                            self.exit_scope();
+                        }
+                    }
+                    crate::ast::WhenKind::ConditionChain { arms } => {
+                        for arm in arms {
+                            let mut arm_scope = HashMap::new();
+                            collect_pattern_bindings(&arm.pattern, &mut arm_scope);
+                            if let Some(guard) = &arm.guard {
+                                self.walk_expr(guard);
+                            }
+                            self.enter_scope(arm_scope);
+                            self.walk_expr(&arm.body);
+                            self.exit_scope();
+                        }
+                    }
+                }
+            }
+            Expr::For(fr) => {
+                match &fr.kind {
+                    crate::ast::ForKind::Iterate { var, iterable, body, .. } => {
+                        self.walk_expr(iterable);
+                        let mut for_scope = HashMap::new();
+                        for_scope.insert(var.clone(), Span::default());
+                        self.enter_scope(for_scope);
+                        self.walk_expr(body);
+                        self.exit_scope();
+                    }
+                    crate::ast::ForKind::IterateWithIndex { vars, iterable, body } => {
+                        self.walk_expr(iterable);
+                        let mut for_scope = HashMap::new();
+                        for v in vars {
+                            for_scope.insert(v.clone(), Span::default());
+                        }
+                        self.enter_scope(for_scope);
+                        self.walk_expr(body);
+                        self.exit_scope();
+                    }
+                    crate::ast::ForKind::NestedIterate { bindings, body, .. } => {
+                        for (_, iter) in bindings {
+                            self.walk_expr(iter);
+                        }
+                        let mut for_scope = HashMap::new();
+                        for (v, _) in bindings {
+                            for_scope.insert(v.clone(), Span::default());
+                        }
+                        self.enter_scope(for_scope);
+                        self.walk_expr(body);
+                        self.exit_scope();
+                    }
+                    crate::ast::ForKind::Condition { condition, body } => {
+                        self.walk_expr(condition);
+                        self.walk_expr(body);
+                    }
+                    crate::ast::ForKind::Infinite { body } => {
+                        self.walk_expr(body);
+                    }
+                }
+            }
+            Expr::Assign { target, value } => {
+                self.walk_expr(target);
+                self.walk_expr(value);
+            }
+            Expr::OrBlock { nullable, fallback } => {
+                self.walk_expr(nullable);
+                self.walk_expr(fallback);
+            }
+            Expr::Tuple(items) => {
+                for (_, e) in items {
+                    self.walk_expr(e);
+                }
+            }
+            Expr::StructLiteral(fields) => {
+                for (_, e) in fields {
+                    self.walk_expr(e);
+                }
+            }
+            Expr::MapLiteral(entries) => {
+                for (k, v) in entries {
+                    self.walk_expr(k);
+                    self.walk_expr(v);
+                }
+            }
+            Expr::SetLiteral(elements) => {
+                for e in elements {
+                    self.walk_expr(e);
+                }
+            }
+            Expr::Range(start, end) => {
+                self.walk_expr(start);
+                self.walk_expr(end);
+            }
+            Expr::Unsafe(inner) => self.walk_expr(inner),
+            Expr::Copy(inner) => self.walk_expr(inner),
+            Expr::StringInterpolate(parts) => {
+                for part in parts {
+                    if let crate::ast::StringPart::Expr(e) = part {
+                        self.walk_expr(e);
+                    }
+                }
+            }
+            Expr::Ident(name) => {
+                if name == self.target_name && self.result.is_none() {
+                    if let Some(span) = self.lookup() {
+                        self.result = Some(span);
+                    }
+                }
+            }
+            Expr::Literal(_) | Expr::Null | Expr::Continue
+            | Expr::Break | Expr::FunctionRef(_) => {}
+        }
+    }
+}
+
+fn collect_pattern_bindings(pattern: &crate::ast::Pattern, map: &mut HashMap<String, Span>) {
+    use crate::ast::Pattern;
+    match pattern {
+        Pattern::Variable(name) => {
+            map.insert(name.clone(), Span::default());
+        }
+        Pattern::Constructor { args, named_fields, .. } => {
+            for arg in args {
+                collect_pattern_bindings(arg, map);
+            }
+            for (_, p) in named_fields {
+                collect_pattern_bindings(p, map);
+            }
+        }
+        Pattern::Or(patterns) => {
+            for p in patterns {
+                collect_pattern_bindings(p, map);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn add_stmts_to_scope(stmts: &[Stmt], scope_map: &mut HashMap<String, Span>) {
+    for stmt in stmts {
+        add_stmt_to_scope(stmt, scope_map);
+    }
+}
+
+fn add_stmt_to_scope(stmt: &Stmt, scope_map: &mut HashMap<String, Span>) {
+    match stmt {
+        Stmt::Fun { name, span, .. } => { scope_map.insert(name.clone(), *span); }
+        Stmt::Let { name, span, .. } => { scope_map.insert(name.clone(), *span); }
+        Stmt::Const { name, span, .. } => { scope_map.insert(name.clone(), *span); }
+        Stmt::Enum { name, variants, span, .. } => {
+            scope_map.insert(name.clone(), *span);
+            for v in variants {
+                scope_map.insert(v.name.clone(), *span);
+            }
+        }
+        Stmt::TypeAlias { name, span, .. } => { scope_map.insert(name.clone(), *span); }
+        Stmt::Module { name, body, span, .. } => {
+            scope_map.insert(name.clone(), *span);
+            add_stmts_to_scope(body, scope_map);
+        }
+        Stmt::Destructure { names, renames, span, .. } => {
+            for n in names { scope_map.insert(n.clone(), *span); }
+            for (_, local) in renames { scope_map.insert(local.clone(), *span); }
+        }
+        Stmt::Extension { methods, .. } => { add_stmts_to_scope(methods, scope_map); }
+        _ => {}
+    }
+}
+
+// ============================================================
+//  FEATURE 3: Doc comment extraction + function signature
+// ============================================================
+
+fn extract_doc_comment(source: &str, ast: &[Stmt], name: &str) -> Option<String> {
+    let def_span = find_stmt_span_for_name(ast, name)?;
+    let start = def_span.start;
+
+    let before = &source[..start];
+    let lines: Vec<&str> = before.lines().rev().collect();
+
+    let mut comments: Vec<String> = Vec::new();
+
+    for line in lines {
+        let trimmed = line.trim();
+        if let Some(content) = trimmed.strip_prefix("///") {
+            comments.push(content.trim().to_string());
+        } else if let Some(content) = trimmed.strip_prefix("//") {
+            comments.push(content.trim().to_string());
+        } else if trimmed.is_empty() {
+            if comments.is_empty() {
+                continue;
+            } else {
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+
+    if comments.is_empty() {
+        return None;
+    }
+
+    comments.reverse();
+    Some(comments.join("\n"))
+}
+
+fn find_stmt_span_for_name(stmts: &[Stmt], name: &str) -> Option<Span> {
+    for stmt in stmts {
+        match stmt {
+            Stmt::Fun { name: n, span, .. } if n == name => return Some(*span),
+            Stmt::Let { name: n, span, .. } if n == name => return Some(*span),
+            Stmt::Const { name: n, span, .. } if n == name => return Some(*span),
+            Stmt::Enum { name: n, span, .. } if n == name => return Some(*span),
+            Stmt::TypeAlias { name: n, span, .. } if n == name => return Some(*span),
+            Stmt::Module { name: n, body, span, .. } => {
+                if n == name { return Some(*span); }
+                if let Some(inner) = find_stmt_span_for_name(body, name) {
+                    return Some(inner);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn extract_function_signature(stmts: &[Stmt], name: &str) -> Option<String> {
+    for stmt in stmts {
+        match stmt {
+            Stmt::Fun { name: n, params, return_type, .. } if n == name => {
+                let params_str: Vec<String> = params
+                    .iter()
+                    .map(|p| {
+                        if let Some(ty) = &p.ty {
+                            format!("{}: {}", p.name, ty)
+                        } else {
+                            p.name.clone()
+                        }
+                    })
+                    .collect();
+                let ret = return_type
+                    .as_ref()
+                    .map(|t| format!("{}", t))
+                    .unwrap_or_else(|| "?".to_string());
+                return Some(format!("fun {}({}) -> {}", name, params_str.join(", "), ret));
+            }
+            Stmt::Module { body, .. } => {
+                if let Some(sig) = extract_function_signature(body, name) {
+                    return Some(sig);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 // ---- Helpers ----
 
-/// Extract the word prefix before the cursor position (used for completion filtering)
 fn get_word_prefix(source: &str, pos: &Position) -> String {
     let offset = position::lsp_position_to_offset(source, pos);
     let before = &source[..offset.min(source.len())];
@@ -719,8 +1375,6 @@ fn get_word_prefix(source: &str, pos: &Position) -> String {
         .collect()
 }
 
-/// Find the function name being called at the cursor position
-/// Walks tokens tracking parenthesis depth
 fn find_call_target(
     tokens: &[crate::lexer::Token],
     source: &str,
@@ -728,7 +1382,6 @@ fn find_call_target(
 ) -> Option<String> {
     let offset = position::lsp_position_to_offset(source, pos);
 
-    // Walk backwards through tokens to find the function name
     let mut depth = 0;
     let mut found_ident = None;
 
@@ -740,7 +1393,6 @@ fn find_call_target(
         match &token.kind {
             TokenKind::LParen => {
                 if depth == 0 {
-                    // This is the opening paren of the call — look for the identifier before it
                     return found_ident;
                 }
                 depth -= 1;
@@ -750,7 +1402,6 @@ fn find_call_target(
                 found_ident = Some(name.clone());
             }
             _ if depth == 0 => {
-                // Non-ident token at depth 0 — not a simple call
                 return None;
             }
             _ => {}

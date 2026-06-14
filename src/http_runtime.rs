@@ -166,6 +166,15 @@ pub extern "C" fn action_http_request(
     body: *const c_char,
     body_len: i64,
 ) -> *mut c_char {
+    // Validate FFI inputs before dereferencing
+    if method.is_null() || url.is_null() || headers.is_null() {
+        let err = "0
+Invalid input: null pointer argument";
+        return CString::new(err)
+            .unwrap_or_else(|_| CString::new("0
+Error").unwrap())
+            .into_raw();
+    }
     let method = unsafe { std::ffi::CStr::from_ptr(method) }
         .to_str()
         .unwrap_or("GET");
@@ -215,7 +224,10 @@ pub extern "C" fn action_http_request(
     }
 
     // Add body if present
-    if !body.is_null() && body_len > 0 {
+    if !body.is_null() && body_len > 0 && body_len <= 10_000_000 {
+        // SAFETY: body_len is validated to be in [1, 10_000_000] range;
+        // the caller (Action JIT) always passes the real string length from strlen.
+        // The cap prevents unreasonable allocations from crafted FFI calls.
         let body_bytes =
             unsafe { std::slice::from_raw_parts(body as *const u8, body_len as usize) };
         let body_str = std::str::from_utf8(body_bytes).unwrap_or("");

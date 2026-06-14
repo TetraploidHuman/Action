@@ -46,6 +46,9 @@ enum Commands {
         /// Enable verbose error messages with suggestions
         #[arg(long)]
         explain: bool,
+        /// Enable memory profiling (print RC operation counts)
+        #[arg(long)]
+        profile: bool,
         /// Target platform: native, linux-x64, linux-arm64, windows-x64, wasm
         #[arg(long, default_value = "native")]
         target: String,
@@ -77,6 +80,32 @@ enum Commands {
     },
     /// Start the Action Language LSP server
     Lsp,
+    /// Start an interactive REPL session
+    Repl {
+        /// Optimization level (0-3)
+        #[arg(short = 'O', long, default_value = "0")]
+        opt: u8,
+        /// Enable memory profiling
+        #[arg(long)]
+        profile: bool,
+        /// Target platform
+        #[arg(long, default_value = "native")]
+        target: String,
+    },
+    /// Discover and run @test functions in a source file
+    Test {
+        /// Source file path (.at or .atom)
+        file: PathBuf,
+        /// Optimization level (0-3)
+        #[arg(short = 'O', long, default_value = "0")]
+        opt: u8,
+        /// Enable memory profiling
+        #[arg(long)]
+        profile: bool,
+        /// Target platform
+        #[arg(long, default_value = "native")]
+        target: String,
+    },
 }
 
 #[cfg(windows)]
@@ -101,9 +130,10 @@ fn main() {
             check,
             emit,
             explain,
+            profile,
             target,
         } => {
-            if let Err(e) = run_file(&file, opt, check, emit, explain, &target) {
+            if let Err(e) = run_file(&file, opt, check, emit, explain, profile, &target) {
                 if let Ok(source) = fs::read_to_string(&file) {
                     report_error(&source, &file.to_string_lossy(), &e);
                 } else {
@@ -148,9 +178,29 @@ fn main() {
                 std::process::exit(1);
             }
         },
+        Commands::Repl { opt, target, profile } => {
+            if let Err(e) = run_repl(opt, profile, &target) {
+                eprintln!("REPL error: {}", e);
+            }
+        }
         Commands::Lsp => {
             if let Err(e) = lsp::start_lsp() {
                 eprintln!("LSP error: {}", e);
+                std::process::exit(1);
+            }
+        }
+        Commands::Test {
+            file,
+            opt,
+            profile,
+            target,
+        } => {
+            if let Err(e) = run_test_file(&file, opt, profile, &target) {
+                if let Ok(source) = fs::read_to_string(&file) {
+                    report_error(&source, &file.to_string_lossy(), &e);
+                } else {
+                    eprintln!("Error: {}", e);
+                }
                 std::process::exit(1);
             }
         }
@@ -483,6 +533,7 @@ fn resolve_imports(program: &Program, search_dirs: &[PathBuf]) -> Result<Vec<Stm
                             body: body.clone(),
                             type_params: type_params.clone(),
                             is_single_expr: *is_single_expr,
+                            is_test: false,
                             span: Span::default(),
                         });
                     }
@@ -590,6 +641,7 @@ fn resolve_imports(program: &Program, search_dirs: &[PathBuf]) -> Result<Vec<Stm
                                 body: body.clone(),
                                 type_params: type_params.clone(),
                                 is_single_expr: *is_single_expr,
+                                is_test: false,
                                 span: Span::default(),
                             });
                         }
@@ -1065,6 +1117,7 @@ fn run_file(
     check: bool,
     emit: Option<String>,
     explain: bool,
+    profile: bool,
     target: &str,
 ) -> Result<(), String> {
     let config = ProjectConfig::find_and_load(path);
@@ -1113,6 +1166,17 @@ fn run_file(
             emit_output(&cg, path, "obj", target)?;
         }
     } else if !is_exe {
+        if profile {
+            let ir = cg.print_ir();
+            let malloc_count = ir.matches("call ptr @action_malloc_rc").count();
+            let inc_count = ir.matches("call void @action_rc_inc").count();
+            let dec_count = ir.matches("call void @action_rc_dec").count();
+            let total = malloc_count + inc_count + dec_count;
+            if total > 0 {
+                eprintln!("[profile] operations: {} (malloc_rc: {} rc_inc: {} rc_dec: {})",
+                    total, malloc_count, inc_count, dec_count);
+            }
+        }
         let exit_code = cg.run_jit()?;
         if exit_code != 0 {
             std::process::exit(exit_code as i32);
@@ -1240,4 +1304,295 @@ fn emit_output(
 
 fn check_file(path: &PathBuf, explain: bool) -> Result<(), Vec<CompilerError>> {
     load_program(path, explain).map(|_| ())
+}
+
+/// Interactive REPL: read, compile, execute, print
+fn run_repl(opt: u8, profile: bool, target: &str) -> Result<(), String> {
+    use std::io::{self, Write};
+    use inkwell::targets::{InitializationConfig, Target};
+
+    // Initialize LLVM targets for JIT
+    Target::initialize_x86(&InitializationConfig::default());
+    Target::initialize_aarch64(&InitializationConfig::default());
+
+    let context = Context::create();
+    eprintln!("Action REPL v{} (type :quit to exit)", env!("CARGO_PKG_VERSION"));
+
+    let stdin = io::stdin();
+    let mut line_buf = String::new();
+    let mut multiline = String::new();
+
+    loop {
+        let prompt = if multiline.is_empty() { "> " } else { "... " };
+        print!("{}", prompt);
+        io::stdout().flush().map_err(|e| e.to_string())?;
+
+        line_buf.clear();
+        if stdin.read_line(&mut line_buf).map_err(|e| e.to_string())? == 0 {
+            if !multiline.is_empty() {
+                eval_repl_line(&context, &multiline, opt, profile, target)?;
+            }
+            break; // EOF
+        }
+
+        let trimmed = line_buf.trim_end();
+
+        if trimmed == ":quit" || trimmed == ":q" {
+            if !multiline.is_empty() {
+                eval_repl_line(&context, &multiline, opt, profile, target)?;
+            }
+            break;
+        }
+
+        if trimmed.is_empty() && !multiline.is_empty() {
+            // Empty line ends multiline input
+            let input = std::mem::take(&mut multiline);
+            eval_repl_line(&context, &input, opt, profile, target)?;
+            continue;
+        }
+
+        // Check for continuation: line ends with '{', '[', '(' or backslash
+        let needs_continuation = trimmed.ends_with('{') || trimmed.ends_with('\\')
+            || trimmed.ends_with(",") && !multiline.is_empty();
+
+        if needs_continuation || !multiline.is_empty() {
+            multiline.push_str(trimmed);
+            multiline.push('\n');
+        } else {
+            // Evaluate single-line input immediately
+            let _ = eval_repl_line(&context, trimmed, opt, profile, target);
+        }
+    }
+
+    Ok(())
+}
+
+/// Evaluate a single REPL line: parse, compile, JIT execute, and print result
+fn eval_repl_line(
+    context: &Context,
+    input: &str,
+    opt: u8,
+    profile: bool,
+    target: &str,
+) -> Result<(), String> {
+    let input = input.trim();
+    if input.is_empty() || input.starts_with("//") {
+        return Ok(());
+    }
+
+    // Build a synthetic source with a main function
+    // Try as expression first, then as statement
+    let mut lexer = crate::lexer::Lexer::new(input);
+    let tokens = lexer.tokenize();
+    let lexer_errors = lexer.take_errors();
+    if !lexer_errors.is_empty() {
+        eprintln!("Lexer error: {}", lexer_errors.join("\n"));
+        return Ok(());
+    }
+
+    let mut parser = crate::parser::Parser::new(tokens);
+
+    let program: Program;
+
+    // Try to parse as an expression
+    if let Ok(expr) = parser.parse_expr() {
+        // Wrap expression in println(expr) inside main()
+        let print_call = Expr::Call {
+            func: Box::new(Expr::Ident("println".to_string())),
+            args: vec![expr],
+            trailing_lambda: None,
+        };
+        program = Program {
+            stmts: vec![Stmt::Fun {
+                name: "main".to_string(),
+                params: vec![],
+                return_type: None,
+                body: print_call,
+                type_params: vec![],
+                is_single_expr: true,
+                is_test: false,
+                span: Span::default(),
+            }],
+        };
+    } else {
+        // Try as a statement
+        let mut parser2 = crate::parser::Parser::new(
+            crate::lexer::Lexer::new(input).tokenize()
+        );
+        match parser2.parse_statement() {
+            Ok(stmt) => {
+                program = Program { stmts: vec![stmt] };
+            }
+            Err(e) => {
+                eprintln!("Parse error at line {}, col {}: {}",
+                    e.line, e.col, e.message);
+                return Ok(());
+            }
+        }
+    }
+
+    // Register types
+    let mut registry = TypeRegistry::new();
+    for stmt in &program.stmts {
+        let _ = registry.register(stmt);
+    }
+
+    // Type check
+    let mut checker = TypeChecker::new(registry.clone());
+    let errors = checker.check(&program);
+    if !errors.is_empty() {
+        for e in &errors {
+            eprintln!("Type error: {}", e.message);
+        }
+        return Ok(());
+    }
+
+    // Compile to LLVM IR
+    let target_opt = if target == "native" {
+        None
+    } else {
+        Some(target.to_string())
+    };
+    let mut cg = crate::codegen::CodeGen::new(context, "repl", registry, target_opt);
+    cg.set_opt_level(opt);
+    if let Err(e) = cg.compile(&program) {
+        eprintln!("Compile error: {}", e);
+        return Ok(());
+    }
+    if let Err(e) = cg.verify() {
+        eprintln!("Verify error: {}", e);
+        return Ok(());
+    }
+
+    // Print profiling info if requested
+    if profile {
+        let ir = cg.print_ir();
+        let malloc_count = ir.matches("call ptr @action_malloc_rc").count();
+        let inc_count = ir.matches("call void @action_rc_inc").count();
+        let dec_count = ir.matches("call void @action_rc_dec").count();
+        let total = malloc_count + inc_count + dec_count;
+        if total > 0 {
+            eprintln!("[profile] operations: {} (malloc_rc: {} rc_inc: {} rc_dec: {})",
+                total, malloc_count, inc_count, dec_count);
+        }
+    }
+
+    // JIT execute
+    match cg.run_jit() {
+        Ok(exit_code) => {
+            if exit_code != 0 {
+                eprintln!("exit code: {}", exit_code);
+            }
+        }
+        Err(e) => {
+            eprintln!("JIT error: {}", e);
+        }
+    }
+
+    Ok(())
+}
+
+/// Run test functions from a source file
+fn run_test_file(
+    path: &PathBuf,
+    opt: u8,
+    profile: bool,
+    target: &str,
+) -> Result<(), String> {
+    use inkwell::targets::{InitializationConfig, Target};
+
+    let config = ProjectConfig::find_and_load(path);
+    let opt = config
+        .as_ref()
+        .map(|c| c.effective_opt_level(opt))
+        .unwrap_or(opt);
+
+    let (program, registry) = load_program(path, false).map_err(|errors| {
+        errors
+            .iter()
+            .map(|e| e.to_string())
+            .collect::<Vec<_>>()
+            .join("
+")
+    })?;
+
+    // Find all @test functions
+    let test_names: Vec<String> = program
+        .stmts
+        .iter()
+        .filter_map(|stmt| {
+            if let Stmt::Fun {
+                name,
+                params,
+                is_test: true,
+                ..
+            } = stmt
+            {
+                // Test functions should have no parameters
+                if params.is_empty() {
+                    Some(name.clone())
+                } else {
+                    eprintln!("Warning: @test function '{}' has parameters (tests must be parameterless), skipping", name);
+                    None
+                }
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if test_names.is_empty() {
+        return Err("No @test functions found in the source file".to_string());
+    }
+
+    // Verify module to ensure JIT can work
+    Target::initialize_x86(&InitializationConfig::default());
+    Target::initialize_aarch64(&InitializationConfig::default());
+
+    let context = inkwell::context::Context::create();
+    let target_opt = if target == "native" {
+        None
+    } else {
+        Some(target.to_string())
+    };
+    let mut cg = codegen::CodeGen::new(&context, "test_runner", registry, target_opt);
+    cg.set_opt_level(opt);
+    cg.compile(&program)?;
+    cg.verify()?;
+
+    if profile {
+        let ir = cg.print_ir();
+        let malloc_count = ir.matches("call ptr @action_malloc_rc").count();
+        let inc_count = ir.matches("call void @action_rc_inc").count();
+        let dec_count = ir.matches("call void @action_rc_dec").count();
+        let total = malloc_count + inc_count + dec_count;
+        if total > 0 {
+            eprintln!("[profile] operations: {} (malloc_rc: {} rc_inc: {} rc_dec: {})",
+                total, malloc_count, inc_count, dec_count);
+        }
+    }
+
+    let results = cg.run_tests(&test_names)?;
+
+    let total = results.len();
+    let passed = results.iter().filter(|(_, p, _)| *p).count();
+    let failed = total - passed;
+
+    println!("\nTest results:");
+    println!("{}", "-".repeat(40));
+    for (name, pass, output) in &results {
+        let status = if *pass { "PASS" } else { "FAIL" };
+        println!("  {}: {}", status, name);
+        if !output.is_empty() {
+            println!("    {}", output);
+        }
+    }
+    println!("{}", "-".repeat(40));
+    println!("{} passed, {} failed, {} total", passed, failed, total);
+
+    if failed > 0 {
+        Err(format!("{} test(s) failed", failed))
+    } else {
+        Ok(())
+    }
 }

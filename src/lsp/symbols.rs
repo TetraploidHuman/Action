@@ -119,7 +119,7 @@ fn classify_token(token: &Token, prev_kind: Option<&TokenKind>) -> Option<(u32, 
         | TokenKind::DotDotDot
         | TokenKind::Colon
         | TokenKind::ColonColon
-        | TokenKind::Question => Some((TYPE_OPERATOR, 0)),
+        | TokenKind::At | TokenKind::Question => Some((TYPE_OPERATOR, 0)),
 
         // Delimiters — not highlighted
         TokenKind::LParen

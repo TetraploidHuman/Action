@@ -6,10 +6,8 @@ use inkwell::{FloatPredicate, IntPredicate};
 use super::{llvm_err, CodeGen};
 
 impl<'ctx> CodeGen<'ctx> {
-    // Repress unused-variable warnings: define_runtime is ~16000 lines and declares >400
-    // runtime function handles, many of which are intentionally reserved for future use or
-    // only used conditionally. Naming each decl `_foo` would obscure readability.
     #[allow(unused_variables)]
+    #[allow(unused_macros)]
     pub(super) fn define_runtime(&self) -> Result<(), String> {
         let i64 = self.i64_ty();
         let f64 = self.f64_ty();
@@ -74,11 +72,6 @@ impl<'ctx> CodeGen<'ctx> {
         self.module.add_function(
             "action_list_push_leaf",
             void.fn_type(&[ptr.into(), ptr.into()], false),
-            None,
-        );
-        self.module.add_function(
-            "action_rc_dec_list_node",
-            void.fn_type(&[ptr.into(), i64.into()], false),
             None,
         );
         let memcmp_fn = self.module.add_function(
@@ -820,6 +813,82 @@ impl<'ctx> CodeGen<'ctx> {
             // $start: initial loop counter value
             // $cond: loop-continuation check (references `iv` for current counter)
             // $next: next counter value (references `iv` for current counter)
+            macro_rules! rebuild_list_fn {
+                ($func:ident, $src:expr, $len:expr, $start:expr, $cond:expr, $next:expr) => {{
+                    let lc_fn = self.module.get_function("action_list_create").unwrap();
+                    let lg_fn = self.module.get_function("action_list_get").unwrap();
+                    let lp_fn = self.module.get_function("action_list_push").unwrap();
+                    let entry = self.context.append_basic_block($func, "entry");
+                    let loop_bb = self.context.append_basic_block($func, "loop");
+                    let body_bb = self.context.append_basic_block($func, "body");
+                    let next_bb = self.context.append_basic_block($func, "next");
+                    let done_bb = self.context.append_basic_block($func, "done");
+
+                    self.builder.position_at_end(entry);
+                    let src_val = $src;
+                    let len_val = $len;
+                    let new_cc = self
+                        .builder
+                        .build_call(lc_fn, &[i64.const_int(0, false).into()], "new")
+                        .map_err(llvm_err)?;
+                    let cur_a = self
+                        .builder
+                        .build_alloca(list_ty, "cur")
+                        .map_err(llvm_err)?;
+                    self.builder
+                        .build_store(cur_a, new_cc.try_as_basic_value().unwrap_basic())
+                        .map_err(llvm_err)?;
+                    let i_a = self.builder.build_alloca(i64, "i").map_err(llvm_err)?;
+                    self.builder.build_store(i_a, $start).map_err(llvm_err)?;
+                    let _ = self.builder.build_unconditional_branch(loop_bb);
+
+                    self.builder.position_at_end(loop_bb);
+                    let iv = self
+                        .builder
+                        .build_load(i64, i_a, "iv")
+                        .map_err(llvm_err)?
+                        .into_int_value();
+                    let cond: inkwell::values::IntValue = $cond;
+                    let _ = self
+                        .builder
+                        .build_conditional_branch(cond, body_bb, done_bb);
+
+                    self.builder.position_at_end(body_bb);
+                    let gv = self
+                        .builder
+                        .build_call(lg_fn, &[src_val.into(), iv.into()], "gv")
+                        .map_err(llvm_err)?;
+                    let cs = self
+                        .builder
+                        .build_load(list_ty, cur_a, "cs")
+                        .map_err(llvm_err)?
+                        .into_struct_value();
+                    let pv = self
+                        .builder
+                        .build_call(
+                            lp_fn,
+                            &[cs.into(), gv.try_as_basic_value().unwrap_basic().into()],
+                            "pv",
+                        )
+                        .map_err(llvm_err)?;
+                    self.builder
+                        .build_store(cur_a, pv.try_as_basic_value().unwrap_basic())
+                        .map_err(llvm_err)?;
+                    let _ = self.builder.build_unconditional_branch(next_bb);
+
+                    self.builder.position_at_end(next_bb);
+                    let ni: inkwell::values::IntValue = $next;
+                    self.builder.build_store(i_a, ni).map_err(llvm_err)?;
+                    let _ = self.builder.build_unconditional_branch(loop_bb);
+
+                    self.builder.position_at_end(done_bb);
+                    let result = self
+                        .builder
+                        .build_load(list_ty, cur_a, "result")
+                        .map_err(llvm_err)?;
+                    let _ = self.builder.build_return(Some(&result));
+                }};
+            }
 
             // ---- action_string_eq({i64, ptr}, {i64, ptr}) -> i1 ----
             let str_eq_fn = self.module.add_function(
@@ -830,8 +899,6 @@ impl<'ctx> CodeGen<'ctx> {
             let entry_bb = self.context.append_basic_block(str_eq_fn, "entry");
             let compare_bb = self.context.append_basic_block(str_eq_fn, "compare");
             let check_ptr_bb = self.context.append_basic_block(str_eq_fn, "check_ptr");
-            let both_null_bb = self.context.append_basic_block(str_eq_fn, "both_null");
-            let one_null_bb = self.context.append_basic_block(str_eq_fn, "one_null");
             let do_memcmp_bb = self.context.append_basic_block(str_eq_fn, "do_memcmp");
             let true_bb = self.context.append_basic_block(str_eq_fn, "true");
             let false_bb = self.context.append_basic_block(str_eq_fn, "false");
@@ -868,9 +935,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .builder
                 .build_conditional_branch(is_empty, true_bb, check_ptr_bb);
 
-            // Check for null pointers: if both are null → scalars, equal (tags already match).
-            // If exactly one is null → one scalar, one string → not equal.
-            // If both non-null → string comparison via memcmp.
+            // Check for null pointers: if either is null, it's a scalar comparison — tags already match, so equal
             self.builder.position_at_end(check_ptr_bb);
             let data1 = self
                 .builder
@@ -891,23 +956,13 @@ impl<'ctx> CodeGen<'ctx> {
                 .builder
                 .build_int_compare(IntPredicate::EQ, data2, null_ptr, "d2_null")
                 .map_err(llvm_err)?;
-            let both_null = self
+            let any_null = self
                 .builder
-                .build_and(d1_null, d2_null, "both_null")
-                .map_err(llvm_err)?;
-            let one_null = self
-                .builder
-                .build_xor(d1_null, d2_null, "one_null")
+                .build_or(d1_null, d2_null, "any_null")
                 .map_err(llvm_err)?;
             let _ = self
                 .builder
-                .build_conditional_branch(both_null, both_null_bb, one_null_bb);
-            self.builder.position_at_end(both_null_bb);
-            let _ = self.builder.build_unconditional_branch(true_bb);
-            self.builder.position_at_end(one_null_bb);
-            let _ = self
-                .builder
-                .build_conditional_branch(one_null, false_bb, do_memcmp_bb);
+                .build_conditional_branch(any_null, true_bb, do_memcmp_bb);
 
             self.builder.position_at_end(do_memcmp_bb);
             let memcmp_call = self
@@ -1190,27 +1245,6 @@ impl<'ctx> CodeGen<'ctx> {
                 .try_as_basic_value()
                 .unwrap_basic()
                 .into_pointer_value();
-            // Set RC=1 — tree node created by list_create must start with RC=1
-            let lc_rc_p = self
-                .builder
-                .build_int_to_ptr(
-                    self.builder
-                        .build_int_sub(
-                            self.builder
-                                .build_ptr_to_int(leaf_ptr, i64, "lc_pi")
-                                .map_err(llvm_err)?,
-                            i64.const_int(8, false),
-                            "lc_rc_a",
-                        )
-                        .map_err(llvm_err)?,
-                    ptr,
-                    "lc_rc_p",
-                )
-                .map_err(llvm_err)?;
-            let _ = self
-                .builder
-                .build_store(lc_rc_p, i64.const_int(1, false))
-                .map_err(llvm_err)?;
             // Store count=0 at offset 0 (leaf_ptr points past RC header, at struct start)
             let lc_count_p = self
                 .builder
@@ -1320,18 +1354,6 @@ impl<'ctx> CodeGen<'ctx> {
                 .build_extract_value(list, 2, "lp_h2")
                 .map_err(llvm_err)?
                 .into_int_value();
-            // RC-inc the element's data_ptr so the tree holds a proper reference.
-            // The tree's rc_dec_list_node will bring RC back to 0 and free the element.
-            let lp_elem_data = self
-                .builder
-                .build_extract_value(elem, 1, "edata")
-                .map_err(llvm_err)?
-                .into_pointer_value();
-            let lp_rc_inc_fn2 = self.module.get_function("action_rc_inc").unwrap();
-            let _ = self
-                .builder
-                .build_call(lp_rc_inc_fn2, &[lp_elem_data.into()], "")
-                .map_err(llvm_err)?;
             let is_h0 = self
                 .builder
                 .build_int_compare(IntPredicate::EQ, lp_h2, zero, "is_h0")
@@ -1382,27 +1404,6 @@ impl<'ctx> CodeGen<'ctx> {
                 .try_as_basic_value()
                 .unwrap_basic()
                 .into_pointer_value();
-            // Set RC=1 — new leaf is either a root or will be a child of an internal node
-            let cow_rc_p = self
-                .builder
-                .build_int_to_ptr(
-                    self.builder
-                        .build_int_sub(
-                            self.builder
-                                .build_ptr_to_int(new_leaf, i64, "cow_pi")
-                                .map_err(llvm_err)?,
-                            i64.const_int(8, false),
-                            "cow_rc_a",
-                        )
-                        .map_err(llvm_err)?,
-                    ptr,
-                    "cow_rc_p",
-                )
-                .map_err(llvm_err)?;
-            let _ = self
-                .builder
-                .build_store(cow_rc_p, i64.const_int(1, false))
-                .map_err(llvm_err)?;
             let cow_memcpy = self.module.get_function("memcpy").unwrap();
             let _ = self
                 .builder
@@ -1456,27 +1457,6 @@ impl<'ctx> CodeGen<'ctx> {
                 .try_as_basic_value()
                 .unwrap_basic()
                 .into_pointer_value();
-            // Set RC=1 — new leaf will be child[1] of the internal node
-            let nl2_rc_p = self
-                .builder
-                .build_int_to_ptr(
-                    self.builder
-                        .build_int_sub(
-                            self.builder
-                                .build_ptr_to_int(new_leaf2, i64, "nl2_pi")
-                                .map_err(llvm_err)?,
-                            i64.const_int(8, false),
-                            "nl2_rc_a",
-                        )
-                        .map_err(llvm_err)?,
-                    ptr,
-                    "nl2_rc_p",
-                )
-                .map_err(llvm_err)?;
-            let _ = self
-                .builder
-                .build_store(nl2_rc_p, i64.const_int(1, false))
-                .map_err(llvm_err)?;
             // Copy elements[32..64] from old leaf to new_leaf[0..32]
             // elements start at offset 8 in leaf struct
             let src_base = unsafe {
@@ -1569,27 +1549,6 @@ impl<'ctx> CodeGen<'ctx> {
                 .try_as_basic_value()
                 .unwrap_basic()
                 .into_pointer_value();
-            // Set RC=1 — internal node is the new root
-            let intl_rc_p = self
-                .builder
-                .build_int_to_ptr(
-                    self.builder
-                        .build_int_sub(
-                            self.builder
-                                .build_ptr_to_int(internal, i64, "intl_pi")
-                                .map_err(llvm_err)?,
-                            i64.const_int(8, false),
-                            "intl_rc_a",
-                        )
-                        .map_err(llvm_err)?,
-                    ptr,
-                    "intl_rc_p",
-                )
-                .map_err(llvm_err)?;
-            let _ = self
-                .builder
-                .build_store(intl_rc_p, i64.const_int(1, false))
-                .map_err(llvm_err)?;
             // Store count=2, total=65
             let intl_i8 = self
                 .builder
@@ -2509,27 +2468,6 @@ impl<'ctx> CodeGen<'ctx> {
                 .try_as_basic_value()
                 .unwrap_basic()
                 .into_pointer_value();
-            // Set RC=1 — new_intl will be stored as a child in either parent or new_mid
-            let new_intl_rc_ptr = self
-                .builder
-                .build_int_to_ptr(
-                    self.builder
-                        .build_int_sub(
-                            self.builder
-                                .build_ptr_to_int(new_intl, i64, "ni_pi")
-                                .map_err(llvm_err)?,
-                            i64.const_int(8, false),
-                            "ni_rc_a",
-                        )
-                        .map_err(llvm_err)?,
-                    ptr,
-                    "ni_rc_p",
-                )
-                .map_err(llvm_err)?;
-            let _ = self
-                .builder
-                .build_store(new_intl_rc_ptr, i64.const_int(1, false))
-                .map_err(llvm_err)?;
             let new_intl_i8 = self
                 .builder
                 .build_pointer_cast(new_intl, ptr, "new_intl_i8")
@@ -2750,6 +2688,11 @@ impl<'ctx> CodeGen<'ctx> {
 
             // No parent (original height == 1): create new_mid as new root
             self.builder.position_at_end(lp_split_no_parent);
+            // Set RC of new_intl to 1 — new_mid will reference it
+            let _ = self
+                .builder
+                .build_store(new_intl_rc_ptr, i64.const_int(1, false))
+                .map_err(llvm_err)?;
             let new_mid = self
                 .builder
                 .build_call(malloc_rc_fn, &[internal_size.into()], "new_mid")
@@ -2757,27 +2700,6 @@ impl<'ctx> CodeGen<'ctx> {
                 .try_as_basic_value()
                 .unwrap_basic()
                 .into_pointer_value();
-            // Set RC=1 — new_mid is the new root, holding intl_cnode and new_intl as children
-            let new_mid_rc_ptr = self
-                .builder
-                .build_int_to_ptr(
-                    self.builder
-                        .build_int_sub(
-                            self.builder
-                                .build_ptr_to_int(new_mid, i64, "nmid_pi")
-                                .map_err(llvm_err)?,
-                            i64.const_int(8, false),
-                            "nmid_rc_a",
-                        )
-                        .map_err(llvm_err)?,
-                    ptr,
-                    "nmid_rc_p",
-                )
-                .map_err(llvm_err)?;
-            let _ = self
-                .builder
-                .build_store(new_mid_rc_ptr, i64.const_int(1, false))
-                .map_err(llvm_err)?;
             let new_mid_i8 = self
                 .builder
                 .build_pointer_cast(new_mid, ptr, "new_mid_i8")
@@ -3350,14 +3272,16 @@ impl<'ctx> CodeGen<'ctx> {
                 .try_as_basic_value()
                 .basic()
                 .ok_or("get failed")?;
-            // Delegate to action_print_string which dispatches on data pointer null-ness
-            let print_str_fn = self
-                .module
-                .get_function("action_print_string")
-                .ok_or("action_print_string not found")?;
+            let lp_elem = lp_elem_val.into_struct_value();
+            let lp_tag = self
+                .builder
+                .build_extract_value(lp_elem, 0, "lptag")
+                .map_err(llvm_err)?
+                .into_int_value();
+            // Print integer tag for now
             let _ = self
                 .builder
-                .build_call(print_str_fn, &[lp_elem_val.into()], "");
+                .build_call(printf_fn, &[fmt_int_ptr.into(), lp_tag.into()], "");
             // Next
             let lp_next = self
                 .builder
@@ -3496,27 +3420,6 @@ impl<'ctx> CodeGen<'ctx> {
                 .try_as_basic_value()
                 .unwrap_basic()
                 .into_pointer_value();
-            // Set RC=1 — CoW copy is the sole owner
-            let ls_new_rc_ptr2 = self
-                .builder
-                .build_int_to_ptr(
-                    self.builder
-                        .build_int_sub(
-                            self.builder
-                                .build_ptr_to_int(ls_new, i64, "lsn_pi")
-                                .map_err(llvm_err)?,
-                            i64.const_int(8, false),
-                            "lsn_rc_a",
-                        )
-                        .map_err(llvm_err)?,
-                    ptr,
-                    "lsn_rc_p",
-                )
-                .map_err(llvm_err)?;
-            let _ = self
-                .builder
-                .build_store(ls_new_rc_ptr2, i64.const_int(1, false))
-                .map_err(llvm_err)?;
             let ls_cpy = self.module.get_function("memcpy").unwrap();
             let _ = self
                 .builder
@@ -4269,27 +4172,6 @@ impl<'ctx> CodeGen<'ctx> {
                 .try_as_basic_value()
                 .unwrap_basic()
                 .into_pointer_value();
-            // Set RC=1 — CoW copy is the sole owner
-            let lt_nl_rc_p = self
-                .builder
-                .build_int_to_ptr(
-                    self.builder
-                        .build_int_sub(
-                            self.builder
-                                .build_ptr_to_int(lt_new_leaf, i64, "lt_nl_pi")
-                                .map_err(llvm_err)?,
-                            i64.const_int(8, false),
-                            "lt_nl_rc_a",
-                        )
-                        .map_err(llvm_err)?,
-                    ptr,
-                    "lt_nl_rc_p",
-                )
-                .map_err(llvm_err)?;
-            let _ = self
-                .builder
-                .build_store(lt_nl_rc_p, i64.const_int(1, false))
-                .map_err(llvm_err)?;
             let lt_memcpy_fn = self.module.get_function("memcpy").unwrap();
             let lt_copy_bytes = self
                 .builder
@@ -5201,7 +5083,6 @@ impl<'ctx> CodeGen<'ctx> {
             let list_push_fn2 = self.module.get_function("action_list_push").unwrap();
             let map_create_fn2 = self.module.get_function("action_map_create").unwrap();
             let seq_fn_ref = self.module.get_function("action_string_eq").unwrap();
-            let rc_dec_fn = self.module.get_function("action_rc_dec").unwrap();
             let sentinel = i64.const_int(i64::MAX as u64, false);
 
             // ---- action_map_insert({ptr,i64,i64}, {i64,ptr}, {i64,ptr}) -> {ptr,i64,i64} ----
@@ -5323,28 +5204,6 @@ impl<'ctx> CodeGen<'ctx> {
                 .build_conditional_branch(mi_fe.into_int_value(), mi_found, mi_nxt);
 
             self.builder.position_at_end(mi_found);
-            // rc_dec the old value being replaced (at mi_iv + 1)
-            let mi_iv1 = self
-                .builder
-                .build_int_add(mi_iv, i64.const_int(1, false), "iv1")
-                .map_err(llvm_err)?;
-            let mi_old_val_cc = self
-                .builder
-                .build_call(list_get_fn2, &[mi_map.into(), mi_iv1.into()], "old_val")
-                .map_err(llvm_err)?;
-            let mi_old_val = mi_old_val_cc
-                .try_as_basic_value()
-                .unwrap_basic()
-                .into_struct_value();
-            let mi_old_val_data = self
-                .builder
-                .build_extract_value(mi_old_val, 1, "ovd")
-                .map_err(llvm_err)?
-                .into_pointer_value();
-            let _ = self
-                .builder
-                .build_call(rc_dec_fn, &[mi_old_val_data.into()], "")
-                .map_err(llvm_err)?;
             self.builder
                 .build_store(mi_match_pos, mi_iv)
                 .map_err(llvm_err)?;
@@ -5878,46 +5737,6 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_conditional_branch(mr_fe.into_int_value(), mr_found_bb, mr_nxt);
 
             self.builder.position_at_end(mr_found_bb);
-            // rc_dec the removed key's data_ptr (at mr_iv)
-            let mr_rm_key_cc = self
-                .builder
-                .build_call(list_get_fn2, &[mr_map.into(), mr_iv.into()], "rm_key")
-                .map_err(llvm_err)?;
-            let mr_rm_key = mr_rm_key_cc
-                .try_as_basic_value()
-                .unwrap_basic()
-                .into_struct_value();
-            let mr_rm_key_data = self
-                .builder
-                .build_extract_value(mr_rm_key, 1, "rm_kd")
-                .map_err(llvm_err)?
-                .into_pointer_value();
-            let _ = self
-                .builder
-                .build_call(rc_dec_fn, &[mr_rm_key_data.into()], "")
-                .map_err(llvm_err)?;
-            // rc_dec the removed value's data_ptr (at mr_iv + 1)
-            let mr_iv1 = self
-                .builder
-                .build_int_add(mr_iv, i64.const_int(1, false), "iv1")
-                .map_err(llvm_err)?;
-            let mr_rm_val_cc = self
-                .builder
-                .build_call(list_get_fn2, &[mr_map.into(), mr_iv1.into()], "rm_val")
-                .map_err(llvm_err)?;
-            let mr_rm_val = mr_rm_val_cc
-                .try_as_basic_value()
-                .unwrap_basic()
-                .into_struct_value();
-            let mr_rm_val_data = self
-                .builder
-                .build_extract_value(mr_rm_val, 1, "rm_vd")
-                .map_err(llvm_err)?
-                .into_pointer_value();
-            let _ = self
-                .builder
-                .build_call(rc_dec_fn, &[mr_rm_val_data.into()], "")
-                .map_err(llvm_err)?;
             self.builder
                 .build_store(mr_match_pos, mr_iv)
                 .map_err(llvm_err)?;
@@ -10062,27 +9881,6 @@ impl<'ctx> CodeGen<'ctx> {
                 .try_as_basic_value()
                 .unwrap_basic()
                 .into_pointer_value();
-            // Set RC=1 — new leaf is the root of the sliced list
-            let slc_nl_rc_p = self
-                .builder
-                .build_int_to_ptr(
-                    self.builder
-                        .build_int_sub(
-                            self.builder
-                                .build_ptr_to_int(slc_new_leaf, i64, "slc_nl_pi")
-                                .map_err(llvm_err)?,
-                            i64.const_int(8, false),
-                            "slc_nl_rc_a",
-                        )
-                        .map_err(llvm_err)?,
-                    ptr,
-                    "slc_nl_rc_p",
-                )
-                .map_err(llvm_err)?;
-            let _ = self
-                .builder
-                .build_store(slc_nl_rc_p, i64.const_int(1, false))
-                .map_err(llvm_err)?;
             // Copy elements[start..end] from old leaf to new_leaf[0..new_count]
             let slc_memcpy_fn = self.module.get_function("memcpy").unwrap();
             let slc_old_eb = unsafe {
@@ -10493,27 +10291,6 @@ impl<'ctx> CodeGen<'ctx> {
                 .try_as_basic_value()
                 .unwrap_basic()
                 .into_pointer_value();
-            // Set RC=1 — CoW copy is the sole owner after replacing the shared leaf
-            let li_cow_rc_p = self
-                .builder
-                .build_int_to_ptr(
-                    self.builder
-                        .build_int_sub(
-                            self.builder
-                                .build_ptr_to_int(li_cow_leaf, i64, "li_cow_pi")
-                                .map_err(llvm_err)?,
-                            i64.const_int(8, false),
-                            "li_cow_rc_a",
-                        )
-                        .map_err(llvm_err)?,
-                    ptr,
-                    "li_cow_rc_p",
-                )
-                .map_err(llvm_err)?;
-            let _ = self
-                .builder
-                .build_store(li_cow_rc_p, i64.const_int(1, false))
-                .map_err(llvm_err)?;
             let li_memcpy_fn = self.module.get_function("memcpy").unwrap();
             let _ = self
                 .builder
@@ -10871,27 +10648,6 @@ impl<'ctx> CodeGen<'ctx> {
                 .try_as_basic_value()
                 .unwrap_basic()
                 .into_pointer_value();
-            // Set RC=1 — CoW copy is the sole owner
-            let lrm_cow_rc_p = self
-                .builder
-                .build_int_to_ptr(
-                    self.builder
-                        .build_int_sub(
-                            self.builder
-                                .build_ptr_to_int(lrm_cow_leaf, i64, "lrm_cow_pi")
-                                .map_err(llvm_err)?,
-                            i64.const_int(8, false),
-                            "lrm_cow_rc_a",
-                        )
-                        .map_err(llvm_err)?,
-                    ptr,
-                    "lrm_cow_rc_p",
-                )
-                .map_err(llvm_err)?;
-            let _ = self
-                .builder
-                .build_store(lrm_cow_rc_p, i64.const_int(1, false))
-                .map_err(llvm_err)?;
             let lrm_memcpy_fn = self.module.get_function("memcpy").unwrap();
             let _ = self
                 .builder
@@ -15185,7 +14941,11 @@ impl<'ctx> CodeGen<'ctx> {
 
             // ---- action_rc_dec_list_node(ptr node_ptr, i64 height): recursive RC decrement for tree ----
             // height==0: leaf (elements), height>0: internal (children)
-            let rdl_fn = self.module.get_function("action_rc_dec_list_node").unwrap();
+            let rdl_fn = self.module.add_function(
+                "action_rc_dec_list_node",
+                void.fn_type(&[ptr.into(), i64.into()], false),
+                None,
+            );
             let rdl_entry = self.context.append_basic_block(rdl_fn, "entry");
             let rdl_null_done = self.context.append_basic_block(rdl_fn, "null_done");
             let rdl_dec = self.context.append_basic_block(rdl_fn, "do_dec");

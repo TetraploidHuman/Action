@@ -165,8 +165,9 @@ impl Parser {
 
     fn current(&self) -> &Token {
         self.tokens.get(self.pos).unwrap_or_else(|| {
-            // Last token should always be EOF
-            self.tokens.last().unwrap()
+            // All programs have at least an EOF token from the lexer
+            // If tokens is empty, the lexer was not run — this is a programming error.
+            self.tokens.last().expect("Parser has no tokens: lexer must produce at least EOF")
         })
     }
 
@@ -285,12 +286,26 @@ impl Parser {
 
     // ---- Statement Parsing ----
 
-    fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
+    pub fn parse_statement(&mut self) -> Result<Stmt, ParseError> {
         let start_span = self.current_span();
         match self.current_kind() {
             TokenKind::Val | TokenKind::Var | TokenKind::Lazy => self.parse_let(),
             TokenKind::Const => self.parse_const(),
-            TokenKind::Fun => self.parse_fun_def(),
+            TokenKind::Fun => self.parse_fun_def(false),
+            TokenKind::At => {
+                // Check for @test annotation
+                if self.peek2() == TokenKind::Ident("test".to_string()) {
+                    self.advance(); // skip @
+                    self.advance(); // skip "test"
+                    if self.current_kind() == TokenKind::Fun {
+                        self.parse_fun_def(true)
+                    } else {
+                        Err(self.error("Expected 'fun' after '@test'"))
+                    }
+                } else {
+                    Err(self.error("Unexpected '@'"))
+                }
+            },
             TokenKind::Return => self.parse_return(),
             TokenKind::Break => {
                 let span = self.current_span();
@@ -545,7 +560,7 @@ impl Parser {
         })
     }
 
-    fn parse_fun_def(&mut self) -> Result<Stmt, ParseError> {
+    fn parse_fun_def(&mut self, is_test: bool) -> Result<Stmt, ParseError> {
         let start_span = self.current_span();
         self.advance(); // skip 'fun'
 
@@ -632,6 +647,7 @@ impl Parser {
             body,
             type_params,
             is_single_expr,
+            is_test,
             span: start_span,
         })
     }
@@ -740,7 +756,8 @@ impl Parser {
                     Ok(Type::Function(params, Box::new(ret)))
                 } else if params.len() == 1 {
                     // Just a parenthesized type
-                    Ok(params.into_iter().next().unwrap())
+                    // Safe: we just checked params.len() == 1 above
+                    Ok(params.remove(0))
                 } else {
                     Err(self.error(
                         "Expected '->' for function type after parenthesized parameter list",
@@ -773,7 +790,7 @@ impl Parser {
 
     // ---- Expression Parsing (Pratt) ----
 
-    fn parse_expr(&mut self) -> Result<Expr, ParseError> {
+    pub fn parse_expr(&mut self) -> Result<Expr, ParseError> {
         self.parse_pratt(Precedence::Lowest)
     }
 
@@ -1059,10 +1076,11 @@ impl Parser {
             }
             TokenKind::StringLiteral(ref s) => {
                 let s = s.clone();
+                let str_span = self.current_span();
                 self.advance();
                 // Check for string interpolation: if string contains $ or ${
                 if s.contains('$') {
-                    self.parse_interpolated_string(&s)
+                    self.parse_interpolated_string(&s, str_span)
                 } else {
                     Ok(Expr::string(&s))
                 }
@@ -1170,7 +1188,7 @@ impl Parser {
         }
     }
 
-    fn parse_interpolated_string(&self, s: &str) -> Result<Expr, ParseError> {
+    fn parse_interpolated_string(&self, s: &str, str_span: Span) -> Result<Expr, ParseError> {
         // Handle ${expr} interpolation only (per v6 spec)
         let mut parts = Vec::new();
         let mut current = String::new();
@@ -1206,8 +1224,8 @@ impl Parser {
                 if !sub_errors.is_empty() {
                     return Err(ParseError {
                         message: sub_errors.join("\n"),
-                        line: self.current().span.line,
-                        col: self.current().span.col,
+                        line: str_span.line,
+                        col: str_span.col,
                     });
                 }
                 let mut sub_parser = Parser::new(sub_tokens);
@@ -1216,8 +1234,8 @@ impl Parser {
                 // was emitted as a literal — this made interpolation typos invisible.
                 let expr = sub_parser.parse_expr().map_err(|e| ParseError {
                     message: format!("In string interpolation: {}", e.message),
-                    line: self.current().span.line,
-                    col: self.current().span.col,
+                    line: str_span.line,
+                    col: str_span.col,
                 })?;
                 parts.push(StringPart::Expr(Box::new(expr)));
             } else {
@@ -1719,8 +1737,9 @@ impl Parser {
                 // Binary conditional: when cond { true_expr else false_expr }
                 // else clause is optional; if omitted, defaults to ()
                 // Support struct-literal arms: when cond { {fields} else {fields} }
-                // The outer { was consumed at line 1481; if arm starts with {, it's
-                // a struct literal or block expression which needs its own {} pair.
+                // The outer { of the when-block was already consumed above;
+                // if an arm starts with {, it's a struct literal or block expression
+                // which needs its own {} pair.
                 // The when-block's closing } must still appear after the last arm.
                 let true_expr = self.parse_when_arm_expr()?;
                 let false_expr = if self.current_kind() == TokenKind::Else {
@@ -1788,6 +1807,10 @@ impl Parser {
             TokenKind::Null => {
                 self.advance();
                 Ok(Pattern::Null)
+            }
+            TokenKind::Underscore => {
+                self.advance();
+                Ok(Pattern::Wildcard)
             }
             TokenKind::Ident(ref name) => {
                 let name = name.clone();
@@ -2309,7 +2332,7 @@ impl Parser {
         loop {
             match self.current_kind() {
                 TokenKind::Eof => break,
-                TokenKind::Semicolon if brace_depth == 0 => break,
+                TokenKind::Semicolon => break,
                 TokenKind::RBrace if brace_depth == 0 => break,
                 TokenKind::LBrace => {
                     brace_depth = brace_depth.saturating_add(1);

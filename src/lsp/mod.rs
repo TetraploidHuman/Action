@@ -119,98 +119,59 @@ fn main_loop(
 fn handle_request(state: &mut ServerState, req: &Request) -> Response {
     let id = req.id.clone();
 
-    match req.method.as_str() {
-        "textDocument/hover" => {
-            let result = parse_params::<lsp_types::HoverParams>(req)
-                .and_then(|p| Ok(handlers::handle_hover(state, p)))
-                .unwrap_or(None);
-            Response::new_ok(id, result)
-        }
-        "textDocument/definition" => {
-            let result = parse_params::<lsp_types::GotoDefinitionParams>(req)
-                .and_then(|p| Ok(handlers::handle_goto_definition(state, p)))
-                .unwrap_or(None);
-            Response::new_ok(id, result)
-        }
-        "textDocument/completion" => {
-            let result = parse_params::<lsp_types::CompletionParams>(req)
-                .and_then(|p| Ok(handlers::handle_completion(state, p)))
-                .unwrap_or(None);
-            Response::new_ok(id, result)
-        }
-        "textDocument/semanticTokens/full" => {
-            let result = parse_params::<lsp_types::SemanticTokensParams>(req)
-                .and_then(|p| Ok(handlers::handle_semantic_tokens(state, p)))
-                .unwrap_or(None);
-            Response::new_ok(id, result)
-        }
-        "textDocument/documentSymbol" => {
-            let result = parse_params::<lsp_types::DocumentSymbolParams>(req)
-                .and_then(|p| Ok(handlers::handle_document_symbols(state, p)))
-                .unwrap_or(None);
-            Response::new_ok(id, result)
-        }
-        "textDocument/signatureHelp" => {
-            let result = parse_params::<lsp_types::SignatureHelpParams>(req)
-                .and_then(|p| Ok(handlers::handle_signature_help(state, p)))
-                .unwrap_or(None);
-            Response::new_ok(id, result)
-        }
-        "textDocument/references" => {
-            let result = parse_params::<lsp_types::ReferenceParams>(req)
-                .and_then(|p| Ok(handlers::handle_references(state, p)))
-                .unwrap_or(None);
-            Response::new_ok(id, result)
-        }
-        "textDocument/documentHighlight" => {
-            let result = parse_params::<lsp_types::DocumentHighlightParams>(req)
-                .and_then(|p| Ok(handlers::handle_document_highlight(state, p)))
-                .unwrap_or(None);
-            Response::new_ok(id, result)
-        }
-        "textDocument/prepareRename" => {
-            let result = parse_params::<lsp_types::TextDocumentPositionParams>(req)
-                .and_then(|p| Ok(handlers::handle_prepare_rename(state, p)))
-                .unwrap_or(None);
-            Response::new_ok(id, result)
-        }
-        "textDocument/rename" => {
-            let result = parse_params::<lsp_types::RenameParams>(req)
-                .and_then(|p| Ok(handlers::handle_rename(state, p)))
-                .unwrap_or(None);
-            Response::new_ok(id, result)
-        }
-        "textDocument/foldingRange" => {
-            let result = parse_params::<lsp_types::FoldingRangeParams>(req)
-                .and_then(|p| Ok(handlers::handle_folding_range(state, p)))
-                .unwrap_or(None);
-            Response::new_ok(id, result)
-        }
-        "textDocument/inlayHint" => {
-            let result = parse_params::<lsp_types::InlayHintParams>(req)
-                .and_then(|p| Ok(handlers::handle_inlay_hints(state, p)))
-                .unwrap_or(None);
-            Response::new_ok(id, result)
-        }
-        "textDocument/formatting" => {
-            let result = parse_params::<lsp_types::DocumentFormattingParams>(req)
-                .and_then(|p| Ok(handlers::handle_formatting(state, p)))
-                .unwrap_or(None);
-            Response::new_ok(id, result)
-        }
-        "textDocument/codeAction" => {
-            let result = parse_params::<lsp_types::CodeActionParams>(req)
-                .and_then(|p| Ok(handlers::handle_code_actions(state, p)))
-                .unwrap_or(None);
-            Response::new_ok(id, result)
-        }
-        "workspace/symbol" => {
-            let result = parse_params::<lsp_types::WorkspaceSymbolParams>(req)
-                .and_then(|p| Ok(handlers::handle_workspace_symbol(state, p)))
-                .unwrap_or(None);
-            Response::new_ok(id, result)
-        }
+        match req.method.as_str() {
+        "textDocument/hover" =>
+            dispatch(state, req, id, handlers::handle_hover),
+        "textDocument/definition" =>
+            dispatch(state, req, id, handlers::handle_goto_definition),
+        "textDocument/completion" =>
+            dispatch(state, req, id, handlers::handle_completion),
+        "textDocument/semanticTokens/full" =>
+            dispatch(state, req, id, handlers::handle_semantic_tokens),
+        "textDocument/documentSymbol" =>
+            dispatch(state, req, id, handlers::handle_document_symbols),
+        "textDocument/signatureHelp" =>
+            dispatch(state, req, id, handlers::handle_signature_help),
+        "textDocument/references" =>
+            dispatch(state, req, id, handlers::handle_references),
+        "textDocument/documentHighlight" =>
+            dispatch(state, req, id, handlers::handle_document_highlight),
+        "textDocument/prepareRename" =>
+            dispatch(state, req, id, handlers::handle_prepare_rename),
+        "textDocument/rename" =>
+            dispatch(state, req, id, handlers::handle_rename),
+        "textDocument/foldingRange" =>
+            dispatch(state, req, id, handlers::handle_folding_range),
+        "textDocument/inlayHint" =>
+            dispatch(state, req, id, handlers::handle_inlay_hints),
+        "textDocument/formatting" =>
+            dispatch(state, req, id, handlers::handle_formatting),
+        "textDocument/codeAction" =>
+            dispatch(state, req, id, handlers::handle_code_actions),
+        "workspace/symbol" =>
+            dispatch(state, req, id, handlers::handle_workspace_symbol),
         _ => Response::new_ok(id, Option::<()>::None),
+    }
+}
+
+/// Parse request params and dispatch to handler. On parse error, returns the
+/// error response directly (instead of swallowing it like the old code did).
+fn dispatch<T, R>(
+    state: &mut ServerState,
+    req: &Request,
+    id: lsp_server::RequestId,
+    handler: fn(&ServerState, T) -> R,
+) -> Response
+where
+    T: serde::de::DeserializeOwned,
+    R: serde::Serialize,
+{
+    match parse_params::<T>(req) {
+        Ok(p) => {
+            let result = handler(state, p);
+            Response::new_ok(id, result)
+        }
+        Err(err_response) => err_response,
     }
 }
 

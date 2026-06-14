@@ -422,9 +422,7 @@ impl TypeChecker {
                         // Skip return type check for generic functions (validated per-instantiation)
                         if type_params.is_empty() || !matches!(declared_ret, Type::TypeVar(_)) {
                             let inferred = self.infer_expr_type(body);
-                            // Skip check when inferred type is Int (fallback for unknown types)
-                            if !matches!(&inferred, Type::Named(n) if n == "Int")
-                                && !self.types_compatible(declared_ret, &inferred)
+                            if !self.types_compatible(declared_ret, &inferred)
                             {
                                 let msg = if let Some(hint) =
                                     Self::check_termination(declared_ret, &inferred)
@@ -450,15 +448,6 @@ impl TypeChecker {
                         if !matches!(&inferred, Type::Named(n) if n == "Int")
                             && !matches!(&inferred, Type::Unit)
                         {
-                            // Update the function's entry in type_env so subsequent functions
-                            // that call this one get the correct return type.
-                            let param_tys: Vec<Type> = params
-                                .iter()
-                                .map(|p| p.ty.clone().unwrap_or(Type::Named("Int".into())))
-                                .collect();
-                            let fn_type = Type::Function(param_tys, Box::new(inferred.clone()));
-                            self.type_env.insert(name.clone(), fn_type);
-
                             // Update the function's entry in type_env so subsequent functions
                             // that call this one get the correct return type.
                             let param_tys: Vec<Type> = params
@@ -1571,5 +1560,137 @@ impl TypeChecker {
             // All other combinations are type mismatches
             _ => false,
         }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lexer::Lexer;
+    use crate::parser::Parser;
+    use crate::ast::Program;
+
+    fn check_source(source: &str) -> Vec<CompilerError> {
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize();
+        let mut parser = Parser::new(tokens);
+        let mut program = parser.parse_program().expect("Parsing should succeed");
+        let mut registry = TypeRegistry::new();
+        for stmt in &program.stmts {
+            let _ = registry.register(stmt);
+        }
+        let mut checker = TypeChecker::new(registry);
+        // Seed basic types so the checker knows about Int, String, Bool, etc.
+        let mut type_env = HashMap::new();
+        type_env.insert("Int".to_string(), Type::Named("Int".into()));
+        type_env.insert("String".to_string(), Type::Named("String".into()));
+        type_env.insert("Bool".to_string(), Type::Named("Bool".into()));
+        type_env.insert("Float".to_string(), Type::Named("Float".into()));
+        type_env.insert("Char".to_string(), Type::Named("Char".into()));
+        checker.seed_type_env(&type_env);
+        checker.check(&program)
+    }
+
+    #[test]
+    fn test_arith_on_string() {
+        let errors = check_source("val x = 1 - \"hello\"");
+        assert!(!errors.is_empty(), "Expected type error for string arithmetic");
+        let msg = errors[0].message.to_lowercase();
+        assert!(msg.contains("arithmetic") && msg.contains("string"),
+            "Expected arithmetic-on-string error, got: {}", errors[0].message);
+    }
+
+    #[test]
+    fn test_arith_on_bool() {
+        let errors = check_source("val x = true - 1");
+        assert!(!errors.is_empty(), "Expected type error for bool arithmetic");
+        let msg = errors[0].message.to_lowercase();
+        assert!(msg.contains("arithmetic") && msg.contains("bool"),
+            "Expected arithmetic-on-bool error, got: {}", errors[0].message);
+    }
+
+    #[test]
+    fn test_logical_op_non_bool() {
+        let errors = check_source("val x = true && 5");
+        assert!(!errors.is_empty(), "Expected type error for logical op");
+        let msg = errors[0].message.to_lowercase();
+        assert!(msg.contains("logical") && msg.contains("bool"),
+            "Expected logical-op error, got: {}", errors[0].message);
+    }
+
+    #[test]
+    fn test_bitwise_op_non_int() {
+        let errors = check_source("val x = 1 & true");
+        assert!(!errors.is_empty(), "Expected type error for bitwise op");
+        let msg = errors[0].message.to_lowercase();
+        assert!(msg.contains("bitwise") && msg.contains("int"),
+            "Expected bitwise-op error, got: {}", errors[0].message);
+    }
+
+    #[test]
+    fn test_bool_comparison_with_int() {
+        let errors = check_source("val x = true > 1");
+        assert!(!errors.is_empty(), "Expected type error for bool comparison");
+        let msg = errors[0].message.to_lowercase();
+        assert!(msg.contains("cannot compare") && msg.contains("bool"),
+            "Expected comparison error, got: {}", errors[0].message);
+    }
+
+    #[test]
+    fn test_return_type_mismatch() {
+        let errors = check_source("fun f() -> String { 42 }");
+        assert!(!errors.is_empty(), "Expected return type mismatch error");
+        let msg = errors[0].message.to_lowercase();
+        assert!(msg.contains("return type") && msg.contains("string") && msg.contains("int"),
+            "Expected return type error, got: {}", errors[0].message);
+    }
+
+    #[test]
+    fn test_variable_type_annotation_mismatch() {
+        let errors = check_source("val x Int = \"hello\"");
+        assert!(!errors.is_empty(), "Expected variable type mismatch error");
+        let msg = errors[0].message.to_lowercase();
+        assert!(msg.contains("declared as") && msg.contains("int") && msg.contains("string"),
+            "Expected variable type error, got: {}", errors[0].message);
+    }
+
+    #[test]
+    fn test_function_arg_count_mismatch() {
+        let errors = check_source("fun f(x: Int) {} val y = f()");
+        assert!(!errors.is_empty(), "Expected arg count mismatch error");
+        let msg = errors[0].message.to_lowercase();
+        assert!(msg.contains("expects 1") && msg.contains("got 0"),
+            "Expected arg count error, got: {}", errors[0].message);
+    }
+
+    #[test]
+    fn test_param_missing_type_annotation() {
+        let errors = check_source("fun f(x) { x }");
+        assert!(!errors.is_empty(), "Expected missing type annotation error");
+        let msg = errors[0].message.to_lowercase();
+        assert!(msg.contains("must have a type annotation"),
+            "Expected type annotation error, got: {}", errors[0].message);
+    }
+
+    #[test]
+    fn test_non_exhaustive_when() {
+        let errors = check_source("enum Color { Red, Blue } fun f(c: Color) -> Int { when c { Red -> 1 } }");
+        // Check that at least one error mentions non-exhaustive
+        let has_nex = errors.iter().any(|e| {
+            e.message.to_lowercase().contains("non-exhaustive")
+                || e.message.to_lowercase().contains("missing variant")
+        });
+        assert!(has_nex, "Expected non-exhaustive when error, got: {:?}",
+            errors.iter().map(|e| &e.message).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn test_string_minus_string() {
+        let errors = check_source("val x = \"hello\" - \"world\"");
+        assert!(!errors.is_empty(), "Expected type error for string subtraction");
+        let msg = errors[0].message.to_lowercase();
+        assert!(msg.contains("arithmetic") && msg.contains("string"),
+            "Expected arithmetic-on-string error, got: {}", errors[0].message);
     }
 }

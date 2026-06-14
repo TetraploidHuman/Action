@@ -757,7 +757,7 @@ impl<'ctx> CodeGen<'ctx> {
 
                     if args.len() == 1 && named_fields.is_empty() && resolved_params.is_some() {
                         // Single positional param: use type info to create proper TypedValue
-                        let param_types = resolved_params.as_ref().unwrap();
+                        let param_types = resolved_params.as_ref().ok_or_else(|| "Missing resolved params".to_string())?;
                         if let Some(param_ty) = param_types.first() {
                             if let Type::Named(name) = param_ty {
                                 if self.named_structs.contains_key(name.as_str()) && args.len() == 1
@@ -1124,7 +1124,7 @@ impl<'ctx> CodeGen<'ctx> {
             if let TypedValue::Enum(_, _, inner, rc) = &tv {
                 when_enum_info = Some((*inner, *rc));
             }
-            self.store_branch_result(&tv, result_alloca.unwrap(), &result_type)?;
+            self.store_branch_result(&tv, result_alloca.ok_or_else(|| "No result alloca".to_string())?, &result_type)?;
             let _ = self.builder.build_unconditional_branch(merge_block);
         }
 
@@ -1140,7 +1140,7 @@ impl<'ctx> CodeGen<'ctx> {
                     when_enum_info = Some((*inner, *rc));
                 }
             }
-            self.store_branch_result(&ev, result_alloca.unwrap(), &result_type)?;
+            self.store_branch_result(&ev, result_alloca.ok_or_else(|| "No result alloca".to_string())?, &result_type)?;
             let _ = self.builder.build_unconditional_branch(merge_block);
         }
 

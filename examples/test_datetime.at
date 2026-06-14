@@ -1,0 +1,19 @@
+// Test Date and DateTime
+
+val d = Date_new(2024, 6, 13)
+println(d.year)
+println(d.month)  
+println(d.day)
+
+val dt = DateTime_new(2024, 6, 13, 15, 30, 0)
+println(dt.hour)
+println(dt.minute)
+println(dt.second)
+
+val d2 = addDays(d, 10)
+println(diffDays(d2, d))
+
+val diff = diffDays({year = 2024, month = 6, day = 25}, {year = 2024, month = 6, day = 13})
+println(diff)
+
+println("done")

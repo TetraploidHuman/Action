@@ -446,7 +446,7 @@ impl<'ctx> CodeGen<'ctx> {
             let mut offsets: Vec<u64> = Vec::new();
             for v in &compiled {
                 offsets.push(total_bytes);
-                let field_ty = v.get_type_for_alloca(self);
+                let field_ty = v.get_value_type(self);
                 total_bytes += self.type_store_size(field_ty);
             }
             let buf = self.malloc_rc(i64.const_int(total_bytes as u64, false))?;
