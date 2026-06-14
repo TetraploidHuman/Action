@@ -921,6 +921,13 @@ mod tests {
     use crate::typecheck::TypeChecker;
     use crate::typecheck::TypeRegistry;
     use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+
+    /// Shared LLVM context reused across all codegen tests.
+    /// Creating/destroying multiple contexts crashes on MSVC (STATUS_ACCESS_VIOLATION),
+    /// so we create one context and never drop it.
+    static TEST_CONTEXT: OnceLock<Mutex<Context>> = OnceLock::new();
+
     fn compile_program(source: &str) -> String {
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize();
@@ -948,16 +955,17 @@ mod tests {
         }
 
         // Compile to LLVM IR
-        let context = Context::create();
-        let mut cg = CodeGen::new(&context, "test", registry, None);
+        // Use a shared context to avoid STATUS_ACCESS_VIOLATION on Windows
+        // when creating multiple LLVM contexts in the same process.
+        let guard = TEST_CONTEXT
+            .get_or_init(|| Mutex::new(Context::create()))
+            .lock()
+            .unwrap();
+        let mut cg = CodeGen::new(&guard, "test", registry, None);
         cg.compile(&program).expect("Compilation should succeed");
         cg.print_ir()
     }
 
-    // FIXME: codegen tests crash on Windows (STATUS_ACCESS_VIOLATION) when
-    // creating multiple LLVM contexts in the same process. Disabled on Windows
-    // until the root cause is identified (likely an inkwell/LLVM MSVC issue).
-    #[cfg(not(target_os = "windows"))]
     #[test]
     fn test_codegen_empty_program() {
         let ir = compile_program("");
@@ -969,7 +977,6 @@ mod tests {
         );
     }
 
-    #[cfg(not(target_os = "windows"))]
     #[test]
     fn test_codegen_val_int() {
         let ir = compile_program("val x = 42");
@@ -977,7 +984,6 @@ mod tests {
         assert!(ir.contains("i64 42"), "IR should contain i64 constant 42");
     }
 
-    #[cfg(not(target_os = "windows"))]
     #[test]
     fn test_codegen_binary_add() {
         let ir = compile_program("val x = 1 + 2");
@@ -985,7 +991,6 @@ mod tests {
         assert!(ir.contains("add"), "IR should contain add instruction");
     }
 
-    #[cfg(not(target_os = "windows"))]
     #[test]
     fn test_codegen_simple_fun() {
         let ir = compile_program("fun add(x: Int, y: Int) -> Int { x + y }");
@@ -993,7 +998,6 @@ mod tests {
         assert!(ir.contains("@add"), "IR should contain 'add' function");
     }
 
-    #[cfg(not(target_os = "windows"))]
     #[test]
     fn test_codegen_val_bool() {
         let ir = compile_program("val x = true");
