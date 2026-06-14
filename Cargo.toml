@@ -23,5 +23,5 @@ proptest = "1.4"
 
 
 [profile.test]
-opt-level = 1
+opt-level = 0
 debug = 1
