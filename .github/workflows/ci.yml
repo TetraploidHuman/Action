@@ -129,7 +129,7 @@ jobs:
       # ── Test ──────────────────────────────────────────
       - name: Test (Windows)
         if: runner.os == 'Windows'
-        run: cargo test --target ${{ matrix.target }}
+        run: cargo test --target ${{ matrix.target }} -- --nocapture --test-threads=1
       - name: Test (Linux)
         if: runner.os == 'Linux'
         run: nix-shell --run "cargo test --target ${{ matrix.target }}"
