@@ -766,8 +766,32 @@ impl TypeChecker {
                     self.collect_expr_errors(body, errors);
                 }
             },
-            Expr::Lambda { body, .. } => {
+            Expr::Lambda {
+                params,
+                body,
+                implicit_it,
+            } => {
+                // Add lambda parameters to type environment so the body
+                // can reference them without triggering undefined variable errors
+                let mut saved_params: Vec<(String, Option<Type>)> = Vec::new();
+                for param_name in params {
+                    let param_ty = Type::Named("Int".into());
+                    let old = self.type_env.insert(param_name.clone(), param_ty);
+                    saved_params.push((param_name.clone(), old));
+                }
+                if *implicit_it {
+                    let old = self.type_env.insert("it".to_string(), Type::Named("Int".into()));
+                    saved_params.push(("it".to_string(), old));
+                }
                 self.collect_expr_errors(body, errors);
+                // Restore previous bindings
+                for (name, old) in saved_params {
+                    if let Some(old_val) = old {
+                        self.type_env.insert(name, old_val);
+                    } else {
+                        self.type_env.remove(&name);
+                    }
+                }
             }
             Expr::FieldAccess(obj, _) => {
                 self.collect_expr_errors(obj, errors);
