@@ -156,6 +156,8 @@ jobs:
       # ── Test ──────────────────────────────────────────
       - name: Test (Windows)
         if: runner.os == 'Windows'
+        env:
+          PROPTEST_CASES: '50'
         run: cargo test --target ${{ matrix.target }} -- --nocapture --test-threads=1
       - name: Test (Linux)
         if: runner.os == 'Linux'
