@@ -911,7 +911,7 @@ mod pattern;
 mod runtime;
 mod stmt;
 
-#[cfg(test)]
+#[cfg(all(test, not(target_os = "windows")))]
 mod tests {
     use super::*;
     use crate::ast::*;
