@@ -204,7 +204,6 @@ impl Project {
 #[cfg(test)]
 mod tests {
     use super::*;
-    // use crate::ast::Type;
     use crate::typecheck::TypeRegistry;
     use lsp_types::Url;
     use std::collections::HashMap;

@@ -1539,7 +1539,6 @@ mod tests {
         TextDocumentPositionParams, VersionedTextDocumentIdentifier, WorkspaceSymbolParams,
     };
     use std::collections::HashMap;
-    // use std::path::PathBuf;
 
     fn make_state(source: &str) -> ServerState {
         let proj = Project::new(TypeRegistry::new(), HashMap::new(), Vec::new());

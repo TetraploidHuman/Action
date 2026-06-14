@@ -1,6 +1,5 @@
 use crate::ast::*;
 use crate::loader;
-// use crate::typecheck::TypeRegistry;
 use inkwell::context::Context;
 use inkwell::targets::{InitializationConfig, Target};
 use std::path::PathBuf;
