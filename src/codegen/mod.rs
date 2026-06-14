@@ -888,7 +888,6 @@ impl<'ctx> CodeGen<'ctx> {
 }
 
 // ---- Submodules ----
-mod generics;
 mod builtins_call;
 mod builtins_conversion;
 mod builtins_ffi;
@@ -904,6 +903,7 @@ mod builtins_stream;
 mod builtins_thread;
 mod expr;
 mod for_loop;
+mod generics;
 mod jit;
 mod map_set;
 mod misc;
@@ -911,17 +911,15 @@ mod pattern;
 mod runtime;
 mod stmt;
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lexer::Lexer;
-    use crate::parser::Parser;
-    use crate::typecheck::TypeRegistry;
-    use crate::typecheck::TypeChecker;
     use crate::ast::*;
     use crate::error::CompilerError;
+    use crate::lexer::Lexer;
+    use crate::parser::Parser;
+    use crate::typecheck::TypeChecker;
+    use crate::typecheck::TypeRegistry;
     use std::collections::HashMap;
 
     fn compile_program(source: &str) -> String {
@@ -962,7 +960,10 @@ mod tests {
         let ir = compile_program("");
         assert!(!ir.is_empty(), "IR should not be empty");
         assert!(ir.contains("@main"), "IR should contain main function");
-        assert!(ir.contains("define"), "IR should contain function definitions");
+        assert!(
+            ir.contains("define"),
+            "IR should contain function definitions"
+        );
     }
 
     #[test]
@@ -991,7 +992,9 @@ mod tests {
         let ir = compile_program("val x = true");
         assert!(!ir.is_empty(), "IR should not be empty");
         // Bool is represented as i64 in this compiler
-        assert!(ir.contains("i64 1") || ir.contains("i64 true"),
-            "IR should contain bool constant");
+        assert!(
+            ir.contains("i64 1") || ir.contains("i64 true"),
+            "IR should contain bool constant"
+        );
     }
 }

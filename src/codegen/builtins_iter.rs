@@ -1,9 +1,7 @@
 // Submodule: builtins_iter
 
 use crate::ast::*;
-use inkwell::values::{
-    IntValue, PointerValue,
-};
+use inkwell::values::{IntValue, PointerValue};
 use inkwell::IntPredicate;
 
 use super::{llvm_err, CodeGen, TypedValue};
@@ -1828,5 +1826,4 @@ impl<'ctx> CodeGen<'ctx> {
             _ => Err(format!("Unknown callback map builtin: {}", name)),
         }
     }
-
 }

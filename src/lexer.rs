@@ -352,7 +352,11 @@ impl Lexer {
                 let next_is_digit = next.map_or(false, |c| c.is_ascii_digit());
                 let next_is_sign = next.map_or(false, |c| c == '+' || c == '-');
                 let next_is_digit_after_sign = next_is_sign
-                    && self.source.get(self.pos + 2).copied().map_or(false, |c| c.is_ascii_digit());
+                    && self
+                        .source
+                        .get(self.pos + 2)
+                        .copied()
+                        .map_or(false, |c| c.is_ascii_digit());
                 if next_is_digit || next_is_digit_after_sign {
                     num_str.push(self.advance().unwrap());
                     if next_is_sign {
@@ -368,7 +372,9 @@ impl Lexer {
                 }
             }
             let clean: String = num_str.chars().filter(|c| *c != '_').collect();
-            return Some(TokenKind::FloatLiteral(clean.parse::<f64>().unwrap_or(f64::INFINITY)));
+            return Some(TokenKind::FloatLiteral(
+                clean.parse::<f64>().unwrap_or(f64::INFINITY),
+            ));
         }
 
         // Read hex prefix if present
@@ -545,7 +551,9 @@ impl Lexer {
 
         let clean: String = num_str.chars().filter(|c| *c != '_').collect();
         if is_float {
-            Some(TokenKind::FloatLiteral(clean.parse::<f64>().unwrap_or(f64::INFINITY)))
+            Some(TokenKind::FloatLiteral(
+                clean.parse::<f64>().unwrap_or(f64::INFINITY),
+            ))
         } else {
             match clean.parse::<i128>() {
                 Ok(val) => {
@@ -1244,7 +1252,9 @@ mod tests {
 
     fn tokenize(source: &str) -> Vec<TokenKind> {
         let mut lexer = Lexer::new(source);
-        lexer.tokenize().into_iter()
+        lexer
+            .tokenize()
+            .into_iter()
             .filter(|t| t.kind != TokenKind::Eof)
             .map(|t| t.kind)
             .collect()
@@ -1358,10 +1368,11 @@ mod tests {
         );
     }
 
-
     #[test]
     fn test_keywords_extended() {
-        let tokens = tokenize("enum type import module export const copy extension as lazy unsafe external null Task");
+        let tokens = tokenize(
+            "enum type import module export const copy extension as lazy unsafe external null Task",
+        );
         assert_eq!(tokens[0], TokenKind::Enum);
         assert_eq!(tokens[1], TokenKind::Type);
         assert_eq!(tokens[2], TokenKind::Import);

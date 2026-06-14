@@ -181,9 +181,33 @@ pub fn handle_completion(
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     let keywords = &[
-        "val", "var", "fun", "when", "else", "for", "in", "is", "break", "continue",
-        "return", "enum", "type", "import", "module", "export", "const", "copy", "lazy",
-        "unsafe", "external", "extension", "and", "or", "not", "as", "task",
+        "val",
+        "var",
+        "fun",
+        "when",
+        "else",
+        "for",
+        "in",
+        "is",
+        "break",
+        "continue",
+        "return",
+        "enum",
+        "type",
+        "import",
+        "module",
+        "export",
+        "const",
+        "copy",
+        "lazy",
+        "unsafe",
+        "external",
+        "extension",
+        "and",
+        "or",
+        "not",
+        "as",
+        "task",
     ];
     for kw in keywords {
         if kw.starts_with(&prefix) {
@@ -722,9 +746,7 @@ fn member_completion_items(
     let cursor_idx = tokens.iter().rposition(|t| t.span.end <= offset)?;
 
     // If the token at cursor is an Ident (partial word), skip it to look for the `.`
-    let sep_idx = if matches!(tokens[cursor_idx].kind, TokenKind::Ident(_))
-        && cursor_idx > 0
-    {
+    let sep_idx = if matches!(tokens[cursor_idx].kind, TokenKind::Ident(_)) && cursor_idx > 0 {
         cursor_idx - 1
     } else {
         cursor_idx
@@ -866,14 +888,26 @@ fn known_type_methods(type_name: &str) -> Vec<(String, String)> {
         "String" | "Str" => vec![
             ("len".into(), "len() -> Int".into()),
             ("contains".into(), "contains(substr: String) -> Bool".into()),
-            ("startsWith".into(), "startsWith(prefix: String) -> Bool".into()),
+            (
+                "startsWith".into(),
+                "startsWith(prefix: String) -> Bool".into(),
+            ),
             ("endsWith".into(), "endsWith(suffix: String) -> Bool".into()),
-            ("substring".into(), "substring(start: Int, end: Int) -> String".into()),
+            (
+                "substring".into(),
+                "substring(start: Int, end: Int) -> String".into(),
+            ),
             ("toUpper".into(), "toUpper() -> String".into()),
             ("toLower".into(), "toLower() -> String".into()),
             ("trim".into(), "trim() -> String".into()),
-            ("split".into(), "split(delim: String) -> List<String>".into()),
-            ("replace".into(), "replace(old: String, new: String) -> String".into()),
+            (
+                "split".into(),
+                "split(delim: String) -> List<String>".into(),
+            ),
+            (
+                "replace".into(),
+                "replace(old: String, new: String) -> String".into(),
+            ),
             ("isEmpty".into(), "isEmpty() -> Bool".into()),
         ],
         "Int" => vec![
@@ -890,8 +924,10 @@ fn known_type_methods(type_name: &str) -> Vec<(String, String)> {
             ("floor".into(), "floor() -> Int".into()),
             ("ceil".into(), "ceil() -> Int".into()),
         ],
-        _ if type_name.starts_with("List") || type_name.starts_with("list")
-            || type_name.starts_with("Array") || type_name.starts_with("Vec") =>
+        _ if type_name.starts_with("List")
+            || type_name.starts_with("list")
+            || type_name.starts_with("Array")
+            || type_name.starts_with("Vec") =>
         {
             vec![
                 ("len".into(), "len() -> Int".into()),
@@ -902,7 +938,10 @@ fn known_type_methods(type_name: &str) -> Vec<(String, String)> {
                 ("map".into(), "map(fn: T -> U) -> List<U>".into()),
                 ("filter".into(), "filter(fn: T -> Bool) -> List<T>".into()),
                 ("reduce".into(), "reduce(fn: (T, T) -> T) -> T".into()),
-                ("fold".into(), "fold(initial: T, fn: (T, T) -> T) -> T".into()),
+                (
+                    "fold".into(),
+                    "fold(initial: T, fn: (T, T) -> T) -> T".into(),
+                ),
                 ("any".into(), "any(fn: T -> Bool) -> Bool".into()),
                 ("all".into(), "all(fn: T -> Bool) -> Bool".into()),
                 ("find".into(), "find(fn: T -> Bool) -> T?".into()),
@@ -987,13 +1026,21 @@ impl<'a> ScopeWalker<'a> {
         }
 
         match stmt {
-            Stmt::Let { name, value, span, .. } => {
+            Stmt::Let {
+                name, value, span, ..
+            } => {
                 self.walk_expr(value);
                 if name == self.target_name {
                     self.result = Some(*span);
                 }
             }
-            Stmt::Destructure { names, renames, value, span, .. } => {
+            Stmt::Destructure {
+                names,
+                renames,
+                value,
+                span,
+                ..
+            } => {
                 self.walk_expr(value);
                 for n in names {
                     if n == self.target_name {
@@ -1008,13 +1055,21 @@ impl<'a> ScopeWalker<'a> {
                     }
                 }
             }
-            Stmt::Const { name, value, span, .. } => {
+            Stmt::Const {
+                name, value, span, ..
+            } => {
                 self.walk_expr(value);
                 if name == self.target_name {
                     self.result = Some(*span);
                 }
             }
-            Stmt::Fun { name: fn_name, params, body, span, .. } => {
+            Stmt::Fun {
+                name: fn_name,
+                params,
+                body,
+                span,
+                ..
+            } => {
                 if fn_name == self.target_name && self.contains(span) {
                     self.result = Some(*span);
                     return;
@@ -1030,7 +1085,9 @@ impl<'a> ScopeWalker<'a> {
             Stmt::Expr { expr, .. } => {
                 self.walk_expr(expr);
             }
-            Stmt::Return { value: Some(expr), .. } => {
+            Stmt::Return {
+                value: Some(expr), ..
+            } => {
                 self.walk_expr(expr);
             }
             Stmt::Return { value: None, .. } => {}
@@ -1062,7 +1119,12 @@ impl<'a> ScopeWalker<'a> {
                 self.walk_stmts(stmts);
                 self.exit_scope();
             }
-            Expr::Call { func, args, trailing_lambda, .. } => {
+            Expr::Call {
+                func,
+                args,
+                trailing_lambda,
+                ..
+            } => {
                 self.walk_expr(func);
                 for a in args {
                     self.walk_expr(a);
@@ -1090,78 +1152,87 @@ impl<'a> ScopeWalker<'a> {
                 self.walk_expr(obj);
                 self.walk_expr(idx);
             }
-            Expr::When(w) => {
-                match &w.kind {
-                    crate::ast::WhenKind::OneLine { condition, then_expr, else_expr } => {
-                        self.walk_expr(condition);
-                        self.walk_expr(then_expr);
-                        self.walk_expr(else_expr);
-                    }
-                    crate::ast::WhenKind::ValueMatch { value, arms } => {
-                        self.walk_expr(value);
-                        for arm in arms {
-                            let mut arm_scope = HashMap::new();
-                            collect_pattern_bindings(&arm.pattern, &mut arm_scope);
-                            self.enter_scope(arm_scope);
-                            self.walk_expr(&arm.body);
-                            self.exit_scope();
-                        }
-                    }
-                    crate::ast::WhenKind::ConditionChain { arms } => {
-                        for arm in arms {
-                            let mut arm_scope = HashMap::new();
-                            collect_pattern_bindings(&arm.pattern, &mut arm_scope);
-                            if let Some(guard) = &arm.guard {
-                                self.walk_expr(guard);
-                            }
-                            self.enter_scope(arm_scope);
-                            self.walk_expr(&arm.body);
-                            self.exit_scope();
-                        }
+            Expr::When(w) => match &w.kind {
+                crate::ast::WhenKind::OneLine {
+                    condition,
+                    then_expr,
+                    else_expr,
+                } => {
+                    self.walk_expr(condition);
+                    self.walk_expr(then_expr);
+                    self.walk_expr(else_expr);
+                }
+                crate::ast::WhenKind::ValueMatch { value, arms } => {
+                    self.walk_expr(value);
+                    for arm in arms {
+                        let mut arm_scope = HashMap::new();
+                        collect_pattern_bindings(&arm.pattern, &mut arm_scope);
+                        self.enter_scope(arm_scope);
+                        self.walk_expr(&arm.body);
+                        self.exit_scope();
                     }
                 }
-            }
-            Expr::For(fr) => {
-                match &fr.kind {
-                    crate::ast::ForKind::Iterate { var, iterable, body, .. } => {
-                        self.walk_expr(iterable);
-                        let mut for_scope = HashMap::new();
-                        for_scope.insert(var.clone(), Span::default());
-                        self.enter_scope(for_scope);
-                        self.walk_expr(body);
-                        self.exit_scope();
-                    }
-                    crate::ast::ForKind::IterateWithIndex { vars, iterable, body } => {
-                        self.walk_expr(iterable);
-                        let mut for_scope = HashMap::new();
-                        for v in vars {
-                            for_scope.insert(v.clone(), Span::default());
+                crate::ast::WhenKind::ConditionChain { arms } => {
+                    for arm in arms {
+                        let mut arm_scope = HashMap::new();
+                        collect_pattern_bindings(&arm.pattern, &mut arm_scope);
+                        if let Some(guard) = &arm.guard {
+                            self.walk_expr(guard);
                         }
-                        self.enter_scope(for_scope);
-                        self.walk_expr(body);
+                        self.enter_scope(arm_scope);
+                        self.walk_expr(&arm.body);
                         self.exit_scope();
-                    }
-                    crate::ast::ForKind::NestedIterate { bindings, body, .. } => {
-                        for (_, iter) in bindings {
-                            self.walk_expr(iter);
-                        }
-                        let mut for_scope = HashMap::new();
-                        for (v, _) in bindings {
-                            for_scope.insert(v.clone(), Span::default());
-                        }
-                        self.enter_scope(for_scope);
-                        self.walk_expr(body);
-                        self.exit_scope();
-                    }
-                    crate::ast::ForKind::Condition { condition, body } => {
-                        self.walk_expr(condition);
-                        self.walk_expr(body);
-                    }
-                    crate::ast::ForKind::Infinite { body } => {
-                        self.walk_expr(body);
                     }
                 }
-            }
+            },
+            Expr::For(fr) => match &fr.kind {
+                crate::ast::ForKind::Iterate {
+                    var,
+                    iterable,
+                    body,
+                    ..
+                } => {
+                    self.walk_expr(iterable);
+                    let mut for_scope = HashMap::new();
+                    for_scope.insert(var.clone(), Span::default());
+                    self.enter_scope(for_scope);
+                    self.walk_expr(body);
+                    self.exit_scope();
+                }
+                crate::ast::ForKind::IterateWithIndex {
+                    vars,
+                    iterable,
+                    body,
+                } => {
+                    self.walk_expr(iterable);
+                    let mut for_scope = HashMap::new();
+                    for v in vars {
+                        for_scope.insert(v.clone(), Span::default());
+                    }
+                    self.enter_scope(for_scope);
+                    self.walk_expr(body);
+                    self.exit_scope();
+                }
+                crate::ast::ForKind::NestedIterate { bindings, body, .. } => {
+                    for (_, iter) in bindings {
+                        self.walk_expr(iter);
+                    }
+                    let mut for_scope = HashMap::new();
+                    for (v, _) in bindings {
+                        for_scope.insert(v.clone(), Span::default());
+                    }
+                    self.enter_scope(for_scope);
+                    self.walk_expr(body);
+                    self.exit_scope();
+                }
+                crate::ast::ForKind::Condition { condition, body } => {
+                    self.walk_expr(condition);
+                    self.walk_expr(body);
+                }
+                crate::ast::ForKind::Infinite { body } => {
+                    self.walk_expr(body);
+                }
+            },
             Expr::Assign { target, value } => {
                 self.walk_expr(target);
                 self.walk_expr(value);
@@ -1211,8 +1282,8 @@ impl<'a> ScopeWalker<'a> {
                     }
                 }
             }
-            Expr::Literal(_) | Expr::Null | Expr::Continue
-            | Expr::Break | Expr::FunctionRef(_) => {}
+            Expr::Literal(_) | Expr::Null | Expr::Continue | Expr::Break | Expr::FunctionRef(_) => {
+            }
         }
     }
 }
@@ -1223,7 +1294,9 @@ fn collect_pattern_bindings(pattern: &crate::ast::Pattern, map: &mut HashMap<Str
         Pattern::Variable(name) => {
             map.insert(name.clone(), Span::default());
         }
-        Pattern::Constructor { args, named_fields, .. } => {
+        Pattern::Constructor {
+            args, named_fields, ..
+        } => {
             for arg in args {
                 collect_pattern_bindings(arg, map);
             }
@@ -1248,25 +1321,51 @@ fn add_stmts_to_scope(stmts: &[Stmt], scope_map: &mut HashMap<String, Span>) {
 
 fn add_stmt_to_scope(stmt: &Stmt, scope_map: &mut HashMap<String, Span>) {
     match stmt {
-        Stmt::Fun { name, span, .. } => { scope_map.insert(name.clone(), *span); }
-        Stmt::Let { name, span, .. } => { scope_map.insert(name.clone(), *span); }
-        Stmt::Const { name, span, .. } => { scope_map.insert(name.clone(), *span); }
-        Stmt::Enum { name, variants, span, .. } => {
+        Stmt::Fun { name, span, .. } => {
+            scope_map.insert(name.clone(), *span);
+        }
+        Stmt::Let { name, span, .. } => {
+            scope_map.insert(name.clone(), *span);
+        }
+        Stmt::Const { name, span, .. } => {
+            scope_map.insert(name.clone(), *span);
+        }
+        Stmt::Enum {
+            name,
+            variants,
+            span,
+            ..
+        } => {
             scope_map.insert(name.clone(), *span);
             for v in variants {
                 scope_map.insert(v.name.clone(), *span);
             }
         }
-        Stmt::TypeAlias { name, span, .. } => { scope_map.insert(name.clone(), *span); }
-        Stmt::Module { name, body, span, .. } => {
+        Stmt::TypeAlias { name, span, .. } => {
+            scope_map.insert(name.clone(), *span);
+        }
+        Stmt::Module {
+            name, body, span, ..
+        } => {
             scope_map.insert(name.clone(), *span);
             add_stmts_to_scope(body, scope_map);
         }
-        Stmt::Destructure { names, renames, span, .. } => {
-            for n in names { scope_map.insert(n.clone(), *span); }
-            for (_, local) in renames { scope_map.insert(local.clone(), *span); }
+        Stmt::Destructure {
+            names,
+            renames,
+            span,
+            ..
+        } => {
+            for n in names {
+                scope_map.insert(n.clone(), *span);
+            }
+            for (_, local) in renames {
+                scope_map.insert(local.clone(), *span);
+            }
         }
-        Stmt::Extension { methods, .. } => { add_stmts_to_scope(methods, scope_map); }
+        Stmt::Extension { methods, .. } => {
+            add_stmts_to_scope(methods, scope_map);
+        }
         _ => {}
     }
 }
@@ -1317,8 +1416,15 @@ fn find_stmt_span_for_name(stmts: &[Stmt], name: &str) -> Option<Span> {
             Stmt::Const { name: n, span, .. } if n == name => return Some(*span),
             Stmt::Enum { name: n, span, .. } if n == name => return Some(*span),
             Stmt::TypeAlias { name: n, span, .. } if n == name => return Some(*span),
-            Stmt::Module { name: n, body, span, .. } => {
-                if n == name { return Some(*span); }
+            Stmt::Module {
+                name: n,
+                body,
+                span,
+                ..
+            } => {
+                if n == name {
+                    return Some(*span);
+                }
                 if let Some(inner) = find_stmt_span_for_name(body, name) {
                     return Some(inner);
                 }
@@ -1332,7 +1438,12 @@ fn find_stmt_span_for_name(stmts: &[Stmt], name: &str) -> Option<Span> {
 fn extract_function_signature(stmts: &[Stmt], name: &str) -> Option<String> {
     for stmt in stmts {
         match stmt {
-            Stmt::Fun { name: n, params, return_type, .. } if n == name => {
+            Stmt::Fun {
+                name: n,
+                params,
+                return_type,
+                ..
+            } if n == name => {
                 let params_str: Vec<String> = params
                     .iter()
                     .map(|p| {
@@ -1347,7 +1458,12 @@ fn extract_function_signature(stmts: &[Stmt], name: &str) -> Option<String> {
                     .as_ref()
                     .map(|t| format!("{}", t))
                     .unwrap_or_else(|| "?".to_string());
-                return Some(format!("fun {}({}) -> {}", name, params_str.join(", "), ret));
+                return Some(format!(
+                    "fun {}({}) -> {}",
+                    name,
+                    params_str.join(", "),
+                    ret
+                ));
             }
             Stmt::Module { body, .. } => {
                 if let Some(sig) = extract_function_signature(body, name) {

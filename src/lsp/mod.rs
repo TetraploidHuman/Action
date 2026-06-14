@@ -119,37 +119,28 @@ fn main_loop(
 fn handle_request(state: &mut ServerState, req: &Request) -> Response {
     let id = req.id.clone();
 
-        match req.method.as_str() {
-        "textDocument/hover" =>
-            dispatch(state, req, id, handlers::handle_hover),
-        "textDocument/definition" =>
-            dispatch(state, req, id, handlers::handle_goto_definition),
-        "textDocument/completion" =>
-            dispatch(state, req, id, handlers::handle_completion),
-        "textDocument/semanticTokens/full" =>
-            dispatch(state, req, id, handlers::handle_semantic_tokens),
-        "textDocument/documentSymbol" =>
-            dispatch(state, req, id, handlers::handle_document_symbols),
-        "textDocument/signatureHelp" =>
-            dispatch(state, req, id, handlers::handle_signature_help),
-        "textDocument/references" =>
-            dispatch(state, req, id, handlers::handle_references),
-        "textDocument/documentHighlight" =>
-            dispatch(state, req, id, handlers::handle_document_highlight),
-        "textDocument/prepareRename" =>
-            dispatch(state, req, id, handlers::handle_prepare_rename),
-        "textDocument/rename" =>
-            dispatch(state, req, id, handlers::handle_rename),
-        "textDocument/foldingRange" =>
-            dispatch(state, req, id, handlers::handle_folding_range),
-        "textDocument/inlayHint" =>
-            dispatch(state, req, id, handlers::handle_inlay_hints),
-        "textDocument/formatting" =>
-            dispatch(state, req, id, handlers::handle_formatting),
-        "textDocument/codeAction" =>
-            dispatch(state, req, id, handlers::handle_code_actions),
-        "workspace/symbol" =>
-            dispatch(state, req, id, handlers::handle_workspace_symbol),
+    match req.method.as_str() {
+        "textDocument/hover" => dispatch(state, req, id, handlers::handle_hover),
+        "textDocument/definition" => dispatch(state, req, id, handlers::handle_goto_definition),
+        "textDocument/completion" => dispatch(state, req, id, handlers::handle_completion),
+        "textDocument/semanticTokens/full" => {
+            dispatch(state, req, id, handlers::handle_semantic_tokens)
+        }
+        "textDocument/documentSymbol" => {
+            dispatch(state, req, id, handlers::handle_document_symbols)
+        }
+        "textDocument/signatureHelp" => dispatch(state, req, id, handlers::handle_signature_help),
+        "textDocument/references" => dispatch(state, req, id, handlers::handle_references),
+        "textDocument/documentHighlight" => {
+            dispatch(state, req, id, handlers::handle_document_highlight)
+        }
+        "textDocument/prepareRename" => dispatch(state, req, id, handlers::handle_prepare_rename),
+        "textDocument/rename" => dispatch(state, req, id, handlers::handle_rename),
+        "textDocument/foldingRange" => dispatch(state, req, id, handlers::handle_folding_range),
+        "textDocument/inlayHint" => dispatch(state, req, id, handlers::handle_inlay_hints),
+        "textDocument/formatting" => dispatch(state, req, id, handlers::handle_formatting),
+        "textDocument/codeAction" => dispatch(state, req, id, handlers::handle_code_actions),
+        "workspace/symbol" => dispatch(state, req, id, handlers::handle_workspace_symbol),
         _ => Response::new_ok(id, Option::<()>::None),
     }
 }

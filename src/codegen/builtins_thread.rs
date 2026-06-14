@@ -6,7 +6,6 @@ use inkwell::IntPredicate;
 use super::{llvm_err, CodeGen, Scope, TypedValue};
 
 impl<'ctx> CodeGen<'ctx> {
-
     // ---- Coroutine builtins ----
 
     /// launch { body } — start a coroutine on a real pthread (default scheduler).
@@ -1082,5 +1081,4 @@ impl<'ctx> CodeGen<'ctx> {
             wt_nullable_ty.into(),
         ))
     }
-
 }

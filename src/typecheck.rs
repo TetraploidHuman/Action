@@ -422,8 +422,7 @@ impl TypeChecker {
                         // Skip return type check for generic functions (validated per-instantiation)
                         if type_params.is_empty() || !matches!(declared_ret, Type::TypeVar(_)) {
                             let inferred = self.infer_expr_type(body);
-                            if !self.types_compatible(declared_ret, &inferred)
-                            {
+                            if !self.types_compatible(declared_ret, &inferred) {
                                 let msg = if let Some(hint) =
                                     Self::check_termination(declared_ret, &inferred)
                                 {
@@ -1563,13 +1562,12 @@ impl TypeChecker {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ast::Program;
     use crate::lexer::Lexer;
     use crate::parser::Parser;
-    use crate::ast::Program;
 
     fn check_source(source: &str) -> Vec<CompilerError> {
         let mut lexer = Lexer::new(source);
@@ -1595,19 +1593,31 @@ mod tests {
     #[test]
     fn test_arith_on_string() {
         let errors = check_source("val x = 1 - \"hello\"");
-        assert!(!errors.is_empty(), "Expected type error for string arithmetic");
+        assert!(
+            !errors.is_empty(),
+            "Expected type error for string arithmetic"
+        );
         let msg = errors[0].message.to_lowercase();
-        assert!(msg.contains("arithmetic") && msg.contains("string"),
-            "Expected arithmetic-on-string error, got: {}", errors[0].message);
+        assert!(
+            msg.contains("arithmetic") && msg.contains("string"),
+            "Expected arithmetic-on-string error, got: {}",
+            errors[0].message
+        );
     }
 
     #[test]
     fn test_arith_on_bool() {
         let errors = check_source("val x = true - 1");
-        assert!(!errors.is_empty(), "Expected type error for bool arithmetic");
+        assert!(
+            !errors.is_empty(),
+            "Expected type error for bool arithmetic"
+        );
         let msg = errors[0].message.to_lowercase();
-        assert!(msg.contains("arithmetic") && msg.contains("bool"),
-            "Expected arithmetic-on-bool error, got: {}", errors[0].message);
+        assert!(
+            msg.contains("arithmetic") && msg.contains("bool"),
+            "Expected arithmetic-on-bool error, got: {}",
+            errors[0].message
+        );
     }
 
     #[test]
@@ -1615,8 +1625,11 @@ mod tests {
         let errors = check_source("val x = true && 5");
         assert!(!errors.is_empty(), "Expected type error for logical op");
         let msg = errors[0].message.to_lowercase();
-        assert!(msg.contains("logical") && msg.contains("bool"),
-            "Expected logical-op error, got: {}", errors[0].message);
+        assert!(
+            msg.contains("logical") && msg.contains("bool"),
+            "Expected logical-op error, got: {}",
+            errors[0].message
+        );
     }
 
     #[test]
@@ -1624,17 +1637,26 @@ mod tests {
         let errors = check_source("val x = 1 & true");
         assert!(!errors.is_empty(), "Expected type error for bitwise op");
         let msg = errors[0].message.to_lowercase();
-        assert!(msg.contains("bitwise") && msg.contains("int"),
-            "Expected bitwise-op error, got: {}", errors[0].message);
+        assert!(
+            msg.contains("bitwise") && msg.contains("int"),
+            "Expected bitwise-op error, got: {}",
+            errors[0].message
+        );
     }
 
     #[test]
     fn test_bool_comparison_with_int() {
         let errors = check_source("val x = true > 1");
-        assert!(!errors.is_empty(), "Expected type error for bool comparison");
+        assert!(
+            !errors.is_empty(),
+            "Expected type error for bool comparison"
+        );
         let msg = errors[0].message.to_lowercase();
-        assert!(msg.contains("cannot compare") && msg.contains("bool"),
-            "Expected comparison error, got: {}", errors[0].message);
+        assert!(
+            msg.contains("cannot compare") && msg.contains("bool"),
+            "Expected comparison error, got: {}",
+            errors[0].message
+        );
     }
 
     #[test]
@@ -1642,8 +1664,11 @@ mod tests {
         let errors = check_source("fun f() -> String { 42 }");
         assert!(!errors.is_empty(), "Expected return type mismatch error");
         let msg = errors[0].message.to_lowercase();
-        assert!(msg.contains("return type") && msg.contains("string") && msg.contains("int"),
-            "Expected return type error, got: {}", errors[0].message);
+        assert!(
+            msg.contains("return type") && msg.contains("string") && msg.contains("int"),
+            "Expected return type error, got: {}",
+            errors[0].message
+        );
     }
 
     #[test]
@@ -1651,8 +1676,11 @@ mod tests {
         let errors = check_source("val x Int = \"hello\"");
         assert!(!errors.is_empty(), "Expected variable type mismatch error");
         let msg = errors[0].message.to_lowercase();
-        assert!(msg.contains("declared as") && msg.contains("int") && msg.contains("string"),
-            "Expected variable type error, got: {}", errors[0].message);
+        assert!(
+            msg.contains("declared as") && msg.contains("int") && msg.contains("string"),
+            "Expected variable type error, got: {}",
+            errors[0].message
+        );
     }
 
     #[test]
@@ -1660,8 +1688,11 @@ mod tests {
         let errors = check_source("fun f(x: Int) {} val y = f()");
         assert!(!errors.is_empty(), "Expected arg count mismatch error");
         let msg = errors[0].message.to_lowercase();
-        assert!(msg.contains("expects 1") && msg.contains("got 0"),
-            "Expected arg count error, got: {}", errors[0].message);
+        assert!(
+            msg.contains("expects 1") && msg.contains("got 0"),
+            "Expected arg count error, got: {}",
+            errors[0].message
+        );
     }
 
     #[test]
@@ -1669,28 +1700,41 @@ mod tests {
         let errors = check_source("fun f(x) { x }");
         assert!(!errors.is_empty(), "Expected missing type annotation error");
         let msg = errors[0].message.to_lowercase();
-        assert!(msg.contains("must have a type annotation"),
-            "Expected type annotation error, got: {}", errors[0].message);
+        assert!(
+            msg.contains("must have a type annotation"),
+            "Expected type annotation error, got: {}",
+            errors[0].message
+        );
     }
 
     #[test]
     fn test_non_exhaustive_when() {
-        let errors = check_source("enum Color { Red, Blue } fun f(c: Color) -> Int { when c { Red -> 1 } }");
+        let errors =
+            check_source("enum Color { Red, Blue } fun f(c: Color) -> Int { when c { Red -> 1 } }");
         // Check that at least one error mentions non-exhaustive
         let has_nex = errors.iter().any(|e| {
             e.message.to_lowercase().contains("non-exhaustive")
                 || e.message.to_lowercase().contains("missing variant")
         });
-        assert!(has_nex, "Expected non-exhaustive when error, got: {:?}",
-            errors.iter().map(|e| &e.message).collect::<Vec<_>>());
+        assert!(
+            has_nex,
+            "Expected non-exhaustive when error, got: {:?}",
+            errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+        );
     }
 
     #[test]
     fn test_string_minus_string() {
         let errors = check_source("val x = \"hello\" - \"world\"");
-        assert!(!errors.is_empty(), "Expected type error for string subtraction");
+        assert!(
+            !errors.is_empty(),
+            "Expected type error for string subtraction"
+        );
         let msg = errors[0].message.to_lowercase();
-        assert!(msg.contains("arithmetic") && msg.contains("string"),
-            "Expected arithmetic-on-string error, got: {}", errors[0].message);
+        assert!(
+            msg.contains("arithmetic") && msg.contains("string"),
+            "Expected arithmetic-on-string error, got: {}",
+            errors[0].message
+        );
     }
 }

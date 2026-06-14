@@ -264,7 +264,8 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Load captured values from the captures struct into local allocas
         if has_captures {
-            let cst = captures_struct_ty.ok_or_else(|| "Closure capture type not set".to_string())?;
+            let cst =
+                captures_struct_ty.ok_or_else(|| "Closure capture type not set".to_string())?;
             if let Some(captures_ptr) = function.get_nth_param(0) {
                 let ptr_val = captures_ptr.into_pointer_value();
                 for (i, name) in free_vars.iter().enumerate() {
@@ -314,7 +315,10 @@ impl<'ctx> CodeGen<'ctx> {
         let result = self.compile_expr(body)?;
 
         // ---- Build return ----
-        let current_block = self.builder.get_insert_block().ok_or_else(|| "No insert block")?;
+        let current_block = self
+            .builder
+            .get_insert_block()
+            .ok_or_else(|| "No insert block")?;
         if current_block.get_terminator().is_none() {
             self.build_lambda_return(&function, &result)?;
         }
@@ -327,7 +331,8 @@ impl<'ctx> CodeGen<'ctx> {
 
         // ---- Allocate captures struct at definition site ----
         if has_captures {
-            let cst = captures_struct_ty.ok_or_else(|| "Closure capture type not set".to_string())?;
+            let cst =
+                captures_struct_ty.ok_or_else(|| "Closure capture type not set".to_string())?;
             let size_val = cst.size_of().ok_or("Failed to get captures struct size")?;
             let closure_ptr = self.malloc_rc(size_val)?;
 
@@ -1253,8 +1258,13 @@ impl<'ctx> CodeGen<'ctx> {
             _ => return Err("&& requires boolean operands".to_string()),
         };
 
-        let entry_block = self.builder.get_insert_block().ok_or_else(|| "No insert block")?;
-        let current_fn = entry_block.get_parent().expect("CodeGen must have a parent function in the current block");
+        let entry_block = self
+            .builder
+            .get_insert_block()
+            .ok_or_else(|| "No insert block")?;
+        let current_fn = entry_block
+            .get_parent()
+            .expect("CodeGen must have a parent function in the current block");
         let rhs_block = self.context.append_basic_block(current_fn, "and_rhs");
         let merge_block = self.context.append_basic_block(current_fn, "and_merge");
         let b1 = self.bool_ty();
@@ -1296,8 +1306,13 @@ impl<'ctx> CodeGen<'ctx> {
             _ => return Err("|| requires boolean operands".to_string()),
         };
 
-        let entry_block = self.builder.get_insert_block().ok_or_else(|| "No insert block")?;
-        let current_fn = entry_block.get_parent().expect("CodeGen must have a parent function in the current block");
+        let entry_block = self
+            .builder
+            .get_insert_block()
+            .ok_or_else(|| "No insert block")?;
+        let current_fn = entry_block
+            .get_parent()
+            .expect("CodeGen must have a parent function in the current block");
         let rhs_block = self.context.append_basic_block(current_fn, "or_rhs");
         let merge_block = self.context.append_basic_block(current_fn, "or_merge");
         let b1 = self.bool_ty();

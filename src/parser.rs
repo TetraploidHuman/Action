@@ -167,7 +167,9 @@ impl Parser {
         self.tokens.get(self.pos).unwrap_or_else(|| {
             // All programs have at least an EOF token from the lexer
             // If tokens is empty, the lexer was not run — this is a programming error.
-            self.tokens.last().expect("Parser has no tokens: lexer must produce at least EOF")
+            self.tokens
+                .last()
+                .expect("Parser has no tokens: lexer must produce at least EOF")
         })
     }
 
@@ -305,7 +307,7 @@ impl Parser {
                 } else {
                     Err(self.error("Unexpected '@'"))
                 }
-            },
+            }
             TokenKind::Return => self.parse_return(),
             TokenKind::Break => {
                 let span = self.current_span();

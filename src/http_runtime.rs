@@ -171,8 +171,13 @@ pub extern "C" fn action_http_request(
         let err = "0
 Invalid input: null pointer argument";
         return CString::new(err)
-            .unwrap_or_else(|_| CString::new("0
-Error").unwrap())
+            .unwrap_or_else(|_| {
+                CString::new(
+                    "0
+Error",
+                )
+                .unwrap()
+            })
             .into_raw();
     }
     let method = unsafe { std::ffi::CStr::from_ptr(method) }

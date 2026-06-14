@@ -668,5 +668,4 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         Ok(TypedValue::Int(final_acc.into_int_value()))
     }
-
 }

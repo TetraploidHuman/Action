@@ -2,9 +2,7 @@
 
 use crate::ast::*;
 use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
-use inkwell::values::{
-    BasicMetadataValueEnum, BasicValueEnum,
-};
+use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum};
 use inkwell::IntPredicate;
 
 use super::{llvm_err, CodeGen, TypedValue};
@@ -1663,5 +1661,4 @@ impl<'ctx> CodeGen<'ctx> {
             _ => self.i64_ty().const_int(0, false).into(),
         })
     }
-
 }

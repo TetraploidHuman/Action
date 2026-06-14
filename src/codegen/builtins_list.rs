@@ -647,5 +647,4 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         Ok(aggregate2.into_struct_value())
     }
-
 }

@@ -1,9 +1,7 @@
 // Submodule: builtins_print
 
 use crate::ast::*;
-use inkwell::values::{
-    BasicValue, BasicValueEnum,
-};
+use inkwell::values::{BasicValue, BasicValueEnum};
 use inkwell::IntPredicate;
 
 use super::{llvm_err, CodeGen, InnerType, TypedValue};
@@ -206,5 +204,4 @@ impl<'ctx> CodeGen<'ctx> {
         self.rc_free_intermediate(&v)?;
         Ok(TypedValue::Unit)
     }
-
 }

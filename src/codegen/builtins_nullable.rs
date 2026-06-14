@@ -1,9 +1,6 @@
 // Submodule: builtins_nullable
 
-use inkwell::values::{
-    FloatValue, IntValue, PointerValue,
-    StructValue,
-};
+use inkwell::values::{FloatValue, IntValue, PointerValue, StructValue};
 use inkwell::IntPredicate;
 
 use super::{llvm_err, CodeGen, TypedValue};
@@ -315,5 +312,4 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         Ok(TypedValue::Nullable(alloca, nullable_ty.into()))
     }
-
 }

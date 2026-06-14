@@ -178,7 +178,11 @@ fn main() {
                 std::process::exit(1);
             }
         },
-        Commands::Repl { opt, target, profile } => {
+        Commands::Repl {
+            opt,
+            target,
+            profile,
+        } => {
             if let Err(e) = run_repl(opt, profile, &target) {
                 eprintln!("REPL error: {}", e);
             }
@@ -1173,8 +1177,10 @@ fn run_file(
             let dec_count = ir.matches("call void @action_rc_dec").count();
             let total = malloc_count + inc_count + dec_count;
             if total > 0 {
-                eprintln!("[profile] operations: {} (malloc_rc: {} rc_inc: {} rc_dec: {})",
-                    total, malloc_count, inc_count, dec_count);
+                eprintln!(
+                    "[profile] operations: {} (malloc_rc: {} rc_inc: {} rc_dec: {})",
+                    total, malloc_count, inc_count, dec_count
+                );
             }
         }
         let exit_code = cg.run_jit()?;
@@ -1308,15 +1314,18 @@ fn check_file(path: &PathBuf, explain: bool) -> Result<(), Vec<CompilerError>> {
 
 /// Interactive REPL: read, compile, execute, print
 fn run_repl(opt: u8, profile: bool, target: &str) -> Result<(), String> {
-    use std::io::{self, Write};
     use inkwell::targets::{InitializationConfig, Target};
+    use std::io::{self, Write};
 
     // Initialize LLVM targets for JIT
     Target::initialize_x86(&InitializationConfig::default());
     Target::initialize_aarch64(&InitializationConfig::default());
 
     let context = Context::create();
-    eprintln!("Action REPL v{} (type :quit to exit)", env!("CARGO_PKG_VERSION"));
+    eprintln!(
+        "Action REPL v{} (type :quit to exit)",
+        env!("CARGO_PKG_VERSION")
+    );
 
     let stdin = io::stdin();
     let mut line_buf = String::new();
@@ -1352,7 +1361,8 @@ fn run_repl(opt: u8, profile: bool, target: &str) -> Result<(), String> {
         }
 
         // Check for continuation: line ends with '{', '[', '(' or backslash
-        let needs_continuation = trimmed.ends_with('{') || trimmed.ends_with('\\')
+        let needs_continuation = trimmed.ends_with('{')
+            || trimmed.ends_with('\\')
             || trimmed.ends_with(",") && !multiline.is_empty();
 
         if needs_continuation || !multiline.is_empty() {
@@ -1416,16 +1426,16 @@ fn eval_repl_line(
         };
     } else {
         // Try as a statement
-        let mut parser2 = crate::parser::Parser::new(
-            crate::lexer::Lexer::new(input).tokenize()
-        );
+        let mut parser2 = crate::parser::Parser::new(crate::lexer::Lexer::new(input).tokenize());
         match parser2.parse_statement() {
             Ok(stmt) => {
                 program = Program { stmts: vec![stmt] };
             }
             Err(e) => {
-                eprintln!("Parse error at line {}, col {}: {}",
-                    e.line, e.col, e.message);
+                eprintln!(
+                    "Parse error at line {}, col {}: {}",
+                    e.line, e.col, e.message
+                );
                 return Ok(());
             }
         }
@@ -1472,8 +1482,10 @@ fn eval_repl_line(
         let dec_count = ir.matches("call void @action_rc_dec").count();
         let total = malloc_count + inc_count + dec_count;
         if total > 0 {
-            eprintln!("[profile] operations: {} (malloc_rc: {} rc_inc: {} rc_dec: {})",
-                total, malloc_count, inc_count, dec_count);
+            eprintln!(
+                "[profile] operations: {} (malloc_rc: {} rc_inc: {} rc_dec: {})",
+                total, malloc_count, inc_count, dec_count
+            );
         }
     }
 
@@ -1493,12 +1505,7 @@ fn eval_repl_line(
 }
 
 /// Run test functions from a source file
-fn run_test_file(
-    path: &PathBuf,
-    opt: u8,
-    profile: bool,
-    target: &str,
-) -> Result<(), String> {
+fn run_test_file(path: &PathBuf, opt: u8, profile: bool, target: &str) -> Result<(), String> {
     use inkwell::targets::{InitializationConfig, Target};
 
     let config = ProjectConfig::find_and_load(path);
@@ -1512,8 +1519,10 @@ fn run_test_file(
             .iter()
             .map(|e| e.to_string())
             .collect::<Vec<_>>()
-            .join("
-")
+            .join(
+                "
+",
+            )
     })?;
 
     // Find all @test functions
@@ -1567,8 +1576,10 @@ fn run_test_file(
         let dec_count = ir.matches("call void @action_rc_dec").count();
         let total = malloc_count + inc_count + dec_count;
         if total > 0 {
-            eprintln!("[profile] operations: {} (malloc_rc: {} rc_inc: {} rc_dec: {})",
-                total, malloc_count, inc_count, dec_count);
+            eprintln!(
+                "[profile] operations: {} (malloc_rc: {} rc_inc: {} rc_dec: {})",
+                total, malloc_count, inc_count, dec_count
+            );
         }
     }
 

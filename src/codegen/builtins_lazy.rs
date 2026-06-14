@@ -7,7 +7,6 @@ use inkwell::IntPredicate;
 use super::{llvm_err, CodeGen, TypedValue};
 
 impl<'ctx> CodeGen<'ctx> {
-
     /// lazyTake(n, lazy_list) - limit lazy list to first n elements (lazy: just updates take_count)
     pub(super) fn builtin_lazy_take(
         &mut self,

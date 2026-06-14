@@ -1,9 +1,7 @@
 // Submodule: builtins_stdlib
 
 use crate::ast::*;
-use inkwell::values::{
-    BasicValue, IntValue, PointerValue,
-};
+use inkwell::values::{BasicValue, IntValue, PointerValue};
 use inkwell::{FloatPredicate, IntPredicate};
 
 use super::{llvm_err, CodeGen, InnerType, TypedValue};
@@ -5995,5 +5993,4 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
     }
-
 }

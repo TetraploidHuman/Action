@@ -405,7 +405,6 @@ fn map_host_symbols(cg: &CodeGen, engine: &inkwell::execution_engine::ExecutionE
 // Output methods: emit bitcode, assembly, object files
 // ---------------------------------------------------------------------------
 
-
 impl<'ctx> CodeGen<'ctx> {
     pub fn emit_bitcode(&self, path: &std::path::Path) -> Result<(), String> {
         if !self.module.write_bitcode_to_path(path) {
@@ -503,7 +502,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.emit_via_target_machine(path, inkwell::targets::FileType::Object)
     }
 }
-    /// Run all test functions via JIT and return results as (name, passed, output) triples
+/// Run all test functions via JIT and return results as (name, passed, output) triples
 impl<'ctx> CodeGen<'ctx> {
     pub fn run_tests(&self, test_names: &[String]) -> Result<Vec<(String, bool, String)>, String> {
         #[cfg(not(target_os = "windows"))]
@@ -556,6 +555,4 @@ impl<'ctx> CodeGen<'ctx> {
 
         Ok(results)
     }
-
-
 }

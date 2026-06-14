@@ -6,10 +6,10 @@ use inkwell::types::{BasicTypeEnum, StructType};
 use inkwell::values::{BasicValue, BasicValueEnum, PointerValue};
 use inkwell::IntPredicate;
 
+use super::{llvm_err, CodeGen, InnerType, Scope, TypedValue, ValKind};
+use inkwell::types::BasicMetadataTypeEnum;
 use inkwell::types::FunctionType;
 use inkwell::values::{BasicMetadataValueEnum, IntValue};
-use inkwell::types::BasicMetadataTypeEnum;
-use super::{llvm_err, CodeGen, InnerType, Scope, TypedValue, ValKind};
 
 impl<'ctx> CodeGen<'ctx> {
     /// Compile null literal: returns a nullable value with null flag set to 1.
@@ -2284,10 +2284,8 @@ impl<'ctx> CodeGen<'ctx> {
         } else if let Some(ct) = self.anon_structs.get(&field_names) {
             *ct
         } else {
-            let field_tys: Vec<BasicTypeEnum> = field_vals
-                .iter()
-                .map(|v| v.get_value_type(self))
-                .collect();
+            let field_tys: Vec<BasicTypeEnum> =
+                field_vals.iter().map(|v| v.get_value_type(self)).collect();
             let anon_ty = self.context.struct_type(&field_tys, false);
             self.anon_structs.insert(field_names, anon_ty);
             anon_ty
@@ -3802,12 +3800,14 @@ impl<'ctx> CodeGen<'ctx> {
             TypedValue::Unit => "Unit".to_string(),
         }
     }
-// ---- TypedValue helpers ----
+    // ---- TypedValue helpers ----
 }
 impl<'ctx> TypedValue<'ctx> {
-    pub(super) fn get_type_for_alloca(&self, cg: &CodeGen<'ctx>) -> inkwell::types::BasicTypeEnum<'ctx> {
+    pub(super) fn get_type_for_alloca(
+        &self,
+        cg: &CodeGen<'ctx>,
+    ) -> inkwell::types::BasicTypeEnum<'ctx> {
         match self {
-
             TypedValue::CString(_) | TypedValue::Ptr(_) | TypedValue::FileHandle(_) => {
                 cg.ptr_ty().into()
             }
@@ -3845,8 +3845,12 @@ impl<'ctx> TypedValue<'ctx> {
             TypedValue::Bool(_) => cg.i64_ty().into(),
             TypedValue::Int(_) => cg.i64_ty().into(),
             TypedValue::Float(_) => cg.f64_ty().into(),
-            TypedValue::CString(_) | TypedValue::Ptr(_) | TypedValue::FileHandle(_) => cg.ptr_ty().into(),
-            TypedValue::Unit | TypedValue::Fn(_, _) | TypedValue::Closure { .. } => cg.ptr_ty().into(),
+            TypedValue::CString(_) | TypedValue::Ptr(_) | TypedValue::FileHandle(_) => {
+                cg.ptr_ty().into()
+            }
+            TypedValue::Unit | TypedValue::Fn(_, _) | TypedValue::Closure { .. } => {
+                cg.ptr_ty().into()
+            }
         }
     }
 
