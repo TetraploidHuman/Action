@@ -226,6 +226,7 @@ impl Token {
         Token { kind, span }
     }
 
+    #[allow(dead_code)]
     pub fn eof(span: Span) -> Self {
         Token {
             kind: TokenKind::Eof,
@@ -1222,12 +1223,14 @@ impl Lexer {
     }
 
     /// Peek at the next token without consuming it
+    #[allow(dead_code)]
     pub fn peek(&self) -> TokenKind {
         let mut clone = self.clone();
         clone.next_token().kind
     }
 
     /// Peek two tokens ahead
+    #[allow(dead_code)]
     pub fn peek2(&self) -> (TokenKind, TokenKind) {
         let mut clone = self.clone();
         let first = clone.next_token().kind;
@@ -1541,7 +1544,7 @@ mod tests {
     #[test]
     fn test_lexer_malformed_string_unterminated() {
         let mut lexer = Lexer::new("\"hello world");
-        let tokens = lexer.tokenize();
+        let _tokens = lexer.tokenize();
         let errors = lexer.take_errors();
         assert!(!errors.is_empty(), "expected error for unterminated string");
     }

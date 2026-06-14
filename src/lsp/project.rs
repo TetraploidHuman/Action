@@ -51,6 +51,7 @@ pub struct Project {
     pub symbol_index: HashMap<String, Vec<SymbolLocation>>,
     /// Directories to search for standard library files.
     /// Populated from workspace roots, CWD, and exe-relative paths.
+    #[allow(dead_code)]
     pub search_dirs: Vec<PathBuf>,
 }
 
@@ -203,7 +204,7 @@ impl Project {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::Type;
+    // use crate::ast::Type;
     use crate::typecheck::TypeRegistry;
     use lsp_types::Url;
     use std::collections::HashMap;

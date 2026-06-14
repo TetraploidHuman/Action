@@ -167,7 +167,7 @@ fn map_host_symbols(cg: &CodeGen, engine: &inkwell::execution_engine::ExecutionE
             fn cbrt(x: f64) -> f64;
         }
 
-        let mut names = vec![
+        let names = vec![
             "fgets", "malloc", "free", "strlen", "memcpy", "strcmp", "printf", "fprintf", "fflush",
             "fclose", "fopen", "fread", "fwrite", "fseek", "ftell", "feof", "remove", "sprintf",
             "strtod", "strftime", "sqrt", "sin", "cos", "tan", "asin", "acos", "atan", "atan2",

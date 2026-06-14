@@ -5,6 +5,7 @@ use std::fmt;
 // ---- Types as written in source code ----
 
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
 pub enum Type {
     /// Named type: Int, String, MyType, List[Int]
     Named(String),
@@ -318,6 +319,7 @@ impl fmt::Display for Pattern {
 // ---- Expressions ----
 
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
 pub enum Expr {
     /// Literal value: 42, true, "hello"
     Literal(Literal),
@@ -425,6 +427,7 @@ pub struct For {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
 pub enum ForKind {
     /// for var in iterable { body } (collect = true for for-expression)
     Iterate {
@@ -1092,6 +1095,7 @@ impl Expr {
         Expr::Literal(Literal::String(s.to_string()))
     }
 
+    #[allow(dead_code)]
     pub fn ident(name: &str) -> Self {
         Expr::Ident(name.to_string())
     }
@@ -1104,6 +1108,7 @@ impl Expr {
         }
     }
 
+    #[allow(dead_code)]
     pub fn call_with_lambda(func: Expr, args: Vec<Expr>, lambda: Expr) -> Self {
         Expr::Call {
             func: Box::new(func),
@@ -1112,6 +1117,7 @@ impl Expr {
         }
     }
 
+    #[allow(dead_code)]
     pub fn lambda(params: Vec<&str>, body: Expr) -> Self {
         Expr::Lambda {
             params: params.into_iter().map(|s| s.to_string()).collect(),
@@ -1128,6 +1134,7 @@ impl Expr {
         }
     }
 
+    #[allow(dead_code)]
     pub fn binary(lhs: Expr, op: BinaryOp, rhs: Expr) -> Self {
         Expr::Binary(Box::new(lhs), op, Box::new(rhs))
     }

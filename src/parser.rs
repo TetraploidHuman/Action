@@ -182,6 +182,7 @@ impl Parser {
         }
     }
 
+    #[allow(dead_code)]
     fn peek(&self) -> TokenKind {
         self.tokens
             .get(self.pos)
@@ -206,6 +207,7 @@ impl Parser {
         }
     }
 
+    #[allow(dead_code)]
     fn expect_kw(&mut self, kw: &str) -> Result<(), ParseError> {
         let kind = self.current_kind();
         let matches = match &kind {
@@ -240,6 +242,7 @@ impl Parser {
         }
     }
 
+    #[allow(dead_code)]
     fn error_at(&self, msg: &str, line: usize, col: usize) -> ParseError {
         ParseError {
             message: msg.to_string(),

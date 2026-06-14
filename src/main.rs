@@ -14,7 +14,6 @@ mod test_runner;
 mod typecheck;
 
 use ariadne::{Color, Label, Report, ReportKind, Source};
-use ast::*;
 use clap::{Parser as ClapParser, Subcommand};
 use config::ProjectConfig;
 use error::CompilerError;

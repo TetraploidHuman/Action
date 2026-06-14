@@ -930,6 +930,7 @@ mod stmt;
 
 #[cfg(test)]
 mod tests {
+    #![allow(unused_imports)]
     use super::*;
     use crate::ast::*;
     use crate::error::CompilerError;

@@ -1753,7 +1753,7 @@ impl TypeChecker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::Program;
+    // use crate::ast::Program;
     use crate::lexer::Lexer;
     use crate::parser::Parser;
 
@@ -1761,7 +1761,7 @@ mod tests {
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize();
         let mut parser = Parser::new(tokens);
-        let mut program = parser.parse_program().expect("Parsing should succeed");
+        let program = parser.parse_program().expect("Parsing should succeed");
         let mut registry = TypeRegistry::new();
         for stmt in &program.stmts {
             let _ = registry.register(stmt);

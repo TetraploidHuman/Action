@@ -4,7 +4,7 @@ use crate::lexer::Span;
 use crate::typecheck::{TypeChecker, TypeRegistry};
 use std::collections::HashSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// Register builtin struct types (Date, DateTime, Random)
 pub fn builtin_types(program: &Program) -> Vec<Stmt> {
