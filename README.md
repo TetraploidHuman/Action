@@ -1,4 +1,4 @@
-# Action Language
+# Action Language — Atomic
 
 Action 是一门静态类型的多范式编程语言，编译器用 Rust 编写，基于 LLVM 后端，支持 JIT 即时编译与原生代码生成。
 
@@ -9,6 +9,7 @@ Action 是一门静态类型的多范式编程语言，编译器用 Rust 编写�
 - **静态类型系统** — 结构化类型，类型推断，类型别名
 - **模式匹配** — 穷尽性 `when` 表达式，支持枚举/结构体解构，守卫（guard）与或模式
 - **一等函数** — Lambda 表达式，隐式 `it` 参数，闭包捕获
+- **函数重载** — 同名函数可基于参数类型重载
 - **集合类型** — list, set, map 及丰富的方法链
 - **扩展方法** — 为已有类型添加方法
 - **字符串插值** — `"Hello, ${name}!"`
@@ -51,9 +52,15 @@ action run hello.at
 val x = 42              // 不可变绑定
 var y = 0               // 可变绑定
 val name String = "Action"  // 带类型标注
-val lazy big = heavyComputation()  // 惰性初始化
+val typed: Int = 42     // 带冒号标注（两种语法皆可）
+lazy val big = heavyComputation()  // 惰性初始化（lazy 在 val 之前）
+
+y = y + 1               // 普通赋值
+const MAX Int = 1024    // 编译期常量
 
 y += 1                  // 复合赋值: += -= *= /= %=
+
+// 复合赋值: += -= *= /= %=
 y = y + 1               // 普通赋值
 ```
 
@@ -65,7 +72,13 @@ val f Float = 3.14
 val b Bool = true           // true / false
 val s String = "hello"
 val c Char = 'A'
+
+val bin = 0b1010        // 二进制字面量 = 10
+val oct = 0o777         // 八进制字面量 = 511
+val hex = 0xFF          // 十六进制字面量 = 255
 ```
+
+
 
 ### 运算符
 
@@ -90,24 +103,24 @@ a & b    a | b    a ^ b    a << b    a >> b    ~a
 ```action
 val s = "hello"
 
-s.trim()                    // "hi"（去除两端空白）
-s.toUpper()                 // "HELLO"
-s.toLower()                 // "hello"
-s.len()                     // 5
-s.substring(0, 2)           // "he"
-s.split(",")                // List["a", "b", "c"]
-s.startsWith("he")          // true
-s.endsWith("lo")            // true
-s.contains("ell")           // true
-s.charAt(1)                 // char 'e'
-s.charCode(0)               // int 104
-s.chars()                   // List['h', 'e', 'l', 'l', 'o']
-s.indexOf("el")             // Int? = 1（可空）
-s.replace("foo", "bar")     // 替换
-s.repeat(3)                 // 重复
-s.trimStart()               // 去除左端空白
-s.trimEnd()                 // 去除右端空白
-s.join(List["x", "y"])      // List[String] → string: "hello"
+trim(s)                     // "hi"（去除两端空白）
+toUpper(s)                  // "HELLO"
+toLower(s)                  // "hello"
+len(s)                      // 5
+substring(s, 0, 2)          // "he"
+split(s, ",")               // List["a", "b", "c"]
+startsWith(s, "he")         // true
+endsWith(s, "lo")           // true
+contains(s, "ell")          // true
+charAt(s, 1)                // char 'e'
+charCode(s, 0)              // int 104
+chars(s)                    // List['h', 'e', 'l', 'l', 'o']
+indexOf(s, "el")            // Int? = 1（可空）
+replace(s, "foo", "bar")    // 替换
+repeat(s, 3)                // 重复
+trimStart(s)                // 去除左端空白
+trimEnd(s)                  // 去除右端空白
+join(List["x", "y"], "-")   // "x-y"
 "42".toInt()                // Int? = 42（可空）
 "3.14".toFloat()            // float? = 3.14（可空）
 
@@ -192,10 +205,11 @@ fun <T> pickFirst(a: T, b: T) -> T { a }
 // 泛型枚举
 enum Option[T] {
     Some(T),
-    None
+    None,
 }
 
 // 使用泛型函数（自动推断类型参数）
+val opt = Option.Some(42)   // 完整枚举构造
 val x = identity(42)        // Int
 val y = identity("hello")   // String
 val z = identity(3.14)      // Float
@@ -231,13 +245,13 @@ fun process() -> String? {
 
 // 智能转换 — 空判断后自动转换为非空类型
 if name != null {
-    println(name.toUpper())    // name 自动提升为 string
+    println(len(name))         // name 自动提升为 string
 }
 
 // 智能转换也适用于 when
 when name {
     null -> println("got null")
-    else -> println(name.len()) // name 提升为 string
+    else -> println(len(name)) // name 提升为 string
 }
 ```
 
@@ -305,7 +319,8 @@ extension Int {
 
 ```action
 type UserId = Int
-type Person = { id: UserId, name: String }
+type Person   = { id: UserId, name: String }
+type Callback = (Int) -> Bool   // 函数类型别名
 ```
 
 ### For 循环
@@ -331,15 +346,20 @@ for index, item in list {
     println("${index}: ${item}")
 }
 
-// 条件循环
+// 条件循环（类似 while）
 var i = 0
 for i < 10 {
     i = i + 1
 }
 
+// 无限循环
+for {
+    break   // 显式 break 退出
+}
+
 // for 作为表达式（收集结果）
 val doubled = for x in list { x * 2 }
-val evens = for x in list if x % 2 == 0 { x }
+val evens = for x in list { when x % 2 == 0 { x else continue } }
 ```
 
 ### 集合
@@ -347,28 +367,41 @@ val evens = for x in list if x % 2 == 0 { x }
 ```action
 // list — 构建与链式操作
 val list = List[1, 2, 3, 4, 5]
+val squares = for x in list { x*x } // for 表达式创建列表
 
-list.len()              // 5
+len(list)               // 5
+// 也支持方法调用: list.len()
 List[0]                 // 1（索引访问）
-list.head()             // 1
-list.last()             // 5
-list.tail()             // List[2, 3, 4, 5]
-list.contains(3)        // true
-list.indexOf(3)         // Int? = 2
-list.reverse()          // List[5, 4, 3, 2, 1]
-list.take(2)            // List[1, 2]
-list.drop(2)            // List[3, 4, 5]
-list.append(6)          // List[1, 2, 3, 4, 5, 6]
-list.map { it * 2 }     // List[2, 4, 6, 8, 10]
-list.filter { it % 2 == 0 } // List[2, 4]
-list.fold(0) { acc, x -> acc + x }  // 15
-list.isEmpty()          // true/false
-list.sorted()           // List[1, 2, 3, 4, 5]
-list.unique()           // 去重
-list.find { it == 3 }   // Int? = 3
-list.sum()              // 15
-list.product()          // 120
-list.zip(List["a", "b", "c"])  // List[{1, "a"}, {2, "b"}, {3, "c"}]
+head(list)              // Int? = 1（可空，空列表返回 null）
+last(list)              // Int? = 5
+tail(list)              // List[2, 3, 4, 5]
+reverse(list)           // List[5, 4, 3, 2, 1]
+take(list, 2)           // List[1, 2]
+drop(list, 2)           // List[3, 4, 5]
+append(list, 6)         // List[1, 2, 3, 4, 5, 6]
+prepend(list, 0)        // List[0, 1, 2, 3, 4, 5]
+
+// 高阶函数（lambda 作为最后一个参数）
+map(list) { it * 2 }        // List[2, 4, 6, 8, 10]
+filter(list) { it % 2 == 0 }// List[2, 4]
+fold(list, 0) { acc, x -> acc + x }  // 15
+any(list) { it > 3 }        // true
+all(list) { it > 0 }        // true
+find(list) { it == 3 }      // Int? = 3
+flatMap(list) { List[it, it*2] }
+sortedBy(list) { -it }      // 降序排序
+partition(list) { it % 2 == 0 } // ({2, 4}, {1, 3, 5})
+
+// 列表函数也支持方法调用: list.contains(3), list.indexOf(3), list.isEmpty()
+contains(list, 3)       // true
+indexOf(list, 3)        // Int? = 2
+isEmpty(list)           // false
+sum(list)               // 15
+product(list)           // 120
+zip(list, List["a", "b", "c"])  // List[{1, "a"}, {2, "b"}, {3, "c"}]
+unique(list)            // 去重
+flatten(List[list, List[6,7]])  // 展平
+withIndex(list)         // List[{0, 1}, {1, 2}, ...]
 
 // set
 val s = Set[1, 2, 3, 3, 2]  // Set[1, 2, 3]
@@ -376,20 +409,30 @@ s.contains(2)            // true
 
 // map
 val m = Map["a": 1, "b": 2]
-m.get("a")               // Int? = 1
+get(m, "a")              // Int? = 1
+containsKey(m, "a")      // true
+insert(m, "c", 3)        // Map["a": 1, "b": 2, "c": 3]
+remove(m, "a")           // Map["b": 2]
+len(m)                   // 2
+mapKeys(m)               // List["a", "b"]
+mapValues(m)             // List[1, 2]
+mapEntries(m)            // List[{"a", 1}, {"b", 2}]
+
+// 也支持方法调用:
 m.contains("a")          // true
-m.insert("c", 3)         // Map["a": 1, "b": 2, "c": 3]
-m.remove("a")            // Map["b": 2]
 m.len()                  // 2
 m.keys()                 // List["a", "b"]
 m.values()               // List[1, 2]
+m.entries()              // List[{"a": 1}, {"b": 2}]
 ```
 
 ### 文件 I/O
 
 ```action
-// API 风格与版本有关，具体用法参考示例
-appendFile("/tmp/log.txt", "log entry\n")
+writeFile("/tmp/test.txt", "hello")
+appendFile("/tmp/test.txt", " world\n")
+val content = readFile("/tmp/test.txt")   // 读取全部内容
+exists("/tmp/test.txt")                    // true
 ```
 
 ### HTTP 请求
@@ -447,6 +490,9 @@ tan(x)           // 正切
 floor(3.7)       // 3.0
 ceil(3.2)        // 4.0
 round(3.5)       // 4.0
+clamp(0.5, 0.0, 1.0)  // 限制在区间内
+isNaN(x)         // 是否为 NaN
+isInfinite(x)    // 是否无穷
 log(10.0)        // 自然对数
 log2(8.0)        // 3.0
 log10(100.0)     // 2.0
@@ -459,16 +505,34 @@ gcd(48, 18)      // 6
 
 ```action
 // 创建流
-val (rx, tx) = stream()
-
 // 启动异步任务
 val task = launch {
     send(tx, 42)
     println("sent 42")
 }
 
-val msg = recv(rx)          // 接收消息
-val done = is_closed(rx)    // 检查流是否关闭
+// Stream 用于 task 间通信
+val s = Stream()                // 创建流（Channel）
+launch {
+    send(s, 42)
+    send(s, 100)
+    close(s)                    // 关闭流
+}
+val msg = receive(s)            // 接收消息
+```
+
+### 函数引用与函数类型
+
+```action
+// 函数类型签名: (Int) -> String
+fun apply(f: (Int) -> Int, x: Int) -> Int { f(x) }
+fun double(n: Int) -> Int { n * 2 }
+
+apply(double, 5)       // 10
+
+// 模块间访问: module.function()
+import math
+math.add(10, 5)         // 15
 ```
 
 ### 模块系统
@@ -497,82 +561,151 @@ external fun printf(format: string, ...) -> Int
 // 声明外部类型
 external type FileHandle
 
-// unsafe 块用于调用外部函数
-unsafe {
-    printf("hello %d\n", 42)
-}
+// 外部函数直接可调用
+action_test_ping()      // 返回 Int
 ```
 
-## 完整方法速查
+## 完整函数速查
 
-### string 方法
-| 方法 | 返回 | 说明 |
+注意: Action 中的字符串/列表/映射/集合操作以**顶层函数**形式提供，list/map/set 也支持方法调用语法（`obj.method(args)`）。
+
+### string 函数
+| 函数 | 返回 | 说明 |
 |------|------|------|
-| `.len()` / `.length()` | int | 长度 |
-| `.toUpper()` | string | 转大写 |
-| `.toLower()` | string | 转小写 |
-| `.trim()` | string | 去除两端空白 |
-| `.trimStart()` / `.trimEnd()` | string | 去除左/右端空白 |
-| `.split(delim)` | List[String] | 分割 |
-| `.join(list)` | string | 连接列表 |
-| `.substring(from, to)` | string | 取子串 |
-| `.startsWith(prefix)` | bool | 前缀匹配 |
-| `.endsWith(suffix)` | bool | 后缀匹配 |
-| `.contains(substr)` | bool | 包含检查 |
-| `.replace(old, new)` | string | 替换子串 |
-| `.repeat(n)` | string | 重复拼接 |
-| `.charAt(idx)` | char | 取字符 |
-| `.charCode(idx)` | int | 取 ASCII 码 |
-| `.chars()` | List[Char] | 转字符列表 |
-| `.indexOf(sub)` | Int? | 查找子串位置 |
-| `.toInt()` | Int? | 解析为整数 |
-| `.toFloat()` | float? | 解析为浮点数 |
+| `len(s)` | Int | 长度 |
+| `toUpper(s)` | String | 转大写 |
+| `toLower(s)` | String | 转小写 |
+| `trim(s)` | String | 去除两端空白 |
+| `trimStart(s)` / `trimEnd(s)` | String | 去除左/右端空白 |
+| `split(s, delim)` | List[String] | 分割 |
+| `join(list, sep)` | String | 连接列表 |
+| `substring(s, from, len)` | String | 取子串 |
+| `startsWith(s, prefix)` | Bool | 前缀匹配 |
+| `endsWith(s, suffix)` | Bool | 后缀匹配 |
+| `contains(s, substr)` | Bool | 包含检查 |
+| `stringContains(s, substr)` | Bool | 字符串包含检查 |
+| `replace(s, old, new)` | String | 替换子串 |
+| `repeat(s, n)` | String | 重复拼接 |
+| `charAt(s, idx)` | Char | 取字符 |
+| `charCode(s, idx)` | Int | 取字符编码 |
+| `chars(s)` | List[Char] | 转字符列表 |
+| `indexOf(s, sub)` | Int? | 查找子串位置 |
+| `splitLines(s)` | List[String] | 按换行分割 |
+| `concat(a, b)` | String | 字符串拼接 |
+| `toInt(s)` | Int? | 解析为整数 |
+| `toFloat(s)` | Float? | 解析为浮点数 |
+| `toString(v)` | String | 任意值转字符串 |
+| `isAlpha(c)` | Bool | 字符是否字母 |
+| `toChar(code)` | Char | 编码转字符 |
+| `codeToChar(code)` | Char | 编码转字符 |
+| `isEmpty(s)` | Bool | 字符串是否为空 |
+
+> 注意: 字符串**不支持**方法调用语法（如 `s.split(",")`），请使用顶层函数形式。
 
 ### list 方法
 | 方法 | 返回 | 说明 |
 |------|------|------|
-| `.len()` | int | 长度 |
+| `.len()` | Int | 长度 |
 | `.head()` | T? | 首元素 |
 | `.last()` | T? | 尾元素 |
-| `.tail()` | List[T]? | 除首元素外的子列表 |
-| `.init()` | List[T]? | 除尾元素外的子列表 |
+| `.tail()` | List[T] | 除首元素外的子列表 |
+| `.init()` | List[T] | 除尾元素外的子列表 |
 | `.get(idx)` | T? | 索引访问 |
-| `.contains(elem)` | bool | 包含检查 |
+| `.contains(elem)` | Bool | 包含检查 |
 | `.indexOf(elem)` | Int? | 查找索引 |
-| `.append(elem)` | List[T] | 追加 |
+| `.append(elem)` | List[T] | 追加（末尾） |
+| `.prepend(elem)` | List[T] | 前置（开头） |
 | `.reverse()` | List[T] | 反转 |
 | `.take(n)` | List[T] | 取前 n 个 |
 | `.drop(n)` | List[T] | 去掉前 n 个 |
 | `.sorted()` | List[T] | 排序 |
 | `.unique()` | List[T] | 去重 |
-| `.isEmpty()` | bool | 判空 |
-| `.map(fn)` | List[U] | 映射 |
-| `.filter(fn)` | List[T] | 过滤 |
-| `.fold(init, fn)` | U | 折叠 |
-| `.any(fn)` | bool | 任一满足 |
-| `.all(fn)` | bool | 全部满足 |
-| `.find(fn)` | T? | 查找 |
-| `.sum()` | int/float | 求和 |
-| `.product()` | int/float | 求积 |
-| `.zip(other)` | List[{T, U}] | 压缩 |
+| `.isEmpty()` | Bool | 判空 |
+| `.sum()` | Int/Float | 求和 |
+| `.product()` | Int/Float | 求积 |
 | `.flatten()` | List[T] | 展平嵌套列表 |
+| `.slice(start, end)` | List[T] | 切片 |
+| `.splitAt(n)` | List[List[T]] | 按位置拆分 |
+| `.chunks(n)` | List[List[T]] | 分组 |
+| `.windows(n)` | List[List[T]] | 滑动窗口 |
+| `.repeat(n)` | List[T] | 重复列表 |
+| `.withIndex()` | List[{Int, T}] | 带索引 |
+| `.zip(other)` | List[{T, U}] | 压缩 |
+| `.insert(idx, elem)` | List[T] | 插入（可变） |
+| `.remove(idx)` | List[T] | 删除（可变） |
+
+| 函数（lambda 回调） | 返回 | 说明 |
+|------|------|------|
+| `map(list) { fn }` | List[U] | 映射 |
+| `filter(list) { fn }` | List[T] | 过滤 |
+| `fold(list, init) { fn }` | U | 折叠 |
+| `any(list) { fn }` | Bool | 任一满足 |
+| `all(list) { fn }` | Bool | 全部满足 |
+| `find(list) { fn }` | T? | 查找 |
+| `reduce(list) { fn }` | T? | 归约 |
+| `flatMap(list) { fn }` | List[U] | 扁平映射 |
+| `sortedBy(list) { fn }` | List[T] | 自定义排序 |
+| `partition(list) { fn }` | {List[T], List[T]} | 分区 |
+| `count(list) { fn }` | Int | 计数 |
+| `takeWhile(list) { fn }` | List[T] | 条件取 |
+| `dropWhile(list) { fn }` | List[T] | 条件丢 |
 
 ### map 方法
 | 方法 | 返回 | 说明 |
 |------|------|------|
-| `.len()` | int | 大小 |
+| `.len()` | Int | 大小 |
 | `.get(key)` | V? | 取值 |
-| `.contains(key)` | bool | 键存在 |
-| `.insert(key, val)` | map | 插入/更新 |
-| `.remove(key)` | map | 删除键 |
+| `.contains(key)` | Bool | 键存在 |
+| `.insert(key, val)` | Map | 插入/更新（可变） |
+| `.remove(key)` | Map | 删除键（可变） |
 | `.keys()` | List[K] | 所有键 |
 | `.values()` | List[V] | 所有值 |
+| `.entries()` | List[{K, V}] | 所有条目 |
+| `.union(other)` | Map | 合并 |
+| `.filter(fn)` | Map | 过滤 |
+| `.fold(init, fn)` | U | 折叠 |
+| `.mapValues(fn)` | Map | 值映射 |
+| `.isEmpty()` | Bool | 判空 |
+
+| 顶层函数 | 返回 | 说明 |
+|------|------|------|
+| `get(map, key)` | V? | 取值 |
+| `containsKey(map, key)` | Bool | 键存在 |
+| `insert(map, key, val)` | Map | 插入/更新 |
+| `remove(map, key)` | Map | 删除键 |
+| `len(map)` | Int | 大小 |
+| `isEmpty(map)` | Bool | 判空 |
+| `mapKeys(map)` | List[K] | 所有键 |
+| `mapValues(map)` | List[V] | 所有值 |
+| `mapEntries(map)` | List[{K, V}] | 所有条目 |
+| `mapUnion(m1, m2)` | Map | 合并 |
+| `mapFilter(map) { fn }` | Map | 过滤 |
+| `mapFold(map, init) { fn }` | U | 折叠 |
+| `mapMapValues(map) { fn }` | Map | 值映射 |
 
 ### set 方法
 | 方法 | 返回 | 说明 |
 |------|------|------|
-| `.len()` | int | 大小 |
-| `.contains(elem)` | bool | 包含检查 |
+| `.len()` | Int | 大小 |
+| `.contains(elem)` | Bool | 包含检查 |
+| `.insert(elem)` | Set | 插入（可变） |
+| `.remove(elem)` | Set | 删除（可变） |
+| `.union(other)` | Set | 并集 |
+| `.intersection(other)` | Set | 交集 |
+| `.difference(other)` | Set | 差集 |
+| `.is_subset(other)` | Bool | 子集判断 |
+| `.isEmpty()` | Bool | 判空 |
+| `.toList()` | List[T] | 转列表 |
+
+| 顶层函数 | 返回 | 说明 |
+|------|------|------|
+| `contains(set, elem)` | Bool | 包含检查 |
+| `len(set)` | Int | 大小 |
+| `isEmpty(set)` | Bool | 判空 |
+| `setUnion(s1, s2)` | Set | 并集 |
+| `setIntersection(s1, s2)` | Set | 交集 |
+| `setDifference(s1, s2)` | Set | 差集 |
+| `setIsSubset(s1, s2)` | Bool | 子集判断 |
 
 ## 命令行
 
@@ -581,6 +714,8 @@ action run file.at                    # 编译并运行（JIT）
 action build file.at                  # 编译为 LLVM IR
 action build file.at -o prog          # 编译为可执行文件
 action check file.at                 # 仅类型检查，不运行
+
+action repl                          # 交互式 REPL
 
 action run file.at --check           # 类型检查 + JIT
 action run file.at -O 3              # 优化等级 0-3
