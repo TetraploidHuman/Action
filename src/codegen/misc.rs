@@ -3818,15 +3818,11 @@ impl<'ctx> TypedValue<'ctx> {
             TypedValue::Int(_) => cg.i64_ty().into(),
             TypedValue::Float(_) => cg.f64_ty().into(),
             TypedValue::Bool(_) => cg.bool_ty().into(),
-            TypedValue::Str(_)
-            | TypedValue::Fn(_, _)
-            | TypedValue::Closure { .. }
-            | TypedValue::List(_)
-            | TypedValue::Map(_)
-            | TypedValue::Set(_)
-            | TypedValue::Task(_)
-            | TypedValue::Stream(_)
-            | TypedValue::LazyList(_) => cg.ptr_ty().into(),
+            TypedValue::Str(_) => cg.string_type.into(),
+            TypedValue::Fn(_, _) | TypedValue::Closure { .. } => cg.ptr_ty().into(),
+            TypedValue::List(_) | TypedValue::Map(_) | TypedValue::Set(_) => cg.list_type.into(),
+            TypedValue::Task(_) | TypedValue::Stream(_) => cg.ptr_ty().into(),
+            TypedValue::LazyList(_) => cg.lazylist_type.into(),
         }
     }
 
