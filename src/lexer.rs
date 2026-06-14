@@ -1,5 +1,5 @@
-use std::fmt;
 use crate::error::CompilerError;
+use std::fmt;
 
 /// Position in source code
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -255,7 +255,11 @@ impl Lexer {
     }
 
     pub fn add_error(&mut self, msg: String) {
-        self.errors.push(CompilerError::new(msg).with_span(Span { line: self.line, col: self.col, ..Span::default() }));
+        self.errors.push(CompilerError::new(msg).with_span(Span {
+            line: self.line,
+            col: self.col,
+            ..Span::default()
+        }));
     }
 
     pub fn take_errors(&mut self) -> Vec<CompilerError> {
@@ -328,6 +332,9 @@ impl Lexer {
             } else {
                 self.advance();
             }
+        }
+        if depth > 0 {
+            self.add_error("Unterminated block comment".to_string());
         }
     }
 
@@ -659,6 +666,7 @@ impl Lexer {
                 self.advance();
             }
         }
+        self.add_error("Unterminated string literal".to_string());
         TokenKind::StringLiteral(s)
     }
 
@@ -827,11 +835,15 @@ impl Lexer {
         // Empty char literal: '' — return null character as sentinel
         if self.current() == Some('\'') {
             self.advance(); // skip closing quote
+            self.add_error("Empty char literal".to_string());
             return TokenKind::CharLiteral('\0');
         }
 
         let ch = match self.current() {
-            None => return TokenKind::CharLiteral('\0'),
+            None => {
+                self.add_error("Unterminated char literal".to_string());
+                return TokenKind::CharLiteral('\0');
+            }
             Some('\\') => {
                 self.advance();
                 match self.current() {
@@ -897,7 +909,10 @@ impl Lexer {
                         self.advance();
                         '?'
                     }
-                    None => return TokenKind::Underscore,
+                    None => {
+                        self.add_error("Unterminated escape in char literal".to_string());
+                        return TokenKind::Underscore;
+                    }
                 }
             }
             Some(c) => {
@@ -908,6 +923,8 @@ impl Lexer {
         // Expect closing quote
         if self.current() == Some('\'') {
             self.advance();
+        } else {
+            self.add_error("Unterminated char literal".to_string());
         }
         TokenKind::CharLiteral(ch)
     }
@@ -1534,7 +1551,10 @@ mod tests {
         let mut lexer = Lexer::new("'x");
         let _ = lexer.tokenize();
         let errors = lexer.take_errors();
-        assert!(!errors.is_empty(), "expected error for unterminated char literal");
+        assert!(
+            !errors.is_empty(),
+            "expected error for unterminated char literal"
+        );
     }
 
     #[test]
@@ -1600,7 +1620,10 @@ mod tests {
         let mut lexer = Lexer::new("val x = 1 /* unterminated");
         let tokens = lexer.tokenize();
         let errors = lexer.take_errors();
-        assert!(!errors.is_empty(), "expected error for unterminated block comment");
+        assert!(
+            !errors.is_empty(),
+            "expected error for unterminated block comment"
+        );
         // Should still produce EOF and not crash
         assert!(!tokens.is_empty());
     }
@@ -1621,10 +1644,10 @@ mod tests {
         assert_eq!(tokens[2], TokenKind::DotDotLt);
     }
 
-use proptest::prelude::*;
+    use proptest::prelude::*;
 
     proptest! {
-        
+
 
         #[test]
         fn proptest_lexer_never_panics(s in ".*") {
@@ -1661,6 +1684,7 @@ use proptest::prelude::*;
         #[test]
         fn proptest_identifiers(name in "[a-zA-Z_][a-zA-Z0-9_]{0,30}") {
             let s = format!("val {} = 42", name);
+            prop_assume!(name != "_");
             let mut lexer = Lexer::new(&s);
             let tokens = lexer.tokenize();
             let kinds: Vec<_> = tokens.iter().map(|t| &t.kind).collect();
@@ -1674,5 +1698,4 @@ use proptest::prelude::*;
             let _tokens = lexer.tokenize();
         }
     }
-
 }

@@ -189,8 +189,8 @@ fn build_definition_map(stmts: &[Stmt]) -> HashMap<String, Span> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
     use lsp_types::Url;
+    use std::collections::HashMap;
 
     fn make_doc(source: &str) -> Document {
         let uri = Url::parse("file:///test.at").unwrap();
@@ -200,7 +200,13 @@ mod tests {
     #[test]
     fn test_document_new_empty() {
         let doc = make_doc("");
-        assert!(doc.tokens.is_empty() || doc.tokens.iter().all(|t| t.kind == crate::lexer::TokenKind::Eof));
+        assert!(
+            doc.tokens.is_empty()
+                || doc
+                    .tokens
+                    .iter()
+                    .all(|t| t.kind == crate::lexer::TokenKind::Eof)
+        );
         assert!(doc.ast.is_empty());
         assert!(doc.parse_errors.is_empty());
         assert!(doc.type_errors.is_empty());
@@ -210,7 +216,11 @@ mod tests {
     fn test_document_new_valid() {
         let doc = make_doc("val x = 42");
         assert!(!doc.ast.is_empty(), "should parse program");
-        assert!(doc.parse_errors.is_empty(), "should have no parse errors: {:?}", doc.parse_errors);
+        assert!(
+            doc.parse_errors.is_empty(),
+            "should have no parse errors: {:?}",
+            doc.parse_errors
+        );
     }
 
     #[test]
@@ -218,15 +228,22 @@ mod tests {
         let doc = make_doc("val = 42");
         // "val = 42" is a syntax error (missing identifier)
         // May or may not have parse errors depending on error recovery
-        assert!(doc.ast.is_empty() || !doc.parse_errors.is_empty(),
-                "malformed input should produce parse errors or empty AST");
+        assert!(
+            doc.ast.is_empty() || !doc.parse_errors.is_empty(),
+            "malformed input should produce parse errors or empty AST"
+        );
     }
 
     #[test]
     fn test_get_diagnostics_empty() {
         let doc = make_doc("");
         let diags = doc.get_diagnostics();
-        assert!(diags.is_empty() || diags.iter().all(|d| d.severity == Some(lsp_types::DiagnosticSeverity::ERROR)));
+        assert!(
+            diags.is_empty()
+                || diags
+                    .iter()
+                    .all(|d| d.severity == Some(lsp_types::DiagnosticSeverity::ERROR))
+        );
     }
 
     #[test]
@@ -234,7 +251,10 @@ mod tests {
         let doc = make_doc("fun {");
         let diags = doc.get_diagnostics();
         // Should have parse errors for invalid function definition
-        assert!(!diags.is_empty(), "malformed function should produce diagnostics");
+        assert!(
+            !diags.is_empty(),
+            "malformed function should produce diagnostics"
+        );
     }
 
     #[test]

@@ -203,10 +203,10 @@ impl Project {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
-    use crate::typecheck::TypeRegistry;
     use crate::ast::Type;
+    use crate::typecheck::TypeRegistry;
     use lsp_types::Url;
+    use std::collections::HashMap;
 
     fn empty_project() -> Project {
         Project::new(TypeRegistry::new(), HashMap::new(), Vec::new())
@@ -310,7 +310,10 @@ mod tests {
         let uri = Url::parse("file:///test.at").unwrap();
         proj.update_document(&uri, "fun helloWorld() {}".to_string(), 1);
         let results = proj.workspace_symbols("hello");
-        assert!(!results.is_empty(), "should match 'helloWorld' with query 'hello'");
+        assert!(
+            !results.is_empty(),
+            "should match 'helloWorld' with query 'hello'"
+        );
     }
 
     #[test]

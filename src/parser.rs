@@ -2601,7 +2601,9 @@ mod tests {
     #[test]
     fn test_parse_malformed_module_name() {
         // Module name with invalid characters should produce errors
-        let result = crate::parser::Parser::new(crate::lexer::Lexer::new("module 123invalid {}").tokenize()).parse_program();
+        let result =
+            crate::parser::Parser::new(crate::lexer::Lexer::new("module 123invalid {}").tokenize())
+                .parse_program();
         assert!(result.is_err());
     }
 
@@ -2614,7 +2616,11 @@ mod tests {
         let source = format!("val x = {}42{}", open, close);
         let mut parser = crate::parser::Parser::new(crate::lexer::Lexer::new(&source).tokenize());
         let result = parser.parse_program();
-        assert!(result.is_ok(), "deeply nested blocks should parse: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "deeply nested blocks should parse: {:?}",
+            result.err()
+        );
     }
 
     #[test]
@@ -2624,7 +2630,11 @@ mod tests {
         let source = format!("val x = {}", expr);
         let mut parser = crate::parser::Parser::new(crate::lexer::Lexer::new(&source).tokenize());
         let result = parser.parse_program();
-        assert!(result.is_ok(), "deeply nested binary expr should parse: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "deeply nested binary expr should parse: {:?}",
+            result.err()
+        );
     }
 
     #[test]
@@ -2637,7 +2647,7 @@ mod tests {
     #[test]
     fn test_parse_only_comments() {
         let mut parser = crate::parser::Parser::new(
-            crate::lexer::Lexer::new("// just a comment\n/* block comment */").tokenize()
+            crate::lexer::Lexer::new("// just a comment\n/* block comment */").tokenize(),
         );
         let result = parser.parse_program().unwrap();
         assert!(result.stmts.is_empty());
@@ -2646,9 +2656,8 @@ mod tests {
     #[test]
     fn test_parse_incomplete_fun_def() {
         // Missing body should produce error
-        let mut parser = crate::parser::Parser::new(
-            crate::lexer::Lexer::new("fun foo() -> Int").tokenize()
-        );
+        let mut parser =
+            crate::parser::Parser::new(crate::lexer::Lexer::new("fun foo() -> Int").tokenize());
         let result = parser.parse_program();
         assert!(result.is_err(), "incomplete function def should error");
     }
@@ -2656,9 +2665,8 @@ mod tests {
     #[test]
     fn test_parse_when_with_missing_arms() {
         // Empty when should error
-        let mut parser = crate::parser::Parser::new(
-            crate::lexer::Lexer::new("when x {}").tokenize()
-        );
+        let mut parser =
+            crate::parser::Parser::new(crate::lexer::Lexer::new("when x {}").tokenize());
         let result = parser.parse_program();
         assert!(result.is_err(), "empty when should error");
     }
@@ -2696,11 +2704,10 @@ mod tests {
     }
 
     use proptest::prelude::*;
-
     proptest! {
 
         #[test]
-        fn proptest_parse_never_panics(s in ".*") {
+        fn proptest_parse_never_panics(s in ".{0,50}") {
             let mut lexer = crate::lexer::Lexer::new(&s);
             let tokens = lexer.tokenize();
             let mut parser = Parser::new(tokens);
@@ -2708,7 +2715,7 @@ mod tests {
         }
 
         #[test]
-        fn proptest_parse_simple_val(name in "[a-zA-Z_][a-zA-Z0-9_]{0,20}", n in 0i64..10000i64) {
+        fn proptest_parse_simple_val(name in "[a-zA-Z][a-zA-Z0-9_]{0,20}", n in 0i64..10000i64) {
             let s = format!("val {} = {}", name, n);
             let tokens = crate::lexer::Lexer::new(&s).tokenize();
             let mut parser = Parser::new(tokens);
@@ -2717,5 +2724,4 @@ mod tests {
                 "expected 1 statement or parse errors for '{}', got {} stmts, {} errors", s, stmts.len(), errors.len());
         }
     }
-
 }

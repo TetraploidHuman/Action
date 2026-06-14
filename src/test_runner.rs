@@ -52,7 +52,11 @@ pub fn run_test_file(path: &PathBuf, opt: u8, profile: bool, target: &str) -> Re
     Target::initialize_aarch64(&InitializationConfig::default());
 
     let context = Context::create();
-    let target_opt = if target == "native" { None } else { Some(target.to_string()) };
+    let target_opt = if target == "native" {
+        None
+    } else {
+        Some(target.to_string())
+    };
     let mut cg = crate::codegen::CodeGen::new(&context, "test_runner", registry, target_opt);
     cg.set_opt_level(opt);
     cg.compile(&program)?;

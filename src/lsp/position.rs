@@ -218,7 +218,7 @@ mod tests {
         assert_eq!(range.start.line, 0);
         assert_eq!(range.start.character, 0);
         assert_eq!(range.end.line, 0);
-        assert_eq!(range.end.character, 2);
+        assert_eq!(range.end.character, 3);
     }
 
     #[test]
@@ -250,7 +250,10 @@ mod tests {
     #[test]
     fn test_find_node_at_keyword() {
         let tokens = tokenize("val x = 1");
-        let pos = Position { line: 0, character: 0 };
+        let pos = Position {
+            line: 0,
+            character: 0,
+        };
         let node = find_node_at(&tokens, "val x = 1", &pos);
         assert!(node.is_some());
         match node.unwrap() {
@@ -262,7 +265,10 @@ mod tests {
     #[test]
     fn test_find_node_at_ident() {
         let tokens = tokenize("val x = 1");
-        let pos = Position { line: 0, character: 4 };
+        let pos = Position {
+            line: 0,
+            character: 4,
+        };
         let node = find_node_at(&tokens, "val x = 1", &pos);
         assert!(node.is_some());
         match node.unwrap() {

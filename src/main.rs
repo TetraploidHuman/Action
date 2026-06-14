@@ -123,7 +123,15 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Run { file, opt, check, emit, explain, profile, target } => {
+        Commands::Run {
+            file,
+            opt,
+            check,
+            emit,
+            explain,
+            profile,
+            target,
+        } => {
             if let Err(e) = run_file(&file, opt, check, emit, explain, profile, &target) {
                 if let Ok(source) = fs::read_to_string(&file) {
                     report_error(&source, &file.to_string_lossy(), &e);
@@ -133,7 +141,13 @@ fn main() {
                 std::process::exit(1);
             }
         }
-        Commands::Build { file, output, opt, emit, target } => {
+        Commands::Build {
+            file,
+            output,
+            opt,
+            emit,
+            target,
+        } => {
             if let Err(e) = build_file(&file, output, opt, emit, &target) {
                 if let Ok(source) = fs::read_to_string(&file) {
                     report_error(&source, &file.to_string_lossy(), &e);
@@ -149,7 +163,11 @@ fn main() {
             }
             Err(errors) => {
                 if let Ok(source) = fs::read_to_string(&file) {
-                    let msg = errors.iter().map(|e| e.to_string()).collect::<Vec<_>>().join("\n");
+                    let msg = errors
+                        .iter()
+                        .map(|e| e.to_string())
+                        .collect::<Vec<_>>()
+                        .join("\n");
                     report_error(&source, &file.to_string_lossy(), &msg);
                 } else {
                     for e in &errors {
@@ -159,7 +177,11 @@ fn main() {
                 std::process::exit(1);
             }
         },
-        Commands::Repl { opt, target, profile } => {
+        Commands::Repl {
+            opt,
+            target,
+            profile,
+        } => {
             if let Err(e) = repl::run_repl(opt, profile, &target) {
                 eprintln!("REPL error: {}", e);
             }
@@ -170,7 +192,12 @@ fn main() {
                 std::process::exit(1);
             }
         }
-        Commands::Test { file, opt, profile, target } => {
+        Commands::Test {
+            file,
+            opt,
+            profile,
+            target,
+        } => {
             if let Err(e) = test_runner::run_test_file(&file, opt, profile, &target) {
                 if let Ok(source) = fs::read_to_string(&file) {
                     report_error(&source, &file.to_string_lossy(), &e);
@@ -237,7 +264,11 @@ fn report_error(source: &str, path: &str, error: &str) {
 
         if i + 1 < lines.len() && lines[i + 1].trim().starts_with("help: ") {
             help_text = Some(
-                lines[i + 1].trim().strip_prefix("help: ").unwrap_or("").to_string(),
+                lines[i + 1]
+                    .trim()
+                    .strip_prefix("help: ")
+                    .unwrap_or("")
+                    .to_string(),
             );
             i += 1;
         }
@@ -254,7 +285,10 @@ fn report_error(source: &str, path: &str, error: &str) {
             if let Some(ref help) = help_text {
                 report = report.with_help(help.clone());
             }
-            report.finish().eprint((path, Source::from(source))).unwrap_or_else(|_| eprintln!("Error: {}", line));
+            report
+                .finish()
+                .eprint((path, Source::from(source)))
+                .unwrap_or_else(|_| eprintln!("Error: {}", line));
             has_ariadne_output = true;
         } else {
             if !has_ariadne_output {
@@ -267,7 +301,11 @@ fn report_error(source: &str, path: &str, error: &str) {
         i += 1;
     }
 
-    if !has_ariadne_output && error.lines().all(|l| !l.starts_with("Error at line") && !l.starts_with("Parse error at line")) {
+    if !has_ariadne_output
+        && error
+            .lines()
+            .all(|l| !l.starts_with("Error at line") && !l.starts_with("Parse error at line"))
+    {
         for line in error.lines() {
             if !line.trim().starts_with("help: ") {
                 eprintln!("\x1b[1;31merror:\x1b[0m {}", line);
@@ -286,19 +324,33 @@ fn run_file(
     target: &str,
 ) -> Result<(), String> {
     let config = ProjectConfig::find_and_load(path);
-    let opt = config.as_ref().map(|c| c.effective_opt_level(opt)).unwrap_or(opt);
+    let opt = config
+        .as_ref()
+        .map(|c| c.effective_opt_level(opt))
+        .unwrap_or(opt);
 
     let (program, registry) = loader::load_program(path, explain).map_err(|errors| {
-        errors.iter().map(|e| e.to_string()).collect::<Vec<_>>().join("\n")
+        errors
+            .iter()
+            .map(|e| e.to_string())
+            .collect::<Vec<_>>()
+            .join("\n")
     })?;
 
     if check {
-        println!("Type checking passed for '{}'. No errors found.", path.display());
+        println!(
+            "Type checking passed for '{}'. No errors found.",
+            path.display()
+        );
         return Ok(());
     }
 
     let context = Context::create();
-    let target_opt = if target == "native" { None } else { Some(target.to_string()) };
+    let target_opt = if target == "native" {
+        None
+    } else {
+        Some(target.to_string())
+    };
     let mut cg = codegen::CodeGen::new(&context, "main", registry, target_opt);
     cg.set_opt_level(opt);
     cg.compile(&program)?;
@@ -352,14 +404,25 @@ fn build_file(
     target: &str,
 ) -> Result<(), String> {
     let config = ProjectConfig::find_and_load(path);
-    let opt = config.as_ref().map(|c| c.effective_opt_level(opt)).unwrap_or(opt);
+    let opt = config
+        .as_ref()
+        .map(|c| c.effective_opt_level(opt))
+        .unwrap_or(opt);
 
     let (program, registry) = loader::load_program(path, false).map_err(|errors| {
-        errors.iter().map(|e| e.to_string()).collect::<Vec<_>>().join("\n")
+        errors
+            .iter()
+            .map(|e| e.to_string())
+            .collect::<Vec<_>>()
+            .join("\n")
     })?;
 
     let context = Context::create();
-    let target_opt = if target == "native" { None } else { Some(target.to_string()) };
+    let target_opt = if target == "native" {
+        None
+    } else {
+        Some(target.to_string())
+    };
     let mut cg = codegen::CodeGen::new(&context, "main", registry, target_opt);
     cg.set_opt_level(opt);
     cg.compile(&program)?;
@@ -370,7 +433,8 @@ fn build_file(
     } else {
         let ir = cg.print_ir();
         let out_path = output.unwrap_or_else(|| path.with_extension("ll"));
-        fs::write(&out_path, ir).map_err(|e| format!("Cannot write to '{}': {}", out_path.display(), e))?;
+        fs::write(&out_path, ir)
+            .map_err(|e| format!("Cannot write to '{}': {}", out_path.display(), e))?;
         println!("Compiled to: {}", out_path.display());
     }
     Ok(())
@@ -419,7 +483,8 @@ fn emit_output(
                 _ => "cc",
             };
             let status = std::process::Command::new(linker)
-                .arg("-o").arg(&exe_path)
+                .arg("-o")
+                .arg(&exe_path)
                 .arg(&obj_path)
                 .status()
                 .map_err(|e| format!("Failed to invoke linker '{}': {}", linker, e))?;

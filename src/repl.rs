@@ -80,7 +80,9 @@ pub fn eval_repl_line(
     let tokens = lexer.tokenize();
     let lexer_errors = lexer.take_errors();
     if !lexer_errors.is_empty() {
-        for e in &lexer_errors { eprintln!("{}", e); }
+        for e in &lexer_errors {
+            eprintln!("{}", e);
+        }
         return Ok(());
     }
 
@@ -135,7 +137,11 @@ pub fn eval_repl_line(
         return Ok(());
     }
 
-    let target_opt = if target == "native" { None } else { Some(target.to_string()) };
+    let target_opt = if target == "native" {
+        None
+    } else {
+        Some(target.to_string())
+    };
     let mut cg = crate::codegen::CodeGen::new(context, "repl", registry, target_opt);
     cg.set_opt_level(opt);
     if let Err(e) = cg.compile(&program) {

@@ -236,6 +236,8 @@ pub struct TypeChecker {
     not_null_set: RefCell<HashSet<String>>,
     /// Generic function definitions (non-empty type_params), indexed by name
     generic_funs: HashMap<String, Stmt>,
+    /// Variables declared as mutable (var)
+    mutable_vars: HashSet<String>,
 }
 
 impl TypeChecker {
@@ -246,6 +248,7 @@ impl TypeChecker {
             current_span: Span::default(),
             not_null_set: RefCell::new(HashSet::new()),
             generic_funs: HashMap::new(),
+            mutable_vars: HashSet::new(),
         }
     }
 
@@ -331,7 +334,9 @@ impl TypeChecker {
                     value,
                     ..
                 } => {
-                    let inferred = self.infer_expr_type(value).unwrap_or(Type::Named("Int".into()));
+                    let inferred = self
+                        .infer_expr_type(value)
+                        .unwrap_or(Type::Named("Int".into()));
                     let ty = type_ann.clone().unwrap_or(inferred);
                     self.type_env.insert(name.clone(), ty);
                 }
@@ -347,7 +352,9 @@ impl TypeChecker {
                     value,
                     ..
                 } => {
-                    let inferred = self.infer_expr_type(value).unwrap_or(Type::Named("Int".into()));
+                    let inferred = self
+                        .infer_expr_type(value)
+                        .unwrap_or(Type::Named("Int".into()));
                     let ty = type_ann.clone().unwrap_or(inferred);
                     self.type_env.insert(name.clone(), ty);
                 }
@@ -414,7 +421,9 @@ impl TypeChecker {
                     if let Some(declared_ret) = return_type {
                         // Skip return type check for generic functions (validated per-instantiation)
                         if type_params.is_empty() || !matches!(declared_ret, Type::TypeVar(_)) {
-                            let inferred = self.infer_expr_type(body).unwrap_or(Type::Named("Int".into()));
+                            let inferred = self
+                                .infer_expr_type(body)
+                                .unwrap_or(Type::Named("Int".into()));
                             if !self.types_compatible(declared_ret, &inferred) {
                                 let msg = if let Some(hint) =
                                     Self::check_termination(declared_ret, &inferred)
@@ -434,7 +443,9 @@ impl TypeChecker {
                     // the type checker defaults to `Int` for the return type without warning,
                     // but callers see `Int` when the body actually returns `String`.
                     if return_type.is_none() && type_params.is_empty() {
-                        let inferred = self.infer_expr_type(body).unwrap_or(Type::Named("Int".into()));
+                        let inferred = self
+                            .infer_expr_type(body)
+                            .unwrap_or(Type::Named("Int".into()));
                         // Only warn for clear non-Int, non-Unit types. Int is the default/fallback,
                         // and Unit is a valid implicit void return.
                         if !matches!(&inferred, Type::Named(n) if n == "Int")
@@ -486,7 +497,9 @@ impl TypeChecker {
                 } => {
                     self.collect_expr_errors(value, &mut errors);
                     if let Some(ann) = type_ann {
-                        let inferred = self.infer_expr_type(value).unwrap_or(Type::Named("Int".into()));
+                        let inferred = self
+                            .infer_expr_type(value)
+                            .unwrap_or(Type::Named("Int".into()));
                         if !self.types_compatible(ann, &inferred) {
                             let msg = if let Some(hint) = Self::check_termination(ann, &inferred) {
                                 hint
@@ -511,7 +524,9 @@ impl TypeChecker {
                 } => {
                     self.collect_expr_errors(value, &mut errors);
                     if let Some(ann) = type_ann {
-                        let inferred = self.infer_expr_type(value).unwrap_or(Type::Named("Int".into()));
+                        let inferred = self
+                            .infer_expr_type(value)
+                            .unwrap_or(Type::Named("Int".into()));
                         if !self.types_compatible(ann, &inferred) {
                             let msg = if let Some(hint) = Self::check_termination(ann, &inferred) {
                                 hint
@@ -564,7 +579,9 @@ impl TypeChecker {
                     let smart_var: Option<String> = match &w.kind {
                         WhenKind::ValueMatch { value, .. } => {
                             if let Expr::Ident(name) = value.as_ref() {
-                                let ty = self.infer_expr_type(value).unwrap_or(Type::Named("Int".into()));
+                                let ty = self
+                                    .infer_expr_type(value)
+                                    .unwrap_or(Type::Named("Int".into()));
                                 if matches!(ty, Type::Nullable(_)) {
                                     Some(name.clone())
                                 } else {
@@ -605,7 +622,9 @@ impl TypeChecker {
                             match (lhs.as_ref(), rhs.as_ref()) {
                                 (Expr::Ident(name), Expr::Null)
                                 | (Expr::Null, Expr::Ident(name)) => {
-                                    let ty = self.infer_expr_type(lhs).unwrap_or(Type::Named("Int".into()));
+                                    let ty = self
+                                        .infer_expr_type(lhs)
+                                        .unwrap_or(Type::Named("Int".into()));
                                     if matches!(ty, Type::Nullable(_)) {
                                         Some(name.clone())
                                     } else {
@@ -620,7 +639,9 @@ impl TypeChecker {
                             match (lhs.as_ref(), rhs.as_ref()) {
                                 (Expr::Ident(name), Expr::Null)
                                 | (Expr::Null, Expr::Ident(name)) => {
-                                    let ty = self.infer_expr_type(lhs).unwrap_or(Type::Named("Int".into()));
+                                    let ty = self
+                                        .infer_expr_type(lhs)
+                                        .unwrap_or(Type::Named("Int".into()));
                                     if matches!(ty, Type::Nullable(_)) {
                                         Some(name.clone())
                                     } else {
@@ -681,10 +702,34 @@ impl TypeChecker {
             Expr::For(for_expr) => match &for_expr.kind {
                 ForKind::Iterate { iterable, body, .. } => {
                     self.collect_expr_errors(iterable, errors);
+                    // Check if iterable is a valid iterable type
+                    let iter_type = self.infer_expr_type(iterable).unwrap_or(Type::Named("Int".into()));
+                    match &iter_type {
+                        Type::Named(n) if n == "Int" || n == "Bool" || n == "Float" || n == "Char" => {
+                            errors.push(CompilerError::new(format!(
+                                "Cannot iterate over '{}', expected a collection or iterable type",
+                                iter_type
+                            ))
+                            .with_span(self.current_span));
+                        }
+                        _ => {}
+                    }
                     self.collect_expr_errors(body, errors);
                 }
                 ForKind::IterateWithIndex { iterable, body, .. } => {
                     self.collect_expr_errors(iterable, errors);
+                    // Check if iterable is a valid iterable type
+                    let iter_type = self.infer_expr_type(iterable).unwrap_or(Type::Named("Int".into()));
+                    match &iter_type {
+                        Type::Named(n) if n == "Int" || n == "Bool" || n == "Float" || n == "Char" => {
+                            errors.push(CompilerError::new(format!(
+                                "Cannot iterate over '{}', expected a collection or iterable type",
+                                iter_type
+                            ))
+                            .with_span(self.current_span));
+                        }
+                        _ => {}
+                    }
                     self.collect_expr_errors(body, errors);
                 }
                 ForKind::Condition {
@@ -730,6 +775,16 @@ impl TypeChecker {
             Expr::Assign { target, value, .. } => {
                 self.collect_expr_errors(target, errors);
                 self.collect_expr_errors(value, errors);
+                // Check if target is an immutable variable
+                if let Expr::Ident(name) = target.as_ref() {
+                    if self.type_env.contains_key(name) && !self.mutable_vars.contains(name) {
+                        errors.push(CompilerError::new(format!(
+                            "Cannot assign to immutable variable '{}'",
+                            name
+                        ))
+                        .with_span(self.current_span));
+                    }
+                }
             }
             Expr::Tuple(elements) => {
                 for (_, e) in elements {
@@ -763,7 +818,18 @@ impl TypeChecker {
                     }
                 }
             }
-            _ => {} // Literal, Ident, Continue, Break, etc.
+            Expr::Ident(name) => {
+                // Check if the variable is defined in the type environment
+                // (except for enum variants which are handled by registry)
+                if !self.type_env.contains_key(name) && self.registry.lookup_variant(name).is_none() {
+                    errors.push(CompilerError::new(format!(
+                        "Undefined variable '{}'",
+                        name
+                    ))
+                    .with_span(self.current_span));
+                }
+            }
+            _ => {} // Literal, Continue, Break, etc.
         }
     }
 
@@ -771,15 +837,21 @@ impl TypeChecker {
         match stmt {
             Stmt::Expr { expr, .. } => self.collect_expr_errors(expr, errors),
             Stmt::Let {
+                mutable,
                 name,
                 type_ann,
                 value,
                 ..
             } => {
                 self.collect_expr_errors(value, errors);
-                let inferred = self.infer_expr_type(value).unwrap_or(Type::Named("Int".into()));
+                let inferred = self
+                    .infer_expr_type(value)
+                    .unwrap_or(Type::Named("Int".into()));
                 let ty = type_ann.clone().unwrap_or(inferred);
                 self.type_env.insert(name.clone(), ty);
+                if *mutable {
+                    self.mutable_vars.insert(name.clone());
+                }
             }
             Stmt::Const {
                 name,
@@ -788,7 +860,9 @@ impl TypeChecker {
                 ..
             } => {
                 self.collect_expr_errors(value, errors);
-                let inferred = self.infer_expr_type(value).unwrap_or(Type::Named("Int".into()));
+                let inferred = self
+                    .infer_expr_type(value)
+                    .unwrap_or(Type::Named("Int".into()));
                 let ty = type_ann.clone().unwrap_or(inferred);
                 self.type_env.insert(name.clone(), ty);
             }
@@ -945,7 +1019,10 @@ impl TypeChecker {
                             if matches!(arg, Expr::Lambda { .. }) {
                                 continue;
                             }
-                            arg_tys.push(self.infer_expr_type(arg).unwrap_or(Type::Named("Int".into())));
+                            arg_tys.push(
+                                self.infer_expr_type(arg)
+                                    .unwrap_or(Type::Named("Int".into())),
+                            );
                             filtered_params.push(param_ty.clone());
                         }
                         if !filtered_params.is_empty() {
@@ -999,8 +1076,12 @@ impl TypeChecker {
                         }
                     }
                     _ => {
-                        // Variable callable? Mapped to a fn type? Not yet supported.
-                        // For now, let codegen handle mismatches.
+                        // Variable is not callable — produce an error
+                        return Err(CompilerError::new(format!(
+                            "'{}' is not a function and cannot be called",
+                            name
+                        ))
+                        .with_span(self.current_span));
                     }
                 }
             }
@@ -1013,20 +1094,20 @@ impl TypeChecker {
             return Ok(());
         }
 
-        // Collect arm types, but be lenient with Int (fallback) when mixed with enums
-        let types: Vec<Type> = arms.iter().map(|a| self.infer_expr_type(&a.body)).collect::<Result<Vec<Type>, _>>()?;
+        // Collect arm types
+        let types: Vec<Type> = arms
+            .iter()
+            .map(|a| self.infer_expr_type(&a.body))
+            .collect::<Result<Vec<Type>, _>>()?;
         let first = &types[0];
 
-        // If first type is Int, it might be a fallback — skip arm checking
-        if matches!(first, Type::Named(ref n) if n == "Int") {
+        // Only skip checking when ALL arms are Int (un-inferred fallback)
+        let all_int = types.iter().all(|t| matches!(t, Type::Named(ref n) if n == "Int"));
+        if all_int {
             return Ok(());
         }
 
         for (i, t) in types.iter().enumerate().skip(1) {
-            // Skip Int fallback arms
-            if matches!(t, Type::Named(ref n) if n == "Int") {
-                continue;
-            }
             if !self.types_compatible(first, t) {
                 return Err(CompilerError::new(format!(
                     "When arm type mismatch: arm 1 is '{}' but arm {} is '{}'",
@@ -1165,7 +1246,10 @@ impl TypeChecker {
                             Ok(Type::Named("Bool".into()))
                         }
                         (Type::Task(_), "wait") => Ok(Type::Named("Int".into())),
-                        _ => Err(CompilerError::new(format!("Cannot infer type for expression: {:?}", expr))),
+                        _ => Err(CompilerError::new(format!(
+                            "Cannot infer type for expression: {:?}",
+                            expr
+                        ))),
                     }
                 } else {
                     Ok(Type::Named("Int".into()))
@@ -1329,7 +1413,10 @@ impl TypeChecker {
                 if matches!(arg, Expr::Lambda { .. }) {
                     continue;
                 }
-                arg_tys.push(self.infer_expr_type(arg).unwrap_or(Type::Named("Int".into())));
+                arg_tys.push(
+                    self.infer_expr_type(arg)
+                        .unwrap_or(Type::Named("Int".into())),
+                );
                 filtered_params.push(param_ty.clone());
             }
             if let Ok(type_map) = self.infer_type_args(&filtered_params, &arg_tys) {
@@ -1734,18 +1821,24 @@ mod tests {
     #[test]
     fn test_type_mismatch_in_when_arms() {
         let errors = check_source("when true { 1 -> \"one\"; true -> 42 }");
-        assert!(!errors.is_empty(), "expected type error for mismatched when arms");
+        assert!(
+            !errors.is_empty(),
+            "expected type error for mismatched when arms"
+        );
     }
 
     #[test]
     fn test_for_loop_non_iterable() {
         let errors = check_source("for x in 42 { x }");
-        assert!(!errors.is_empty(), "expected type error for non-iterable in for loop");
+        assert!(
+            !errors.is_empty(),
+            "expected type error for non-iterable in for loop"
+        );
     }
 
     #[test]
     fn test_invalid_generic_instantiation() {
-        let errors = check_source("val x: List = List[1, 2, 3]");
+        let errors = check_source("val x List = List[1, 2, 3]");
         // List without type parameter - may warn or error
         // Just ensure no panic
         let _ = errors;
@@ -1755,16 +1848,22 @@ mod tests {
     fn test_struct_field_type_mismatch() {
         let src = r#"
             type Person = { name: String, age: Int }
-            val p = Person { name: "Alice", age: "twenty" }
+            val p = Person { name = "Alice", age = "twenty" }
         "#;
         let errors = check_source(src);
-        assert!(!errors.is_empty(), "expected type error for struct field mismatch");
+        assert!(
+            !errors.is_empty(),
+            "expected type error for struct field mismatch"
+        );
     }
 
     #[test]
     fn test_nullable_assignment_to_non_nullable() {
-        let errors = check_source("val x: Int = null");
-        assert!(!errors.is_empty(), "expected type error for nullable to non-nullable");
+        let errors = check_source("val x Int = null");
+        assert!(
+            !errors.is_empty(),
+            "expected type error for nullable to non-nullable"
+        );
     }
 
     #[test]
@@ -1782,7 +1881,7 @@ mod tests {
     #[test]
     fn test_complex_recursive_type_annotation() {
         // List of lists - should type check without panic
-        let errors = check_source("val x: List[List[Int]] = List[List[1, 2], List[3, 4]]");
+        let errors = check_source("val x List[List[Int]] = List[List[1, 2], List[3, 4]]");
         // This may or may not error depending on generics support
         let _ = errors;
     }
@@ -1804,12 +1903,18 @@ mod tests {
     #[test]
     fn test_call_non_function() {
         let errors = check_source("val x = 42\nval y = x(10)");
-        assert!(!errors.is_empty(), "expected error for calling non-function");
+        assert!(
+            !errors.is_empty(),
+            "expected error for calling non-function"
+        );
     }
 
     #[test]
     fn test_char_type_mismatch() {
-        let errors = check_source("val x: Int = 'a'");
-        assert!(!errors.is_empty(), "expected type error for char-to-int assignment");
+        let errors = check_source("val x Int = 'a'");
+        assert!(
+            !errors.is_empty(),
+            "expected type error for char-to-int assignment"
+        );
     }
 }

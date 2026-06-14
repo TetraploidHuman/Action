@@ -1529,18 +1529,17 @@ fn find_call_target(
 
 #[cfg(test)]
 mod tests {
+    use super::super::project::Project;
     use super::*;
+    use crate::typecheck::TypeRegistry;
+    use lsp_types::{
+        CompletionParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
+        DidOpenTextDocumentParams, DocumentSymbolParams, GotoDefinitionParams, HoverParams,
+        ReferenceParams, SemanticTokensParams, TextDocumentContentChangeEvent, TextDocumentItem,
+        TextDocumentPositionParams, VersionedTextDocumentIdentifier, WorkspaceSymbolParams,
+    };
     use std::collections::HashMap;
     use std::path::PathBuf;
-    use lsp_types::{
-        DidOpenTextDocumentParams, DidChangeTextDocumentParams,
-        DidCloseTextDocumentParams, TextDocumentItem, VersionedTextDocumentIdentifier,
-        TextDocumentContentChangeEvent, HoverParams, TextDocumentPositionParams,
-        GotoDefinitionParams, CompletionParams, DocumentSymbolParams,
-        ReferenceParams, SemanticTokensParams, WorkspaceSymbolParams,
-    };
-    use crate::typecheck::TypeRegistry;
-    use super::super::project::Project;
 
     fn make_state(source: &str) -> ServerState {
         let proj = Project::new(TypeRegistry::new(), HashMap::new(), Vec::new());
@@ -1568,7 +1567,11 @@ mod tests {
 
     #[test]
     fn test_handle_did_open() {
-        let mut state = state_with_proj(Project::new(TypeRegistry::new(), HashMap::new(), Vec::new()));
+        let mut state = state_with_proj(Project::new(
+            TypeRegistry::new(),
+            HashMap::new(),
+            Vec::new(),
+        ));
         let uri = test_uri();
         let params = DidOpenTextDocumentParams {
             text_document: TextDocumentItem {
@@ -1622,7 +1625,10 @@ mod tests {
         let params = HoverParams {
             text_document_position_params: TextDocumentPositionParams {
                 text_document: lsp_types::TextDocumentIdentifier { uri: test_uri() },
-                position: Position { line: 0, character: 4 },
+                position: Position {
+                    line: 0,
+                    character: 4,
+                },
             },
             work_done_progress_params: Default::default(),
         };
@@ -1637,7 +1643,10 @@ mod tests {
         let params = HoverParams {
             text_document_position_params: TextDocumentPositionParams {
                 text_document: lsp_types::TextDocumentIdentifier { uri: test_uri() },
-                position: Position { line: 0, character: 0 },
+                position: Position {
+                    line: 0,
+                    character: 0,
+                },
             },
             work_done_progress_params: Default::default(),
         };
@@ -1652,7 +1661,10 @@ mod tests {
         let params = HoverParams {
             text_document_position_params: TextDocumentPositionParams {
                 text_document: lsp_types::TextDocumentIdentifier { uri: test_uri() },
-                position: Position { line: 99, character: 99 },
+                position: Position {
+                    line: 99,
+                    character: 99,
+                },
             },
             work_done_progress_params: Default::default(),
         };
@@ -1667,7 +1679,10 @@ mod tests {
         let params = GotoDefinitionParams {
             text_document_position_params: TextDocumentPositionParams {
                 text_document: lsp_types::TextDocumentIdentifier { uri: uri.clone() },
-                position: Position { line: 1, character: 8 },
+                position: Position {
+                    line: 1,
+                    character: 8,
+                },
             },
             work_done_progress_params: Default::default(),
             partial_result_params: Default::default(),
@@ -1683,7 +1698,10 @@ mod tests {
         let params = GotoDefinitionParams {
             text_document_position_params: TextDocumentPositionParams {
                 text_document: lsp_types::TextDocumentIdentifier { uri: uri.clone() },
-                position: Position { line: 0, character: 8 },
+                position: Position {
+                    line: 0,
+                    character: 8,
+                },
             },
             work_done_progress_params: Default::default(),
             partial_result_params: Default::default(),
@@ -1700,7 +1718,10 @@ mod tests {
         let params = CompletionParams {
             text_document_position: TextDocumentPositionParams {
                 text_document: lsp_types::TextDocumentIdentifier { uri: test_uri() },
-                position: Position { line: 0, character: 8 },
+                position: Position {
+                    line: 0,
+                    character: 8,
+                },
             },
             work_done_progress_params: Default::default(),
             partial_result_params: Default::default(),
@@ -1742,11 +1763,16 @@ mod tests {
         let params = ReferenceParams {
             text_document_position: TextDocumentPositionParams {
                 text_document: lsp_types::TextDocumentIdentifier { uri: uri.clone() },
-                position: Position { line: 0, character: 4 },
+                position: Position {
+                    line: 0,
+                    character: 4,
+                },
             },
             work_done_progress_params: Default::default(),
             partial_result_params: Default::default(),
-            context: lsp_types::ReferenceContext { include_declaration: true },
+            context: lsp_types::ReferenceContext {
+                include_declaration: true,
+            },
         };
         let result = handle_references(&state, params);
         assert!(result.is_some(), "references should be found for 'x'");

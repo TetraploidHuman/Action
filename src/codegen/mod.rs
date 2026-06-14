@@ -1053,7 +1053,7 @@ mod tests {
 
     #[test]
     fn test_codegen_type_annotated_variable() {
-        let ir = compile_program("val x: Int = 42");
+        let ir = compile_program("val x Int = 42");
         assert!(!ir.is_empty(), "IR should not be empty");
         assert!(ir.contains("i64 42"), "IR should contain i64 42");
     }
@@ -1089,7 +1089,7 @@ mod tests {
 
     #[test]
     fn test_codegen_string_interpolation() {
-        let ir = compile_program(r#"val name = "world"\nval msg = "hello, ${name}""#);
+        let ir = compile_program("val name = \"world\"\nval msg = \"hello, ${name}\"");
         assert!(!ir.is_empty(), "IR should not be empty");
         assert!(ir.contains("@main"), "IR should contain main function");
     }

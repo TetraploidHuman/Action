@@ -90,7 +90,8 @@ pub fn start_lsp() -> Result<(), Box<dyn std::error::Error>> {
         .flatten();
 
     // Load stdlib
-    let (stdlib_registry, stdlib_type_env) = load_stdlib_context(root_uri.as_ref(), workspace_folders.as_deref());
+    let (stdlib_registry, stdlib_type_env) =
+        load_stdlib_context(root_uri.as_ref(), workspace_folders.as_deref());
 
     let search_dirs = build_search_dirs(root_uri.as_ref(), workspace_folders.as_deref());
     let project = Project::new(stdlib_registry, stdlib_type_env, search_dirs);
@@ -289,7 +290,8 @@ fn load_stdlib_context(
     // Try to load stdlib files
     let search_dirs = build_search_dirs(root_uri, workspace_folders);
     for filename in &["math.at"] {
-        let source = search_dirs.iter()
+        let source = search_dirs
+            .iter()
             .map(|d| d.join(filename))
             .find(|p| p.exists())
             .and_then(|p| std::fs::read_to_string(&p).ok());

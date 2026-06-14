@@ -21,9 +21,9 @@ impl<'ctx> CodeGen<'ctx> {
         let printf_fn = self
             .module
             .add_function("printf", i32.fn_type(&[ptr.into()], true), None);
-        let _malloc_fn = self
-            .module
-            .add_function("malloc", ptr.fn_type(&[i64.into()], false), None);
+        let _malloc_fn =
+            self.module
+                .add_function("malloc", ptr.fn_type(&[i64.into()], false), None);
         let _realloc_fn = self.module.add_function(
             "realloc",
             ptr.fn_type(&[ptr.into(), i64.into()], false),
@@ -15608,5 +15608,4 @@ impl<'ctx> CodeGen<'ctx> {
         define_remaining()?;
         Ok(())
     }
-
 }

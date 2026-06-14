@@ -9,8 +9,6 @@ use inkwell::IntPredicate;
 use super::{llvm_err, CodeGen, Scope, TypedValue, ValKind};
 
 impl<'ctx> CodeGen<'ctx> {
-    
-
     pub(super) fn store_value_to_alloca(
         &mut self,
         v: &TypedValue<'ctx>,
