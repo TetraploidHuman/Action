@@ -686,6 +686,7 @@ mod builtins_nullable;
 mod builtins_print;
 mod builtins_range;
 mod builtins_stdlib;
+mod builtins_stdlib_datetime;
 mod builtins_stream;
 mod builtins_thread;
 mod expr;
@@ -694,10 +695,14 @@ mod generics;
 mod jit;
 mod map_set;
 mod misc;
+mod nullable;
 mod pattern;
+mod rc_ops;
 mod runtime_decl;
 mod runtime_io;
 mod stmt;
+mod struct_ops;
+mod type_helpers;
 
 #[cfg(test)]
 mod tests {

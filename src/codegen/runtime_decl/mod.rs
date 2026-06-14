@@ -385,7 +385,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.define_list_extra()?;
         self.define_list_tree()?;
         self.define_math_ms()?;
-        self.define_remaining()?;
+        self.define_misc()?;
         Ok(())
     }
 }
@@ -404,4 +404,4 @@ mod define_str_adv;
 mod define_list_extra;
 mod define_list_tree;
 mod define_math_ms;
-mod define_remaining;
+mod define_misc;

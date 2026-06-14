@@ -1,4 +1,4 @@
-// Submodule: runtime_decl/define_remaining
+// Submodule: runtime_decl/define_misc
 //
 // Generated from runtime_decl closure.
 
@@ -7,7 +7,7 @@ use inkwell::IntPredicate;
 use inkwell::values::BasicValue;
 
 impl<'ctx> CodeGen<'ctx> {
-    pub(super) fn define_remaining(&self) -> Result<(), String> {
+    pub(super) fn define_misc(&self) -> Result<(), String> {
         let i64 = self.i64_ty();
         let f64 = self.f64_ty();
         let void = self.void_ty();
