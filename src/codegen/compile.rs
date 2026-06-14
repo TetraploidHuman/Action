@@ -3,10 +3,10 @@
 // The main compilation entry point: handles LLVM module setup, function
 // declaration passes, and top-level compilation orchestration.
 
+use super::CodeGen;
 use crate::ast::*;
 use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
-use std::collections::{HashMap};
-use super::CodeGen;
+use std::collections::HashMap;
 
 impl<'ctx> CodeGen<'ctx> {
     pub fn compile(&mut self, program: &Program) -> Result<(), String> {
@@ -238,6 +238,5 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         Ok(())
+    }
 }
-}
-

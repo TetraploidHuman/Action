@@ -1081,5 +1081,4 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         Ok(TypedValue::Nullable(alloca, nullable_ty.into()))
     }
-
 }

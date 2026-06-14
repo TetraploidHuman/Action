@@ -1,12 +1,14 @@
 // Submodule: runtime_decl
 
-
-
 use super::{llvm_err, CodeGen};
 
 impl<'ctx> CodeGen<'ctx> {
     /// Create a global string constant in the LLVM module.
-    pub(super) fn make_global_str(&self, name: &str, content: &[u8]) -> inkwell::values::PointerValue<'ctx> {
+    pub(super) fn make_global_str(
+        &self,
+        name: &str,
+        content: &[u8],
+    ) -> inkwell::values::PointerValue<'ctx> {
         let i8 = self.context.i8_type();
         let arr_ty = i8.array_type(content.len() as u32);
         let global = self.module.add_global(arr_ty, None, name);
@@ -102,9 +104,9 @@ impl<'ctx> CodeGen<'ctx> {
             i32.fn_type(&[ptr.into(), ptr.into()], true),
             None,
         );
-        let _strlen_fn = self
-            .module
-            .add_function("strlen", i64.fn_type(&[ptr.into()], false), None);
+        let _strlen_fn =
+            self.module
+                .add_function("strlen", i64.fn_type(&[ptr.into()], false), None);
         let _memcpy_fn = self.module.add_function(
             "memcpy",
             ptr.fn_type(&[ptr.into(), ptr.into(), i64.into()], false),
@@ -116,9 +118,9 @@ impl<'ctx> CodeGen<'ctx> {
         let _fopen_fn =
             self.module
                 .add_function("fopen", ptr.fn_type(&[ptr.into(), ptr.into()], false), None);
-        let _fclose_fn = self
-            .module
-            .add_function("fclose", i32.fn_type(&[ptr.into()], false), None);
+        let _fclose_fn =
+            self.module
+                .add_function("fclose", i32.fn_type(&[ptr.into()], false), None);
         let _fgets_fn = self.module.add_function(
             "fgets",
             ptr.fn_type(&[ptr.into(), i32.into(), ptr.into()], false),
@@ -391,17 +393,17 @@ impl<'ctx> CodeGen<'ctx> {
 }
 
 // ---- Submodules ----
-mod define_print;
-mod define_str_basic;
-mod define_list_core;
-mod define_list_xform;
-mod define_str_util;
-mod define_map;
-mod define_str_extra;
 mod define_file_parse;
-mod define_rand;
-mod define_str_adv;
+mod define_list_core;
 mod define_list_extra;
 mod define_list_tree;
+mod define_list_xform;
+mod define_map;
 mod define_math_ms;
 mod define_misc;
+mod define_print;
+mod define_rand;
+mod define_str_adv;
+mod define_str_basic;
+mod define_str_extra;
+mod define_str_util;

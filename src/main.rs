@@ -1,6 +1,6 @@
-use action::*;
 use action::config::ProjectConfig;
 use action::error::CompilerError;
+use action::*;
 use ariadne::{Color, Label, Report, ReportKind, Source};
 use clap::{Parser as ClapParser, Subcommand};
 use inkwell::context::Context;

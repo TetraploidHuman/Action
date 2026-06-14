@@ -633,7 +633,6 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-
     pub fn print_ir(&self) -> String {
         // On Windows with /FORCE:UNRESOLVED, print_to_string can trigger LLVM
         // analysis passes that call into NULL unresolved symbols. Write to a
