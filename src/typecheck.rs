@@ -686,7 +686,13 @@ impl TypeChecker {
                 if let Err(e) = self.check_call(func, args) {
                     errors.push(e);
                 }
-                self.collect_expr_errors(func, errors);
+                // Only recurse into the function expression if it's not a simple
+                // identifier — simple idents in call position are function names
+                // (builtins like `println`, user-defined functions, etc.) and
+                // should not be checked as variable references.
+                if !matches!(func.as_ref(), Expr::Ident(_)) {
+                    self.collect_expr_errors(func, errors);
+                }
                 for a in args {
                     self.collect_expr_errors(a, errors);
                 }
@@ -703,14 +709,20 @@ impl TypeChecker {
                 ForKind::Iterate { iterable, body, .. } => {
                     self.collect_expr_errors(iterable, errors);
                     // Check if iterable is a valid iterable type
-                    let iter_type = self.infer_expr_type(iterable).unwrap_or(Type::Named("Int".into()));
+                    let iter_type = self
+                        .infer_expr_type(iterable)
+                        .unwrap_or(Type::Named("Int".into()));
                     match &iter_type {
-                        Type::Named(n) if n == "Int" || n == "Bool" || n == "Float" || n == "Char" => {
-                            errors.push(CompilerError::new(format!(
+                        Type::Named(n)
+                            if n == "Int" || n == "Bool" || n == "Float" || n == "Char" =>
+                        {
+                            errors.push(
+                                CompilerError::new(format!(
                                 "Cannot iterate over '{}', expected a collection or iterable type",
                                 iter_type
                             ))
-                            .with_span(self.current_span));
+                                .with_span(self.current_span),
+                            );
                         }
                         _ => {}
                     }
@@ -719,14 +731,20 @@ impl TypeChecker {
                 ForKind::IterateWithIndex { iterable, body, .. } => {
                     self.collect_expr_errors(iterable, errors);
                     // Check if iterable is a valid iterable type
-                    let iter_type = self.infer_expr_type(iterable).unwrap_or(Type::Named("Int".into()));
+                    let iter_type = self
+                        .infer_expr_type(iterable)
+                        .unwrap_or(Type::Named("Int".into()));
                     match &iter_type {
-                        Type::Named(n) if n == "Int" || n == "Bool" || n == "Float" || n == "Char" => {
-                            errors.push(CompilerError::new(format!(
+                        Type::Named(n)
+                            if n == "Int" || n == "Bool" || n == "Float" || n == "Char" =>
+                        {
+                            errors.push(
+                                CompilerError::new(format!(
                                 "Cannot iterate over '{}', expected a collection or iterable type",
                                 iter_type
                             ))
-                            .with_span(self.current_span));
+                                .with_span(self.current_span),
+                            );
                         }
                         _ => {}
                     }
@@ -778,11 +796,13 @@ impl TypeChecker {
                 // Check if target is an immutable variable
                 if let Expr::Ident(name) = target.as_ref() {
                     if self.type_env.contains_key(name) && !self.mutable_vars.contains(name) {
-                        errors.push(CompilerError::new(format!(
-                            "Cannot assign to immutable variable '{}'",
-                            name
-                        ))
-                        .with_span(self.current_span));
+                        errors.push(
+                            CompilerError::new(format!(
+                                "Cannot assign to immutable variable '{}'",
+                                name
+                            ))
+                            .with_span(self.current_span),
+                        );
                     }
                 }
             }
@@ -821,12 +841,12 @@ impl TypeChecker {
             Expr::Ident(name) => {
                 // Check if the variable is defined in the type environment
                 // (except for enum variants which are handled by registry)
-                if !self.type_env.contains_key(name) && self.registry.lookup_variant(name).is_none() {
-                    errors.push(CompilerError::new(format!(
-                        "Undefined variable '{}'",
-                        name
-                    ))
-                    .with_span(self.current_span));
+                if !self.type_env.contains_key(name) && self.registry.lookup_variant(name).is_none()
+                {
+                    errors.push(
+                        CompilerError::new(format!("Undefined variable '{}'", name))
+                            .with_span(self.current_span),
+                    );
                 }
             }
             _ => {} // Literal, Continue, Break, etc.
@@ -1102,7 +1122,9 @@ impl TypeChecker {
         let first = &types[0];
 
         // Only skip checking when ALL arms are Int (un-inferred fallback)
-        let all_int = types.iter().all(|t| matches!(t, Type::Named(ref n) if n == "Int"));
+        let all_int = types
+            .iter()
+            .all(|t| matches!(t, Type::Named(ref n) if n == "Int"));
         if all_int {
             return Ok(());
         }
