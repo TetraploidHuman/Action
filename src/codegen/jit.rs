@@ -53,6 +53,8 @@ fn run_via_jit(cg: &CodeGen) -> Result<i64, String> {
 
 fn map_host_symbols(cg: &CodeGen, engine: &inkwell::execution_engine::ExecutionEngine) {
     // Map @stdin global to real libc stdin address.
+    // stdin is a POSIX symbol; on Windows the CRT provides __acrt_iob_func instead.
+    #[cfg(not(target_os = "windows"))]
     if let Some(stdin_g) = cg.module.get_global("stdin") {
         unsafe {
             extern "C" {
@@ -138,6 +140,7 @@ fn map_host_symbols(cg: &CodeGen, engine: &inkwell::execution_engine::ExecutionE
                 fmt: *const std::ffi::c_char,
                 tm: *const std::ffi::c_void,
             ) -> u64;
+            #[cfg(not(target_os = "windows"))]
             fn strptime(
                 buf: *const std::ffi::c_char,
                 fmt: *const std::ffi::c_char,
@@ -164,14 +167,18 @@ fn map_host_symbols(cg: &CodeGen, engine: &inkwell::execution_engine::ExecutionE
             fn cbrt(x: f64) -> f64;
         }
 
-        for name in [
+        let mut names = vec![
             "fgets", "malloc", "free", "strlen", "memcpy", "strcmp", "printf", "fprintf", "fflush",
             "fclose", "fopen", "fread", "fwrite", "fseek", "ftell", "feof", "remove", "sprintf",
-            "strtod", "strftime", "strptime", "sqrt", "sin", "cos", "tan", "asin", "acos", "atan",
+            "strtod", "strftime", "sqrt", "sin", "cos", "tan", "asin", "acos", "atan",
             "atan2", "exp", "log", "log10", "log2", "pow", "abs", "floor", "ceil", "round", "cbrt",
-        ] {
+        ];
+        #[cfg(not(target_os = "windows"))]
+        names.push("strptime");
+
+        for name in &names {
             if let Some(func) = cg.module.get_function(name) {
-                let addr = match name {
+                let addr = match *name {
                     "fgets" => fgets as *const () as usize,
                     "malloc" => malloc as *const () as usize,
                     "free" => free as *const () as usize,
@@ -192,6 +199,7 @@ fn map_host_symbols(cg: &CodeGen, engine: &inkwell::execution_engine::ExecutionE
                     "sprintf" => sprintf as *const () as usize,
                     "strtod" => strtod as *const () as usize,
                     "strftime" => strftime as *const () as usize,
+                    #[cfg(not(target_os = "windows"))]
                     "strptime" => strptime as *const () as usize,
                     "sqrt" => sqrt as *const () as usize,
                     "sin" => sin as *const () as usize,

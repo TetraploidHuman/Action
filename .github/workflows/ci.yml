@@ -10,6 +10,7 @@ on:
 env:
   LLVM_VERSION: '21.1.8'
   LLVM_TAG: llvmorg-21.1.8
+  ACTION_FORCE_LINK: true
 
 jobs:
   test:
