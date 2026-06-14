@@ -977,7 +977,7 @@ mod tests {
         let guard = TEST_CONTEXT
             .get_or_init(|| Mutex::new(Context::create()))
             .lock()
-            .unwrap();
+            .unwrap_or_else(|poison| poison.into_inner());
         let mut cg = CodeGen::new(&guard, "test", registry, None);
         cg.compile(&program).expect("Compilation should succeed");
         cg.print_ir()
