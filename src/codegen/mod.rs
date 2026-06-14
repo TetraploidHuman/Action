@@ -911,7 +911,7 @@ mod pattern;
 mod runtime;
 mod stmt;
 
-#[cfg(all(test, not(target_os = "windows")))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::ast::*;
@@ -921,7 +921,6 @@ mod tests {
     use crate::typecheck::TypeChecker;
     use crate::typecheck::TypeRegistry;
     use std::collections::HashMap;
-
     fn compile_program(source: &str) -> String {
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize();
@@ -955,6 +954,10 @@ mod tests {
         cg.print_ir()
     }
 
+    // FIXME: codegen tests crash on Windows (STATUS_ACCESS_VIOLATION) when
+    // creating multiple LLVM contexts in the same process. Disabled on Windows
+    // until the root cause is identified (likely an inkwell/LLVM MSVC issue).
+    #[cfg(not(target_os = "windows"))]
     #[test]
     fn test_codegen_empty_program() {
         let ir = compile_program("");
@@ -966,6 +969,7 @@ mod tests {
         );
     }
 
+    #[cfg(not(target_os = "windows"))]
     #[test]
     fn test_codegen_val_int() {
         let ir = compile_program("val x = 42");
@@ -973,6 +977,7 @@ mod tests {
         assert!(ir.contains("i64 42"), "IR should contain i64 constant 42");
     }
 
+    #[cfg(not(target_os = "windows"))]
     #[test]
     fn test_codegen_binary_add() {
         let ir = compile_program("val x = 1 + 2");
@@ -980,6 +985,7 @@ mod tests {
         assert!(ir.contains("add"), "IR should contain add instruction");
     }
 
+    #[cfg(not(target_os = "windows"))]
     #[test]
     fn test_codegen_simple_fun() {
         let ir = compile_program("fun add(x: Int, y: Int) -> Int { x + y }");
@@ -987,6 +993,7 @@ mod tests {
         assert!(ir.contains("@add"), "IR should contain 'add' function");
     }
 
+    #[cfg(not(target_os = "windows"))]
     #[test]
     fn test_codegen_val_bool() {
         let ir = compile_program("val x = true");
