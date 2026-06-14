@@ -203,6 +203,41 @@ type Person = { id: UserId, name: String }
 type Callback = (Int) -> Bool   // 函数类型别名
 ```
 
+## 2.7 元组
+
+元组使用圆括号 `()` 构造，支持任意数量的元素和混合类型：
+
+```action
+val t = (1, 2, 3)
+print(t[0])   // 1
+print(t[1])   // 2
+print(t[2])   // 3
+
+val pair = (42, "hello")  // 混合类型
+print(pair[0])   // 42
+```
+
+元组解构：
+
+```action
+val pair = (42, 10)
+val (x, y) = pair
+print(x)  // 42
+print(y)  // 10
+```
+
+`to` 运算符创建二元元组：
+
+```action
+val pair = 1 to "a"   // (1, "a")
+```
+
+元组可用于 for 表达式中：
+
+```action
+val pairs = for x in List[1, 2], y in List["a", "b"] { x to y }
+```
+
 ---
 
 # 第三章：运算符
@@ -342,10 +377,11 @@ val area = when shape {
     Rectangle(w, h) -> w * h
 }
 
-val label = when point {
-    {x, y} and x == y -> "diagonal"
-    {x, y} and x > y  -> "below diagonal"
-    else              -> "above diagonal"
+// is 类型检查
+val description = when value {
+    is Int   -> "integer: ${value}"
+    is Float -> "float: ${value}"
+    else     -> "other"
 }
 ```
 
