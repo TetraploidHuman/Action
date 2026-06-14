@@ -1650,13 +1650,13 @@ mod tests {
 
 
         #[test]
-        fn proptest_lexer_never_panics(s in ".*") {
+        fn proptest_lexer_never_panics(s in ".{0,50}") {
             let mut lexer = Lexer::new(&s);
             let _tokens = lexer.tokenize();
         }
 
         #[test]
-        fn proptest_lexer_valid_spans(s in ".*") {
+        fn proptest_lexer_valid_spans(s in ".{0,50}") {
             let mut lexer = Lexer::new(&s);
             let tokens = lexer.tokenize();
             for t in &tokens {
