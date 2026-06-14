@@ -946,20 +946,16 @@ mod tests {
     static TEST_CONTEXT: OnceLock<Mutex<Context>> = OnceLock::new();
 
     fn compile_program(source: &str) -> String {
-        eprintln!("[DEBUG compile_program] step 1: lexing");
         let mut lexer = Lexer::new(source);
         let tokens = lexer.tokenize();
-        eprintln!("[DEBUG compile_program] step 2: parsing ({} tokens)", tokens.len());
         let mut parser = Parser::new(tokens);
-        let mut program = parser.parse_program().expect("Parsing should succeed");
-        eprintln!("[DEBUG compile_program] step 3: parsed {} stmts", program.stmts.len());
+        let program = parser.parse_program().expect("Parsing should succeed");
 
         // Register types from program statements
         let mut registry = TypeRegistry::new();
         for stmt in &program.stmts {
             let _ = registry.register(stmt);
         }
-        eprintln!("[DEBUG compile_program] step 4: registered types");
 
         // Type check
         let mut checker = TypeChecker::new(registry.clone());
@@ -974,27 +970,17 @@ mod tests {
         if !errors.is_empty() {
             panic!("Type check failed: {:?}", errors);
         }
-        eprintln!("[DEBUG compile_program] step 5: type check passed");
 
         // Compile to LLVM IR
         // Use a shared context to avoid STATUS_ACCESS_VIOLATION on Windows
         // when creating multiple LLVM contexts in the same process.
-        eprintln!("[DEBUG compile_program] step 6: getting/creating shared LLVM context");
         let guard = TEST_CONTEXT
-            .get_or_init(|| {
-                eprintln!("[DEBUG compile_program] step 6a: creating NEW LLVM context");
-                Mutex::new(Context::create())
-            })
+            .get_or_init(|| Mutex::new(Context::create()))
             .lock()
             .unwrap();
-        eprintln!("[DEBUG compile_program] step 7: LLVM context acquired, creating CodeGen");
         let mut cg = CodeGen::new(&guard, "test", registry, None);
-        eprintln!("[DEBUG compile_program] step 8: CodeGen created, compiling");
         cg.compile(&program).expect("Compilation should succeed");
-        eprintln!("[DEBUG compile_program] step 9: compilation done, printing IR");
-        let ir = cg.print_ir();
-        eprintln!("[DEBUG compile_program] step 10: IR printed ({} bytes)", ir.len());
-        ir
+        cg.print_ir()
     }
 
     #[test]
