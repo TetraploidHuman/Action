@@ -10,8 +10,6 @@ use std::path::PathBuf;
 use lsp_server::{Connection, Message, Notification, Request, Response};
 use lsp_types::{
     CodeActionProviderCapability, CompletionOptions, InitializeResult, RenameOptions,
-    SemanticTokensOptions, ServerCapabilities, SignatureHelpOptions, TextDocumentSyncCapability,
-    TextDocumentSyncKind,
 };
 
 use crate::ast::Type;

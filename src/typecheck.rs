@@ -345,10 +345,91 @@ impl TypeChecker {
                     let ty = type_ann.clone().unwrap_or(inferred);
                     self.type_env.insert(name.clone(), ty);
                 }
-                Stmt::Destructure { names, .. } => {
-                    for name in names {
-                        self.type_env
-                            .insert(name.clone(), Type::Named("Int".into()));
+                Stmt::Destructure {
+                    names,
+                    renames,
+                    is_list,
+                    is_struct,
+                    value,
+                    rest,
+                    ..
+                } => {
+                    let value_ty = self.infer_expr_type(value);
+                    let field_types: Vec<Type> = if *is_struct {
+                        // Struct destructuring: val {x, y} = point
+                        // names are local names, renames maps (field_name, local_name)
+                        if let Type::Named(ref struct_name) = value_ty {
+                            if let Some(info) = self.registry.get_struct(struct_name) {
+                                names
+                                    .iter()
+                                    .map(|name| {
+                                        let field_name = renames
+                                            .iter()
+                                            .find(|(_, local)| local == name)
+                                            .map(|(f, _)| f)
+                                            .unwrap_or(name);
+                                        info.fields
+                                            .iter()
+                                            .find(|(fname, _)| fname == field_name)
+                                            .map(|(_, ty)| ty.clone())
+                                            .unwrap_or(Type::Named("Int".into()))
+                                    })
+                                    .collect()
+                            } else {
+                                vec![Type::Named("Int".into()); names.len()]
+                            }
+                        } else {
+                            vec![Type::Named("Int".into()); names.len()]
+                        }
+                    } else if *is_list {
+                        // List destructuring: val [a, b, ...rest] = list
+                        let elem_ty = match &value_ty {
+                            Type::Set(elem) | Type::LazyList(elem) => *elem.clone(),
+                            Type::Generic(_, args) if args.len() == 1 => args[0].clone(),
+                            _ => Type::Named("Int".into()),
+                        };
+                        let mut tys = vec![elem_ty; names.len()];
+                        if let Some(rest_name) = rest {
+                            // rest variable gets the list type
+                            tys.push(value_ty.clone());
+                            self.type_env.insert(rest_name.clone(), value_ty.clone());
+                        }
+                        tys
+                    } else {
+                        // Tuple destructuring: val (x, y) = expr
+                        // Try struct field lookup by position, then by field name matching
+                        if let Type::Named(ref struct_name) = value_ty {
+                            if let Some(info) = self.registry.get_struct(struct_name) {
+                                names
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(i, _)| {
+                                        info.fields
+                                            .get(i)
+                                            .map(|(_, ty)| ty.clone())
+                                            .unwrap_or(Type::Named("Int".into()))
+                                    })
+                                    .collect()
+                            } else {
+                                vec![Type::Named("Int".into()); names.len()]
+                            }
+                        } else if let Some(info) = self.registry.find_struct_by_fields(names) {
+                            names
+                                .iter()
+                                .map(|name| {
+                                    info.fields
+                                        .iter()
+                                        .find(|(fname, _)| fname == name)
+                                        .map(|(_, ty)| ty.clone())
+                                        .unwrap_or(Type::Named("Int".into()))
+                                })
+                                .collect()
+                        } else {
+                            vec![Type::Named("Int".into()); names.len()]
+                        }
+                    };
+                    for (name, ty) in names.iter().zip(field_types) {
+                        self.type_env.insert(name.clone(), ty);
                     }
                 }
                 Stmt::Const {

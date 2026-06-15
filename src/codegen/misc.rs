@@ -360,7 +360,6 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self.builder.build_unconditional_branch(merge_bb);
 
         self.builder.position_at_end(merge_bb);
-        Ok(TypedValue::Nullable(null_alloca, null_bt))
     }
 
     /// Set indexing: set[elem] -> T? (nullable)
