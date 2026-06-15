@@ -1,7 +1,7 @@
 // Test UFCS: arbitrary function calls via dot syntax
-fun double(x) { x * 2 }
-fun add(a, b) { a + b }
-fun triple(n) { n * 3 }
+fun double(x: Int) -> Int { x * 2 }
+fun add(a: Int, b: Int) -> Int { a + b }
+fun triple(n: Int) -> Int { n * 3 }
 
 fun main() {
     // UFCS: x.f(y) -> f(x, y)

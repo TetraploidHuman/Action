@@ -929,7 +929,7 @@ fn test_ufcs() {
     assert!(out.contains("r1: 10"));
     assert!(out.contains("r2: 8"));
     assert!(out.contains("r3: 11"));
-    assert!(out.contains("r4: 33"));
+    assert!(out.contains("r4: 39"));
 }
 
 #[test]

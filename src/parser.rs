@@ -151,6 +151,10 @@ pub struct Parser {
     pos: usize,
     /// Type parameter names currently in scope (e.g., from `fun <T, U>`)
     current_type_params: Vec<String>,
+    /// When true, LParen is NOT treated as a postfix call suffix.
+    /// Used when parsing when-arm bodies to prevent `expr (pat)` from
+    /// being greedily consumed as `expr(pat)`.
+    no_postfix_call: bool,
 }
 
 impl Parser {
@@ -159,6 +163,7 @@ impl Parser {
             tokens,
             pos: 0,
             current_type_params: Vec::new(),
+            no_postfix_call: false,
         }
     }
 
@@ -798,6 +803,26 @@ impl Parser {
         self.parse_pratt(Precedence::Lowest)
     }
 
+    /// Peek ahead to check if a `(` starts a when-arm pattern rather than a function call.
+    /// Returns true if the parenthesized content parses as comma-separated patterns
+    /// followed by `)` then `->`.
+    fn peek_when_arm_pattern(&mut self) -> bool {
+        let saved = self.pos;
+        self.advance(); // (
+        let mut ok = self.parse_pattern().is_ok();
+        while ok && self.current_kind() == TokenKind::Comma {
+            self.advance();
+            ok = self.parse_pattern().is_ok();
+        }
+        ok = ok && self.current_kind() == TokenKind::RParen;
+        if ok {
+            self.advance(); // )
+            ok = self.current_kind() == TokenKind::Arrow;
+        }
+        self.pos = saved;
+        ok
+    }
+
     fn parse_pratt(&mut self, min_prec: Precedence) -> Result<Expr, ParseError> {
         let mut left = self.parse_prefix()?;
 
@@ -807,8 +832,12 @@ impl Parser {
             // the postfix (e.g. r.x + 1) are correctly parsed.
             let postfix_applied = match self.current_kind() {
                 TokenKind::LParen => {
-                    left = self.parse_call_suffix(left)?;
-                    true
+                    if self.no_postfix_call && self.peek_when_arm_pattern() {
+                        false
+                    } else {
+                        left = self.parse_call_suffix(left)?;
+                        true
+                    }
                 }
                 TokenKind::Dot => {
                     self.advance();
@@ -1656,7 +1685,9 @@ impl Parser {
                     None
                 };
                 self.expect(TokenKind::Arrow)?;
+                self.no_postfix_call = true;
                 let body = self.parse_expr()?;
+                self.no_postfix_call = false;
                 arms.push(WhenArm {
                     pattern,
                     guard,
@@ -1723,7 +1754,9 @@ impl Parser {
                         None
                     };
                     self.expect(TokenKind::Arrow)?;
+                    self.no_postfix_call = true;
                     let body = self.parse_pratt(Precedence::Shift)?;
+                    self.no_postfix_call = false;
                     arms.push(WhenArm {
                         pattern,
                         guard,
