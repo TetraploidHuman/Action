@@ -511,6 +511,13 @@ impl Lexer {
                 if self.peek_next() == Some('.') {
                     break;
                 }
+                // If followed by a letter (that's not e/E), this is a method
+                // call dot (e.g., 5.double()), not a float literal.
+                // e/E at start of scientific notation (5.e10) is still float.
+                let next = self.peek_next();
+                if next.map_or(false, |c| c.is_ascii_alphabetic() && c != 'e' && c != 'E') {
+                    break;
+                }
                 is_float = true;
                 num_str.push(self.advance().unwrap()); // '.'
                 if self.current().map_or(false, |c| c.is_ascii_digit()) {
