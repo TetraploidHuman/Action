@@ -1880,6 +1880,22 @@ impl Parser {
                 self.advance();
                 Ok(Pattern::IsType(type_name))
             }
+            TokenKind::LParen => {
+                self.advance();
+                let mut patterns = Vec::new();
+                while self.current_kind() != TokenKind::RParen {
+                    if !patterns.is_empty() {
+                        self.expect(TokenKind::Comma)?;
+                    }
+                    patterns.push(self.parse_pattern()?);
+                }
+                self.expect(TokenKind::RParen)?;
+                match patterns.len() {
+                    0 => Err(self.error("Empty tuple pattern is not allowed")),
+                    1 => Ok(patterns.into_iter().next().unwrap()),
+                    _ => Ok(Pattern::Tuple(patterns)),
+                }
+            }
             _ => Err(self.error("Expected pattern")),
         }
     }

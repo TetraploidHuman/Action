@@ -219,6 +219,11 @@ impl TypeRegistry {
                     self.collect_pattern_coverage(p, covered, enum_name, has_wildcard);
                 }
             }
+            Pattern::Tuple(patterns) => {
+                for p in patterns {
+                    self.collect_pattern_coverage(p, covered, enum_name, has_wildcard);
+                }
+            }
             _ => {} // Literal, Range, IsType — not relevant for enum exhaustiveness
         }
     }
@@ -610,6 +615,11 @@ impl TypeChecker {
                                     }
                                 }
                                 Pattern::Or(patterns) => {
+                                    for p in patterns {
+                                        collect_vars(p, out);
+                                    }
+                                }
+                                Pattern::Tuple(patterns) => {
                                     for p in patterns {
                                         collect_vars(p, out);
                                     }
@@ -1354,10 +1364,16 @@ impl TypeChecker {
                         }
                         (Type::Task(_), "wait") => Ok(Type::Named("Int".into())),
                         (Type::Named(_), "len") => Ok(Type::Named("Int".into())),
-                        _ => Err(CompilerError::new(format!(
-                            "Cannot infer type for expression: {:?}",
-                            expr
-                        ))),
+                        _ => {
+                            // UFCS fallback: receiver.method(args) → method(receiver, args)
+                            let mut all_args = vec![receiver.as_ref().clone()];
+                            all_args.extend(args.iter().cloned());
+                            self.infer_expr_type(&Expr::Call {
+                                func: Box::new(Expr::Ident(method.clone())),
+                                args: all_args,
+                                trailing_lambda: None,
+                            })
+                        }
                     }
                 } else {
                     Ok(Type::Named("Int".into()))

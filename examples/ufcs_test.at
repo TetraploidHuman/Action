@@ -1,0 +1,25 @@
+// Test UFCS: arbitrary function calls via dot syntax
+fun double(x) { x * 2 }
+fun add(a, b) { a + b }
+fun triple(n) { n * 3 }
+
+fun main() {
+    // UFCS: x.f(y) -> f(x, y)
+    val r1 = 5.double()
+    print("r1: ")
+    println(r1)
+
+    val r2 = 5.add(3)
+    print("r2: ")
+    println(r2)
+
+    // Chaining via dot syntax
+    val r3 = 5.double().add(1)
+    print("r3: ")
+    println(r3)
+
+    // Chaining with multiple methods
+    val r4 = 5.double().add(3).triple()
+    print("r4: ")
+    println(r4)
+}

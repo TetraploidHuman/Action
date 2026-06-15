@@ -264,6 +264,8 @@ pub enum Pattern {
     Expr(Box<Expr>),
     /// Null literal pattern: null
     Null,
+    /// Tuple pattern: (x, _), (a, b, c)
+    Tuple(Vec<Pattern>),
 }
 
 impl fmt::Display for Pattern {
@@ -312,6 +314,16 @@ impl fmt::Display for Pattern {
             }
             Pattern::Expr(e) => write!(f, "{}", e),
             Pattern::Null => write!(f, "null"),
+            Pattern::Tuple(patterns) => {
+                write!(f, "(")?;
+                for (i, p) in patterns.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", p)?;
+                }
+                write!(f, ")")
+            }
         }
     }
 }

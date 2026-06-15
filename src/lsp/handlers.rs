@@ -1309,6 +1309,11 @@ fn collect_pattern_bindings(pattern: &crate::ast::Pattern, map: &mut HashMap<Str
                 collect_pattern_bindings(p, map);
             }
         }
+        Pattern::Tuple(patterns) => {
+            for p in patterns {
+                collect_pattern_bindings(p, map);
+            }
+        }
         _ => {}
     }
 }

@@ -417,6 +417,7 @@ impl<'ctx> CodeGen<'ctx> {
                 Ok(result)
             }
             Pattern::Constructor { .. } => Ok(b1.const_int(1, false)),
+            Pattern::Tuple(_) => Ok(b1.const_int(1, false)),
             Pattern::Null => Ok(b1.const_int(0, false)),
             Pattern::Expr(expr) => {
                 let val = self.compile_expr(expr)?;
@@ -669,6 +670,32 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 Ok(result)
             }
+            Pattern::Tuple(patterns) => {
+                if let TypedValue::Struct(ptr, struct_ty) = val {
+                    let bt: BasicTypeEnum = (*struct_ty).into();
+                    let loaded = self
+                        .builder
+                        .build_load(bt, *ptr, "tup_ld")
+                        .map_err(llvm_err)?;
+                    let struct_val = loaded.into_struct_value();
+                    let mut result = b1.const_int(1, false);
+                    for (i, sub) in patterns.iter().enumerate() {
+                        let field_val = self
+                            .builder
+                            .build_extract_value(struct_val, i as u32, &format!("tm{}", i))
+                            .map_err(llvm_err)?;
+                        let tv = self.bv_to_typed(field_val)?;
+                        let sub_match = self.compile_pattern_match(sub, &tv)?;
+                        result = self
+                            .builder
+                            .build_and(result, sub_match, "tup_and")
+                            .map_err(llvm_err)?;
+                    }
+                    Ok(result)
+                } else {
+                    Ok(b1.const_int(0, false))
+                }
+            }
             Pattern::Expr(expr) => {
                 // In value-match context, evaluate expression as a condition.
                 // If the value matches (truthy), the expression acts as a guard.
@@ -896,6 +923,24 @@ impl<'ctx> CodeGen<'ctx> {
                 // For Or patterns, bind the first pattern's variables (simplified)
                 if let Some(first) = patterns.first() {
                     self.bind_pattern_vars(first, matched_val, matched_type)?;
+                }
+            }
+            Pattern::Tuple(patterns) => {
+                if let Some(TypedValue::Struct(ptr, struct_ty)) = matched_val {
+                    let bt: BasicTypeEnum = (*struct_ty).into();
+                    let loaded = self
+                        .builder
+                        .build_load(bt, *ptr, "tuple_ld")
+                        .map_err(llvm_err)?;
+                    let struct_val = loaded.into_struct_value();
+                    for (i, sub) in patterns.iter().enumerate() {
+                        let field_val = self
+                            .builder
+                            .build_extract_value(struct_val, i as u32, &format!("t{}", i))
+                            .map_err(llvm_err)?;
+                        let tv = self.bv_to_typed(field_val)?;
+                        self.bind_pattern_vars(sub, Some(&tv), None)?;
+                    }
                 }
             }
             _ => {}

@@ -922,3 +922,21 @@ fn test_list_concat() {
     let out = run_example("list_concat_test.at");
     assert!(out.contains("All concat tests passed"));
 }
+
+#[test]
+fn test_ufcs() {
+    let out = run_example("ufcs_test.at");
+    assert!(out.contains("r1: 10"));
+    assert!(out.contains("r2: 8"));
+    assert!(out.contains("r3: 11"));
+    assert!(out.contains("r4: 33"));
+}
+
+#[test]
+fn test_tuple_pattern() {
+    let out = run_example("tuple_pattern_test.at");
+    assert!(out.contains("1"));
+    assert!(out.contains("12"));
+    assert!(out.contains("ab"));
+    assert!(out.contains("first"));
+}

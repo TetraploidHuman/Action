@@ -1479,6 +1479,14 @@ impl<'ctx> CodeGen<'ctx> {
                     method, type_name
                 ));
             }
+
+            // UFCS fallback: receiver.method(args) → method(receiver, args)
+            // 将任意函数的方法调用语法解糖为普通函数调用
+            self.rc_free_method_receiver(&recv_val)?;
+            let new_func = Expr::Ident(method.to_string());
+            let mut new_args = vec![receiver.as_ref().clone()];
+            new_args.extend(args.iter().cloned());
+            return self.compile_call(&new_func, &new_args, trailing);
         }
 
         // Higher-order call: compile the call target expression

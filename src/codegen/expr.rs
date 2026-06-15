@@ -2456,6 +2456,7 @@ fn collect_pattern_vars(pat: &Pattern) -> Vec<String> {
             v
         }
         Pattern::Or(pats) => pats.iter().flat_map(collect_pattern_vars).collect(),
+        Pattern::Tuple(pats) => pats.iter().flat_map(collect_pattern_vars).collect(),
         Pattern::Expr(_)
         | Pattern::Null
         | Pattern::Wildcard
