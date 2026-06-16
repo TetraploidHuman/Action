@@ -1,0 +1,8 @@
+fun main() {
+    var outer = 0
+    for outer < 100 { var sum = 0; for i in 0..499 { sum = sum + i }; outer = outer + 1 }
+    println(499*500/2)
+    outer = 0
+    for outer < 100 { var sum = 0; for i in 0..<500 { sum = sum + i }; outer = outer + 1 }
+    println(499*500/2)
+}

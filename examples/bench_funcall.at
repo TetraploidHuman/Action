@@ -1,0 +1,15 @@
+// Function call: recursion, TCO, higher-order
+fun fib(n: Int) -> Int { when n <= 1 { n else fib(n - 1) + fib(n - 2) } }
+fun fact(n: Int, acc: Int) -> Int { when n <= 1 { acc else fact(n - 1, acc * n) } }
+fun apply(f: (Int) -> Int, x: Int) -> Int { f(x) }
+fun double(n: Int) -> Int { n * 2 }
+fun main() {
+    val f = fib(30); println(f)
+    val factorial = fact(20, 1); println(factorial)
+    var sum = 0; var i = 0
+    for i < 1000 { sum = sum + apply(double, i); i = i + 1 }
+    println(sum)
+    val lst = List[1, 2, 3, 4, 5]
+    i = 0; for i < 500 { var mapped = map(lst) { it * 2 }; i = i + 1 }
+    println(len(lst))
+}

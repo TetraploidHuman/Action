@@ -7,7 +7,7 @@ use inkwell::FloatPredicate;
 use inkwell::IntPredicate;
 use std::collections::HashMap;
 
-use super::{llvm_err, CodeGen, InnerType, Scope, TypedValue};
+use super::{llvm_err, CodeGen, GepCursor, InnerType, Scope, TypedValue};
 
 impl<'ctx> CodeGen<'ctx> {
     pub(super) fn compile_when(&mut self, w: &When) -> Result<TypedValue<'ctx>, String> {
@@ -827,15 +827,10 @@ impl<'ctx> CodeGen<'ctx> {
                             };
                         }
                         let i8_ty = self.context.i8_type();
+                        let mut cur = GepCursor::new(data_ptr);
                         // Bind positional sub-patterns with correct byte offsets
                         for (i, sub) in args.iter().enumerate() {
-                            let fp = if offsets[i] == 0 {
-                                data_ptr
-                            } else {
-                                let o = self.i64_ty().const_int(offsets[i], false);
-                                unsafe { self.builder.build_gep(i8_ty, data_ptr, &[o], "efld") }
-                                    .map_err(llvm_err)?
-                            };
+                            let fp = cur.offset_gep(&self.builder, i8_ty, offsets[i], "efld")?;
                             let tv: TypedValue =
                                 match resolved_params.as_ref().and_then(|p| p.get(i)) {
                                     Some(Type::Named(n)) if n == "String" || n == "Str" => {
@@ -870,16 +865,10 @@ impl<'ctx> CodeGen<'ctx> {
                             let sub_ty = resolved_params.as_ref().and_then(|p| p.get(i));
                             self.bind_pattern_vars(sub, Some(&tv), sub_ty)?;
                         }
-                        // Bind named fields similarly
+                        // Bind named fields similarly (cursor continues from last positional offset)
                         for (ni, (_, sub)) in named_fields.iter().enumerate() {
                             let idx = args.len() + ni;
-                            let fp = if offsets[idx] == 0 {
-                                data_ptr
-                            } else {
-                                let o = self.i64_ty().const_int(offsets[idx], false);
-                                unsafe { self.builder.build_gep(i8_ty, data_ptr, &[o], "nefld") }
-                                    .map_err(llvm_err)?
-                            };
+                            let fp = cur.offset_gep(&self.builder, i8_ty, offsets[idx], "nefld")?;
                             let tv: TypedValue =
                                 match resolved_params.as_ref().and_then(|p| p.get(idx)) {
                                     Some(Type::Named(n)) if n == "String" || n == "Str" => {

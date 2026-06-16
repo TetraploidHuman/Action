@@ -67,15 +67,9 @@ impl<'ctx> CodeGen<'ctx> {
         let mi_ckey = self.context.append_basic_block(mi_fn, "ckey");
         let mi_found = self.context.append_basic_block(mi_fn, "found");
         let mi_nxt = self.context.append_basic_block(mi_fn, "next");
-        let mi_rebuild = self.context.append_basic_block(mi_fn, "rebuild");
-        let mi_rb_loop = self.context.append_basic_block(mi_fn, "rb_loop");
-        let mi_rb_body = self.context.append_basic_block(mi_fn, "rb_body");
-        let mi_rb_match = self.context.append_basic_block(mi_fn, "rb_match");
-        let mi_rb_copy = self.context.append_basic_block(mi_fn, "rb_copy");
-        let mi_rb_nxt = self.context.append_basic_block(mi_fn, "rb_next");
-        let mi_rb_done = self.context.append_basic_block(mi_fn, "rb_done");
-        let mi_rb_append = self.context.append_basic_block(mi_fn, "rb_append");
-        let mi_rb_ret = self.context.append_basic_block(mi_fn, "rb_ret");
+        let mi_update = self.context.append_basic_block(mi_fn, "update");
+        let mi_append = self.context.append_basic_block(mi_fn, "append");
+        let mi_ret = self.context.append_basic_block(mi_fn, "ret");
 
         // Entry
         self.builder.position_at_end(mi_entry);
@@ -96,6 +90,11 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(mi_match_pos, sentinel)
             .map_err(llvm_err)?;
+        // Alloca for the result (shared between update and append paths)
+        let mi_result_alloca = self
+            .builder
+            .build_alloca(self.list_type, "res")
+            .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(mi_search);
 
         // Search loop: i from 0 to len-1, step 2 (skip values)
@@ -111,7 +110,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self
             .builder
-            .build_conditional_branch(mi_cond, mi_body, mi_rebuild);
+            .build_conditional_branch(mi_cond, mi_body, mi_append);
 
         self.builder.position_at_end(mi_body);
         let mi_sk_cc = self
@@ -175,7 +174,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(mi_match_pos, mi_iv)
             .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(mi_rebuild);
+        let _ = self.builder.build_unconditional_branch(mi_update);
 
         self.builder.position_at_end(mi_nxt);
         let mi_niv = self
@@ -185,8 +184,8 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_store(mi_i, mi_niv).map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(mi_search);
 
-        // Rebuild phase
-        self.builder.position_at_end(mi_rebuild);
+        // Update phase: key found → full rebuild (preserves CoW semantics)
+        self.builder.position_at_end(mi_update);
         let mi_new_cc = self
             .builder
             .build_call(map_create_fn2, &[zero.into()], "new_map")
@@ -199,8 +198,15 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_store(mi_cur, mi_new).map_err(llvm_err)?;
         let mi_j = self.builder.build_alloca(i64, "j").map_err(llvm_err)?;
         self.builder.build_store(mi_j, zero).map_err(llvm_err)?;
+        // Rebuild loop
+        let mi_rb_loop = self.context.append_basic_block(mi_fn, "rb_loop");
+        let mi_rb_body = self.context.append_basic_block(mi_fn, "rb_body");
+        let mi_rb_match = self.context.append_basic_block(mi_fn, "rb_match");
+        let mi_rb_copy = self.context.append_basic_block(mi_fn, "rb_copy");
+        let mi_rb_nxt = self.context.append_basic_block(mi_fn, "rb_next");
+        let mi_rb_done = self.context.append_basic_block(mi_fn, "rb_done");
         let _ = self.builder.build_unconditional_branch(mi_rb_loop);
-
+        // Loop header
         self.builder.position_at_end(mi_rb_loop);
         let mi_jv = self
             .builder
@@ -211,10 +217,8 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(IntPredicate::SLT, mi_jv, mi_len, "jc")
             .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(mi_jc, mi_rb_body, mi_rb_done);
-
+        let _ = self.builder.build_conditional_branch(mi_jc, mi_rb_body, mi_rb_done);
+        // Check if at matched position
         self.builder.position_at_end(mi_rb_body);
         let mi_mv = self
             .builder
@@ -225,10 +229,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(IntPredicate::EQ, mi_jv, mi_mv, "im")
             .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(mi_im, mi_rb_match, mi_rb_copy);
-
+        let _ = self.builder.build_conditional_branch(mi_im, mi_rb_match, mi_rb_copy);
         // Push new key+value for matched entry
         self.builder.position_at_end(mi_rb_match);
         let mi_s1 = self
@@ -256,8 +257,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap_basic();
         self.builder.build_store(mi_cur, mi_pv).map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(mi_rb_nxt);
-
-        // Copy stored key+value
+        // Copy old key+value
         self.builder.position_at_end(mi_rb_copy);
         let mi_s3 = self
             .builder
@@ -300,7 +300,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap_basic();
         self.builder.build_store(mi_cur, mi_p2).map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(mi_rb_nxt);
-
+        // Next iteration
         self.builder.position_at_end(mi_rb_nxt);
         let mi_nj = self
             .builder
@@ -308,53 +308,41 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         self.builder.build_store(mi_j, mi_nj).map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(mi_rb_loop);
-
-        // Done: append if not found
+        // Done: store result
         self.builder.position_at_end(mi_rb_done);
-        let mi_fm = self
+        let mi_rebuilt = self
             .builder
-            .build_load(i64, mi_match_pos, "fm")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let mi_nf = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, mi_fm, sentinel, "nf")
+            .build_load(self.list_type, mi_cur, "rebuilt")
             .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(mi_nf, mi_rb_append, mi_rb_ret);
+        self.builder
+            .build_store(mi_result_alloca, mi_rebuilt)
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(mi_ret);
 
-        self.builder.position_at_end(mi_rb_append);
-        let mi_s5 = self
-            .builder
-            .build_load(self.list_type, mi_cur, "s5")
-            .map_err(llvm_err)?
-            .into_struct_value();
+        // Append phase: key not found → push key+value to end (O(1), CoW safe)
+        self.builder.position_at_end(mi_append);
         let mi_ak = self
             .builder
-            .build_call(list_push_fn2, &[mi_s5.into(), mi_key.into()], "ak")
+            .build_call(list_push_fn2, &[mi_map.into(), mi_key.into()], "ak")
             .map_err(llvm_err)?
             .try_as_basic_value()
             .unwrap_basic();
-        self.builder.build_store(mi_cur, mi_ak).map_err(llvm_err)?;
-        let mi_s6 = self
-            .builder
-            .build_load(self.list_type, mi_cur, "s6")
-            .map_err(llvm_err)?
-            .into_struct_value();
         let mi_av = self
             .builder
-            .build_call(list_push_fn2, &[mi_s6.into(), mi_val.into()], "av")
+            .build_call(list_push_fn2, &[mi_ak.into(), mi_val.into()], "av")
             .map_err(llvm_err)?
             .try_as_basic_value()
             .unwrap_basic();
-        self.builder.build_store(mi_cur, mi_av).map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(mi_rb_ret);
+        self.builder
+            .build_store(mi_result_alloca, mi_av)
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(mi_ret);
 
-        self.builder.position_at_end(mi_rb_ret);
+        // Return: return the (possibly modified) map via alloca
+        self.builder.position_at_end(mi_ret);
         let mi_result = self
             .builder
-            .build_load(self.list_type, mi_cur, "result")
+            .build_load(self.list_type, mi_result_alloca, "result")
             .map_err(llvm_err)?;
         let _ = self.builder.build_return(Some(&mi_result));
 
@@ -535,13 +523,32 @@ impl<'ctx> CodeGen<'ctx> {
             .build_conditional_branch(mc_cond, mc_blocks[2], mc_blocks[6]);
 
         self.builder.position_at_end(mc_blocks[2]); // body
-        let mc_sk_cc = self
+        let mc_dptr = self
             .builder
-            .build_call(list_get_fn2, &[mc_map.into(), mc_iv.into()], "gk")
+            .build_extract_value(mc_map, 0, "dptr")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        // Leaf layout: [count:i64, elem0:{i64,ptr}, elem1:{i64,ptr}, ...]
+        // Skip count header (8 bytes) via i8* GEP, then GEP to element index
+        let mc_i8_ptr = self
+            .builder
+            .build_pointer_cast(mc_dptr, self.context.i8_type().ptr_type(inkwell::AddressSpace::default()), "i8p")
             .map_err(llvm_err)?;
-        let mc_sk = mc_sk_cc
-            .try_as_basic_value()
-            .unwrap_basic()
+        let mc_skip = self.i64_ty().const_int(8, false);
+        let mc_data_start = unsafe {
+            self.builder
+                .build_gep(self.context.i8_type(), mc_i8_ptr, &[mc_skip], "ds")
+                .map_err(llvm_err)?
+        };
+        let mc_ep = unsafe {
+            self.builder
+                .build_gep(str_ty, mc_data_start, &[mc_iv], "ep")
+                .map_err(llvm_err)?
+        };
+        let mc_sk = self
+            .builder
+            .build_load(str_ty, mc_ep, "sk")
+            .map_err(llvm_err)?
             .into_struct_value();
         let mc_sk_tag = self
             .builder

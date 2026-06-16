@@ -1,2 +1,5 @@
 # The define_runtime() function was split into closures to avoid rustc SIGSEGV.
 # Keep default debuginfo for dev builds.
+
+[alias]
+bench-script = "run --release --bin action --profile"

@@ -18,8 +18,8 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         match val {
             TypedValue::Str(ptr) => Ok(self.load_string(*ptr)?.into()),
-            TypedValue::Enum(ptr, ty, ..) => {
-                let bt: BasicTypeEnum = (*ty).into();
+            TypedValue::Enum(ptr, _ty, ..) => {
+                let bt: BasicTypeEnum = self.string_type.into();
                 Ok(self
                     .builder
                     .build_load(bt, *ptr, "fat_enum")

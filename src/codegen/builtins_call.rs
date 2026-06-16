@@ -316,7 +316,7 @@ impl<'ctx> CodeGen<'ctx> {
             {
                 let list_arg_idx: Option<usize> = if name == "foldRight" {
                     if trailing.is_some() && args.len() >= 2 {
-                        Some(1)
+                        Some(0)
                     } else if args.len() >= 3 {
                         Some(1)
                     } else {

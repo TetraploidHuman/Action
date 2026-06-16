@@ -1,0 +1,15 @@
+// String operations: concat, split, join, replace, upper, lower, substring
+fun main() {
+    var s = ""; var i = 0
+    for i < 500 { s = concat(s, "hello"); i = i + 1 }
+    println(len(s))
+    val parts = split(s, "o"); val joined = join(parts, "-")
+    println(len(joined))
+    val replaced = replace(s, "hello", "world"); println(len(replaced))
+    val upper = toUpper(s); val lower = toLower(upper)
+    println(len(upper)); println(len(lower))
+    val sub = substring(s, 0, 100); println(len(sub))
+    i = 0; var idx = 0
+    for i < 100 { idx = indexOf(s, "hello"); i = i + 1 }
+    println(idx)
+}

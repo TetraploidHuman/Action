@@ -20,3 +20,6 @@ Thumbs.db
 # JIT cache
 .claude/
 rust_out
+
+# Benchmark results
+benchmark_results.txt

@@ -1,0 +1,12 @@
+// Pattern matching: value and one-line when
+fun main() {
+    var i = 0; var sum = 0
+    for i < 1000 {
+        val label = when i % 4 { 0 -> "a"; 1 -> "b"; 2 -> "c"; _ -> "d" }
+        sum = sum + len(label); i = i + 1
+    }
+    println(sum)
+    i = 0; var total = 0
+    for i < 1000 { val v = when i % 2 == 0 { 10 else 20 }; total = total + v; i = i + 1 }
+    println(total)
+}

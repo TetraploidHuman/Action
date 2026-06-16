@@ -4,7 +4,7 @@ use crate::ast::*;
 use inkwell::types::BasicTypeEnum;
 use inkwell::values::{BasicValue, BasicValueEnum, PointerValue};
 
-use super::{llvm_err, CodeGen, InnerType, TypedValue};
+use super::{llvm_err, CodeGen, GepCursor, InnerType, TypedValue};
 
 impl<'ctx> CodeGen<'ctx> {
     pub(super) fn compile_map_lit(
@@ -287,18 +287,6 @@ impl<'ctx> CodeGen<'ctx> {
         let elem_val = self.compile_expr(&args[0])?;
         let elem_fat = self.to_fat_struct(&elem_val)?;
 
-        let null_val: BasicValueEnum = {
-            let undef = self.string_type.get_undef();
-            let r1 = self
-                .builder
-                .build_insert_value(undef, self.i64_ty().const_int(0, false), 0, "sn0")
-                .map_err(llvm_err)?;
-            let r2 = self
-                .builder
-                .build_insert_value(r1, self.ptr_ty().const_zero(), 1, "sn1")
-                .map_err(llvm_err)?;
-            r2.as_basic_value_enum()
-        };
         let set_loaded = self.load_list(set_ptr)?;
         // Check if element already exists
         let contains_fn = self
@@ -318,7 +306,9 @@ impl<'ctx> CodeGen<'ctx> {
             .basic()
             .ok_or("contains failed")?
             .into_int_value();
-        // If not contained, insert
+        // If not contained, push the element via action_list_push.
+        // NB: action_map_insert expects (map, key, value) and storing a null value
+        // corrupts the heap. Use action_list_push which handles a single fat struct.
         let current_fn = self
             .builder
             .get_insert_block()
@@ -334,7 +324,7 @@ impl<'ctx> CodeGen<'ctx> {
         let set_loaded2 = self.load_list(set_ptr)?;
         let cc2 = match self.call_rt(
             "action_map_insert",
-            &[set_loaded2.into(), elem_fat.into(), null_val.into()],
+            &[set_loaded2.into(), elem_fat.into(), elem_fat.into()],
         ) {
             Ok(v) => v,
             Err(e) => {
@@ -349,6 +339,19 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(set_ptr, new_set)
             .map_err(llvm_err)?;
+        // RC management: inc new data buffer, dec old
+        let new_data = self
+            .builder
+            .build_extract_value(new_set.into_struct_value(), 0, "si_new_data")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        self.rc_inc(new_data)?;
+        let old_data = self
+            .builder
+            .build_extract_value(set_loaded2, 0, "si_old_data")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        self.rc_dec(old_data)?;
         let _ = self.builder.build_unconditional_branch(merge_bb);
         // Skip path: element was a duplicate, no insert happened
         self.builder.position_at_end(skip_bb);
@@ -477,20 +480,11 @@ impl<'ctx> CodeGen<'ctx> {
             }
             let buf = self.malloc_rc(i64.const_int(total_bytes as u64, false))?;
 
-            // Store each field at its offset (LLVM 18 opaque pointers)
+            // Store each field at its offset using chained GEP cursor
+            let mut cur = GepCursor::new(buf);
+            let i8_ty = self.context.i8_type();
             for (i, v) in compiled.iter().enumerate() {
-                let offset = offsets[i];
-                let field_ptr = if offset == 0 {
-                    buf
-                } else {
-                    let i8_ty = self.context.i8_type();
-                    let offset_val = i8_ty.const_int(offset, false);
-                    unsafe {
-                        self.builder
-                            .build_gep(i8_ty, buf, &[offset_val], "field_ptr")
-                    }
-                    .map_err(llvm_err)?
-                };
+                let field_ptr = cur.offset_gep(&self.builder, i8_ty, offsets[i], "field_ptr")?;
                 // store_value_to_alloca handles load+store for complex types
                 self.store_value_to_alloca(v, field_ptr)?;
             }

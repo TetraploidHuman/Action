@@ -5,10 +5,9 @@
 // Submodule: builtins_stdlib
 
 use crate::ast::*;
-use inkwell::values::IntValue;
 use inkwell::IntPredicate;
 
-use super::{llvm_err, CodeGen, InnerType, TypedValue};
+use super::{llvm_err, CodeGen, GepCursor, InnerType, TypedValue};
 
 impl<'ctx> CodeGen<'ctx> {
     pub(super) fn builtin_stdlib_datetime(
@@ -32,67 +31,75 @@ impl<'ctx> CodeGen<'ctx> {
                             .map_err(llvm_err)?
                             .into_pointer_value();
                         // Extract DateTime fields: {year, month, day, hour, minute, second}
-                        let extract_field = |i: u32| -> Result<IntValue, String> {
-                            let fptr = self
-                                .builder
-                                .build_struct_gep(*dt_st, *dt_ptr, i, "dt_f")
-                                .map_err(llvm_err)?;
-                            let val = self
-                                .builder
-                                .build_load(self.i64_ty(), fptr, "dt_v")
-                                .map_err(llvm_err)?
-                                .into_int_value();
-                            Ok(val)
-                        };
-                        let year = extract_field(0)?;
-                        let month = extract_field(1)?;
-                        let day = extract_field(2)?;
-                        let hour = extract_field(3)?;
-                        let minute = extract_field(4)?;
-                        let second = extract_field(5)?;
+                        let cur = GepCursor::new(*dt_ptr);
+                        let fptr0 = cur.struct_gep(&self.builder, *dt_st, 0, "dt_f")?;
+                        let year = self
+                            .builder
+                            .build_load(self.i64_ty(), fptr0, "dt_v")
+                            .map_err(llvm_err)?
+                            .into_int_value();
+                        let fptr1 = cur.struct_gep(&self.builder, *dt_st, 1, "dt_f")?;
+                        let month = self
+                            .builder
+                            .build_load(self.i64_ty(), fptr1, "dt_v")
+                            .map_err(llvm_err)?
+                            .into_int_value();
+                        let fptr2 = cur.struct_gep(&self.builder, *dt_st, 2, "dt_f")?;
+                        let day = self
+                            .builder
+                            .build_load(self.i64_ty(), fptr2, "dt_v")
+                            .map_err(llvm_err)?
+                            .into_int_value();
+                        let fptr3 = cur.struct_gep(&self.builder, *dt_st, 3, "dt_f")?;
+                        let hour = self
+                            .builder
+                            .build_load(self.i64_ty(), fptr3, "dt_v")
+                            .map_err(llvm_err)?
+                            .into_int_value();
+                        let fptr4 = cur.struct_gep(&self.builder, *dt_st, 4, "dt_f")?;
+                        let minute = self
+                            .builder
+                            .build_load(self.i64_ty(), fptr4, "dt_v")
+                            .map_err(llvm_err)?
+                            .into_int_value();
+                        let fptr5 = cur.struct_gep(&self.builder, *dt_st, 5, "dt_f")?;
+                        let second = self
+                            .builder
+                            .build_load(self.i64_ty(), fptr5, "dt_v")
+                            .map_err(llvm_err)?
+                            .into_int_value();
                         // Build struct tm: {i32 x 9}
                         let i32 = self.context.i32_type();
                         let tm_ty = self.context.struct_type(&[i32.into(); 9], false);
                         let tm_a = self.builder.build_alloca(tm_ty, "tm").map_err(llvm_err)?;
+                        let tm_cur = GepCursor::new(tm_a);
                         // tm_sec = second
                         let tm_sec = self
                             .builder
                             .build_int_truncate(second, i32, "tm_sec")
                             .map_err(llvm_err)?;
-                        let f0 = self
-                            .builder
-                            .build_struct_gep(tm_ty, tm_a, 0, "f0")
-                            .map_err(llvm_err)?;
+                        let f0 = tm_cur.struct_gep(&self.builder, tm_ty, 0, "f0")?;
                         self.builder.build_store(f0, tm_sec).map_err(llvm_err)?;
                         // tm_min = minute
                         let tm_min = self
                             .builder
                             .build_int_truncate(minute, i32, "tm_min")
                             .map_err(llvm_err)?;
-                        let f1 = self
-                            .builder
-                            .build_struct_gep(tm_ty, tm_a, 1, "f1")
-                            .map_err(llvm_err)?;
+                        let f1 = tm_cur.struct_gep(&self.builder, tm_ty, 1, "f1")?;
                         self.builder.build_store(f1, tm_min).map_err(llvm_err)?;
                         // tm_hour = hour
                         let tm_hour = self
                             .builder
                             .build_int_truncate(hour, i32, "tm_hour")
                             .map_err(llvm_err)?;
-                        let f2 = self
-                            .builder
-                            .build_struct_gep(tm_ty, tm_a, 2, "f2")
-                            .map_err(llvm_err)?;
+                        let f2 = tm_cur.struct_gep(&self.builder, tm_ty, 2, "f2")?;
                         self.builder.build_store(f2, tm_hour).map_err(llvm_err)?;
                         // tm_mday = day
                         let tm_mday = self
                             .builder
                             .build_int_truncate(day, i32, "tm_mday")
                             .map_err(llvm_err)?;
-                        let f3 = self
-                            .builder
-                            .build_struct_gep(tm_ty, tm_a, 3, "f3")
-                            .map_err(llvm_err)?;
+                        let f3 = tm_cur.struct_gep(&self.builder, tm_ty, 3, "f3")?;
                         self.builder.build_store(f3, tm_mday).map_err(llvm_err)?;
                         // tm_mon = month - 1
                         let mon_minus = self
@@ -103,10 +110,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .builder
                             .build_int_truncate(mon_minus, i32, "tm_mon")
                             .map_err(llvm_err)?;
-                        let f4 = self
-                            .builder
-                            .build_struct_gep(tm_ty, tm_a, 4, "f4")
-                            .map_err(llvm_err)?;
+                        let f4 = tm_cur.struct_gep(&self.builder, tm_ty, 4, "f4")?;
                         self.builder.build_store(f4, tm_mon).map_err(llvm_err)?;
                         // tm_year = year - 1900
                         let year_minus = self
@@ -117,32 +121,20 @@ impl<'ctx> CodeGen<'ctx> {
                             .builder
                             .build_int_truncate(year_minus, i32, "tm_year")
                             .map_err(llvm_err)?;
-                        let f5 = self
-                            .builder
-                            .build_struct_gep(tm_ty, tm_a, 5, "f5")
-                            .map_err(llvm_err)?;
+                        let f5 = tm_cur.struct_gep(&self.builder, tm_ty, 5, "f5")?;
                         self.builder.build_store(f5, tm_year).map_err(llvm_err)?;
                         // tm_wday = 0
-                        let f6 = self
-                            .builder
-                            .build_struct_gep(tm_ty, tm_a, 6, "f6")
-                            .map_err(llvm_err)?;
+                        let f6 = tm_cur.struct_gep(&self.builder, tm_ty, 6, "f6")?;
                         self.builder
                             .build_store(f6, i32.const_int(0, false))
                             .map_err(llvm_err)?;
                         // tm_yday = 0
-                        let f7 = self
-                            .builder
-                            .build_struct_gep(tm_ty, tm_a, 7, "f7")
-                            .map_err(llvm_err)?;
+                        let f7 = tm_cur.struct_gep(&self.builder, tm_ty, 7, "f7")?;
                         self.builder
                             .build_store(f7, i32.const_int(0, false))
                             .map_err(llvm_err)?;
                         // tm_isdst = -1
-                        let f8 = self
-                            .builder
-                            .build_struct_gep(tm_ty, tm_a, 8, "f8")
-                            .map_err(llvm_err)?;
+                        let f8 = tm_cur.struct_gep(&self.builder, tm_ty, 8, "f8")?;
                         self.builder
                             .build_store(f8, i32.const_int(0xFFFFFFFFu64 as u64, false))
                             .map_err(llvm_err)?;
@@ -324,20 +316,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .builder
                             .build_pointer_cast(heap, self.ptr_ty(), "dp")
                             .map_err(llvm_err)?;
-                        let yp = self
-                            .builder
-                            .build_struct_gep(some_sty, dp, 0, "yp")
-                            .map_err(llvm_err)?;
+                        let pd_cur = GepCursor::new(dp);
+                        let yp = pd_cur.struct_gep(&self.builder, some_sty, 0, "yp")?;
                         self.builder.build_store(yp, year_i64).map_err(llvm_err)?;
-                        let mp = self
-                            .builder
-                            .build_struct_gep(some_sty, dp, 1, "mp")
-                            .map_err(llvm_err)?;
+                        let mp = pd_cur.struct_gep(&self.builder, some_sty, 1, "mp")?;
                         self.builder.build_store(mp, month_i64).map_err(llvm_err)?;
-                        let dap = self
-                            .builder
-                            .build_struct_gep(some_sty, dp, 2, "dap")
-                            .map_err(llvm_err)?;
+                        let dap = pd_cur.struct_gep(&self.builder, some_sty, 2, "dap")?;
                         self.builder.build_store(dap, day_i64).map_err(llvm_err)?;
                         let undef = enum_ty.get_undef();
                         let r1 = self
@@ -554,20 +538,12 @@ impl<'ctx> CodeGen<'ctx> {
                     .try_as_basic_value()
                     .unwrap_basic()
                     .into_pointer_value();
-                let yp = self
-                    .builder
-                    .build_struct_gep(date_sty, heap, 0, "d_yp")
-                    .map_err(llvm_err)?;
+                let d_cur = GepCursor::new(heap);
+                let yp = d_cur.struct_gep(&self.builder, date_sty, 0, "d_yp")?;
                 self.builder.build_store(yp, y).map_err(llvm_err)?;
-                let mp = self
-                    .builder
-                    .build_struct_gep(date_sty, heap, 1, "d_mp")
-                    .map_err(llvm_err)?;
+                let mp = d_cur.struct_gep(&self.builder, date_sty, 1, "d_mp")?;
                 self.builder.build_store(mp, m).map_err(llvm_err)?;
-                let dp = self
-                    .builder
-                    .build_struct_gep(date_sty, heap, 2, "d_dp")
-                    .map_err(llvm_err)?;
+                let dp = d_cur.struct_gep(&self.builder, date_sty, 2, "d_dp")?;
                 self.builder.build_store(dp, d).map_err(llvm_err)?;
                 let undef = enum_ty.get_undef();
                 let r1 = self
@@ -1092,11 +1068,10 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
 
         // Load fields from struct tm
+        let tm_cur = GepCursor::new(tm_a);
+
         // tm_year: years since 1900 → actual year = tm_year + 1900
-        let tm_year_p = self
-            .builder
-            .build_struct_gep(tm_ty, tm_a, 5, "tm_year_p")
-            .map_err(llvm_err)?;
+        let tm_year_p = tm_cur.struct_gep(&self.builder, tm_ty, 5, "tm_year_p")?;
         let tm_year = self
             .builder
             .build_load(i32, tm_year_p, "tm_year")
@@ -1114,10 +1089,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
 
         // tm_mon: 0-11 → month = tm_mon + 1
-        let tm_mon_p = self
-            .builder
-            .build_struct_gep(tm_ty, tm_a, 4, "tm_mon_p")
-            .map_err(llvm_err)?;
+        let tm_mon_p = tm_cur.struct_gep(&self.builder, tm_ty, 4, "tm_mon_p")?;
         let tm_mon = self
             .builder
             .build_load(i32, tm_mon_p, "tm_mon")
@@ -1135,10 +1107,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
 
         // tm_mday: 1-31
-        let tm_day_p = self
-            .builder
-            .build_struct_gep(tm_ty, tm_a, 3, "tm_day_p")
-            .map_err(llvm_err)?;
+        let tm_day_p = tm_cur.struct_gep(&self.builder, tm_ty, 3, "tm_day_p")?;
         let tm_day = self
             .builder
             .build_load(i32, tm_day_p, "tm_day")
@@ -1159,19 +1128,14 @@ impl<'ctx> CodeGen<'ctx> {
                 Some(sty) => {
                     let sty = *sty;
                     let alloca = self.builder.build_alloca(sty, "now").map_err(llvm_err)?;
+                    let now_cur = GepCursor::new(alloca);
                     // Store year, month, day
                     for (i, val) in [(0u32, year), (1, month), (2, day)].iter() {
-                        let fp = self
-                            .builder
-                            .build_struct_gep(sty, alloca, *i, "f")
-                            .map_err(llvm_err)?;
+                        let fp = now_cur.struct_gep(&self.builder, sty, *i, "f")?;
                         self.builder.build_store(fp, *val).map_err(llvm_err)?;
                     }
                     // tm_hour: 0-23
-                    let tm_h_p = self
-                        .builder
-                        .build_struct_gep(tm_ty, tm_a, 2, "tm_h_p")
-                        .map_err(llvm_err)?;
+                    let tm_h_p = tm_cur.struct_gep(&self.builder, tm_ty, 2, "tm_h_p")?;
                     let tm_h = self
                         .builder
                         .build_load(i32, tm_h_p, "tm_h")
@@ -1182,10 +1146,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_int_s_extend(tm_h, i64, "h_ext")
                         .map_err(llvm_err)?;
                     // tm_min: 0-59
-                    let tm_m_p = self
-                        .builder
-                        .build_struct_gep(tm_ty, tm_a, 1, "tm_min_p")
-                        .map_err(llvm_err)?;
+                    let tm_m_p = tm_cur.struct_gep(&self.builder, tm_ty, 1, "tm_min_p")?;
                     let tm_m = self
                         .builder
                         .build_load(i32, tm_m_p, "tm_m")
@@ -1196,10 +1157,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_int_s_extend(tm_m, i64, "m_ext")
                         .map_err(llvm_err)?;
                     // tm_sec: 0-60
-                    let tm_s_p = self
-                        .builder
-                        .build_struct_gep(tm_ty, tm_a, 0, "tm_s_p")
-                        .map_err(llvm_err)?;
+                    let tm_s_p = tm_cur.struct_gep(&self.builder, tm_ty, 0, "tm_s_p")?;
                     let tm_s = self
                         .builder
                         .build_load(i32, tm_s_p, "tm_s")
@@ -1210,10 +1168,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_int_s_extend(tm_s, i64, "s_ext")
                         .map_err(llvm_err)?;
                     for (i, val) in [(3u32, hour), (4, min), (5, sec)].iter() {
-                        let fp = self
-                            .builder
-                            .build_struct_gep(sty, alloca, *i, "f")
-                            .map_err(llvm_err)?;
+                        let fp = now_cur.struct_gep(&self.builder, sty, *i, "f")?;
                         self.builder.build_store(fp, *val).map_err(llvm_err)?;
                     }
                     Ok(TypedValue::Struct(alloca, sty))
@@ -1230,11 +1185,9 @@ impl<'ctx> CodeGen<'ctx> {
                 Some(sty) => {
                     let sty = *sty;
                     let alloca = self.builder.build_alloca(sty, "today").map_err(llvm_err)?;
+                    let today_cur = GepCursor::new(alloca);
                     for (i, val) in [(0u32, year), (1, month), (2, day)].iter() {
-                        let fp = self
-                            .builder
-                            .build_struct_gep(sty, alloca, *i, "f")
-                            .map_err(llvm_err)?;
+                        let fp = today_cur.struct_gep(&self.builder, sty, *i, "f")?;
                         self.builder.build_store(fp, *val).map_err(llvm_err)?;
                     }
                     Ok(TypedValue::Struct(alloca, sty))

@@ -181,6 +181,12 @@ pub fn compute_semantic_tokens(tokens: &[Token]) -> Vec<SemanticToken> {
 
 /// Extract document symbols from AST statements
 pub fn extract_document_symbols(stmts: &[Stmt], source: &str) -> Vec<DocumentSymbol> {
+    stmts
+        .iter()
+        .filter_map(|s| stmt_to_document_symbol(s, source))
+        .collect()
+}
+
 fn stmt_to_document_symbol(stmt: &Stmt, source: &str) -> Option<DocumentSymbol> {
     match stmt {
         Stmt::Fun {
@@ -390,7 +396,6 @@ fn type_to_detail(ty: &Type) -> String {
         Type::Unit => "()".to_string(),
     }
 }
-<<<<<<< Updated upstream
 
 #[cfg(test)]
 mod tests {
@@ -565,5 +570,3 @@ mod tests {
         assert_eq!(symbols[0].kind, SymbolKind::VARIABLE);
     }
 }
-=======
->>>>>>> Stashed changes

@@ -1,0 +1,9 @@
+fun main() {
+    var outer = 0
+    for outer < 20 { var sum = 0
+        for x in 1..50 { for y in 1..50 { sum = sum + x * y } }
+        outer = outer + 1 }
+    var check = 0
+    for x in 1..50 { for y in 1..50 { check = check + x * y } }
+    println(check)
+}

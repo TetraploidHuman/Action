@@ -720,8 +720,35 @@ impl<'ctx> CodeGen<'ctx> {
     /// RC≥1 and use direct rc_dec (1→0→free). Other types (String with RC=0) use
     /// rc_inc+rc_dec (0→1→0→free). Only for method dispatch where the receiver is
     /// recompiled independently — NOT for function call argument cleanup.
+    /// Check if `val` is a local variable in any scope (walks parent chain).
+    fn is_var_in_full_scope_chain(&self, val: &TypedValue<'ctx>) -> bool {
+        let alloca: Option<PointerValue<'ctx>> = match val {
+            TypedValue::Str(p) | TypedValue::List(p) | TypedValue::Map(p)
+            | TypedValue::Set(p) | TypedValue::Task(p) | TypedValue::Stream(p)
+            | TypedValue::LazyList(p) | TypedValue::CString(p) | TypedValue::FileHandle(p)
+            | TypedValue::Ptr(p) => Some(*p),
+            TypedValue::Struct(p, _) => Some(*p),
+            TypedValue::Enum(p, _, _, _) => Some(*p),
+            TypedValue::Nullable(p, _) => Some(*p),
+            TypedValue::Fn(p, _) => Some(*p),
+            TypedValue::Closure { alloca, .. } => *alloca,
+            _ => None,
+        };
+        match alloca {
+            Some(ptr) => {
+                let mut s = &self.scope;
+                loop {
+                    if s.local_variables().values().any(|v| v.ptr == ptr) { return true; }
+                    match &s.parent { Some(p) => s = p.as_ref(), None => break }
+                }
+                false
+            }
+            None => false,
+        }
+    }
+
     pub(super) fn rc_free_method_receiver(&self, val: &TypedValue<'ctx>) -> Result<(), String> {
-        if self.is_scope_variable(val) {
+        if self.is_var_in_full_scope_chain(val) {
             return Ok(());
         }
         match val {

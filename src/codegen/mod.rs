@@ -383,6 +383,8 @@ pub struct CodeGen<'ctx> {
     pub(super) internal_type: StructType<'ctx>,
     /// Child entry in internal node: {ptr child, i64 subtree_total}
     pub(super) child_entry_type: StructType<'ctx>,
+    /// List iterator cursor: {ptr leaf, i64 pos, ptr internal, i64 leaf_count, i64 child_idx}
+    pub(super) cursor_type: StructType<'ctx>,
     /// ConcatNode: {i64 depth, i64 total_len, list_type left, list_type right}
     /// height = -1 is the sentinel; node_ptr points to this heap-allocated struct
     /// TODO: reserved for lazy list concatenation — remove once full lazy-list codegen is wired
@@ -538,6 +540,17 @@ impl<'ctx> CodeGen<'ctx> {
             ],
             false,
         );
+        // List iterator cursor: {ptr leaf, i64 pos, ptr internal, i64 leaf_count, i64 child_idx}
+        let cursor_type = context.struct_type(
+            &[
+                context.ptr_type(inkwell::AddressSpace::default()).into(), // leaf_ptr
+                context.i64_type().into(),                                 // pos
+                context.ptr_type(inkwell::AddressSpace::default()).into(), // internal_ptr
+                context.i64_type().into(),                                 // leaf_count
+                context.i64_type().into(),                                 // child_idx
+            ],
+            false,
+        );
         // Task type: {pthread: i64, done: i64, cancelled: i64, scheduler: i64, result_list: {ptr, i64, i64}}
         let task_type = context.struct_type(
             &[
@@ -599,6 +612,7 @@ impl<'ctx> CodeGen<'ctx> {
             internal_type,
             child_entry_type,
             concat_node_type,
+            cursor_type,
             lambda_count: 0,
             str_pat_counter: 0,
             registry,
@@ -691,6 +705,7 @@ mod builtins_thread;
 mod expr;
 mod for_loop;
 mod generics;
+mod gep_cursor;
 mod jit;
 mod map_set;
 mod misc;
@@ -702,6 +717,8 @@ mod runtime_io;
 mod stmt;
 mod struct_ops;
 mod type_helpers;
+
+pub(super) use self::gep_cursor::GepCursor;
 
 #[cfg(test)]
 mod tests {

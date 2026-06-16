@@ -1,0 +1,7 @@
+fun main() {
+    var lst = List[]; var i = 0
+    for i < 2000 { lst = lst.append(i); i = i + 1 }
+    var outer = 0
+    for outer < 10 { var sum = 0; for x in lst { sum = sum + x }; outer = outer + 1 }
+    var sum = 0; for x in lst { sum = sum + x }; println(sum)
+}
