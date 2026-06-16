@@ -312,9 +312,19 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(mu_a, 1, "alen")
             .map_err(llvm_err)?
             .into_int_value();
+        let mu_acap = self
+            .builder
+            .build_extract_value(mu_a, 2, "acap")
+            .map_err(llvm_err)?
+            .into_int_value();
         let mu_blen = self
             .builder
             .build_extract_value(mu_b, 1, "blen")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let mu_bcap = self
+            .builder
+            .build_extract_value(mu_b, 2, "bcap")
             .map_err(llvm_err)?
             .into_int_value();
         let mu_cap = self
@@ -339,13 +349,15 @@ impl<'ctx> CodeGen<'ctx> {
             .build_alloca(self.list_type, "mu_ra")
             .map_err(llvm_err)?;
         self.builder.build_store(mu_ra, mu_resv).map_err(llvm_err)?;
-        // Dense flat table: iterate i=0..len-1 per map
+        // Open-addressing: scan slots 0..cap-1 per map
         let mu_i = self.builder.build_alloca(i64, "mu_i").map_err(llvm_err)?;
         self.builder
             .build_store(mu_i, i64.const_int(0, false))
             .map_err(llvm_err)?;
         let mu_loop1 = self.context.append_basic_block(mu_fn, "loop1");
+        let mu_chk1 = self.context.append_basic_block(mu_fn, "chk1");
         let mu_body1 = self.context.append_basic_block(mu_fn, "body1");
+        let mu_skip1 = self.context.append_basic_block(mu_fn, "skip1");
         let mu_done1 = self.context.append_basic_block(mu_fn, "done1");
         let _ = self.builder.build_unconditional_branch(mu_loop1);
         self.builder.position_at_end(mu_loop1);
@@ -356,11 +368,13 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
         let mu_c1 = self
             .builder
-            .build_int_compare(IntPredicate::SLT, mu_iv, mu_alen, "c1")
+            .build_int_compare(IntPredicate::SLT, mu_iv, mu_acap, "c1")
             .map_err(llvm_err)?;
         let _ = self
             .builder
-            .build_conditional_branch(mu_c1, mu_body1, mu_done1);
+            .build_conditional_branch(mu_c1, mu_chk1, mu_done1);
+        self.builder.position_at_end(mu_chk1);
+        self.ht_branch_if_slot_active(mu_adata, mu_iv, mu_body1, mu_skip1)?;
         self.builder.position_at_end(mu_body1);
         let mu_key = self.ht_key_fat_at(mu_adata, mu_iv)?;
         let mu_val = self.ht_val_fat_at(mu_adata, mu_iv)?;
@@ -376,6 +390,8 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(mu_ra, mu_ins.try_as_basic_value().unwrap_basic())
             .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(mu_skip1);
+        self.builder.position_at_end(mu_skip1);
         let mu_inc = self
             .builder
             .build_int_add(mu_iv, i64.const_int(1, false), "inc")
@@ -389,7 +405,9 @@ impl<'ctx> CodeGen<'ctx> {
             .build_store(mu_j, i64.const_int(0, false))
             .map_err(llvm_err)?;
         let mu_loop2 = self.context.append_basic_block(mu_fn, "loop2");
+        let mu_chk2 = self.context.append_basic_block(mu_fn, "chk2");
         let mu_body2 = self.context.append_basic_block(mu_fn, "body2");
+        let mu_skip2 = self.context.append_basic_block(mu_fn, "skip2");
         let mu_done2 = self.context.append_basic_block(mu_fn, "done2");
         let _ = self.builder.build_unconditional_branch(mu_loop2);
         self.builder.position_at_end(mu_loop2);
@@ -400,11 +418,13 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
         let mu_c2 = self
             .builder
-            .build_int_compare(IntPredicate::SLT, mu_jv, mu_blen, "c2")
+            .build_int_compare(IntPredicate::SLT, mu_jv, mu_bcap, "c2")
             .map_err(llvm_err)?;
         let _ = self
             .builder
-            .build_conditional_branch(mu_c2, mu_body2, mu_done2);
+            .build_conditional_branch(mu_c2, mu_chk2, mu_done2);
+        self.builder.position_at_end(mu_chk2);
+        self.ht_branch_if_slot_active(mu_bdata, mu_jv, mu_body2, mu_skip2)?;
         self.builder.position_at_end(mu_body2);
         let mu_key2 = self.ht_key_fat_at(mu_bdata, mu_jv)?;
         let mu_val2 = self.ht_val_fat_at(mu_bdata, mu_jv)?;
@@ -424,6 +444,8 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(mu_ra, mu_ins2.try_as_basic_value().unwrap_basic())
             .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(mu_skip2);
+        self.builder.position_at_end(mu_skip2);
         let mu_inc2 = self
             .builder
             .build_int_add(mu_jv, i64.const_int(1, false), "inc2")

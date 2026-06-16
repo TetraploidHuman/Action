@@ -1,29 +1,41 @@
 // Submodule: runtime_decl/define_hash_table
 //
-// Flat dense table for Map/Set: 32-byte entries (key_tag, key_ptr, val_tag, val_ptr).
-// Struct { ptr data, i64 len, i64 cap } — reuses list_type.
+// Open-addressing hash table for Map/Set: 32-byte entries (key_tag, key_ptr, val_tag, val_ptr).
+// Struct { ptr data, i64 len, i64 cap } — reuses list_type; len = occupied count, cap = slot count.
 
 use super::{llvm_err, CodeGen};
+use inkwell::basic_block::BasicBlock;
 use inkwell::types::BasicType;
-use inkwell::values::{BasicValue, BasicValueEnum, IntValue, PointerValue};
+use inkwell::values::{BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue};
 use inkwell::IntPredicate;
 
 impl<'ctx> CodeGen<'ctx> {
     const HT_ENTRY_I64S: u64 = 4;
     const HT_ENTRY_BYTES: u64 = 32;
+    const HT_SCALAR_MARKER: u64 = 1;
+    const HT_TOMBSTONE: u64 = 2;
+    const HT_MIN_CAP: u64 = 8;
+    const HT_LOAD_NUM: u64 = 3;
+    const HT_LOAD_DEN: u64 = 4;
+    const FNV_OFFSET: u64 = 14695981039346656037;
+    const FNV_PRIME: u64 = 1099511628211;
+    const GOLDEN: u64 = 0x9e3779b97f4a7c15;
 
     pub(super) fn define_hash_table(&self) -> Result<(), String> {
         let i64 = self.i64_ty();
-        let str_ty = self.string_type;
-        let b1 = self.bool_ty();
-        let zero = i64.const_int(0, false);
         let malloc_rc = self.module.get_function("action_malloc_rc").unwrap();
+        let memset = self.module.get_function("memset").unwrap();
         let memcpy = self.module.get_function("memcpy").unwrap();
         let seq_fn = self.module.get_function("action_string_eq").unwrap();
         let rc_dec = self.module.get_function("action_rc_dec").unwrap();
         let free_fn = self.module.get_function("free").unwrap();
+        let zero = i64.const_int(0, false);
+        let i32z = self.context.i32_type().const_int(0, false);
 
-        // action_ht_create(cap) -> {ptr, i64, i64}
+        self.define_ht_hash_str()?;
+        self.define_ht_rehash(seq_fn, malloc_rc, memset)?;
+
+        // action_ht_create(cap_hint) -> {ptr, i64, i64}
         let cr = self.module.add_function(
             "action_ht_create",
             self.list_type.fn_type(&[i64.into()], false),
@@ -31,7 +43,8 @@ impl<'ctx> CodeGen<'ctx> {
         );
         let cr_e = self.context.append_basic_block(cr, "entry");
         self.builder.position_at_end(cr_e);
-        let cap = cr.get_first_param().unwrap().into_int_value();
+        let hint = cr.get_first_param().unwrap().into_int_value();
+        let cap = self.ht_round_cap_pow2(hint)?;
         let dsz = self
             .builder
             .build_int_mul(cap, i64.const_int(Self::HT_ENTRY_BYTES, false), "dsz")
@@ -43,8 +56,11 @@ impl<'ctx> CodeGen<'ctx> {
             .try_as_basic_value()
             .unwrap_basic()
             .into_pointer_value();
+        let _ = self
+            .builder
+            .build_call(memset, &[data.into(), i32z.into(), dsz.into()], "");
         let r = self.ht_pack(data, zero, cap)?;
-        self.builder.build_return(Some(&r));
+        self.builder.build_return(Some(&r)).map_err(llvm_err)?;
 
         // action_ht_len
         let ln = self.module.add_function(
@@ -73,17 +89,332 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
-    /// Build a Set (flat ht) from a List by inserting each element as key.
+    /// FNV-1a hash over string bytes: action_ht_hash_str({i64 len, ptr}) -> i64
+    fn define_ht_hash_str(&self) -> Result<(), String> {
+        let i64 = self.i64_ty();
+        let i8 = self.context.i8_type();
+        let zero = i64.const_int(0, false);
+        let one = i64.const_int(1, false);
+        let fnv_off = i64.const_int(Self::FNV_OFFSET, false);
+        let fnv_prime = i64.const_int(Self::FNV_PRIME, false);
+
+        let f = self.module.add_function(
+            "action_ht_hash_str",
+            i64.fn_type(&[self.string_type.into()], false),
+            None,
+        );
+        let entry = self.context.append_basic_block(f, "entry");
+        let loop_bb = self.context.append_basic_block(f, "loop");
+        let body = self.context.append_basic_block(f, "body");
+        let done = self.context.append_basic_block(f, "done");
+        let scalar_bb = self.context.append_basic_block(f, "scalar");
+        let str_init = self.context.append_basic_block(f, "str_init");
+
+        self.builder.position_at_end(entry);
+        let s = f.get_first_param().unwrap().into_struct_value();
+        let len = self.extract_int(s, 0, "len")?;
+        let buf = self.extract_ptr(s, 1, "buf")?;
+        let is_null = self.builder.build_is_null(buf, "nbuf").map_err(llvm_err)?;
+        self.builder
+            .build_conditional_branch(is_null, scalar_bb, str_init)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(scalar_bb);
+        let sh = self
+            .builder
+            .build_xor(len, i64.const_int(Self::GOLDEN, false), "sh")
+            .map_err(llvm_err)?;
+        let sh2 = self
+            .builder
+            .build_int_mul(sh, i64.const_int(Self::GOLDEN, false), "sh2")
+            .map_err(llvm_err)?;
+        self.builder.build_return(Some(&sh2)).map_err(llvm_err)?;
+
+        self.builder.position_at_end(str_init);
+        let h_a = self.builder.build_alloca(i64, "h").map_err(llvm_err)?;
+        let i_a = self.builder.build_alloca(i64, "i").map_err(llvm_err)?;
+        self.builder.build_store(h_a, fnv_off).map_err(llvm_err)?;
+        self.builder.build_store(i_a, zero).map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(loop_bb)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(loop_bb);
+        let iv = self.load_i64(i_a, "iv")?;
+        let cond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, iv, len, "cond")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_conditional_branch(cond, body, done)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(body);
+        let bp = unsafe {
+            self.builder
+                .build_gep(i8, buf, &[iv], "bp")
+                .map_err(llvm_err)?
+        };
+        let byte = self
+            .builder
+            .build_load(i8, bp, "b")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let byte64 = self
+            .builder
+            .build_int_z_extend(byte, i64, "b64")
+            .map_err(llvm_err)?;
+        let hv = self.load_i64(h_a, "hv")?;
+        let xored = self
+            .builder
+            .build_xor(hv, byte64, "xor")
+            .map_err(llvm_err)?;
+        let nh = self
+            .builder
+            .build_int_mul(xored, fnv_prime, "nh")
+            .map_err(llvm_err)?;
+        self.builder.build_store(h_a, nh).map_err(llvm_err)?;
+        let niv = self
+            .builder
+            .build_int_add(iv, one, "niv")
+            .map_err(llvm_err)?;
+        self.builder.build_store(i_a, niv).map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(loop_bb)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(done);
+        let ret = self.load_i64(h_a, "ret")?;
+        self.builder.build_return(Some(&ret)).map_err(llvm_err)?;
+        Ok(())
+    }
+
+    /// Reinsert active entries from old table into a new zeroed table.
+    fn define_ht_rehash(
+        &self,
+        seq_fn: FunctionValue<'ctx>,
+        malloc_rc: FunctionValue<'ctx>,
+        memset: FunctionValue<'ctx>,
+    ) -> Result<(), String> {
+        let i64 = self.i64_ty();
+        let ptr = self.ptr_ty();
+        let str_ty = self.string_type;
+        let zero = i64.const_int(0, false);
+        let one = i64.const_int(1, false);
+        let tomb = i64.const_int(Self::HT_TOMBSTONE, false);
+        let marker = i64.const_int(Self::HT_SCALAR_MARKER, false);
+        let i32z = self.context.i32_type().const_int(0, false);
+        let hash_str = self.module.get_function("action_ht_hash_str").unwrap();
+
+        let f = self.module.add_function(
+            "action_ht_rehash",
+            ptr.fn_type(&[ptr.into(), i64.into(), i64.into()], false),
+            None,
+        );
+        let entry = self.context.append_basic_block(f, "entry");
+        let scan = self.context.append_basic_block(f, "scan");
+        let scan_body = self.context.append_basic_block(f, "scan_body");
+        let scan_skip = self.context.append_basic_block(f, "scan_skip");
+        let scan_done = self.context.append_basic_block(f, "scan_done");
+        let ins_probe = self.context.append_basic_block(f, "ins_probe");
+        let ins_chk = self.context.append_basic_block(f, "ins_chk");
+        let ins_store = self.context.append_basic_block(f, "ins_store");
+        let ins_next = self.context.append_basic_block(f, "ins_next");
+
+        self.builder.position_at_end(entry);
+        let old_data = f.get_first_param().unwrap().into_pointer_value();
+        let old_cap = f.get_nth_param(1).unwrap().into_int_value();
+        let new_cap = f.get_nth_param(2).unwrap().into_int_value();
+        let dsz = self
+            .builder
+            .build_int_mul(new_cap, i64.const_int(Self::HT_ENTRY_BYTES, false), "dsz")
+            .map_err(llvm_err)?;
+        let new_data = self
+            .builder
+            .build_call(malloc_rc, &[dsz.into()], "nd")
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_pointer_value();
+        let _ = self
+            .builder
+            .build_call(memset, &[new_data.into(), i32z.into(), dsz.into()], "");
+        let si_a = self.builder.build_alloca(i64, "si").map_err(llvm_err)?;
+        self.builder.build_store(si_a, zero).map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(scan)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(scan);
+        let siv = self.load_i64(si_a, "siv")?;
+        let scan_cond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, siv, old_cap, "sc")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_conditional_branch(scan_cond, scan_body, scan_done)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(scan_body);
+        let (ekt, ekp, evt, evp) = self.ht_load_slot(old_data, siv)?;
+        let kp0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, ekp, zero, "kp0")
+            .map_err(llvm_err)?;
+        let kt0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, ekt, zero, "kt0")
+            .map_err(llvm_err)?;
+        let vt0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, evt, zero, "vt0")
+            .map_err(llvm_err)?;
+        let vp0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, evp, zero, "vp0")
+            .map_err(llvm_err)?;
+        let e12 = self.builder.build_and(kp0, kt0, "e12").map_err(llvm_err)?;
+        let e34 = self.builder.build_and(vt0, vp0, "e34").map_err(llvm_err)?;
+        let is_empty = self
+            .builder
+            .build_and(e12, e34, "empty")
+            .map_err(llvm_err)?;
+        let is_tomb = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, ekp, tomb, "tomb")
+            .map_err(llvm_err)?;
+        let skip = self
+            .builder
+            .build_or(is_empty, is_tomb, "skip")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_conditional_branch(skip, scan_skip, ins_probe)
+            .map_err(llvm_err)?;
+
+        // Compute hash for this entry
+        self.builder.position_at_end(ins_probe);
+        let ep_scalar = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, ekp, zero, "eps")
+            .map_err(llvm_err)?;
+        let ep_mark = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, ekp, marker, "epm")
+            .map_err(llvm_err)?;
+        let ep_sc = self
+            .builder
+            .build_or(ep_scalar, ep_mark, "epsc")
+            .map_err(llvm_err)?;
+        let ep_p = self
+            .builder
+            .build_int_to_ptr(ekp, ptr, "epp")
+            .map_err(llvm_err)?;
+        let u = str_ty.get_undef();
+        let sk1 = self
+            .builder
+            .build_insert_value(u, ekt, 0, "sk1")
+            .map_err(llvm_err)?;
+        let sk2 = self
+            .builder
+            .build_insert_value(sk1, ep_p, 1, "sk2")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let sh = self
+            .builder
+            .build_call(hash_str, &[sk2.into()], "sh")
+            .map_err(llvm_err)?;
+        let str_hash = sh.try_as_basic_value().unwrap_basic().into_int_value();
+        let xg = self
+            .builder
+            .build_xor(ekt, i64.const_int(Self::GOLDEN, false), "xg")
+            .map_err(llvm_err)?;
+        let int_hash = self
+            .builder
+            .build_int_mul(xg, i64.const_int(Self::GOLDEN, false), "ih")
+            .map_err(llvm_err)?;
+        let hash = self
+            .builder
+            .build_select(ep_sc, int_hash, str_hash, "hash")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let pr_a = self.builder.build_alloca(i64, "pr").map_err(llvm_err)?;
+        self.builder.build_store(pr_a, zero).map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(ins_chk)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(ins_chk);
+        let prv = self.load_i64(pr_a, "prv")?;
+        let idx = self.ht_probe_index(hash, prv, new_cap)?;
+        let (st, sp, _, _) = self.ht_load_slot(new_data, idx)?;
+        let sp0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, sp, zero, "sp0")
+            .map_err(llvm_err)?;
+        let st0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, st, zero, "st0")
+            .map_err(llvm_err)?;
+        let slot_empty = self.builder.build_and(sp0, st0, "se").map_err(llvm_err)?;
+        let sp_t = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, sp, tomb, "spt")
+            .map_err(llvm_err)?;
+        let can_ins = self
+            .builder
+            .build_or(slot_empty, sp_t, "ci")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_conditional_branch(can_ins, ins_store, ins_next)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(ins_store);
+        self.ht_store_slot(new_data, idx, ekt, ekp, evt, evp)?;
+        self.builder
+            .build_unconditional_branch(scan_skip)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(ins_next);
+        let npr = self
+            .builder
+            .build_int_add(prv, one, "npr")
+            .map_err(llvm_err)?;
+        self.builder.build_store(pr_a, npr).map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(ins_chk)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(scan_skip);
+        let nsi = self
+            .builder
+            .build_int_add(siv, one, "nsi")
+            .map_err(llvm_err)?;
+        self.builder.build_store(si_a, nsi).map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(scan)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(scan_done);
+        self.builder
+            .build_return(Some(&new_data))
+            .map_err(llvm_err)?;
+
+        let _ = (seq_fn, old_data);
+        Ok(())
+    }
+
     fn define_ht_from_list(&self) -> Result<(), String> {
         let i64 = self.i64_ty();
         let str_ty = self.string_type;
         let zero = i64.const_int(0, false);
         let one = i64.const_int(1, false);
+        let three = i64.const_int(3, false);
+        let four = i64.const_int(4, false);
         let ht_create = self.module.get_function("action_ht_create").unwrap();
         let ht_insert = self.module.get_function("action_ht_insert").unwrap();
         let list_len_fn = self.module.get_function("action_list_len").unwrap();
         let list_get_fn = self.module.get_function("action_list_get").unwrap();
-        let null_val: inkwell::values::BasicValueEnum = {
+        let null_val: BasicValueEnum = {
             let undef = str_ty.get_undef();
             let r1 = self
                 .builder
@@ -112,13 +443,25 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(list_len_fn, &[lst.into()], "ll")
             .map_err(llvm_err)?;
         let len = len_cc.try_as_basic_value().unwrap_basic().into_int_value();
-        let cap = self
+        let cap_hint = self
             .builder
-            .build_int_add(len, i64.const_int(4, false), "cap")
+            .build_int_add(
+                self.builder
+                    .build_int_unsigned_div(
+                        self.builder
+                            .build_int_mul(len, four, "l4")
+                            .map_err(llvm_err)?,
+                        three,
+                        "hint",
+                    )
+                    .map_err(llvm_err)?,
+                one,
+                "cap_hint",
+            )
             .map_err(llvm_err)?;
         let set_cc = self
             .builder
-            .build_call(ht_create, &[cap.into()], "set")
+            .build_call(ht_create, &[cap_hint.into()], "set")
             .map_err(llvm_err)?;
         let set0 = set_cc.try_as_basic_value().unwrap_basic();
         let set_a = self
@@ -183,6 +526,72 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
+    fn ht_round_cap_pow2(&self, hint: IntValue<'ctx>) -> Result<IntValue<'ctx>, String> {
+        let i64 = self.i64_ty();
+        let min_cap = i64.const_int(Self::HT_MIN_CAP, false);
+        let h = self
+            .builder
+            .build_select(
+                self.builder
+                    .build_int_compare(IntPredicate::ULT, hint, min_cap, "ltmin")
+                    .map_err(llvm_err)?,
+                min_cap,
+                hint,
+                "h",
+            )
+            .map_err(llvm_err)?
+            .into_int_value();
+        let cap_a = self.builder.build_alloca(i64, "cap").map_err(llvm_err)?;
+        self.builder.build_store(cap_a, min_cap).map_err(llvm_err)?;
+        let loop_bb = self.context.append_basic_block(
+            self.builder
+                .get_insert_block()
+                .unwrap()
+                .get_parent()
+                .unwrap(),
+            "rcap_loop",
+        );
+        let body = self.context.append_basic_block(
+            self.builder
+                .get_insert_block()
+                .unwrap()
+                .get_parent()
+                .unwrap(),
+            "rcap_body",
+        );
+        let done = self.context.append_basic_block(
+            self.builder
+                .get_insert_block()
+                .unwrap()
+                .get_parent()
+                .unwrap(),
+            "rcap_done",
+        );
+        self.builder
+            .build_unconditional_branch(loop_bb)
+            .map_err(llvm_err)?;
+        self.builder.position_at_end(loop_bb);
+        let cv = self.load_i64(cap_a, "cv")?;
+        let ok = self
+            .builder
+            .build_int_compare(IntPredicate::UGE, cv, h, "ok")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_conditional_branch(ok, done, body)
+            .map_err(llvm_err)?;
+        self.builder.position_at_end(body);
+        let nv = self
+            .builder
+            .build_int_mul(cv, i64.const_int(2, false), "nv")
+            .map_err(llvm_err)?;
+        self.builder.build_store(cap_a, nv).map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(loop_bb)
+            .map_err(llvm_err)?;
+        self.builder.position_at_end(done);
+        self.load_i64(cap_a, "rcap")
+    }
+
     fn ht_pack(
         &self,
         data: PointerValue<'ctx>,
@@ -208,9 +617,9 @@ impl<'ctx> CodeGen<'ctx> {
         &self,
         data: PointerValue<'ctx>,
         cap: IntValue<'ctx>,
-        entry: inkwell::basic_block::BasicBlock<'ctx>,
-        cow_bb: inkwell::basic_block::BasicBlock<'ctx>,
-        merge: inkwell::basic_block::BasicBlock<'ctx>,
+        entry: BasicBlock<'ctx>,
+        cow_bb: BasicBlock<'ctx>,
+        merge: BasicBlock<'ctx>,
     ) -> Result<PointerValue<'ctx>, String> {
         let i64 = self.i64_ty();
         let ptr = self.ptr_ty();
@@ -281,21 +690,86 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(phi.as_basic_value().into_pointer_value())
     }
 
+    fn ht_probe_index(
+        &self,
+        hash: IntValue<'ctx>,
+        probe: IntValue<'ctx>,
+        cap: IntValue<'ctx>,
+    ) -> Result<IntValue<'ctx>, String> {
+        let i64 = self.i64_ty();
+        let mask = self
+            .builder
+            .build_int_sub(cap, i64.const_int(1, false), "mask")
+            .map_err(llvm_err)?;
+        let sum = self
+            .builder
+            .build_int_add(hash, probe, "sum")
+            .map_err(llvm_err)?;
+        Ok(self.builder.build_and(sum, mask, "idx").map_err(llvm_err)?)
+    }
+
+    fn ht_hash_key(
+        &self,
+        key: inkwell::values::StructValue<'ctx>,
+        hash_str_fn: FunctionValue<'ctx>,
+    ) -> Result<IntValue<'ctx>, String> {
+        let i64 = self.i64_ty();
+        let kt = self.extract_int(key, 0, "kt")?;
+        let kp = self
+            .builder
+            .build_extract_value(key, 1, "kp")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let kpi = self
+            .builder
+            .build_ptr_to_int(kp, i64, "kpi")
+            .map_err(llvm_err)?;
+        let kp0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, kpi, i64.const_int(0, false), "kp0")
+            .map_err(llvm_err)?;
+        let kp1 = self
+            .builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                kpi,
+                i64.const_int(Self::HT_SCALAR_MARKER, false),
+                "kp1",
+            )
+            .map_err(llvm_err)?;
+        let is_scalar = self.builder.build_or(kp0, kp1, "isc").map_err(llvm_err)?;
+        let sh = self
+            .builder
+            .build_call(hash_str_fn, &[key.into()], "sh")
+            .map_err(llvm_err)?;
+        let str_hash = sh.try_as_basic_value().unwrap_basic().into_int_value();
+        let xg = self
+            .builder
+            .build_xor(kt, i64.const_int(Self::GOLDEN, false), "xg")
+            .map_err(llvm_err)?;
+        let int_hash = self
+            .builder
+            .build_int_mul(xg, i64.const_int(Self::GOLDEN, false), "ih")
+            .map_err(llvm_err)?;
+        Ok(self
+            .builder
+            .build_select(is_scalar, int_hash, str_hash, "hash")
+            .map_err(llvm_err)?
+            .into_int_value())
+    }
+
     fn ht_key_eq(
         &self,
         et: IntValue<'ctx>,
         ep: IntValue<'ctx>,
         query: inkwell::values::StructValue<'ctx>,
-        seq_fn: inkwell::values::FunctionValue<'ctx>,
+        seq_fn: FunctionValue<'ctx>,
     ) -> Result<IntValue<'ctx>, String> {
         let i64 = self.i64_ty();
         let ptr = self.ptr_ty();
         let zero = i64.const_int(0, false);
-        let qkt = self
-            .builder
-            .build_extract_value(query, 0, "qkt")
-            .map_err(llvm_err)?
-            .into_int_value();
+        let marker = i64.const_int(Self::HT_SCALAR_MARKER, false);
+        let qkt = self.extract_int(query, 0, "qkt")?;
         let qkp = self
             .builder
             .build_extract_value(query, 1, "qkp")
@@ -305,13 +779,37 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_ptr_to_int(qkp, i64, "qkpi")
             .map_err(llvm_err)?;
+        let ep_sc0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, ep, zero, "ep0")
+            .map_err(llvm_err)?;
+        let ep_sc1 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, ep, marker, "ep1")
+            .map_err(llvm_err)?;
+        let entry_scalar = self
+            .builder
+            .build_or(ep_sc0, ep_sc1, "esc")
+            .map_err(llvm_err)?;
+        let qp_sc0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, qkp_i, zero, "qp0")
+            .map_err(llvm_err)?;
+        let qp_sc1 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, qkp_i, marker, "qp1")
+            .map_err(llvm_err)?;
+        let query_scalar = self
+            .builder
+            .build_or(qp_sc0, qp_sc1, "qsc")
+            .map_err(llvm_err)?;
+        let both_scalar = self
+            .builder
+            .build_and(entry_scalar, query_scalar, "bsc")
+            .map_err(llvm_err)?;
         let teq = self
             .builder
             .build_int_compare(IntPredicate::EQ, et, qkt, "teq")
-            .map_err(llvm_err)?;
-        let kpz = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, qkp_i, zero, "kpz")
             .map_err(llvm_err)?;
         let ep_p = self
             .builder
@@ -334,9 +832,67 @@ impl<'ctx> CodeGen<'ctx> {
         let sb = seq.try_as_basic_value().unwrap_basic().into_int_value();
         Ok(self
             .builder
-            .build_select(kpz, teq, sb, "feq")
+            .build_select(both_scalar, teq, sb, "feq")
             .map_err(llvm_err)?
             .into_int_value())
+    }
+
+    fn ht_kp_for_store(
+        &self,
+        kt: IntValue<'ctx>,
+        kpi: IntValue<'ctx>,
+        vt: IntValue<'ctx>,
+        vpi: IntValue<'ctx>,
+    ) -> Result<IntValue<'ctx>, String> {
+        let i64 = self.i64_ty();
+        let zero = i64.const_int(0, false);
+        let marker = i64.const_int(Self::HT_SCALAR_MARKER, false);
+        let k0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, kt, zero, "k0")
+            .map_err(llvm_err)?;
+        let p0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, kpi, zero, "p0")
+            .map_err(llvm_err)?;
+        let v0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, vt, zero, "v0")
+            .map_err(llvm_err)?;
+        let vp0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, vpi, zero, "vp0")
+            .map_err(llvm_err)?;
+        let a12 = self.builder.build_and(k0, p0, "a12").map_err(llvm_err)?;
+        let a34 = self.builder.build_and(v0, vp0, "a34").map_err(llvm_err)?;
+        let allz = self.builder.build_and(a12, a34, "allz").map_err(llvm_err)?;
+        Ok(self
+            .builder
+            .build_select(allz, marker, kpi, "skp")
+            .map_err(llvm_err)?
+            .into_int_value())
+    }
+
+    fn ht_grow_table(
+        &self,
+        data: PointerValue<'ctx>,
+        cap: IntValue<'ctx>,
+    ) -> Result<(PointerValue<'ctx>, IntValue<'ctx>), String> {
+        let i64 = self.i64_ty();
+        let ptr = self.ptr_ty();
+        let rehash = self.module.get_function("action_ht_rehash").unwrap();
+        let new_cap = self
+            .builder
+            .build_int_mul(cap, i64.const_int(2, false), "ncap")
+            .map_err(llvm_err)?;
+        let nd = self
+            .builder
+            .build_call(rehash, &[data.into(), cap.into(), new_cap.into()], "nd")
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_pointer_value();
+        Ok((nd, new_cap))
     }
 
     fn ht_load_slot(
@@ -423,17 +979,81 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
+    /// Branch to `active_bb` if slot at `data[slot]` is active; otherwise `skip_bb`.
+    pub(super) fn ht_branch_if_slot_active(
+        &self,
+        data: PointerValue<'ctx>,
+        slot: IntValue<'ctx>,
+        active_bb: BasicBlock<'ctx>,
+        skip_bb: BasicBlock<'ctx>,
+    ) -> Result<(), String> {
+        let (kt, kp, vt, vp) = self.ht_load_slot(data, slot)?;
+        self.ht_branch_if_slot_active_fields(kt, kp, vt, vp, active_bb, skip_bb)
+    }
+
+    fn ht_branch_if_slot_active_fields(
+        &self,
+        kt: IntValue<'ctx>,
+        kp: IntValue<'ctx>,
+        vt: IntValue<'ctx>,
+        vp: IntValue<'ctx>,
+        active_bb: BasicBlock<'ctx>,
+        skip_bb: BasicBlock<'ctx>,
+    ) -> Result<(), String> {
+        let i64 = self.i64_ty();
+        let zero = i64.const_int(0, false);
+        let tomb = i64.const_int(Self::HT_TOMBSTONE, false);
+        let kp0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, kp, zero, "kp0")
+            .map_err(llvm_err)?;
+        let kt0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, kt, zero, "kt0")
+            .map_err(llvm_err)?;
+        let vt0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, vt, zero, "vt0")
+            .map_err(llvm_err)?;
+        let vp0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, vp, zero, "vp0")
+            .map_err(llvm_err)?;
+        let e12 = self.builder.build_and(kp0, kt0, "e12").map_err(llvm_err)?;
+        let e34 = self.builder.build_and(vt0, vp0, "e34").map_err(llvm_err)?;
+        let is_empty = self
+            .builder
+            .build_and(e12, e34, "empty")
+            .map_err(llvm_err)?;
+        let is_tomb = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, kp, tomb, "tomb")
+            .map_err(llvm_err)?;
+        let inactive = self
+            .builder
+            .build_or(is_empty, is_tomb, "inact")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_conditional_branch(inactive, skip_bb, active_bb)
+            .map_err(llvm_err)?;
+        Ok(())
+    }
+
     fn define_ht_insert(
         &self,
-        seq_fn: inkwell::values::FunctionValue<'ctx>,
-        memcpy_fn: inkwell::values::FunctionValue<'ctx>,
+        seq_fn: FunctionValue<'ctx>,
+        _memcpy_fn: FunctionValue<'ctx>,
     ) -> Result<(), String> {
         let i64 = self.i64_ty();
         let ptr = self.ptr_ty();
         let str_ty = self.string_type;
         let zero = i64.const_int(0, false);
         let one = i64.const_int(1, false);
-        let four = i64.const_int(4, false);
+        let tomb = i64.const_int(Self::HT_TOMBSTONE, false);
+        let neg1 = i64.const_all_ones();
+        let hash_str = self.module.get_function("action_ht_hash_str").unwrap();
+        let load_num = i64.const_int(Self::HT_LOAD_NUM, false);
+        let load_den = i64.const_int(Self::HT_LOAD_DEN, false);
 
         let f = self.module.add_function(
             "action_ht_insert",
@@ -446,14 +1066,16 @@ impl<'ctx> CodeGen<'ctx> {
         let entry = self.context.append_basic_block(f, "entry");
         let cow = self.context.append_basic_block(f, "cow");
         let merge = self.context.append_basic_block(f, "merge");
-        let search = self.context.append_basic_block(f, "search");
-        let body = self.context.append_basic_block(f, "body");
-        let ckey = self.context.append_basic_block(f, "ckey");
+        let grow_ck = self.context.append_basic_block(f, "grow_ck");
+        let grow = self.context.append_basic_block(f, "grow");
+        let probe = self.context.append_basic_block(f, "probe");
+        let probe_chk = self.context.append_basic_block(f, "probe_chk");
+        let probe_empty = self.context.append_basic_block(f, "probe_empty");
+        let probe_tomb = self.context.append_basic_block(f, "probe_tomb");
+        let probe_key = self.context.append_basic_block(f, "probe_key");
+        let probe_next = self.context.append_basic_block(f, "probe_next");
+        let probe_fail = self.context.append_basic_block(f, "probe_fail");
         let update = self.context.append_basic_block(f, "update");
-        let next = self.context.append_basic_block(f, "next");
-        let append_ck = self.context.append_basic_block(f, "append_ck");
-        let append_grow = self.context.append_basic_block(f, "append_grow");
-        let append_store = self.context.append_basic_block(f, "append_store");
 
         self.builder.position_at_end(entry);
         let map = f.get_first_param().unwrap().into_struct_value();
@@ -463,155 +1085,203 @@ impl<'ctx> CodeGen<'ctx> {
         let len0 = self.extract_int(map, 1, "l")?;
         let cap0 = self.extract_int(map, 2, "c")?;
         let kt = self.extract_int(key, 0, "kt")?;
-        let kp = self
-            .builder
-            .build_extract_value(key, 1, "kp")
-            .map_err(llvm_err)?
-            .into_pointer_value();
+        let kp = self.extract_ptr(key, 1, "kp")?;
         let kpi = self
             .builder
             .build_ptr_to_int(kp, i64, "kpi")
             .map_err(llvm_err)?;
         let vt = self.extract_int(val, 0, "vt")?;
-        let vp = self
-            .builder
-            .build_extract_value(val, 1, "vp")
-            .map_err(llvm_err)?
-            .into_pointer_value();
+        let vp = self.extract_ptr(val, 1, "vp")?;
         let vpi = self
             .builder
             .build_ptr_to_int(vp, i64, "vpi")
             .map_err(llvm_err)?;
+        let skp = self.ht_kp_for_store(kt, kpi, vt, vpi)?;
 
         let data = self.ht_cow(data0, cap0, entry, cow, merge)?;
 
         self.builder.position_at_end(merge);
-        let i_a = self.builder.build_alloca(i64, "i").map_err(llvm_err)?;
-        self.builder.build_store(i_a, zero).map_err(llvm_err)?;
+        let hash = self.ht_hash_key(key, hash_str)?;
+        let data_a = self.builder.build_alloca(ptr, "da").map_err(llvm_err)?;
+        let cap_a = self.builder.build_alloca(i64, "ca").map_err(llvm_err)?;
+        self.builder.build_store(data_a, data).map_err(llvm_err)?;
+        self.builder.build_store(cap_a, cap0).map_err(llvm_err)?;
+        let pr_a = self.builder.build_alloca(i64, "pr").map_err(llvm_err)?;
+        let ft_a = self.builder.build_alloca(i64, "ft").map_err(llvm_err)?;
+        self.builder.build_store(pr_a, zero).map_err(llvm_err)?;
+        self.builder.build_store(ft_a, neg1).map_err(llvm_err)?;
         self.builder
-            .build_unconditional_branch(search)
+            .build_unconditional_branch(grow_ck)
             .map_err(llvm_err)?;
 
-        self.builder.position_at_end(search);
-        let iv = self.load_i64(i_a, "iv")?;
-        let cond = self
+        self.builder.position_at_end(grow_ck);
+        let cur_data = self
             .builder
-            .build_int_compare(IntPredicate::SLT, iv, len0, "cond")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_conditional_branch(cond, body, append_ck)
-            .map_err(llvm_err)?;
-
-        self.builder.position_at_end(body);
-        let (et, ep, _, _) = self.ht_load_slot(data, iv)?;
-        let teq = self
+            .build_load(ptr, data_a, "cd")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let cur_cap = self.load_i64(cap_a, "cc")?;
+        let nl_est = self
             .builder
-            .build_int_compare(IntPredicate::EQ, et, kt, "teq")
+            .build_int_add(len0, one, "nle")
+            .map_err(llvm_err)?;
+        let lhs = self
+            .builder
+            .build_int_mul(nl_est, load_den, "lhs")
+            .map_err(llvm_err)?;
+        let rhs = self
+            .builder
+            .build_int_mul(cur_cap, load_num, "rhs")
+            .map_err(llvm_err)?;
+        let need_grow = self
+            .builder
+            .build_int_compare(IntPredicate::UGT, lhs, rhs, "ng")
             .map_err(llvm_err)?;
         self.builder
-            .build_conditional_branch(teq, ckey, next)
+            .build_conditional_branch(need_grow, grow, probe)
             .map_err(llvm_err)?;
 
-        self.builder.position_at_end(ckey);
-        let feq = self.ht_key_eq(et, ep, key, seq_fn)?;
+        self.builder.position_at_end(grow);
+        let (gd, gc) = self.ht_grow_table(cur_data, cur_cap)?;
+        self.builder.build_store(data_a, gd).map_err(llvm_err)?;
+        self.builder.build_store(cap_a, gc).map_err(llvm_err)?;
         self.builder
-            .build_conditional_branch(feq, update, next)
+            .build_unconditional_branch(probe)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(probe);
+        let data_w = self
+            .builder
+            .build_load(ptr, data_a, "dw")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let cap_w = self.load_i64(cap_a, "cw")?;
+        let prv = self.load_i64(pr_a, "prv")?;
+        let idx = self.ht_probe_index(hash, prv, cap_w)?;
+        let (st, sp, svt, svp) = self.ht_load_slot(data_w, idx)?;
+        self.builder
+            .build_unconditional_branch(probe_chk)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(probe_chk);
+        let sp0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, sp, zero, "sp0")
+            .map_err(llvm_err)?;
+        let st0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, st, zero, "st0")
+            .map_err(llvm_err)?;
+        let svt0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, svt, zero, "svt0")
+            .map_err(llvm_err)?;
+        let svp0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, svp, zero, "svp0")
+            .map_err(llvm_err)?;
+        let e12 = self.builder.build_and(sp0, st0, "e12").map_err(llvm_err)?;
+        let e34 = self
+            .builder
+            .build_and(svt0, svp0, "e34")
+            .map_err(llvm_err)?;
+        let is_empty = self
+            .builder
+            .build_and(e12, e34, "empty")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_conditional_branch(is_empty, probe_empty, probe_tomb)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(probe_tomb);
+        let is_tomb = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, sp, tomb, "tomb")
+            .map_err(llvm_err)?;
+        let tomb_has = self.context.append_basic_block(f, "tomb_has");
+        let tomb_set_store = self.context.append_basic_block(f, "tomb_set_store");
+        let tomb_record = self.context.append_basic_block(f, "tomb_record");
+        self.builder
+            .build_conditional_branch(is_tomb, tomb_set_store, probe_key)
+            .map_err(llvm_err)?;
+        self.builder.position_at_end(tomb_set_store);
+        let ftv = self.load_i64(ft_a, "ftv")?;
+        let ft_unset = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, ftv, neg1, "ftu")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_conditional_branch(ft_unset, tomb_record, tomb_has)
+            .map_err(llvm_err)?;
+        self.builder.position_at_end(tomb_record);
+        self.builder.build_store(ft_a, idx).map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(tomb_has)
+            .map_err(llvm_err)?;
+        self.builder.position_at_end(tomb_has);
+        self.builder
+            .build_unconditional_branch(probe_next)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(probe_key);
+        let feq = self.ht_key_eq(st, sp, key, seq_fn)?;
+        self.builder
+            .build_conditional_branch(feq, update, probe_next)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(probe_next);
+        let cap_eq = self
+            .builder
+            .build_int_compare(IntPredicate::UGE, prv, cap_w, "ce")
+            .map_err(llvm_err)?;
+        let npr = self
+            .builder
+            .build_int_add(prv, one, "npr")
+            .map_err(llvm_err)?;
+        self.builder.build_store(pr_a, npr).map_err(llvm_err)?;
+        self.builder
+            .build_conditional_branch(cap_eq, probe_fail, probe)
             .map_err(llvm_err)?;
 
         self.builder.position_at_end(update);
-        self.ht_store_slot(data, iv, et, ep, vt, vpi)?;
-        let r = self.ht_pack(data, len0, cap0)?;
-        self.builder.build_return(Some(&r));
+        self.ht_store_slot(data_w, idx, kt, skp, vt, vpi)?;
+        let ru = self.ht_pack(data_w, len0, cap_w)?;
+        self.builder.build_return(Some(&ru)).map_err(llvm_err)?;
 
-        self.builder.position_at_end(next);
-        self.builder
-            .build_store(
-                i_a,
-                self.builder
-                    .build_int_add(iv, one, "niv")
-                    .map_err(llvm_err)?,
-            )
-            .map_err(llvm_err)?;
-        self.builder
-            .build_unconditional_branch(search)
-            .map_err(llvm_err)?;
-
-        self.builder.position_at_end(append_ck);
-        let need_grow = self
+        self.builder.position_at_end(probe_empty);
+        let ftv2 = self.load_i64(ft_a, "ftv2")?;
+        let use_ft = self
             .builder
-            .build_int_compare(IntPredicate::SGE, len0, cap0, "ng")
+            .build_int_compare(IntPredicate::NE, ftv2, neg1, "uft")
             .map_err(llvm_err)?;
-        self.builder
-            .build_conditional_branch(need_grow, append_grow, append_store)
-            .map_err(llvm_err)?;
-
-        self.builder.position_at_end(append_grow);
-        let cap_small = self
+        let iidx = self
             .builder
-            .build_int_compare(IntPredicate::SLT, cap0, four, "cs")
-            .map_err(llvm_err)?;
-        let cap2x = self
-            .builder
-            .build_int_mul(cap0, i64.const_int(2, false), "c2")
-            .map_err(llvm_err)?;
-        let new_cap = self
-            .builder
-            .build_select(cap_small, four, cap2x, "ncap")
+            .build_select(use_ft, ftv2, idx, "ins_idx")
             .map_err(llvm_err)?
             .into_int_value();
-        let data_size = self
-            .builder
-            .build_int_mul(new_cap, i64.const_int(Self::HT_ENTRY_BYTES, false), "dsz")
-            .map_err(llvm_err)?;
-        let malloc_rc = self.module.get_function("action_malloc_rc").unwrap();
-        let new_data2 = self
-            .builder
-            .build_call(malloc_rc, &[data_size.into()], "nd")
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .unwrap_basic()
-            .into_pointer_value();
-        let old_bytes = self
-            .builder
-            .build_int_mul(cap0, i64.const_int(Self::HT_ENTRY_BYTES, false), "ob")
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_call(
-            memcpy_fn,
-            &[new_data2.into(), data.into(), old_bytes.into()],
-            "",
-        );
-        self.builder
-            .build_unconditional_branch(append_store)
-            .map_err(llvm_err)?;
-
-        self.builder.position_at_end(append_store);
-        let phi_data = self.builder.build_phi(ptr, "pd").map_err(llvm_err)?;
-        phi_data.add_incoming(&[(&data, append_ck), (&new_data2, append_grow)]);
-        let phi_cap = self.builder.build_phi(i64, "pc").map_err(llvm_err)?;
-        phi_cap.add_incoming(&[(&cap0, append_ck), (&new_cap, append_grow)]);
-        let ad = phi_data.as_basic_value().into_pointer_value();
-        let ac = phi_cap.as_basic_value().into_int_value();
-        self.ht_store_slot(ad, len0, kt, kpi, vt, vpi)?;
+        self.ht_store_slot(data_w, iidx, kt, skp, vt, vpi)?;
         let nl = self
             .builder
             .build_int_add(len0, one, "nl")
             .map_err(llvm_err)?;
-        let rr = self.ht_pack(ad, nl, ac)?;
-        self.builder.build_return(Some(&rr)).map_err(llvm_err)?;
+        let ri = self.ht_pack(data_w, nl, cap_w)?;
+        self.builder.build_return(Some(&ri)).map_err(llvm_err)?;
+
+        self.builder.position_at_end(probe_fail);
+        let rf = self.ht_pack(data_w, len0, cap_w)?;
+        self.builder.build_return(Some(&rf)).map_err(llvm_err)?;
 
         Ok(())
     }
 
-    fn define_ht_get_contains(
-        &self,
-        seq_fn: inkwell::values::FunctionValue<'ctx>,
-    ) -> Result<(), String> {
+    fn define_ht_get_contains(&self, seq_fn: FunctionValue<'ctx>) -> Result<(), String> {
         let i64 = self.i64_ty();
         let str_ty = self.string_type;
         let b1_ty = self.bool_ty();
         let zero = i64.const_int(0, false);
         let one = i64.const_int(1, false);
         let ptr = self.ptr_ty();
+        let hash_str = self.module.get_function("action_ht_hash_str").unwrap();
 
         use inkwell::types::BasicTypeEnum;
 
@@ -625,52 +1295,70 @@ impl<'ctx> CodeGen<'ctx> {
                 None,
             );
             let b0 = self.context.append_basic_block(f, "b0");
-            let b1_bb = self.context.append_basic_block(f, "b1");
-            let b2 = self.context.append_basic_block(f, "b2");
-            let b3 = self.context.append_basic_block(f, "b3");
-            let b4 = self.context.append_basic_block(f, "b4");
-            let b5 = self.context.append_basic_block(f, "b5");
-            let b6 = self.context.append_basic_block(f, "b6");
+            let probe = self.context.append_basic_block(f, "probe");
+            let probe_chk = self.context.append_basic_block(f, "probe_chk");
+            let found = self.context.append_basic_block(f, "found");
+            let probe_key = self.context.append_basic_block(f, "probe_key");
+            let probe_next = self.context.append_basic_block(f, "probe_next");
+            let miss = self.context.append_basic_block(f, "miss");
 
             self.builder.position_at_end(b0);
             let map = f.get_first_param().unwrap().into_struct_value();
             let key = f.get_nth_param(1).unwrap().into_struct_value();
             let data = self.extract_ptr(map, 0, "d")?;
-            let len = self.extract_int(map, 1, "l")?;
-            let kt = self.extract_int(key, 0, "kt")?;
-            let i_a = self.builder.build_alloca(i64, "i").map_err(llvm_err)?;
-            self.builder.build_store(i_a, zero).map_err(llvm_err)?;
+            let cap = self.extract_int(map, 2, "c")?;
+            let hash = self.ht_hash_key(key, hash_str)?;
+            let pr_a = self.builder.build_alloca(i64, "pr").map_err(llvm_err)?;
+            self.builder.build_store(pr_a, zero).map_err(llvm_err)?;
             self.builder
-                .build_unconditional_branch(b1_bb)
+                .build_unconditional_branch(probe)
                 .map_err(llvm_err)?;
 
-            self.builder.position_at_end(b1_bb);
-            let iv = self.load_i64(i_a, "iv")?;
-            let cond = self
+            self.builder.position_at_end(probe);
+            let prv = self.load_i64(pr_a, "prv")?;
+            let idx = self.ht_probe_index(hash, prv, cap)?;
+            let (st, sp, svt, svp) = self.ht_load_slot(data, idx)?;
+            self.builder
+                .build_unconditional_branch(probe_chk)
+                .map_err(llvm_err)?;
+
+            self.builder.position_at_end(probe_chk);
+            let sp0 = self
                 .builder
-                .build_int_compare(IntPredicate::SLT, iv, len, "cond")
+                .build_int_compare(IntPredicate::EQ, sp, zero, "sp0")
                 .map_err(llvm_err)?;
-            self.builder
-                .build_conditional_branch(cond, b2, b6)
-                .map_err(llvm_err)?;
-
-            self.builder.position_at_end(b2);
-            let (et, ep, svt, svp) = self.ht_load_slot(data, iv)?;
-            let teq = self
+            let st0 = self
                 .builder
-                .build_int_compare(IntPredicate::EQ, et, kt, "teq")
+                .build_int_compare(IntPredicate::EQ, st, zero, "st0")
+                .map_err(llvm_err)?;
+            let svt0 = self
+                .builder
+                .build_int_compare(IntPredicate::EQ, svt, zero, "svt0")
+                .map_err(llvm_err)?;
+            let svp0 = self
+                .builder
+                .build_int_compare(IntPredicate::EQ, svp, zero, "svp0")
+                .map_err(llvm_err)?;
+            let e12 = self.builder.build_and(sp0, st0, "e12").map_err(llvm_err)?;
+            let e34 = self
+                .builder
+                .build_and(svt0, svp0, "e34")
+                .map_err(llvm_err)?;
+            let is_empty = self
+                .builder
+                .build_and(e12, e34, "empty")
                 .map_err(llvm_err)?;
             self.builder
-                .build_conditional_branch(teq, b3, b5)
+                .build_conditional_branch(is_empty, miss, probe_key)
                 .map_err(llvm_err)?;
 
-            self.builder.position_at_end(b3);
-            let feq = self.ht_key_eq(et, ep, key, seq_fn)?;
+            self.builder.position_at_end(probe_key);
+            let feq = self.ht_key_eq(st, sp, key, seq_fn)?;
             self.builder
-                .build_conditional_branch(feq, b4, b5)
+                .build_conditional_branch(feq, found, probe_next)
                 .map_err(llvm_err)?;
 
-            self.builder.position_at_end(b4);
+            self.builder.position_at_end(found);
             if is_get {
                 let vp = self
                     .builder
@@ -685,27 +1373,28 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_insert_value(r1, vp, 1, "r2")
                     .map_err(llvm_err)?;
-                self.builder.build_return(Some(&r2));
+                self.builder.build_return(Some(&r2)).map_err(llvm_err)?;
             } else {
                 self.builder
                     .build_return(Some(&b1_ty.const_int(1, false)))
                     .map_err(llvm_err)?;
             }
 
-            self.builder.position_at_end(b5);
-            self.builder
-                .build_store(
-                    i_a,
-                    self.builder
-                        .build_int_add(iv, one, "niv")
-                        .map_err(llvm_err)?,
-                )
+            self.builder.position_at_end(probe_next);
+            let cap_eq = self
+                .builder
+                .build_int_compare(IntPredicate::UGE, prv, cap, "ce")
                 .map_err(llvm_err)?;
+            let npr = self
+                .builder
+                .build_int_add(prv, one, "npr")
+                .map_err(llvm_err)?;
+            self.builder.build_store(pr_a, npr).map_err(llvm_err)?;
             self.builder
-                .build_unconditional_branch(b1_bb)
+                .build_conditional_branch(cap_eq, miss, probe)
                 .map_err(llvm_err)?;
 
-            self.builder.position_at_end(b6);
+            self.builder.position_at_end(miss);
             if is_get {
                 let u = str_ty.get_undef();
                 let z = self
@@ -719,7 +1408,7 @@ impl<'ctx> CodeGen<'ctx> {
                         "z1",
                     )
                     .map_err(llvm_err)?;
-                self.builder.build_return(Some(&z));
+                self.builder.build_return(Some(&z)).map_err(llvm_err)?;
             } else {
                 self.builder
                     .build_return(Some(&b1_ty.const_int(0, false)))
@@ -731,15 +1420,17 @@ impl<'ctx> CodeGen<'ctx> {
 
     fn define_ht_remove(
         &self,
-        seq_fn: inkwell::values::FunctionValue<'ctx>,
-        memcpy_fn: inkwell::values::FunctionValue<'ctx>,
+        seq_fn: FunctionValue<'ctx>,
+        _memcpy_fn: FunctionValue<'ctx>,
     ) -> Result<(), String> {
         let i64 = self.i64_ty();
-        let ptr = self.ptr_ty();
         let str_ty = self.string_type;
-        let i8 = self.context.i8_type();
         let zero = i64.const_int(0, false);
         let one = i64.const_int(1, false);
+        let tomb = i64.const_int(Self::HT_TOMBSTONE, false);
+        let hash_str = self.module.get_function("action_ht_hash_str").unwrap();
+        let rc_dec_fn = self.module.get_function("action_rc_dec").unwrap();
+        let ptr = self.ptr_ty();
 
         let f = self.module.add_function(
             "action_ht_remove",
@@ -750,13 +1441,12 @@ impl<'ctx> CodeGen<'ctx> {
         let b0 = self.context.append_basic_block(f, "b0");
         let cow = self.context.append_basic_block(f, "cow");
         let merge = self.context.append_basic_block(f, "merge");
-        let b1 = self.context.append_basic_block(f, "b1");
-        let b2 = self.context.append_basic_block(f, "b2");
-        let b3 = self.context.append_basic_block(f, "b3");
-        let b4 = self.context.append_basic_block(f, "b4");
-        let b5 = self.context.append_basic_block(f, "b5");
-        let b6 = self.context.append_basic_block(f, "b6");
-        let b7 = self.context.append_basic_block(f, "b7");
+        let probe = self.context.append_basic_block(f, "probe");
+        let probe_chk = self.context.append_basic_block(f, "probe_chk");
+        let probe_key = self.context.append_basic_block(f, "probe_key");
+        let probe_next = self.context.append_basic_block(f, "probe_next");
+        let removed = self.context.append_basic_block(f, "removed");
+        let not_found = self.context.append_basic_block(f, "not_found");
 
         self.builder.position_at_end(b0);
         let map = f.get_first_param().unwrap().into_struct_value();
@@ -764,124 +1454,156 @@ impl<'ctx> CodeGen<'ctx> {
         let data0 = self.extract_ptr(map, 0, "d")?;
         let len0 = self.extract_int(map, 1, "l")?;
         let cap0 = self.extract_int(map, 2, "c")?;
-        let kt = self.extract_int(key, 0, "kt")?;
         let data = self.ht_cow(data0, cap0, b0, cow, merge)?;
 
         self.builder.position_at_end(merge);
-        let i_a = self.builder.build_alloca(i64, "i").map_err(llvm_err)?;
-        self.builder.build_store(i_a, zero).map_err(llvm_err)?;
+        let hash = self.ht_hash_key(key, hash_str)?;
+        let pr_a = self.builder.build_alloca(i64, "pr").map_err(llvm_err)?;
+        self.builder.build_store(pr_a, zero).map_err(llvm_err)?;
         self.builder
-            .build_unconditional_branch(b1)
+            .build_unconditional_branch(probe)
             .map_err(llvm_err)?;
 
-        self.builder.position_at_end(b1);
-        let iv = self.load_i64(i_a, "iv")?;
-        let cond = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, iv, len0, "cond")
-            .map_err(llvm_err)?;
+        self.builder.position_at_end(probe);
+        let prv = self.load_i64(pr_a, "prv")?;
+        let idx = self.ht_probe_index(hash, prv, cap0)?;
+        let (st, sp, svt, svp) = self.ht_load_slot(data, idx)?;
         self.builder
-            .build_conditional_branch(cond, b2, b7)
+            .build_unconditional_branch(probe_chk)
             .map_err(llvm_err)?;
 
-        self.builder.position_at_end(b2);
-        let (et, ep, _, _) = self.ht_load_slot(data, iv)?;
-        let teq = self
+        self.builder.position_at_end(probe_chk);
+        let sp0 = self
             .builder
-            .build_int_compare(IntPredicate::EQ, et, kt, "teq")
+            .build_int_compare(IntPredicate::EQ, sp, zero, "sp0")
+            .map_err(llvm_err)?;
+        let st0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, st, zero, "st0")
+            .map_err(llvm_err)?;
+        let svt0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, svt, zero, "svt0")
+            .map_err(llvm_err)?;
+        let svp0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, svp, zero, "svp0")
+            .map_err(llvm_err)?;
+        let e12 = self.builder.build_and(sp0, st0, "e12").map_err(llvm_err)?;
+        let e34 = self
+            .builder
+            .build_and(svt0, svp0, "e34")
+            .map_err(llvm_err)?;
+        let is_empty = self
+            .builder
+            .build_and(e12, e34, "empty")
             .map_err(llvm_err)?;
         self.builder
-            .build_conditional_branch(teq, b3, b6)
+            .build_conditional_branch(is_empty, not_found, probe_key)
             .map_err(llvm_err)?;
 
-        self.builder.position_at_end(b3);
-        let feq = self.ht_key_eq(et, ep, key, seq_fn)?;
+        self.builder.position_at_end(probe_key);
+        let feq = self.ht_key_eq(st, sp, key, seq_fn)?;
         self.builder
-            .build_conditional_branch(feq, b4, b6)
+            .build_conditional_branch(feq, removed, probe_next)
             .map_err(llvm_err)?;
 
-        self.builder.position_at_end(b4);
-        let len_dec = self
+        self.builder.position_at_end(removed);
+        let marker = i64.const_int(Self::HT_SCALAR_MARKER, false);
+        let kp_ne0 = self
             .builder
-            .build_int_sub(len0, one, "ld")
+            .build_int_compare(IntPredicate::NE, sp, zero, "kpne0")
             .map_err(llvm_err)?;
-        let iv_p1 = self
+        let kp_nem = self
             .builder
-            .build_int_add(iv, one, "ip1")
+            .build_int_compare(IntPredicate::NE, sp, marker, "kpnem")
             .map_err(llvm_err)?;
-        let remaining = self
+        let kp_rc = self
             .builder
-            .build_int_sub(len0, iv_p1, "rem")
+            .build_and(kp_ne0, kp_nem, "kprc")
             .map_err(llvm_err)?;
-        let has_rem = self
-            .builder
-            .build_int_compare(IntPredicate::SGT, remaining, zero, "hr")
-            .map_err(llvm_err)?;
+        let kp_dec_bb = self.context.append_basic_block(f, "kpdec");
+        let vp_chk = self.context.append_basic_block(f, "vpchk");
         self.builder
-            .build_conditional_branch(has_rem, b5, b7)
+            .build_conditional_branch(kp_rc, kp_dec_bb, vp_chk)
             .map_err(llvm_err)?;
-
-        self.builder.position_at_end(b5);
-        let src_off = self
-            .builder
-            .build_int_mul(iv_p1, i64.const_int(Self::HT_ENTRY_BYTES, false), "so")
-            .map_err(llvm_err)?;
-        let dst_off = self
-            .builder
-            .build_int_mul(iv, i64.const_int(Self::HT_ENTRY_BYTES, false), "do")
-            .map_err(llvm_err)?;
-        let src = unsafe {
-            self.builder
-                .build_gep(i8, data, &[src_off], "src")
+        self.builder.position_at_end(kp_dec_bb);
+        let _ = self.builder.build_call(
+            rc_dec_fn,
+            &[self
+                .builder
+                .build_int_to_ptr(sp, ptr, "kpp")
                 .map_err(llvm_err)?
-        };
-        let dst = unsafe {
-            self.builder
-                .build_gep(i8, data, &[dst_off], "dst")
+                .into()],
+            "",
+        );
+        self.builder
+            .build_unconditional_branch(vp_chk)
+            .map_err(llvm_err)?;
+        self.builder.position_at_end(vp_chk);
+        let vp_ok = self
+            .builder
+            .build_int_compare(IntPredicate::NE, svp, zero, "vpo")
+            .map_err(llvm_err)?;
+        let vp_dec = self.context.append_basic_block(f, "vpdec");
+        let tomb_bb = self.context.append_basic_block(f, "tomb");
+        self.builder
+            .build_conditional_branch(vp_ok, vp_dec, tomb_bb)
+            .map_err(llvm_err)?;
+        self.builder.position_at_end(vp_dec);
+        let _ = self.builder.build_call(
+            rc_dec_fn,
+            &[self
+                .builder
+                .build_int_to_ptr(svp, ptr, "vpp")
                 .map_err(llvm_err)?
-        };
-        let rem_bytes = self
-            .builder
-            .build_int_mul(remaining, i64.const_int(Self::HT_ENTRY_BYTES, false), "rb")
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_call(memcpy_fn, &[dst.into(), src.into(), rem_bytes.into()], "");
+                .into()],
+            "",
+        );
         self.builder
-            .build_unconditional_branch(b7)
+            .build_unconditional_branch(tomb_bb)
+            .map_err(llvm_err)?;
+        self.builder.position_at_end(tomb_bb);
+        self.ht_store_slot(data, idx, zero, tomb, zero, zero)?;
+        let nlen = self
+            .builder
+            .build_int_sub(len0, one, "nlen")
+            .map_err(llvm_err)?;
+        let rr = self.ht_pack(data, nlen, cap0)?;
+        self.builder.build_return(Some(&rr)).map_err(llvm_err)?;
+
+        self.builder.position_at_end(probe_next);
+        let cap_eq = self
+            .builder
+            .build_int_compare(IntPredicate::UGE, prv, cap0, "ce")
+            .map_err(llvm_err)?;
+        let npr = self
+            .builder
+            .build_int_add(prv, one, "npr")
+            .map_err(llvm_err)?;
+        self.builder.build_store(pr_a, npr).map_err(llvm_err)?;
+        self.builder
+            .build_conditional_branch(cap_eq, not_found, probe)
             .map_err(llvm_err)?;
 
-        self.builder.position_at_end(b6);
-        self.builder
-            .build_store(
-                i_a,
-                self.builder
-                    .build_int_add(iv, one, "niv")
-                    .map_err(llvm_err)?,
-            )
-            .map_err(llvm_err)?;
-        self.builder
-            .build_unconditional_branch(b1)
-            .map_err(llvm_err)?;
-
-        self.builder.position_at_end(b7);
-        let ret_len = self.builder.build_phi(i64, "rl").map_err(llvm_err)?;
-        ret_len.add_incoming(&[(&len0, b1), (&len_dec, b4), (&len_dec, b5)]);
-        let r = self.ht_pack(data, ret_len.as_basic_value().into_int_value(), cap0)?;
-        self.builder.build_return(Some(&r));
+        self.builder.position_at_end(not_found);
+        let rn = self.ht_pack(data, len0, cap0)?;
+        self.builder.build_return(Some(&rn)).map_err(llvm_err)?;
 
         Ok(())
     }
 
     fn define_ht_rc_dec(
         &self,
-        rc_dec_fn: inkwell::values::FunctionValue<'ctx>,
-        free_fn: inkwell::values::FunctionValue<'ctx>,
+        rc_dec_fn: FunctionValue<'ctx>,
+        free_fn: FunctionValue<'ctx>,
     ) -> Result<(), String> {
         let i64 = self.i64_ty();
         let ptr = self.ptr_ty();
         let zero = i64.const_int(0, false);
         let one = i64.const_int(1, false);
+        let tomb = i64.const_int(Self::HT_TOMBSTONE, false);
+        let marker = i64.const_int(Self::HT_SCALAR_MARKER, false);
 
         let f = self.module.add_function(
             "action_rc_dec_ht",
@@ -897,12 +1619,13 @@ impl<'ctx> CodeGen<'ctx> {
         let clean = self.context.append_basic_block(f, "clean");
         let clp = self.context.append_basic_block(f, "clp");
         let clb = self.context.append_basic_block(f, "clb");
+        let clskip = self.context.append_basic_block(f, "clskip");
         let free_bb = self.context.append_basic_block(f, "free");
 
         self.builder.position_at_end(entry);
         let data = f.get_first_param().unwrap().into_pointer_value();
         let cap = f.get_nth_param(1).unwrap().into_int_value();
-        let len = f.get_nth_param(2).unwrap().into_int_value();
+        let _len = f.get_nth_param(2).unwrap().into_int_value();
         let is_null = self.builder.build_is_null(data, "n").map_err(llvm_err)?;
         self.builder
             .build_conditional_branch(is_null, null_done, do_dec)
@@ -959,25 +1682,68 @@ impl<'ctx> CodeGen<'ctx> {
         let siv = self.load_i64(si, "siv")?;
         let sc = self
             .builder
-            .build_int_compare(IntPredicate::SLT, siv, len, "sc")
+            .build_int_compare(IntPredicate::SLT, siv, cap, "sc")
             .map_err(llvm_err)?;
         self.builder
             .build_conditional_branch(sc, clb, free_bb)
             .map_err(llvm_err)?;
 
         self.builder.position_at_end(clb);
-        let (_, kp, _, vp) = self.ht_load_slot(data, siv)?;
-        let kp_ok = self
+        let (kt, kp, svt, vp) = self.ht_load_slot(data, siv)?;
+        let kp0 = self
             .builder
-            .build_int_compare(IntPredicate::NE, kp, zero, "kpo")
+            .build_int_compare(IntPredicate::EQ, kp, zero, "kp0")
+            .map_err(llvm_err)?;
+        let kt0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, kt, zero, "kt0")
+            .map_err(llvm_err)?;
+        let svt0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, svt, zero, "svt0")
+            .map_err(llvm_err)?;
+        let vp0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, vp, zero, "vp0")
+            .map_err(llvm_err)?;
+        let e12 = self.builder.build_and(kp0, kt0, "e12").map_err(llvm_err)?;
+        let e34 = self.builder.build_and(svt0, vp0, "e34").map_err(llvm_err)?;
+        let is_empty = self
+            .builder
+            .build_and(e12, e34, "empty")
+            .map_err(llvm_err)?;
+        let is_tomb = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, kp, tomb, "tomb")
+            .map_err(llvm_err)?;
+        let inactive = self
+            .builder
+            .build_or(is_empty, is_tomb, "inact")
             .map_err(llvm_err)?;
         let kp_bb = self.context.append_basic_block(f, "kpdec");
         let vp_bb = self.context.append_basic_block(f, "vpchk");
-        let skip = self.context.append_basic_block(f, "clskip");
         self.builder
-            .build_conditional_branch(kp_ok, kp_bb, vp_bb)
+            .build_conditional_branch(inactive, clskip, kp_bb)
             .map_err(llvm_err)?;
+
         self.builder.position_at_end(kp_bb);
+        let kp_ne0 = self
+            .builder
+            .build_int_compare(IntPredicate::NE, kp, zero, "kpne0")
+            .map_err(llvm_err)?;
+        let kp_nem = self
+            .builder
+            .build_int_compare(IntPredicate::NE, kp, marker, "kpnem")
+            .map_err(llvm_err)?;
+        let kp_rc = self
+            .builder
+            .build_and(kp_ne0, kp_nem, "kprc")
+            .map_err(llvm_err)?;
+        let kp_dec = self.context.append_basic_block(f, "kpd");
+        self.builder
+            .build_conditional_branch(kp_rc, kp_dec, vp_bb)
+            .map_err(llvm_err)?;
+        self.builder.position_at_end(kp_dec);
         let _ = self.builder.build_call(
             rc_dec_fn,
             &[self
@@ -990,14 +1756,15 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_unconditional_branch(vp_bb)
             .map_err(llvm_err)?;
+
         self.builder.position_at_end(vp_bb);
         let vp_ok = self
             .builder
             .build_int_compare(IntPredicate::NE, vp, zero, "vpo")
             .map_err(llvm_err)?;
-        let vp_dec = self.context.append_basic_block(f, "vpdec");
+        let vp_dec = self.context.append_basic_block(f, "vpd");
         self.builder
-            .build_conditional_branch(vp_ok, vp_dec, skip)
+            .build_conditional_branch(vp_ok, vp_dec, clskip)
             .map_err(llvm_err)?;
         self.builder.position_at_end(vp_dec);
         let _ = self.builder.build_call(
@@ -1010,17 +1777,15 @@ impl<'ctx> CodeGen<'ctx> {
             "",
         );
         self.builder
-            .build_unconditional_branch(skip)
+            .build_unconditional_branch(clskip)
             .map_err(llvm_err)?;
-        self.builder.position_at_end(skip);
-        self.builder
-            .build_store(
-                si,
-                self.builder
-                    .build_int_add(siv, one, "ni")
-                    .map_err(llvm_err)?,
-            )
+
+        self.builder.position_at_end(clskip);
+        let nsi = self
+            .builder
+            .build_int_add(siv, one, "ni")
             .map_err(llvm_err)?;
+        self.builder.build_store(si, nsi).map_err(llvm_err)?;
         self.builder
             .build_unconditional_branch(clp)
             .map_err(llvm_err)?;
@@ -1037,7 +1802,6 @@ impl<'ctx> CodeGen<'ctx> {
         );
         self.builder.build_return(None).map_err(llvm_err)?;
 
-        let _ = cap;
         Ok(())
     }
 
@@ -1075,18 +1839,30 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value())
     }
 
-    /// Load key as fat struct from dense slot `i` (0..len-1).
+    /// Load key as fat struct from slot index; normalizes scalar marker kp 1 -> 0.
     pub(super) fn ht_key_fat_at(
         &self,
         data: PointerValue<'ctx>,
         slot: IntValue<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, String> {
+        let i64 = self.i64_ty();
         let ptr = self.ptr_ty();
         let str_ty = self.string_type;
+        let zero = i64.const_int(0, false);
+        let marker = i64.const_int(Self::HT_SCALAR_MARKER, false);
         let (kt, kp, _, _) = self.ht_load_slot(data, slot)?;
+        let is_mark = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, kp, marker, "mk")
+            .map_err(llvm_err)?;
+        let norm_kp = self
+            .builder
+            .build_select(is_mark, zero, kp, "nkp")
+            .map_err(llvm_err)?
+            .into_int_value();
         let kp_p = self
             .builder
-            .build_int_to_ptr(kp, ptr, "kp")
+            .build_int_to_ptr(norm_kp, ptr, "kp")
             .map_err(llvm_err)?;
         let u = str_ty.get_undef();
         let k1 = self
@@ -1099,7 +1875,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map(|v| v.as_basic_value_enum())
     }
 
-    /// Load value as fat struct from dense slot `i`.
+    /// Load value as fat struct from slot index.
     pub(super) fn ht_val_fat_at(
         &self,
         data: PointerValue<'ctx>,
