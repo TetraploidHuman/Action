@@ -240,7 +240,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_conditional_branch(slc_ci_cond, slc_h0_ci_body, slc_h0_done);
         self.builder.position_at_end(slc_h0_ci_body);
-        let slc_rc_inc_fn = self.module.get_function("action_rc_inc").unwrap();
+        let slc_str_rc_inc_fn = self.module.get_function("action_string_rc_inc").unwrap();
         let slc_ci_ep = unsafe {
             self.builder
                 .build_gep(self.string_type, slc_new_eb, &[slc_ci], "ci_ep")
@@ -251,14 +251,9 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(self.string_type, slc_ci_ep, "ci_ev")
             .map_err(llvm_err)?
             .into_struct_value();
-        let slc_ci_ed = self
-            .builder
-            .build_extract_value(slc_ci_ev, 1, "ci_ed")
-            .map_err(llvm_err)?
-            .into_pointer_value();
         let _ = self
             .builder
-            .build_call(slc_rc_inc_fn, &[slc_ci_ed.into()], "")
+            .build_call(slc_str_rc_inc_fn, &[slc_ci_ev.into()], "")
             .map_err(llvm_err)?;
         let slc_ci_next = self
             .builder
@@ -391,15 +386,10 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?
             .try_as_basic_value()
             .unwrap_basic();
-        let slc_ev_data = self
-            .builder
-            .build_extract_value(slc_ev.into_struct_value(), 1, "ev_data")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let slc_rc_inc_fn2 = self.module.get_function("action_rc_inc").unwrap();
+        let slc_str_rc_inc_fn2 = self.module.get_function("action_string_rc_inc").unwrap();
         let _ = self
             .builder
-            .build_call(slc_rc_inc_fn2, &[slc_ev_data.into()], "")
+            .build_call(slc_str_rc_inc_fn2, &[slc_ev.into_struct_value().into()], "")
             .map_err(llvm_err)?;
         let slc_cur = self
             .builder
@@ -1411,15 +1401,10 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(self.string_type, lrm_rm_ep, "rm_ev")
             .map_err(llvm_err)?
             .into_struct_value();
-        let lrm_rm_ed = self
-            .builder
-            .build_extract_value(lrm_rm_ev, 1, "rm_ed")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let lrm_rc_dec_fn = self.module.get_function("action_rc_dec").unwrap();
+        let lrm_str_rc_dec_fn = self.module.get_function("action_string_rc_dec").unwrap();
         let _ = self
             .builder
-            .build_call(lrm_rc_dec_fn, &[lrm_rm_ed.into()], "")
+            .build_call(lrm_str_rc_dec_fn, &[lrm_rm_ev.into()], "")
             .map_err(llvm_err)?;
         // Shift elements [idx+1..count-1] left by 1
         let lrm_si_val = self
@@ -2357,14 +2342,10 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(string_ty, pl_el_p, "el_ev")
             .map_err(llvm_err)?
             .into_struct_value();
-        let pl_el_dp = self
-            .builder
-            .build_extract_value(pl_el_ev, 1, "el_dp")
-            .map_err(llvm_err)?
-            .into_pointer_value();
+        let pl_str_rc_inc_fn = self.module.get_function("action_string_rc_inc").unwrap();
         let _ = self
             .builder
-            .build_call(pl_rc_inc_fn, &[pl_el_dp.into()], "")
+            .build_call(pl_str_rc_inc_fn, &[pl_el_ev.into()], "")
             .map_err(llvm_err)?;
         let pl_rc_next = self
             .builder
@@ -2434,14 +2415,9 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_load(string_ty, pl_fb_ep, "fb_ev")
             .map_err(llvm_err)?;
-        let pl_fb_ed = self
-            .builder
-            .build_extract_value(pl_fb_ev.into_struct_value(), 1, "fb_ed")
-            .map_err(llvm_err)?
-            .into_pointer_value();
         let _ = self
             .builder
-            .build_call(pl_rc_inc_fn, &[pl_fb_ed.into()], "")
+            .build_call(pl_str_rc_inc_fn, &[pl_fb_ev.into_struct_value().into()], "")
             .map_err(llvm_err)?;
         let pl_fb_cur = self
             .builder
@@ -3382,47 +3358,15 @@ impl<'ctx> CodeGen<'ctx> {
             .basic()
             .ok_or("get failed")?
             .into_struct_value();
-        let lio_etag = self
+        let lio_str_eq_fn = self.module.get_function("action_string_eq").unwrap();
+        let lio_eq_cc = self
             .builder
-            .build_extract_value(lio_ev, 0, "etag")
-            .map_err(llvm_err)?
+            .build_call(lio_str_eq_fn, &[lio_ev.into(), lio_tgt.into()], "eq")
+            .map_err(llvm_err)?;
+        let lio_match = lio_eq_cc
+            .try_as_basic_value()
+            .unwrap_basic()
             .into_int_value();
-        let lio_ttag = self
-            .builder
-            .build_extract_value(lio_tgt, 0, "ttag")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let lio_teq = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, lio_etag, lio_ttag, "teq")
-            .map_err(llvm_err)?;
-        let lio_eptr = self
-            .builder
-            .build_extract_value(lio_ev, 1, "eptr")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let lio_tptr = self
-            .builder
-            .build_extract_value(lio_tgt, 1, "tptr")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let lio_ptr_match = self
-            .builder
-            .build_int_compare(
-                IntPredicate::EQ,
-                self.builder
-                    .build_ptr_to_int(lio_eptr, i64, "")
-                    .map_err(llvm_err)?,
-                self.builder
-                    .build_ptr_to_int(lio_tptr, i64, "")
-                    .map_err(llvm_err)?,
-                "scm",
-            )
-            .map_err(llvm_err)?;
-        let lio_match = self
-            .builder
-            .build_and(lio_teq, lio_ptr_match, "match")
-            .map_err(llvm_err)?;
         let lio_ret_match = self.context.append_basic_block(lio_fn, "ret_match");
         let lio_next = self.context.append_basic_block(lio_fn, "next");
         let _ = self

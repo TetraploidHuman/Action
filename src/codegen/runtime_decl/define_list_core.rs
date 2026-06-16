@@ -4071,7 +4071,8 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self.builder.build_return(Some(&fw_res));
 
         // ---- action_list_fold_walk_rec / action_list_fold_walk ----
-        let fold_fn_ty = self.string_type.fn_type(&[i64.into(), i64.into()], false);
+        // Int accumulator fast path: (i64, i64) -> i64 direct call, no fat-struct load/return.
+        let fold_fn_ty = i64.fn_type(&[i64.into(), i64.into()], false);
         let fd_rec_fn = self.module.add_function(
             "action_list_fold_walk_rec",
             void.fn_type(&[ptr.into(), i64.into(), ptr.into(), ptr.into()], false),
@@ -4223,14 +4224,9 @@ impl<'ctx> CodeGen<'ctx> {
                 )
                 .map_err(llvm_err)?
         };
-        let fdr_elem = self
-            .builder
-            .build_load(self.string_type, fdr_ep, "fdr_elem")
-            .map_err(llvm_err)?
-            .into_struct_value();
         let fdr_elem_tag = self
             .builder
-            .build_extract_value(fdr_elem, 0, "fdr_etag")
+            .build_load(i64, fdr_ep, "fdr_etag")
             .map_err(llvm_err)?
             .into_int_value();
         let fdr_cur_acc = self
@@ -4238,7 +4234,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(i64, fdr_acc, "fdr_acc")
             .map_err(llvm_err)?
             .into_int_value();
-        let fdr_folded = self
+        let fdr_new_acc = self
             .builder
             .build_indirect_call(
                 fold_fn_ty,
@@ -4246,19 +4242,11 @@ impl<'ctx> CodeGen<'ctx> {
                 &[fdr_cur_acc.into(), fdr_elem_tag.into()],
                 "fdr_folded",
             )
-            .map_err(llvm_err)?;
-        let fdr_folded_bv = fdr_folded
+            .map_err(llvm_err)?
             .try_as_basic_value()
             .basic()
-            .ok_or("fold_walk indirect call failed")?;
-        let fdr_new_acc = if fdr_folded_bv.is_struct_value() {
-            self.builder
-                .build_extract_value(fdr_folded_bv.into_struct_value(), 0, "fdr_na")
-                .map_err(llvm_err)?
-                .into_int_value()
-        } else {
-            fdr_folded_bv.into_int_value()
-        };
+            .ok_or("fold_walk indirect call failed")?
+            .into_int_value();
         self.builder
             .build_store(fdr_acc, fdr_new_acc)
             .map_err(llvm_err)?;

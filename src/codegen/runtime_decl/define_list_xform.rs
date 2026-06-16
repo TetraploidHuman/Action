@@ -460,14 +460,10 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(self.string_type, lt_ep, "ev")
             .map_err(llvm_err)?
             .into_struct_value();
-        let lt_ed = self
-            .builder
-            .build_extract_value(lt_ev, 1, "ed")
-            .map_err(llvm_err)?
-            .into_pointer_value();
+        let lt_str_rc_dec_fn = self.module.get_function("action_string_rc_dec").unwrap();
         let _ = self
             .builder
-            .build_call(lt_rc_dec_fn, &[lt_ed.into()], "")
+            .build_call(lt_str_rc_dec_fn, &[lt_ev.into()], "")
             .map_err(llvm_err)?;
         let lt_di_next = self
             .builder
@@ -576,14 +572,10 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(self.string_type, lt_nl_ep, "nl_ev")
             .map_err(llvm_err)?
             .into_struct_value();
-        let lt_nl_ed = self
-            .builder
-            .build_extract_value(lt_nl_ev, 1, "nl_ed")
-            .map_err(llvm_err)?
-            .into_pointer_value();
+        let lt_str_rc_inc_fn = self.module.get_function("action_string_rc_inc").unwrap();
         let _ = self
             .builder
-            .build_call(lt_rc_inc_fn, &[lt_nl_ed.into()], "")
+            .build_call(lt_str_rc_inc_fn, &[lt_nl_ev.into()], "")
             .map_err(llvm_err)?;
         let lt_ci_next = self
             .builder
@@ -691,15 +683,10 @@ impl<'ctx> CodeGen<'ctx> {
             .try_as_basic_value()
             .basic()
             .ok_or("get failed")?;
-        let lt_fv_data = self
-            .builder
-            .build_extract_value(lt_fv.into_struct_value(), 1, "fv_data")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let lt_rc_inc_fn2 = self.module.get_function("action_rc_inc").unwrap();
+        let lt_str_rc_inc_fn2 = self.module.get_function("action_string_rc_inc").unwrap();
         let _ = self
             .builder
-            .build_call(lt_rc_inc_fn2, &[lt_fv_data.into()], "")
+            .build_call(lt_str_rc_inc_fn2, &[lt_fv.into_struct_value().into()], "")
             .map_err(llvm_err)?;
         let lt_push_fn = self.module.get_function("action_list_push").unwrap();
         let lt_cur = self
@@ -797,15 +784,10 @@ impl<'ctx> CodeGen<'ctx> {
             .try_as_basic_value()
             .basic()
             .ok_or("get failed")?;
-        let ld_fv_data = self
-            .builder
-            .build_extract_value(ld_fv.into_struct_value(), 1, "fv_data")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let ld_rc_inc_fn = self.module.get_function("action_rc_inc").unwrap();
+        let ld_str_rc_inc_fn = self.module.get_function("action_string_rc_inc").unwrap();
         let _ = self
             .builder
-            .build_call(ld_rc_inc_fn, &[ld_fv_data.into()], "")
+            .build_call(ld_str_rc_inc_fn, &[ld_fv.into_struct_value().into()], "")
             .map_err(llvm_err)?;
         let ld_cur = self
             .builder
