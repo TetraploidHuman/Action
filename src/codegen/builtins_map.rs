@@ -58,7 +58,7 @@ impl<'ctx> CodeGen<'ctx> {
         let str_ty = self.string_type;
 
         // Create new empty map (use input_len as capacity)
-        let cc = self.call_rt("action_list_create", &[input_len.into()])?;
+        let cc = self.call_rt("action_map_create", &[input_len.into()])?;
         let new_map_bv = cc
             .try_as_basic_value()
             .basic()
@@ -310,7 +310,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_add(input_len, i64.const_int(4, false), "mmv_cap")
             .map_err(llvm_err)?;
-        let cc = self.call_rt("action_list_create", &[cap.into()])?;
+        let cc = self.call_rt("action_map_create", &[cap.into()])?;
         let new_map_bv = cc
             .try_as_basic_value()
             .basic()

@@ -867,10 +867,8 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(self.list_type, sd_ra, "sd_rt")
             .map_err(llvm_err)?;
         let _ = self.builder.build_return(Some(&sd_rt));
-
         // ---- action_set_is_subset({ptr, i64, i64}, {ptr, i64, i64}) -> i1 ----
-        // Sets use map layout: each entry = 4×i64 (key_tag, key_ptr_i64, val_tag, val_ptr_i64).
-        // Compare only keys (offsets 0 and 1), skip values (offsets 2 and 3).
+        // Flat ht layout: len = entry count; each key via ht_key_fat_at + ht_contains.
         let ss_fn = self.module.add_function(
             "action_set_is_subset",
             self.context
@@ -880,273 +878,71 @@ impl<'ctx> CodeGen<'ctx> {
         );
         let ss_entry = self.context.append_basic_block(ss_fn, "entry");
         self.builder.position_at_end(ss_entry);
-        let a = ss_fn.get_first_param().unwrap().into_struct_value();
-        let b = ss_fn.get_nth_param(1).unwrap().into_struct_value();
-        let alen = self
+        let ss_a = ss_fn.get_first_param().unwrap().into_struct_value();
+        let ss_b = ss_fn.get_nth_param(1).unwrap().into_struct_value();
+        let ss_alen = self
             .builder
-            .build_extract_value(a, 1, "al")
+            .build_extract_value(ss_a, 1, "al")
             .map_err(llvm_err)?
             .into_int_value();
-        let blen = self
+        let ss_adata = self
             .builder
-            .build_extract_value(b, 1, "bl")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let two = i64.const_int(2, false);
-        let npairs_a = self
-            .builder
-            .build_int_signed_div(alen, two, "npairs_a")
-            .map_err(llvm_err)?;
-        let npairs_b = self
-            .builder
-            .build_int_signed_div(blen, two, "npairs_b")
-            .map_err(llvm_err)?;
-        let ss_get_fn = self.module.get_function("action_list_get").unwrap();
-
-        // Outer loop counter
-        let oi = self.builder.build_alloca(i64, "oi").map_err(llvm_err)?;
-        self.builder
-            .build_store(oi, i64.const_int(0, false))
-            .map_err(llvm_err)?;
-        let oloop = self.context.append_basic_block(ss_fn, "oloop");
-        let obody = self.context.append_basic_block(ss_fn, "obody");
-        let ofound = self.context.append_basic_block(ss_fn, "ofound");
-        let oinc = self.context.append_basic_block(ss_fn, "oinc");
-        let rtrue = self.context.append_basic_block(ss_fn, "rtrue");
-        let rfalse = self.context.append_basic_block(ss_fn, "rfalse");
-        let _ = self.builder.build_unconditional_branch(oloop);
-
-        // Outer loop
-        self.builder.position_at_end(oloop);
-        let oiv = self
-            .builder
-            .build_load(i64, oi, "oiv")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let ocond = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, oiv, npairs_a, "ocond")
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_conditional_branch(ocond, obody, rtrue);
-
-        // Outer body: load A key at index oiv*2 (tree-based map: keys at even indices)
-        self.builder.position_at_end(obody);
-        let a_kidx = self
-            .builder
-            .build_int_mul(oiv, i64.const_int(2, false), "a_kidx")
-            .map_err(llvm_err)?;
-        let a_key = self
-            .builder
-            .build_call(ss_get_fn, &[a.into(), a_kidx.into()], "a_key")
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .unwrap_basic()
-            .into_struct_value();
-        let a_tag = self
-            .builder
-            .build_extract_value(a_key, 0, "a_tag")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let a_ptr = self
-            .builder
-            .build_extract_value(a_key, 1, "a_ptr")
+            .build_extract_value(ss_a, 0, "ad")
             .map_err(llvm_err)?
             .into_pointer_value();
-        let a_ptr_i64 = self
-            .builder
-            .build_ptr_to_int(a_ptr, i64, "a_pi")
-            .map_err(llvm_err)?;
-        let a_is_null = self
-            .builder
-            .build_int_compare(
-                IntPredicate::EQ,
-                a_ptr_i64,
-                i64.const_int(0, false),
-                "a_is_null",
-            )
-            .map_err(llvm_err)?;
-
-        // Inner loop counter
-        let ij = self.builder.build_alloca(i64, "ij").map_err(llvm_err)?;
+        let ss_ht_contains = self.module.get_function("action_ht_contains").unwrap();
+        let ss_i = self.builder.build_alloca(i64, "ss_i").map_err(llvm_err)?;
         self.builder
-            .build_store(ij, i64.const_int(0, false))
+            .build_store(ss_i, i64.const_int(0, false))
             .map_err(llvm_err)?;
-        let iloop = self.context.append_basic_block(ss_fn, "iloop");
-        let ibody = self.context.append_basic_block(ss_fn, "ibody");
-        let inext = self.context.append_basic_block(ss_fn, "inext");
-        let inotfound = self.context.append_basic_block(ss_fn, "inotfound");
-        let _ = self.builder.build_unconditional_branch(iloop);
-
-        // Inner loop
-        self.builder.position_at_end(iloop);
-        let ijv = self
+        let ss_loop = self.context.append_basic_block(ss_fn, "loop");
+        let ss_body = self.context.append_basic_block(ss_fn, "body");
+        let ss_fail = self.context.append_basic_block(ss_fn, "fail");
+        let ss_ok = self.context.append_basic_block(ss_fn, "ok");
+        let _ = self.builder.build_unconditional_branch(ss_loop);
+        self.builder.position_at_end(ss_loop);
+        let ss_iv = self
             .builder
-            .build_load(i64, ij, "ijv")
+            .build_load(i64, ss_i, "iv")
             .map_err(llvm_err)?
             .into_int_value();
-        let icond = self
+        let ss_cond = self
             .builder
-            .build_int_compare(IntPredicate::SLT, ijv, npairs_b, "icond")
+            .build_int_compare(IntPredicate::SLT, ss_iv, ss_alen, "cond")
             .map_err(llvm_err)?;
         let _ = self
             .builder
-            .build_conditional_branch(icond, ibody, inotfound);
-
-        // Inner body: load B key at index ijv*2, compare with A key
-        self.builder.position_at_end(ibody);
-        let b_kidx = self
-            .builder
-            .build_int_mul(ijv, i64.const_int(2, false), "b_kidx")
-            .map_err(llvm_err)?;
-        let b_key = self
-            .builder
-            .build_call(ss_get_fn, &[b.into(), b_kidx.into()], "b_key")
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .unwrap_basic()
-            .into_struct_value();
-        let b_tag = self
-            .builder
-            .build_extract_value(b_key, 0, "b_tag")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let b_ptr = self
-            .builder
-            .build_extract_value(b_key, 1, "b_ptr")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let b_ptr_i64 = self
-            .builder
-            .build_ptr_to_int(b_ptr, i64, "b_pi")
-            .map_err(llvm_err)?;
-        let tag_eq = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, a_tag, b_tag, "tag_eq")
-            .map_err(llvm_err)?;
-        let icontent = self.context.append_basic_block(ss_fn, "icontent");
-        let _ = self
-            .builder
-            .build_conditional_branch(tag_eq, icontent, inext);
-
-        // Tags match: check pointer for null vs content
-        self.builder.position_at_end(icontent);
-        let b_is_null = self
-            .builder
-            .build_int_compare(
-                IntPredicate::EQ,
-                b_ptr_i64,
-                i64.const_int(0, false),
-                "b_is_null",
-            )
-            .map_err(llvm_err)?;
-        let both_null = self
-            .builder
-            .build_and(a_is_null, b_is_null, "both_null")
-            .map_err(llvm_err)?;
-        let ifound_bb = self.context.append_basic_block(ss_fn, "ifound_bb");
-        let istr_bb = self.context.append_basic_block(ss_fn, "istr_bb");
-        let _ = self
-            .builder
-            .build_conditional_branch(both_null, ifound_bb, istr_bb);
-        // Both null: int/None match
-        self.builder.position_at_end(ifound_bb);
-        let _ = self.builder.build_unconditional_branch(ofound);
-        // At least one pointer non-null: both must be non-null for string compare
-        self.builder.position_at_end(istr_bb);
-        let a_nn = self
-            .builder
-            .build_not(a_is_null, "a_nn")
-            .map_err(llvm_err)?;
-        let b_nn = self
-            .builder
-            .build_not(b_is_null, "b_nn")
-            .map_err(llvm_err)?;
-        let both_nn = self
-            .builder
-            .build_and(a_nn, b_nn, "both_nn")
-            .map_err(llvm_err)?;
-        let istr_eq = self.context.append_basic_block(ss_fn, "istr_eq");
-        let _ = self
-            .builder
-            .build_conditional_branch(both_nn, istr_eq, inext);
-        // Build fat structs for string_eq call
-        self.builder.position_at_end(istr_eq);
-        let a_fat_undef = str_ty.get_undef();
-        let a_fat1 = self
-            .builder
-            .build_insert_value(a_fat_undef, a_tag, 0, "af1")
-            .map_err(llvm_err)?;
-        let a_ptr_val = self
-            .builder
-            .build_int_to_ptr(a_ptr_i64, ptr, "a_ptr")
-            .map_err(llvm_err)?;
-        let a_fat2 = self
-            .builder
-            .build_insert_value(a_fat1, a_ptr_val, 1, "af2")
-            .map_err(llvm_err)?;
-        let b_fat_undef = str_ty.get_undef();
-        let b_fat1 = self
-            .builder
-            .build_insert_value(b_fat_undef, b_tag, 0, "bf1")
-            .map_err(llvm_err)?;
-        let b_ptr_val = self
-            .builder
-            .build_int_to_ptr(b_ptr_i64, ptr, "b_ptr")
-            .map_err(llvm_err)?;
-        let b_fat2 = self
-            .builder
-            .build_insert_value(b_fat1, b_ptr_val, 1, "bf2")
-            .map_err(llvm_err)?;
-        let sseq_fn = self.module.get_function("action_string_eq").unwrap();
-        let sseq = self
+            .build_conditional_branch(ss_cond, ss_body, ss_ok);
+        self.builder.position_at_end(ss_body);
+        let ss_key = self.ht_key_fat_at(ss_adata, ss_iv)?;
+        let ss_cont = self
             .builder
             .build_call(
-                sseq_fn,
-                &[
-                    a_fat2.as_basic_value_enum().into(),
-                    b_fat2.as_basic_value_enum().into(),
-                ],
-                "sseq",
+                ss_ht_contains,
+                &[ss_b.into(), ss_key.into()],
+                "cont",
             )
             .map_err(llvm_err)?;
-        let seq_val = sseq.try_as_basic_value().unwrap_basic().into_int_value();
-        let istr_found = self.context.append_basic_block(ss_fn, "istr_found");
+        let ss_found = ss_cont
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_int_value();
+        let ss_next = self.context.append_basic_block(ss_fn, "next");
         let _ = self
             .builder
-            .build_conditional_branch(seq_val, istr_found, inext);
-        self.builder.position_at_end(istr_found);
-        let _ = self.builder.build_unconditional_branch(ofound);
-
-        // Increment inner loop
-        self.builder.position_at_end(inext);
-        let nij = self
+            .build_conditional_branch(ss_found, ss_next, ss_fail);
+        self.builder.position_at_end(ss_next);
+        let ss_inc = self
             .builder
-            .build_int_add(ijv, i64.const_int(1, false), "nij")
+            .build_int_add(ss_iv, i64.const_int(1, false), "inc")
             .map_err(llvm_err)?;
-        self.builder.build_store(ij, nij).map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(iloop);
-
-        // Element NOT found in B
-        self.builder.position_at_end(inotfound);
-        let _ = self.builder.build_unconditional_branch(rfalse);
-
-        // Element found in B: increment outer loop
-        self.builder.position_at_end(ofound);
-        let _ = self.builder.build_unconditional_branch(oinc);
-        self.builder.position_at_end(oinc);
-        let noi = self
-            .builder
-            .build_int_add(oiv, i64.const_int(1, false), "noi")
-            .map_err(llvm_err)?;
-        self.builder.build_store(oi, noi).map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(oloop);
-
-        // Results
-        self.builder.position_at_end(rfalse);
+        self.builder.build_store(ss_i, ss_inc).map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(ss_loop);
+        self.builder.position_at_end(ss_fail);
         let _ = self
             .builder
             .build_return(Some(&self.context.bool_type().const_int(0, false)));
-        self.builder.position_at_end(rtrue);
+        self.builder.position_at_end(ss_ok);
         let _ = self
             .builder
             .build_return(Some(&self.context.bool_type().const_int(1, false)));

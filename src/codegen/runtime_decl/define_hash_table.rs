@@ -18,7 +18,6 @@ impl<'ctx> CodeGen<'ctx> {
         let b1 = self.bool_ty();
         let zero = i64.const_int(0, false);
         let malloc_rc = self.module.get_function("action_malloc_rc").unwrap();
-        let realloc = self.module.get_function("realloc").unwrap();
         let memcpy = self.module.get_function("memcpy").unwrap();
         let seq_fn = self.module.get_function("action_string_eq").unwrap();
         let rc_dec = self.module.get_function("action_rc_dec").unwrap();
@@ -65,7 +64,7 @@ impl<'ctx> CodeGen<'ctx> {
             ))
             .map_err(llvm_err)?;
 
-        self.define_ht_insert(seq_fn, memcpy, realloc)?;
+        self.define_ht_insert(seq_fn, memcpy)?;
         self.define_ht_get_contains(seq_fn)?;
         self.define_ht_remove(seq_fn, memcpy)?;
         self.define_ht_rc_dec(rc_dec, free_fn)?;
@@ -414,7 +413,6 @@ impl<'ctx> CodeGen<'ctx> {
         &self,
         seq_fn: inkwell::values::FunctionValue<'ctx>,
         memcpy_fn: inkwell::values::FunctionValue<'ctx>,
-        realloc_fn: inkwell::values::FunctionValue<'ctx>,
     ) -> Result<(), String> {
         let i64 = self.i64_ty();
         let ptr = self.ptr_ty();
@@ -565,9 +563,8 @@ impl<'ctx> CodeGen<'ctx> {
         self.ht_store_slot(ad, len0, kt, kpi, vt, vpi)?;
         let nl = self.builder.build_int_add(len0, one, "nl").map_err(llvm_err)?;
         let rr = self.ht_pack(ad, nl, ac)?;
-        self.builder.build_return(Some(&rr));
+        self.builder.build_return(Some(&rr)).map_err(llvm_err)?;
 
-        let _ = memcpy_fn;
         Ok(())
     }
 

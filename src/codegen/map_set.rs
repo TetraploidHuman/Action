@@ -295,47 +295,9 @@ impl<'ctx> CodeGen<'ctx> {
         };
 
         let set_loaded = self.load_list(set_ptr)?;
-        // Check if element already exists
-        let contains_fn = self
-            .module
-            .get_function("action_map_contains")
-            .ok_or("action_map_contains not found")?;
-        let cc = self
-            .builder
-            .build_call(
-                contains_fn,
-                &[set_loaded.into(), elem_fat.into()],
-                "contains",
-            )
-            .map_err(llvm_err)?;
-        let contains = cc
-            .try_as_basic_value()
-            .basic()
-            .ok_or("contains failed")?
-            .into_int_value();
-        // If not contained, push the element via action_list_push.
-        // NB: action_map_insert expects (map, key, value) and storing a null value
-        // corrupts the heap. Use action_list_push which handles a single fat struct.
-        let current_fn = self
-            .builder
-            .get_insert_block()
-            .and_then(|b| b.get_parent())
-            .ok_or("not in function")?;
-        let result_alloca = self
-            .builder
-            .build_alloca(self.list_type, "set_insert_result")
-            .map_err(llvm_err)?;
-        let insert_bb = self.context.append_basic_block(current_fn, "si_insert");
-        let skip_bb = self.context.append_basic_block(current_fn, "si_skip");
-        let merge_bb = self.context.append_basic_block(current_fn, "si_merge");
-        let _ = self
-            .builder
-            .build_conditional_branch(contains, skip_bb, insert_bb);
-        self.builder.position_at_end(insert_bb);
-        let set_loaded2 = self.load_list(set_ptr)?;
-        let cc2 = match self.call_rt(
+        let cc = match self.call_rt(
             "action_map_insert",
-            &[set_loaded2.into(), elem_fat.into(), null_val.into()],
+            &[set_loaded.into(), elem_fat.into(), null_val.into()],
         ) {
             Ok(v) => v,
             Err(e) => {
@@ -343,21 +305,18 @@ impl<'ctx> CodeGen<'ctx> {
                 return Err(e);
             }
         };
-        let new_set = cc2
+        let new_set = cc
             .try_as_basic_value()
             .basic()
             .ok_or("map_insert failed")?;
-        self.builder
-            .build_store(result_alloca, new_set)
+        let alloca = self
+            .builder
+            .build_alloca(self.list_type, "set_inserted")
             .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(merge_bb);
-        self.builder.position_at_end(skip_bb);
         self.builder
-            .build_store(result_alloca, set_loaded)
+            .build_store(alloca, new_set)
             .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(merge_bb);
-        self.builder.position_at_end(merge_bb);
-        Ok(TypedValue::Set(result_alloca))
+        Ok(TypedValue::Set(alloca))
     }
 
     /// set.remove(elem) — receiver alloca is pre-compiled to avoid double compilation.
