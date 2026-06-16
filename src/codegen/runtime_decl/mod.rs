@@ -41,8 +41,8 @@ impl<'ctx> CodeGen<'ctx> {
 
     fn link_runtime_bitcode(&self, bitcode: &[u8]) -> Result<(), String> {
         let buffer = MemoryBuffer::create_from_memory_range_copy(bitcode, "action_runtime.bc");
-        let runtime_mod = Module::parse_bitcode_from_buffer(&buffer, self.context)
-            .map_err(|e| e.to_string())?;
+        let runtime_mod =
+            Module::parse_bitcode_from_buffer(&buffer, self.context).map_err(|e| e.to_string())?;
         self.module
             .link_in_module(runtime_mod)
             .map_err(|e| e.to_string())
@@ -141,6 +141,11 @@ impl<'ctx> CodeGen<'ctx> {
         let _memcpy_fn = self.module.add_function(
             "memcpy",
             ptr.fn_type(&[ptr.into(), ptr.into(), i64.into()], false),
+            None,
+        );
+        let _memset_fn = self.module.add_function(
+            "memset",
+            ptr.fn_type(&[ptr.into(), i32.into(), i64.into()], false),
             None,
         );
         let _pow_fn =
