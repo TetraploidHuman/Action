@@ -467,10 +467,16 @@ fn emit_output(
                 "linux-arm64" | "aarch64-unknown-linux-gnu" => "aarch64-linux-gnu-gcc",
                 _ => "cc",
             };
-            let status = std::process::Command::new(linker)
-                .arg("-o")
-                .arg(&exe_path)
-                .arg(&obj_path)
+            let mut link_cmd = std::process::Command::new(linker);
+            link_cmd.arg("-o").arg(&exe_path).arg(&obj_path);
+            // Runtime math helpers (pow, sin, ...) are declared as external libc symbols.
+            if !matches!(
+                target,
+                "windows-x64" | "x86_64-pc-windows-gnu" | "wasm" | "wasm32-unknown-unknown"
+            ) {
+                link_cmd.arg("-lm");
+            }
+            let status = link_cmd
                 .status()
                 .map_err(|e| format!("Failed to invoke linker '{}': {}", linker, e))?;
             if !status.success() {

@@ -438,6 +438,8 @@ impl<'ctx> CodeGen<'ctx> {
         let li_normal = self.context.append_basic_block(li_fn, "normal");
         let li_h0 = self.context.append_basic_block(li_fn, "h0");
         let li_h0_cow = self.context.append_basic_block(li_fn, "h0_cow");
+        let li_h0_cow_copy = self.context.append_basic_block(li_fn, "h0_cow_copy");
+        let li_h0_ready = self.context.append_basic_block(li_fn, "h0_ready");
         let li_h0_shift_loop = self.context.append_basic_block(li_fn, "h0_shift_loop");
         let li_h0_shift_body = self.context.append_basic_block(li_fn, "h0_shift_body");
         let li_h0_shift_done = self.context.append_basic_block(li_fn, "h0_shift_done");
@@ -585,7 +587,11 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(IntPredicate::SGT, li_rc_val, one, "need_cow")
             .map_err(llvm_err)?;
-        // Use select to choose leaf pointer: if rc>1, allocate and memcpy; else use original
+        let _ = self
+            .builder
+            .build_conditional_branch(li_need_cow, li_h0_cow_copy, li_h0_ready);
+        // CoW: copy leaf only when shared (rc > 1)
+        self.builder.position_at_end(li_h0_cow_copy);
         let leaf_ty = self.leaf_type;
         let leaf_size = leaf_ty.size_of().ok_or("leaf size")?;
         let li_cow_leaf = self
@@ -604,11 +610,12 @@ impl<'ctx> CodeGen<'ctx> {
                 "",
             )
             .map_err(llvm_err)?;
-        let li_leaf = self
-            .builder
-            .build_select(li_need_cow, li_cow_leaf, li_node, "leaf")
-            .map_err(llvm_err)?
-            .into_pointer_value();
+        let _ = self.builder.build_unconditional_branch(li_h0_ready);
+        // Unique reference (rc == 1): mutate leaf in place; shared: use copied leaf
+        self.builder.position_at_end(li_h0_ready);
+        let li_leaf_phi = self.builder.build_phi(ptr, "leaf_phi").map_err(llvm_err)?;
+        li_leaf_phi.add_incoming(&[(&li_node, li_h0_cow), (&li_cow_leaf, li_h0_cow_copy)]);
+        let li_leaf = li_leaf_phi.as_basic_value().into_pointer_value();
         let li_leaf2_i8 = self
             .builder
             .build_pointer_cast(li_leaf, ptr, "leaf2_i8")
@@ -811,6 +818,8 @@ impl<'ctx> CodeGen<'ctx> {
         let lrm_normal = self.context.append_basic_block(lrm_fn, "normal");
         let lrm_h0 = self.context.append_basic_block(lrm_fn, "h0");
         let lrm_h0_cow = self.context.append_basic_block(lrm_fn, "h0_cow");
+        let lrm_h0_cow_copy = self.context.append_basic_block(lrm_fn, "h0_cow_copy");
+        let lrm_h0_ready = self.context.append_basic_block(lrm_fn, "h0_ready");
         let lrm_h0_shift_loop = self.context.append_basic_block(lrm_fn, "h0_shift_loop");
         let lrm_h0_shift_body = self.context.append_basic_block(lrm_fn, "h0_shift_body");
         let lrm_h0_done = self.context.append_basic_block(lrm_fn, "h0_done");
@@ -942,6 +951,10 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(IntPredicate::SGT, lrm_rc_val, oner, "need_cow")
             .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(lrm_need_cow, lrm_h0_cow_copy, lrm_h0_ready);
+        self.builder.position_at_end(lrm_h0_cow_copy);
         let leaf_ty = self.leaf_type;
         let leaf_size = leaf_ty.size_of().ok_or("leaf size")?;
         let lrm_cow_leaf = self
@@ -960,11 +973,11 @@ impl<'ctx> CodeGen<'ctx> {
                 "",
             )
             .map_err(llvm_err)?;
-        let lrm_leaf = self
-            .builder
-            .build_select(lrm_need_cow, lrm_cow_leaf, lrm_node, "leaf")
-            .map_err(llvm_err)?
-            .into_pointer_value();
+        let _ = self.builder.build_unconditional_branch(lrm_h0_ready);
+        self.builder.position_at_end(lrm_h0_ready);
+        let lrm_leaf_phi = self.builder.build_phi(ptr, "leaf_phi").map_err(llvm_err)?;
+        lrm_leaf_phi.add_incoming(&[(&lrm_node, lrm_h0_cow), (&lrm_cow_leaf, lrm_h0_cow_copy)]);
+        let lrm_leaf = lrm_leaf_phi.as_basic_value().into_pointer_value();
         // RC-dec the removed element's data_ptr
         let lrm_leaf2_i8 = self
             .builder

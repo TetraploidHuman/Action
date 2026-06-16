@@ -2427,156 +2427,340 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
         let _ = self.builder.build_return(Some(&len));
 
+        // ---- action_list_contains_walk(ptr node, i64 height, {i64,ptr} key) -> i1 ----
+        // In-order B-tree scan: reads leaf slots directly instead of index-based get().
+        let lc_walk_fn = self.module.add_function(
+            "action_list_contains_walk",
+            b1.fn_type(&[ptr.into(), i64.into(), self.string_type.into()], false),
+            None,
+        );
+        let lw_entry = self.context.append_basic_block(lc_walk_fn, "entry");
+        let lw_leaf_hdr = self.context.append_basic_block(lc_walk_fn, "leaf_hdr");
+        let lw_leaf_bdy = self.context.append_basic_block(lc_walk_fn, "leaf_bdy");
+        let lw_leaf_next = self.context.append_basic_block(lc_walk_fn, "leaf_next");
+        let lw_leaf_chk = self.context.append_basic_block(lc_walk_fn, "leaf_chk");
+        let lw_leaf_found = self.context.append_basic_block(lc_walk_fn, "leaf_found");
+        let lw_leaf_content = self.context.append_basic_block(lc_walk_fn, "leaf_content");
+        let lw_leaf_str_gate = self.context.append_basic_block(lc_walk_fn, "leaf_str_gate");
+        let lw_leaf_str_cmp = self.context.append_basic_block(lc_walk_fn, "leaf_str_cmp");
+        let lw_leaf_str_found = self.context.append_basic_block(lc_walk_fn, "leaf_str_found");
+        let lw_int_hdr = self.context.append_basic_block(lc_walk_fn, "int_hdr");
+        let lw_int_bdy = self.context.append_basic_block(lc_walk_fn, "int_bdy");
+        let lw_int_next = self.context.append_basic_block(lc_walk_fn, "int_next");
+        let lw_int_found = self.context.append_basic_block(lc_walk_fn, "int_found");
+        let lw_miss = self.context.append_basic_block(lc_walk_fn, "miss");
+        self.builder.position_at_end(lw_entry);
+        let lw_node = lc_walk_fn.get_first_param().unwrap().into_pointer_value();
+        let lw_height = lc_walk_fn.get_nth_param(1).unwrap().into_int_value();
+        let lw_key = lc_walk_fn.get_nth_param(2).unwrap().into_struct_value();
+        let lw_key_tag = self
+            .builder
+            .build_extract_value(lw_key, 0, "lw_ktag")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let lw_key_data = self
+            .builder
+            .build_extract_value(lw_key, 1, "lw_kdata")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let lw_is_leaf = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, lw_height, zero, "lw_is_leaf")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(lw_is_leaf, lw_leaf_hdr, lw_int_hdr);
+
+        // Leaf scan
+        self.builder.position_at_end(lw_leaf_hdr);
+        let lw_leaf_i8 = self
+            .builder
+            .build_pointer_cast(lw_node, ptr, "lw_leaf_i8")
+            .map_err(llvm_err)?;
+        let lw_count_raw = self
+            .builder
+            .build_load(i32, lw_leaf_i8, "lw_count_raw")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let lw_count = self
+            .builder
+            .build_int_z_extend(lw_count_raw, i64, "lw_count")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(lw_leaf_bdy);
+        self.builder.position_at_end(lw_leaf_bdy);
+        let lw_i = self.builder.build_phi(i64, "lw_i").map_err(llvm_err)?;
+        let lw_done_leaf = self
+            .builder
+            .build_int_compare(IntPredicate::SGE, lw_i.as_basic_value().into_int_value(), lw_count, "lw_done")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(lw_done_leaf, lw_miss, lw_leaf_chk);
+        self.builder.position_at_end(lw_leaf_chk);
+        let lw_eb = unsafe {
+            self.builder
+                .build_gep(i8, lw_leaf_i8, &[i64.const_int(8, false)], "lw_eb")
+                .map_err(llvm_err)?
+        };
+        let lw_ep = unsafe {
+            self.builder
+                .build_gep(
+                    self.string_type,
+                    lw_eb,
+                    &[lw_i.as_basic_value().into_int_value()],
+                    "lw_ep",
+                )
+                .map_err(llvm_err)?
+        };
+        let lw_elem = self
+            .builder
+            .build_load(self.string_type, lw_ep, "lw_elem")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let lw_elem_tag = self
+            .builder
+            .build_extract_value(lw_elem, 0, "lw_etag")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let lw_elem_data = self
+            .builder
+            .build_extract_value(lw_elem, 1, "lw_edata")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let lw_tag_eq = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, lw_elem_tag, lw_key_tag, "lw_teq")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(lw_tag_eq, lw_leaf_content, lw_leaf_next);
+        self.builder.position_at_end(lw_leaf_content);
+        let lw_null = self.ptr_ty().const_zero();
+        let lw_ed_null = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, lw_elem_data, lw_null, "lw_ed_null")
+            .map_err(llvm_err)?;
+        let lw_kd_null = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, lw_key_data, lw_null, "lw_kd_null")
+            .map_err(llvm_err)?;
+        let lw_both_null = self
+            .builder
+            .build_and(lw_ed_null, lw_kd_null, "lw_both_null")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(lw_both_null, lw_leaf_found, lw_leaf_str_gate);
+        self.builder.position_at_end(lw_leaf_str_gate);
+        let lw_ed_nn = self.builder.build_not(lw_ed_null, "lw_ed_nn").map_err(llvm_err)?;
+        let lw_kd_nn = self.builder.build_not(lw_kd_null, "lw_kd_nn").map_err(llvm_err)?;
+        let lw_both_nn = self
+            .builder
+            .build_and(lw_ed_nn, lw_kd_nn, "lw_both_nn")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(lw_both_nn, lw_leaf_str_cmp, lw_leaf_next);
+        self.builder.position_at_end(lw_leaf_str_cmp);
+        let lw_str_eq = self
+            .call_rt(
+                "action_string_eq",
+                &[
+                    lw_elem.as_basic_value_enum().into(),
+                    lw_key.as_basic_value_enum().into(),
+                ],
+            )?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_int_value();
+        let _ = self
+            .builder
+            .build_conditional_branch(lw_str_eq, lw_leaf_str_found, lw_leaf_next);
+        self.builder.position_at_end(lw_leaf_found);
+        let _ = self.builder.build_return(Some(&b1.const_int(1, false)));
+        self.builder.position_at_end(lw_leaf_str_found);
+        let _ = self.builder.build_return(Some(&b1.const_int(1, false)));
+        self.builder.position_at_end(lw_leaf_next);
+        let lw_next_i = self
+            .builder
+            .build_int_add(
+                lw_i.as_basic_value().into_int_value(),
+                i64.const_int(1, false),
+                "lw_ni",
+            )
+            .map_err(llvm_err)?;
+        let lw_leaf_next_bb = self.builder.get_insert_block().unwrap();
+        lw_i.add_incoming(&[(&zero, lw_leaf_hdr), (&lw_next_i, lw_leaf_next_bb)]);
+        let _ = self.builder.build_unconditional_branch(lw_leaf_bdy);
+
+        // Internal node: recurse into each child in order
+        self.builder.position_at_end(lw_int_hdr);
+        let lw_int_i8 = self
+            .builder
+            .build_pointer_cast(lw_node, ptr, "lw_int_i8")
+            .map_err(llvm_err)?;
+        let lw_child_count_raw = self
+            .builder
+            .build_load(i32, lw_int_i8, "lw_cc_raw")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let lw_child_count = self
+            .builder
+            .build_int_z_extend(lw_child_count_raw, i64, "lw_cc")
+            .map_err(llvm_err)?;
+        let lw_child_h = self
+            .builder
+            .build_int_sub(lw_height, i64.const_int(1, false), "lw_ch")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(lw_int_bdy);
+        self.builder.position_at_end(lw_int_bdy);
+        let lw_ci = self.builder.build_phi(i64, "lw_ci").map_err(llvm_err)?;
+        let lw_done_int = self
+            .builder
+            .build_int_compare(
+                IntPredicate::SGE,
+                lw_ci.as_basic_value().into_int_value(),
+                lw_child_count,
+                "lw_done_int",
+            )
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(lw_done_int, lw_miss, lw_int_found);
+        self.builder.position_at_end(lw_int_found);
+        let lw_children_base = unsafe {
+            self.builder
+                .build_gep(i8, lw_int_i8, &[i64.const_int(16, false)], "lw_cb")
+                .map_err(llvm_err)?
+        };
+        let lw_child_ep = unsafe {
+            self.builder
+                .build_gep(
+                    self.child_entry_type,
+                    lw_children_base,
+                    &[lw_ci.as_basic_value().into_int_value()],
+                    "lw_cep",
+                )
+                .map_err(llvm_err)?
+        };
+        let lw_child_entry = self
+            .builder
+            .build_load(self.child_entry_type, lw_child_ep, "lw_ce")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let lw_child_ptr = self
+            .builder
+            .build_extract_value(lw_child_entry, 0, "lw_cp")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let lw_child_hit = self
+            .builder
+            .build_call(
+                lc_walk_fn,
+                &[lw_child_ptr.into(), lw_child_h.into(), lw_key.into()],
+                "lw_hit",
+            )
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_int_value();
+        let _ = self
+            .builder
+            .build_conditional_branch(lw_child_hit, lw_leaf_found, lw_int_next);
+        self.builder.position_at_end(lw_int_next);
+        let lw_next_ci = self
+            .builder
+            .build_int_add(
+                lw_ci.as_basic_value().into_int_value(),
+                i64.const_int(1, false),
+                "lw_nci",
+            )
+            .map_err(llvm_err)?;
+        let lw_int_next_bb = self.builder.get_insert_block().unwrap();
+        lw_ci.add_incoming(&[(&zero, lw_int_hdr), (&lw_next_ci, lw_int_next_bb)]);
+        let _ = self.builder.build_unconditional_branch(lw_int_bdy);
+
+        self.builder.position_at_end(lw_miss);
+        let _ = self.builder.build_return(Some(&b1.const_int(0, false)));
+
         // ---- action_list_contains({ptr, i64, i64}, {i64, ptr}) -> i1 ----
         let lc_fn = self.module.add_function(
             "action_list_contains",
             b1.fn_type(&[self.list_type.into(), self.string_type.into()], false),
             None,
         );
-        let entry = self.context.append_basic_block(lc_fn, "entry");
-        self.builder.position_at_end(entry);
+        let lc_entry = self.context.append_basic_block(lc_fn, "entry");
+        let lc_concat = self.context.append_basic_block(lc_fn, "concat");
+        let lc_walk = self.context.append_basic_block(lc_fn, "walk");
+        self.builder.position_at_end(lc_entry);
         let lc_list = lc_fn.get_first_param().unwrap().into_struct_value();
-        let _lc_data = self
-            .builder
-            .build_extract_value(lc_list, 0, "lc_data")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let lc_len = self
-            .builder
-            .build_extract_value(lc_list, 1, "lc_len")
-            .map_err(llvm_err)?
-            .into_int_value();
         let lc_key = lc_fn.get_nth_param(1).unwrap().into_struct_value();
-        let lc_key_tag = self
+        let lc_node = self
             .builder
-            .build_extract_value(lc_key, 0, "lc_ktag")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let lc_key_data = self
-            .builder
-            .build_extract_value(lc_key, 1, "lc_kdata")
+            .build_extract_value(lc_list, 0, "lc_node")
             .map_err(llvm_err)?
             .into_pointer_value();
-        // Loop through elements
-        let lc_loop_bb = self.context.append_basic_block(lc_fn, "lc_loop");
-        let lc_done_bb = self.context.append_basic_block(lc_fn, "lc_done");
-        let _ = self.builder.build_unconditional_branch(lc_loop_bb);
-        self.builder.position_at_end(lc_loop_bb);
-        let lc_i = self.builder.build_phi(i64, "lc_i").map_err(llvm_err)?;
-        // Load element via action_list_get (tree-aware)
-        let lc_get_fn = self.module.get_function("action_list_get").unwrap();
-        let lc_get_cc = self
+        let lc_height = self
             .builder
-            .build_call(
-                lc_get_fn,
-                &[
-                    lc_list.into(),
-                    lc_i.as_basic_value().into_int_value().into(),
-                ],
-                "lc_get",
+            .build_extract_value(lc_list, 2, "lc_height")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let lc_is_concat = self
+            .builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                lc_height,
+                i64.const_int(-1i64 as u64, true),
+                "lc_is_concat",
             )
             .map_err(llvm_err)?;
-        let lc_elem = lc_get_cc.try_as_basic_value().basic().ok_or("get failed")?;
-        let lc_elem_ss = lc_elem.into_struct_value();
-        let lc_elem_tag = self
+        let _ = self
             .builder
-            .build_extract_value(lc_elem_ss, 0, "lc_etag")
+            .build_conditional_branch(lc_is_concat, lc_concat, lc_walk);
+        self.builder.position_at_end(lc_concat);
+        let lc_flatten_fn = self.module.get_function("action_list_flatten").unwrap();
+        let lc_flat = self
+            .builder
+            .build_call(lc_flatten_fn, &[lc_list.into()], "lc_flat")
             .map_err(llvm_err)?
-            .into_int_value();
-        let lc_elem_data = self
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_struct_value();
+        let lc_flat_node = self
             .builder
-            .build_extract_value(lc_elem_ss, 1, "lc_edata")
+            .build_extract_value(lc_flat, 0, "lc_flat_node")
             .map_err(llvm_err)?
             .into_pointer_value();
-        // Compare first field (value for ints, length for strings)
-        let tag_eq = self
+        let lc_flat_h = self
             .builder
-            .build_int_compare(IntPredicate::EQ, lc_elem_tag, lc_key_tag, "lc_teq")
-            .map_err(llvm_err)?;
-        let lc_next_bb = self.context.append_basic_block(lc_fn, "lc_next");
-        let lc_check_bb = self.context.append_basic_block(lc_fn, "lc_check");
-        let _ = self
+            .build_extract_value(lc_flat, 2, "lc_flat_h")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let lc_flat_hit = self
             .builder
-            .build_conditional_branch(tag_eq, lc_check_bb, lc_next_bb);
-        // Check if both data pointers are null (scalars) or need content comparison
-        self.builder.position_at_end(lc_check_bb);
-        let null_ptr = self.ptr_ty().const_zero();
-        let ed_null = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, lc_elem_data, null_ptr, "ed_null")
-            .map_err(llvm_err)?;
-        let kd_null = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, lc_key_data, null_ptr, "kd_null")
-            .map_err(llvm_err)?;
-        let both_null = self
-            .builder
-            .build_and(ed_null, kd_null, "both_null")
-            .map_err(llvm_err)?;
-        let lc_found_bb = self.context.append_basic_block(lc_fn, "lc_found");
-        let lc_content_bb = self.context.append_basic_block(lc_fn, "lc_content");
-        let _ = self
-            .builder
-            .build_conditional_branch(both_null, lc_found_bb, lc_content_bb);
-        self.builder.position_at_end(lc_found_bb);
-        let _ = self.builder.build_return(Some(&b1.const_int(1, false)));
-        // One or both pointers non-null: both must be non-null for string comparison
-        self.builder.position_at_end(lc_content_bb);
-        let ed_nn = self.builder.build_not(ed_null, "ed_nn").map_err(llvm_err)?;
-        let kd_nn = self.builder.build_not(kd_null, "kd_nn").map_err(llvm_err)?;
-        let both_non_null = self
-            .builder
-            .build_and(ed_nn, kd_nn, "both_nn")
-            .map_err(llvm_err)?;
-        let lc_str_check_bb = self.context.append_basic_block(lc_fn, "lc_str_check");
-        let _ = self
-            .builder
-            .build_conditional_branch(both_non_null, lc_str_check_bb, lc_next_bb);
-        // Compare string content
-        self.builder.position_at_end(lc_str_check_bb);
-        let str_eq_call = self.call_rt(
-            "action_string_eq",
-            &[
-                lc_elem_ss.as_basic_value_enum().into(),
-                lc_key.as_basic_value_enum().into(),
-            ],
-        )?;
-        let str_eq_val = str_eq_call
+            .build_call(
+                lc_walk_fn,
+                &[lc_flat_node.into(), lc_flat_h.into(), lc_key.into()],
+                "lc_flat_hit",
+            )
+            .map_err(llvm_err)?
             .try_as_basic_value()
             .unwrap_basic()
             .into_int_value();
-        let lc_str_found_bb = self.context.append_basic_block(lc_fn, "lc_str_found");
-        let _ = self
+        let _ = self.builder.build_return(Some(&lc_flat_hit));
+        self.builder.position_at_end(lc_walk);
+        let lc_hit = self
             .builder
-            .build_conditional_branch(str_eq_val, lc_str_found_bb, lc_next_bb);
-        self.builder.position_at_end(lc_str_found_bb);
-        let _ = self.builder.build_return(Some(&b1.const_int(1, false)));
-        self.builder.position_at_end(lc_next_bb);
-        let lc_next_i = self
-            .builder
-            .build_int_add(
-                lc_i.as_basic_value().into_int_value(),
-                i64.const_int(1, false),
-                "lc_ni",
+            .build_call(
+                lc_walk_fn,
+                &[lc_node.into(), lc_height.into(), lc_key.into()],
+                "lc_hit",
             )
-            .map_err(llvm_err)?;
-        let lc_done = self
-            .builder
-            .build_int_compare(IntPredicate::SGE, lc_next_i, lc_len, "lc_done")
-            .map_err(llvm_err)?;
-        let lc_next_block = self.builder.get_insert_block().unwrap();
-        lc_i.add_incoming(&[
-            (
-                &i64.const_int(0, false),
-                lc_fn.get_first_basic_block().unwrap(),
-            ),
-            (&lc_next_i, lc_next_block),
-        ]);
-        let _ = self
-            .builder
-            .build_conditional_branch(lc_done, lc_done_bb, lc_loop_bb);
-        self.builder.position_at_end(lc_done_bb);
-        let _ = self.builder.build_return(Some(&b1.const_int(0, false)));
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_int_value();
+        let _ = self.builder.build_return(Some(&lc_hit));
 
         Ok(())
     }

@@ -99,6 +99,29 @@ cd ~/Action && nix-shell --run "./benchmark.sh --iterations 3"
 
 **每次远端 push 后，AI 应主动在本地 `git pull`**，保持本地与 GitHub 一致。
 
+## GitHub 访问（FlClash 代理）
+
+远端访问 GitHub 不稳定时，走本机 **FlClash** 混合代理端口 **7890**（须先确认 FlClash 已启动且节点可用，否则会出现 `502 Bad Gateway` / TLS 错误）。
+
+`~/Action` 仓库已配置 **仅本仓库** 的 git 代理（不修改全局 `git config`）：
+
+```bash
+# 查看
+cd ~/Action && git config --local --get http.proxy
+
+# push（任选其一）
+cd ~/Action && ./scripts/git-push.sh origin main
+# 或
+cd ~/Action && http_proxy=http://127.0.0.1:7890 https_proxy=http://127.0.0.1:7890 git push origin main
+```
+
+推送前自检代理是否通：
+
+```bash
+curl -x http://127.0.0.1:7890 -I --connect-timeout 5 https://api.github.com
+# 应返回 HTTP/2 200 或 HTTP/1.1 200/301，而非 000 或 502
+```
+
 ## 冲突与优先级
 
 - 权威顺序：**远端工作区 > GitHub > 本地工作区**
