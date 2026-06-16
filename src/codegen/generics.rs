@@ -91,10 +91,8 @@ impl<'ctx> CodeGen<'ctx> {
             .collect::<Result<Vec<_>, String>>()?;
         let mangled_name = format!("{}_{}", name, type_suffix.join("_"));
 
-        // Generate the monomorphized function if not already done
-        if self.module.get_function(&mangled_name).is_none() {
-            self.compile_monomorphized_fn(stmt, &mangled_name, &type_map)?;
-        }
+        // Generate the monomorphized function if not already done (cached in monomorphized_fns)
+        self.compile_monomorphized_fn(stmt, &mangled_name, &type_map)?;
 
         // Build the call
         let fn_val = self
@@ -130,12 +128,17 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Generate a monomorphized version of a generic function with concrete types.
+    /// No-op when this instantiation was already compiled (or is being compiled).
     pub(super) fn compile_monomorphized_fn(
         &mut self,
         stmt: &Stmt,
         mangled_name: &str,
         type_map: &HashMap<String, Type>,
     ) -> Result<(), String> {
+        if !self.monomorphized_fns.insert(mangled_name.to_string()) {
+            return Ok(());
+        }
+
         let Stmt::Fun {
             params,
             return_type,

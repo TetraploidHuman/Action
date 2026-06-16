@@ -1,6 +1,14 @@
 // Submodule: runtime_decl
 
 use super::{llvm_err, CodeGen};
+use inkwell::memory_buffer::MemoryBuffer;
+use inkwell::module::Module;
+use std::sync::OnceLock;
+
+/// Process-wide cache of LLVM bitcode for the runtime module (List/Map/String/RC etc.).
+/// Populated on the first `define_runtime` call; subsequent compilations link this in
+/// instead of regenerating thousands of lines of IR.
+static RUNTIME_BITCODE: OnceLock<Vec<u8>> = OnceLock::new();
 
 impl<'ctx> CodeGen<'ctx> {
     /// Create a global string constant in the LLVM module.
@@ -18,6 +26,29 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     pub(super) fn define_runtime(&self) -> Result<(), String> {
+        if let Some(bitcode) = RUNTIME_BITCODE.get() {
+            return self.link_runtime_bitcode(bitcode);
+        }
+
+        self.define_runtime_generate()?;
+
+        if RUNTIME_BITCODE.get().is_none() {
+            let mem = self.module.write_bitcode_to_memory();
+            let _ = RUNTIME_BITCODE.set(mem.as_slice().to_vec());
+        }
+        Ok(())
+    }
+
+    fn link_runtime_bitcode(&self, bitcode: &[u8]) -> Result<(), String> {
+        let buffer = MemoryBuffer::create_from_memory_range_copy(bitcode, "action_runtime.bc");
+        let runtime_mod = Module::parse_bitcode_from_buffer(&buffer, self.context)
+            .map_err(|e| e.to_string())?;
+        self.module
+            .link_in_module(runtime_mod)
+            .map_err(|e| e.to_string())
+    }
+
+    fn define_runtime_generate(&self) -> Result<(), String> {
         #![allow(unused_macros)]
         let i64 = self.i64_ty();
         let f64 = self.f64_ty();

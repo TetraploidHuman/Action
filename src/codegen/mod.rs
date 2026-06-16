@@ -456,6 +456,8 @@ pub struct CodeGen<'ctx> {
     /// Generic function definitions with type_params, indexed by name.
     /// Used for monomorphization at call sites.
     pub(super) generic_fun_defs: HashMap<String, Stmt>,
+    /// Monomorphized LLVM function names already compiled (or in progress).
+    pub(super) monomorphized_fns: HashSet<String>,
     /// LLVM function name → AST return type (Pass 1), for call-site List/Map/Set tagging.
     pub(super) fun_return_types: HashMap<String, Type>,
     /// Tracks whether compile_block did an rc_inc on the last expression.
@@ -645,6 +647,7 @@ impl<'ctx> CodeGen<'ctx> {
             nullable_types: HashMap::new(),
             not_null_set: HashSet::new(),
             generic_fun_defs: HashMap::new(),
+            monomorphized_fns: HashSet::new(),
             fun_return_types: HashMap::new(),
             block_did_rc_inc: false,
         }
@@ -897,5 +900,34 @@ mod tests {
         assert!(!ir.is_empty(), "IR should not be empty");
         assert!(ir.contains("@double"), "IR should contain double function");
         assert!(ir.contains("@main"), "IR should contain main function");
+    }
+
+    fn count_llvm_defines(ir: &str, fn_name: &str) -> usize {
+        let needle = format!("@{fn_name}");
+        ir.lines()
+            .filter(|l| l.trim_start().starts_with("define") && l.contains(&needle))
+            .count()
+    }
+
+    #[test]
+    fn test_generic_monomorphization_instance_cache() {
+        let ir = compile_program(
+            "fun <T, U> pickFirst(a: T, b: U) -> T { a }\n\
+             fun main() {\n\
+                 val a = pickFirst(1, 2)\n\
+                 val b = pickFirst(3, 4)\n\
+                 val c = pickFirst(true, 5)\n\
+             }",
+        );
+        assert_eq!(
+            count_llvm_defines(&ir, "pickFirst_Int_Int"),
+            1,
+            "pickFirst_Int_Int should be defined once despite multiple Int/Int call sites"
+        );
+        assert_eq!(
+            count_llvm_defines(&ir, "pickFirst_Bool_Int"),
+            1,
+            "pickFirst_Bool_Int should be defined once"
+        );
     }
 }
