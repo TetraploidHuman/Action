@@ -40,7 +40,9 @@ impl<'ctx> CodeGen<'ctx> {
         let fmt_int_ptr = self.make_global_str(".fmt_int", b"%ld\0");
         let fmt_float_ptr = self.make_global_str(".fmt_float", b"%g\0");
         let fmt_str_ptr = self.make_global_str(".fmt_str", b"%s\0");
+        let fmt_str_prec_ptr = self.make_global_str(".fmt_str_prec", b"%.*s\0");
         let printf_fn = self.module.get_function("printf").unwrap();
+        let i32 = self.context.i32_type();
 
         // ---- action_print_int(i64) ----
         let print_int_fn =
@@ -105,10 +107,14 @@ impl<'ctx> CodeGen<'ctx> {
         let entry = self.context.append_basic_block(print_str_fn, "entry");
         self.builder.position_at_end(entry);
         let s = print_str_fn.get_first_param().unwrap().into_struct_value();
-        let data = self
+        let str_data_fn = self.module.get_function("action_string_data").unwrap();
+        let data_cc = self
             .builder
-            .build_extract_value(s, 1, "data")
-            .map_err(llvm_err)?
+            .build_call(str_data_fn, &[s.into()], "data")
+            .map_err(llvm_err)?;
+        let data = data_cc
+            .try_as_basic_value()
+            .unwrap_basic()
             .into_pointer_value();
         let is_null = self
             .builder
@@ -120,9 +126,47 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_conditional_branch(is_null, int_bb, str_bb);
         self.builder.position_at_end(str_bb);
+        let s_ptr = self
+            .builder
+            .build_extract_value(s, 1, "s_ptr")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let is_slice_fn = self.module.get_function("action_string_is_slice").unwrap();
+        let slice_cc = self
+            .builder
+            .build_call(is_slice_fn, &[s_ptr.into()], "is_slice")
+            .map_err(llvm_err)?;
+        let is_slice = slice_cc
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_int_value();
+        let owned_bb = self.context.append_basic_block(print_str_fn, "print_owned");
+        let slice_bb = self.context.append_basic_block(print_str_fn, "print_slice");
+        let _ = self
+            .builder
+            .build_conditional_branch(is_slice, slice_bb, owned_bb);
+        // Owned / null-terminated buffer (e.g. readLine): print full C string including trailing \n
+        self.builder.position_at_end(owned_bb);
         let _ = self
             .builder
             .build_call(printf_fn, &[fmt_str_ptr.into(), data.into()], "");
+        let _ = self.builder.build_return(None);
+        // Slice substring: respect logical length field
+        self.builder.position_at_end(slice_bb);
+        let slen = self
+            .builder
+            .build_extract_value(s, 0, "slen")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let slen_i32 = self
+            .builder
+            .build_int_truncate(slen, i32, "slen_i32")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_call(
+            printf_fn,
+            &[fmt_str_prec_ptr.into(), slen_i32.into(), data.into()],
+            "",
+        );
         let _ = self.builder.build_return(None);
         self.builder.position_at_end(int_bb);
         let tag = self

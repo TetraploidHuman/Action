@@ -21,6 +21,8 @@ impl<'ctx> CodeGen<'ctx> {
         let sprintf_fn = self.module.get_function("sprintf").unwrap();
         let strlen_fn = self.module.get_function("strlen").unwrap();
         let memcmp_fn = self.module.get_function("memcmp").unwrap();
+        let str_data_fn = self.module.get_function("action_string_data").unwrap();
+        let str_rc_inc_fn = self.module.get_function("action_string_rc_inc").unwrap();
 
         // ---- action_string_create(ptr, i64) -> {i64, ptr} ----
         let str_create_fn = self.module.add_function(
@@ -80,8 +82,12 @@ impl<'ctx> CodeGen<'ctx> {
             str_ty.fn_type(&[str_ty.into(), str_ty.into()], false),
             None,
         );
-        let entry = self.context.append_basic_block(str_concat_fn, "entry");
-        self.builder.position_at_end(entry);
+        let cc_entry = self.context.append_basic_block(str_concat_fn, "entry");
+        let cc_empty1 = self.context.append_basic_block(str_concat_fn, "empty1");
+        let cc_check_l2 = self.context.append_basic_block(str_concat_fn, "check_l2");
+        let cc_ret_s1 = self.context.append_basic_block(str_concat_fn, "ret_s1");
+        let cc_do_alloc = self.context.append_basic_block(str_concat_fn, "do_alloc");
+        self.builder.position_at_end(cc_entry);
         let s1 = str_concat_fn.get_first_param().unwrap().into_struct_value();
         let s2 = str_concat_fn.get_nth_param(1).unwrap().into_struct_value();
         let len1 = self
@@ -89,20 +95,55 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(s1, 0, "len1")
             .map_err(llvm_err)?
             .into_int_value();
-        let data1 = self
-            .builder
-            .build_extract_value(s1, 1, "data1")
-            .map_err(llvm_err)?
-            .into_pointer_value();
         let len2 = self
             .builder
             .build_extract_value(s2, 0, "len2")
             .map_err(llvm_err)?
             .into_int_value();
-        let data2 = self
+        let zero = i64.const_int(0, false);
+        let cc_l1z = self
             .builder
-            .build_extract_value(s2, 1, "data2")
-            .map_err(llvm_err)?
+            .build_int_compare(IntPredicate::EQ, len1, zero, "l1z")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(cc_l1z, cc_empty1, cc_check_l2);
+        self.builder.position_at_end(cc_empty1);
+        let _ = self
+            .builder
+            .build_call(str_rc_inc_fn, &[s2.into()], "")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_return(Some(&s2));
+        self.builder.position_at_end(cc_check_l2);
+        let cc_l2z = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, len2, zero, "l2z")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(cc_l2z, cc_ret_s1, cc_do_alloc);
+        self.builder.position_at_end(cc_ret_s1);
+        let _ = self
+            .builder
+            .build_call(str_rc_inc_fn, &[s1.into()], "")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_return(Some(&s1));
+        self.builder.position_at_end(cc_do_alloc);
+        let cc_d1_cc = self
+            .builder
+            .build_call(str_data_fn, &[s1.into()], "d1")
+            .map_err(llvm_err)?;
+        let data1 = cc_d1_cc
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_pointer_value();
+        let cc_d2_cc = self
+            .builder
+            .build_call(str_data_fn, &[s2.into()], "d2")
+            .map_err(llvm_err)?;
+        let data2 = cc_d2_cc
+            .try_as_basic_value()
+            .unwrap_basic()
             .into_pointer_value();
         let total = self
             .builder
@@ -132,7 +173,6 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_memcpy(offset, 1, data2, 1, len2)
             .map_err(llvm_err)?;
-        // Null terminate
         let null_pos = unsafe {
             self.builder
                 .build_gep(i8, buf, &[total], "null_pos")
@@ -236,6 +276,22 @@ impl<'ctx> CodeGen<'ctx> {
             .build_conditional_branch(any_null, true_bb, do_memcmp_bb);
 
         self.builder.position_at_end(do_memcmp_bb);
+        let eq_d1_cc = self
+            .builder
+            .build_call(str_data_fn, &[s1.into()], "rd1")
+            .map_err(llvm_err)?;
+        let data1 = eq_d1_cc
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_pointer_value();
+        let eq_d2_cc = self
+            .builder
+            .build_call(str_data_fn, &[s2.into()], "rd2")
+            .map_err(llvm_err)?;
+        let data2 = eq_d2_cc
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_pointer_value();
         let memcmp_call = self
             .builder
             .build_call(memcmp_fn, &[data1.into(), data2.into(), len1.into()], "cmp")

@@ -43,6 +43,22 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
+    pub(super) fn rc_inc_string_val(
+        &self,
+        str_val: inkwell::values::StructValue<'ctx>,
+    ) -> Result<(), String> {
+        self.call_rt("action_string_rc_inc", &[str_val.into()])?;
+        Ok(())
+    }
+
+    pub(super) fn rc_dec_string_val(
+        &self,
+        str_val: inkwell::values::StructValue<'ctx>,
+    ) -> Result<(), String> {
+        self.call_rt("action_string_rc_dec", &[str_val.into()])?;
+        Ok(())
+    }
+
     /// Decrement refcount on a heap-allocated value (frees if refcount reaches 0).
     pub(super) fn rc_dec(&self, ptr: PointerValue<'ctx>) -> Result<(), String> {
         self.call_rt("action_rc_dec", &[ptr.into()])?;
@@ -55,12 +71,7 @@ impl<'ctx> CodeGen<'ctx> {
             match var.kind {
                 ValKind::Str => {
                     let str_val = self.load_string(var.ptr)?;
-                    let data_ptr = self
-                        .builder
-                        .build_extract_value(str_val, 1, "data")
-                        .map_err(llvm_err)?
-                        .into_pointer_value();
-                    self.rc_dec(data_ptr)?;
+                    self.rc_dec_string_val(str_val)?;
                 }
                 ValKind::List => {
                     let list_val = self.load_list(var.ptr)?;
@@ -213,12 +224,7 @@ impl<'ctx> CodeGen<'ctx> {
         match kind {
             ValKind::Str => {
                 let str_val = self.load_string(ptr)?;
-                let data_ptr = self
-                    .builder
-                    .build_extract_value(str_val, 1, "data")
-                    .map_err(llvm_err)?
-                    .into_pointer_value();
-                self.rc_dec(data_ptr)?;
+                self.rc_dec_string_val(str_val)?;
             }
             ValKind::List => {
                 let list_val = self.load_list(ptr)?;
@@ -306,12 +312,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_load(ft_st, field_ptr, "fd_old")
                     .map_err(llvm_err)?
                     .into_struct_value();
-                let data_ptr = self
-                    .builder
-                    .build_extract_value(old, 1, "fd_data")
-                    .map_err(llvm_err)?
-                    .into_pointer_value();
-                self.rc_dec(data_ptr)?;
+                self.rc_dec_string_val(old)?;
             }
             BasicTypeEnum::StructType(ft_st) if ft_st == self.list_type => {
                 let old = self
@@ -389,15 +390,11 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(llvm_err)?;
             match field_type {
                 BasicTypeEnum::StructType(ft_st) if *ft_st == self.string_type => {
-                    let data_ptr = self
-                        .builder
-                        .build_extract_value(field.into_struct_value(), 1, "rc_sd")
-                        .map_err(llvm_err)?
-                        .into_pointer_value();
+                    let sv = field.into_struct_value();
                     if inc {
-                        self.rc_inc(data_ptr)?;
+                        self.rc_inc_string_val(sv)?;
                     } else {
-                        self.rc_dec(data_ptr)?;
+                        self.rc_dec_string_val(sv)?;
                     }
                 }
                 BasicTypeEnum::StructType(ft_st) if *ft_st == self.list_type => {
@@ -493,15 +490,10 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?
                     .into_struct_value();
                 if inner_st == self.string_type {
-                    let data_ptr = self
-                        .builder
-                        .build_extract_value(inner, 1, "nsd")
-                        .map_err(llvm_err)?
-                        .into_pointer_value();
                     if inc {
-                        self.rc_inc(data_ptr)?;
+                        self.rc_inc_string_val(inner)?;
                     } else {
-                        self.rc_dec(data_ptr)?;
+                        self.rc_dec_string_val(inner)?;
                     }
                 } else if inner_st == self.list_type {
                     let data_ptr = self
@@ -553,12 +545,7 @@ impl<'ctx> CodeGen<'ctx> {
         match val {
             TypedValue::Str(ptr) => {
                 let str_val = self.load_string(*ptr)?;
-                let data_ptr = self
-                    .builder
-                    .build_extract_value(str_val, 1, "data")
-                    .map_err(llvm_err)?
-                    .into_pointer_value();
-                self.rc_inc(data_ptr)?;
+                self.rc_inc_string_val(str_val)?;
             }
             TypedValue::List(ptr) | TypedValue::Map(ptr) | TypedValue::Set(ptr) => {
                 let list_val = self.load_list(*ptr)?;
@@ -633,12 +620,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(llvm_err)?;
             match field_type {
                 BasicTypeEnum::StructType(st) if *st == self.string_type => {
-                    let data_ptr = self
-                        .builder
-                        .build_extract_value(field.into_struct_value(), 1, "cc_sd")
-                        .map_err(llvm_err)?
-                        .into_pointer_value();
-                    self.rc_dec(data_ptr)?;
+                    self.rc_dec_string_val(field.into_struct_value())?;
                 }
                 BasicTypeEnum::StructType(st) if *st == self.list_type => {
                     let sv = field.into_struct_value();
@@ -675,12 +657,7 @@ impl<'ctx> CodeGen<'ctx> {
         match val {
             TypedValue::Str(ptr) => {
                 let str_val = self.load_string(*ptr)?;
-                let data_ptr = self
-                    .builder
-                    .build_extract_value(str_val, 1, "data")
-                    .map_err(llvm_err)?
-                    .into_pointer_value();
-                self.rc_dec(data_ptr)?;
+                self.rc_dec_string_val(str_val)?;
             }
             TypedValue::List(ptr) => {
                 let list_val = self.load_list(*ptr)?;

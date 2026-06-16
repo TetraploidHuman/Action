@@ -10,7 +10,7 @@ impl<'ctx> CodeGen<'ctx> {
         let i64 = self.i64_ty();
         let _f64 = self.f64_ty();
         let _void = self.void_ty();
-        let _ptr = self.ptr_ty();
+        let ptr = self.ptr_ty();
         let str_ty = self.string_type;
         let _b1 = self.bool_ty();
         let i32 = self.context.i32_type();
@@ -18,7 +18,15 @@ impl<'ctx> CodeGen<'ctx> {
         let malloc_rc_fn = self.module.get_function("action_malloc_rc").unwrap();
 
         let memcmp_fn = self.module.get_function("memcmp").unwrap();
-        let memcpy_fn = self.module.get_function("memcpy").unwrap();
+        let _memcpy_fn = self.module.get_function("memcpy").unwrap();
+        let str_data_fn = self.module.get_function("action_string_data").unwrap();
+        let is_slice_fn = self.module.get_function("action_string_is_slice").unwrap();
+        let rc_inc_fn = self.module.get_function("action_rc_inc").unwrap();
+        let slice_tag = i64.const_int(0xAC710001, false);
+        let hdr_size = i64.const_int(24, false);
+        let eight = i64.const_int(8, false);
+        let sixteen = i64.const_int(16, false);
+        let zero = i64.const_int(0, false);
 
         let _list_create_fn = self.module.get_function("action_list_create").unwrap();
         let _list_push_fn = self.module.get_function("action_list_push").unwrap();
@@ -44,15 +52,21 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(sw_pre, 0, "plen")
             .map_err(llvm_err)?
             .into_int_value();
-        let sw_sdata = self
+        let sw_sdata_cc = self
             .builder
-            .build_extract_value(sw_s, 1, "sdata")
-            .map_err(llvm_err)?
+            .build_call(str_data_fn, &[sw_s.into()], "sd")
+            .map_err(llvm_err)?;
+        let sw_sdata = sw_sdata_cc
+            .try_as_basic_value()
+            .unwrap_basic()
             .into_pointer_value();
-        let sw_pdata = self
+        let sw_pdata_cc = self
             .builder
-            .build_extract_value(sw_pre, 1, "pdata")
-            .map_err(llvm_err)?
+            .build_call(str_data_fn, &[sw_pre.into()], "pd")
+            .map_err(llvm_err)?;
+        let sw_pdata = sw_pdata_cc
+            .try_as_basic_value()
+            .unwrap_basic()
             .into_pointer_value();
         let sw_len_ok = self
             .builder
@@ -127,15 +141,21 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(ew_suf, 0, "suflen")
             .map_err(llvm_err)?
             .into_int_value();
-        let ew_sdata = self
+        let ew_sdata_cc = self
             .builder
-            .build_extract_value(ew_s, 1, "sdata")
-            .map_err(llvm_err)?
+            .build_call(str_data_fn, &[ew_s.into()], "sd")
+            .map_err(llvm_err)?;
+        let ew_sdata = ew_sdata_cc
+            .try_as_basic_value()
+            .unwrap_basic()
             .into_pointer_value();
-        let ew_sufdata = self
+        let ew_sufdata_cc = self
             .builder
-            .build_extract_value(ew_suf, 1, "sufdata")
-            .map_err(llvm_err)?
+            .build_call(str_data_fn, &[ew_suf.into()], "sufd")
+            .map_err(llvm_err)?;
+        let ew_sufdata = ew_sufdata_cc
+            .try_as_basic_value()
+            .unwrap_basic()
             .into_pointer_value();
         let ew_len_ok = self
             .builder
@@ -199,13 +219,16 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self.builder.build_return(Some(&ew_phi.as_basic_value()));
 
         // ---- action_string_substring({i64, ptr}, i64 start, i64 len) -> {i64, ptr} ----
+        // Slice sharing: returns a slice header pointing into parent data (no copy).
         let sub_fn = self.module.add_function(
             "action_string_substring",
             str_ty.fn_type(&[str_ty.into(), i64.into(), i64.into()], false),
             None,
         );
-        let entry = self.context.append_basic_block(sub_fn, "entry");
-        self.builder.position_at_end(entry);
+        let sub_entry = self.context.append_basic_block(sub_fn, "entry");
+        let sub_empty = self.context.append_basic_block(sub_fn, "empty");
+        let sub_slice = self.context.append_basic_block(sub_fn, "slice");
+        self.builder.position_at_end(sub_entry);
         let sub_s = sub_fn.get_first_param().unwrap().into_struct_value();
         let sub_start = sub_fn.get_nth_param(1).unwrap().into_int_value();
         let sub_len = sub_fn.get_nth_param(2).unwrap().into_int_value();
@@ -214,12 +237,11 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(sub_s, 0, "slen")
             .map_err(llvm_err)?
             .into_int_value();
-        let sub_sdata = self
+        let sub_storage = self
             .builder
-            .build_extract_value(sub_s, 1, "sdata")
+            .build_extract_value(sub_s, 1, "storage")
             .map_err(llvm_err)?
             .into_pointer_value();
-        // Clamp: if start >= slen, return empty string
         let sub_start_ok = self
             .builder
             .build_int_compare(IntPredicate::ULT, sub_start, sub_slen, "start_ok")
@@ -246,58 +268,128 @@ impl<'ctx> CodeGen<'ctx> {
             .build_select(sub_start_ok, sub_start, sub_slen, "clamped_start")
             .map_err(llvm_err)?
             .into_int_value();
-        let _sub_zero_len = self
+        let sub_zero_len = self
             .builder
-            .build_int_compare(
-                IntPredicate::EQ,
-                sub_actual_len,
-                i64.const_int(0, false),
-                "zero_len",
-            )
+            .build_int_compare(IntPredicate::EQ, sub_actual_len, zero, "zero_len")
             .map_err(llvm_err)?;
-        // Allocate and copy
-        let sub_alc = self
+        let _ = self
             .builder
-            .build_int_add(sub_actual_len, i64.const_int(1, false), "alc")
-            .map_err(llvm_err)?;
-        let sub_buf = self
+            .build_conditional_branch(sub_zero_len, sub_empty, sub_slice);
+        // Empty substring: allocate owned empty buffer
+        self.builder.position_at_end(sub_empty);
+        let sub_ebuf = self
             .builder
-            .build_call(malloc_rc_fn, &[sub_alc.into()], "buf")
+            .build_call(malloc_rc_fn, &[i64.const_int(1, false).into()], "ebuf")
             .map_err(llvm_err)?
             .try_as_basic_value()
             .unwrap_basic()
             .into_pointer_value();
-        let sub_src = unsafe {
-            self.builder
-                .build_gep(i8, sub_sdata, &[sub_clamped_start], "src")
-                .map_err(llvm_err)
-        }?;
+        self.builder
+            .build_store(sub_ebuf, i8.const_int(0, false))
+            .map_err(llvm_err)?;
+        let sub_eundef = str_ty.get_undef();
+        let sub_er1 = self
+            .builder
+            .build_insert_value(sub_eundef, zero, 0, "er1")
+            .map_err(llvm_err)?;
+        let sub_er2 = self
+            .builder
+            .build_insert_value(sub_er1, sub_ebuf, 1, "er2")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_return(Some(&sub_er2));
+        // Non-empty: create slice header {tag, parent_storage, data_offset}
+        self.builder.position_at_end(sub_slice);
+        let sub_is_slice_cc = self
+            .builder
+            .build_call(is_slice_fn, &[sub_storage.into()], "chk")
+            .map_err(llvm_err)?;
+        let sub_parent_is_slice = sub_is_slice_cc
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_int_value();
+        let sub_hdr = self
+            .builder
+            .build_call(malloc_rc_fn, &[hdr_size.into()], "hdr")
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_pointer_value();
+        let sub_hdr_i64p = self
+            .builder
+            .build_pointer_cast(sub_hdr, ptr, "hdr_i64p")
+            .map_err(llvm_err)?;
         let _ = self
             .builder
-            .build_call(
-                memcpy_fn,
-                &[sub_buf.into(), sub_src.into(), sub_actual_len.into()],
-                "",
-            )
+            .build_store(sub_hdr_i64p, slice_tag)
             .map_err(llvm_err)?;
-        let sub_null = unsafe {
+        let sub_parent_p = unsafe {
             self.builder
-                .build_gep(i8, sub_buf, &[sub_actual_len], "null")
+                .build_gep(i8, sub_hdr, &[eight], "parent_p")
                 .map_err(llvm_err)
         }?;
-        self.builder
-            .build_store(sub_null, i8.const_int(0, false))
-            .map_err(llvm_err)?;
-        let sub_undef = str_ty.get_undef();
-        let sub_r1 = self
+        let sub_parent_i64p = self
             .builder
-            .build_insert_value(sub_undef, sub_actual_len, 0, "r1")
+            .build_pointer_cast(sub_parent_p, ptr, "parent_i64p")
             .map_err(llvm_err)?;
-        let sub_r2 = self
+        let sub_storage_i64 = self
             .builder
-            .build_insert_value(sub_r1, sub_buf, 1, "r2")
+            .build_ptr_to_int(sub_storage, i64, "storage_i64")
             .map_err(llvm_err)?;
-        let _ = self.builder.build_return(Some(&sub_r2));
+        let _ = self
+            .builder
+            .build_store(sub_parent_i64p, sub_storage_i64)
+            .map_err(llvm_err)?;
+        // base_offset = parent_is_slice ? load(parent+16) : 0
+        let sub_parent_off_p = unsafe {
+            self.builder
+                .build_gep(i8, sub_storage, &[sixteen], "parent_off_p")
+                .map_err(llvm_err)
+        }?;
+        let sub_parent_off_i64p = self
+            .builder
+            .build_pointer_cast(sub_parent_off_p, ptr, "parent_off_i64p")
+            .map_err(llvm_err)?;
+        let sub_parent_off = self
+            .builder
+            .build_load(i64, sub_parent_off_i64p, "parent_off")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let sub_base_off = self
+            .builder
+            .build_select(sub_parent_is_slice, sub_parent_off, zero, "base_off")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let sub_abs_off = self
+            .builder
+            .build_int_add(sub_base_off, sub_clamped_start, "abs_off")
+            .map_err(llvm_err)?;
+        let sub_off_p = unsafe {
+            self.builder
+                .build_gep(i8, sub_hdr, &[sixteen], "off_p")
+                .map_err(llvm_err)
+        }?;
+        let sub_off_i64p = self
+            .builder
+            .build_pointer_cast(sub_off_p, ptr, "off_i64p")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_store(sub_off_i64p, sub_abs_off)
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_call(rc_inc_fn, &[sub_storage.into()], "")
+            .map_err(llvm_err)?;
+        let sub_sundef = str_ty.get_undef();
+        let sub_sr1 = self
+            .builder
+            .build_insert_value(sub_sundef, sub_actual_len, 0, "sr1")
+            .map_err(llvm_err)?;
+        let sub_sr2 = self
+            .builder
+            .build_insert_value(sub_sr1, sub_hdr, 1, "sr2")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_return(Some(&sub_sr2));
 
         Ok(())
     }

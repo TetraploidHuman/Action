@@ -21,6 +21,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let memcmp_fn = self.module.get_function("memcmp").unwrap();
         let memcpy_fn = self.module.get_function("memcpy").unwrap();
+        let str_data_fn = self.module.get_function("action_string_data").unwrap();
 
         let _list_create_fn = self.module.get_function("action_list_create").unwrap();
         let _list_push_fn = self.module.get_function("action_list_push").unwrap();
@@ -42,20 +43,26 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(sp_s, 0, "slen")
             .map_err(llvm_err)?
             .into_int_value();
-        let sp_sdata = self
+        let sp_sdata_cc = self
             .builder
-            .build_extract_value(sp_s, 1, "sdata")
-            .map_err(llvm_err)?
+            .build_call(str_data_fn, &[sp_s.into()], "sd")
+            .map_err(llvm_err)?;
+        let sp_sdata = sp_sdata_cc
+            .try_as_basic_value()
+            .unwrap_basic()
             .into_pointer_value();
         let sp_dlen = self
             .builder
             .build_extract_value(sp_delim, 0, "dlen")
             .map_err(llvm_err)?
             .into_int_value();
-        let sp_ddata = self
+        let sp_ddata_cc = self
             .builder
-            .build_extract_value(sp_delim, 1, "ddata")
-            .map_err(llvm_err)?
+            .build_call(str_data_fn, &[sp_delim.into()], "dd")
+            .map_err(llvm_err)?;
+        let sp_ddata = sp_ddata_cc
+            .try_as_basic_value()
+            .unwrap_basic()
             .into_pointer_value();
         let one = i64.const_int(1, false);
         let zero = i64.const_int(0, false);
@@ -349,10 +356,13 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(jn_delim, 0, "dlen")
             .map_err(llvm_err)?
             .into_int_value();
-        let jn_ddata = self
+        let jn_ddata_cc = self
             .builder
-            .build_extract_value(jn_delim, 1, "ddata")
-            .map_err(llvm_err)?
+            .build_call(str_data_fn, &[jn_delim.into()], "dd")
+            .map_err(llvm_err)?;
+        let jn_ddata = jn_ddata_cc
+            .try_as_basic_value()
+            .unwrap_basic()
             .into_pointer_value();
         let jn_get_fn = self.module.get_function("action_list_get").unwrap();
         let one = i64.const_int(1, false);
@@ -510,10 +520,13 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(jn_cge, 0, "csslen")
             .map_err(llvm_err)?
             .into_int_value();
-        let jn_cp = self
+        let jn_cp_cc = self
             .builder
-            .build_extract_value(jn_cge, 1, "cp")
-            .map_err(llvm_err)?
+            .build_call(str_data_fn, &[jn_cge.into()], "cp")
+            .map_err(llvm_err)?;
+        let jn_cp = jn_cp_cc
+            .try_as_basic_value()
+            .unwrap_basic()
             .into_pointer_value();
         // Copy string data to output at wpos
         let jn_cwp = self
@@ -634,30 +647,39 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(rp_s, 0, "slen")
             .map_err(llvm_err)?
             .into_int_value();
-        let rp_sdata = self
+        let rp_sdata_cc = self
             .builder
-            .build_extract_value(rp_s, 1, "sdata")
-            .map_err(llvm_err)?
+            .build_call(str_data_fn, &[rp_s.into()], "sd")
+            .map_err(llvm_err)?;
+        let rp_sdata = rp_sdata_cc
+            .try_as_basic_value()
+            .unwrap_basic()
             .into_pointer_value();
         let rp_flen = self
             .builder
             .build_extract_value(rp_from, 0, "flen")
             .map_err(llvm_err)?
             .into_int_value();
-        let rp_fdata = self
+        let rp_fdata_cc = self
             .builder
-            .build_extract_value(rp_from, 1, "fdata")
-            .map_err(llvm_err)?
+            .build_call(str_data_fn, &[rp_from.into()], "fd")
+            .map_err(llvm_err)?;
+        let rp_fdata = rp_fdata_cc
+            .try_as_basic_value()
+            .unwrap_basic()
             .into_pointer_value();
         let rp_tlen = self
             .builder
             .build_extract_value(rp_to, 0, "tlen")
             .map_err(llvm_err)?
             .into_int_value();
-        let rp_tdata = self
+        let rp_tdata_cc = self
             .builder
-            .build_extract_value(rp_to, 1, "tdata")
-            .map_err(llvm_err)?
+            .build_call(str_data_fn, &[rp_to.into()], "td")
+            .map_err(llvm_err)?;
+        let rp_tdata = rp_tdata_cc
+            .try_as_basic_value()
+            .unwrap_basic()
             .into_pointer_value();
 
         // If from is empty, return copy of original
@@ -1090,20 +1112,26 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(sc_haystack, 0, "hlen")
             .map_err(llvm_err)?
             .into_int_value();
-        let sc_hptr = self
+        let sc_hptr_cc = self
             .builder
-            .build_extract_value(sc_haystack, 1, "hptr")
-            .map_err(llvm_err)?
+            .build_call(str_data_fn, &[sc_haystack.into()], "hp")
+            .map_err(llvm_err)?;
+        let sc_hptr = sc_hptr_cc
+            .try_as_basic_value()
+            .unwrap_basic()
             .into_pointer_value();
         let sc_nlen = self
             .builder
             .build_extract_value(sc_needle, 0, "nlen")
             .map_err(llvm_err)?
             .into_int_value();
-        let sc_nptr = self
+        let sc_nptr_cc = self
             .builder
-            .build_extract_value(sc_needle, 1, "nptr")
-            .map_err(llvm_err)?
+            .build_call(str_data_fn, &[sc_needle.into()], "np")
+            .map_err(llvm_err)?;
+        let sc_nptr = sc_nptr_cc
+            .try_as_basic_value()
+            .unwrap_basic()
             .into_pointer_value();
         // If needle is empty, return true
         let sc_empty = self
@@ -1236,10 +1264,13 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(sr_str, 0, "slen")
             .map_err(llvm_err)?
             .into_int_value();
-        let sr_sptr = self
+        let sr_sptr_cc = self
             .builder
-            .build_extract_value(sr_str, 1, "sptr")
-            .map_err(llvm_err)?
+            .build_call(str_data_fn, &[sr_str.into()], "sp")
+            .map_err(llvm_err)?;
+        let sr_sptr = sr_sptr_cc
+            .try_as_basic_value()
+            .unwrap_basic()
             .into_pointer_value();
         let sr_total = self
             .builder
@@ -1341,10 +1372,13 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(ts_str, 0, "len")
             .map_err(llvm_err)?
             .into_int_value();
-        let ts_ptr = self
+        let ts_ptr_cc = self
             .builder
-            .build_extract_value(ts_str, 1, "ptr")
-            .map_err(llvm_err)?
+            .build_call(str_data_fn, &[ts_str.into()], "dp")
+            .map_err(llvm_err)?;
+        let ts_ptr = ts_ptr_cc
+            .try_as_basic_value()
+            .unwrap_basic()
             .into_pointer_value();
         let ts_loop_bb = self.context.append_basic_block(ts_fn, "ts_loop");
         let ts_done_bb = self.context.append_basic_block(ts_fn, "ts_done");
@@ -1470,10 +1504,13 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(te_str, 0, "len")
             .map_err(llvm_err)?
             .into_int_value();
-        let te_ptr = self
+        let te_ptr_cc = self
             .builder
-            .build_extract_value(te_str, 1, "ptr")
-            .map_err(llvm_err)?
+            .build_call(str_data_fn, &[te_str.into()], "dp")
+            .map_err(llvm_err)?;
+        let te_ptr = te_ptr_cc
+            .try_as_basic_value()
+            .unwrap_basic()
             .into_pointer_value();
         // Start from len-1 and go backwards
         let te_start = self

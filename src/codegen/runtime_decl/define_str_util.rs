@@ -19,6 +19,7 @@ impl<'ctx> CodeGen<'ctx> {
         let malloc_rc_fn = self.module.get_function("action_malloc_rc").unwrap();
 
         let memcpy_fn = self.module.get_function("memcpy").unwrap();
+        let str_data_fn = self.module.get_function("action_string_data").unwrap();
 
         let _list_create_fn = self.module.get_function("action_list_create").unwrap();
         let _list_push_fn = self.module.get_function("action_list_push").unwrap();
@@ -37,10 +38,13 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(str_param, 0, "len")
             .map_err(llvm_err)?
             .into_int_value();
-        let str_data = self
+        let str_data_cc = self
             .builder
-            .build_extract_value(str_param, 1, "data")
-            .map_err(llvm_err)?
+            .build_call(str_data_fn, &[str_param.into()], "data")
+            .map_err(llvm_err)?;
+        let str_data = str_data_cc
+            .try_as_basic_value()
+            .unwrap_basic()
             .into_pointer_value();
         let alloc_len = self
             .builder
@@ -165,10 +169,13 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(str_param, 0, "len")
             .map_err(llvm_err)?
             .into_int_value();
-        let str_data = self
+        let str_data_cc = self
             .builder
-            .build_extract_value(str_param, 1, "data")
-            .map_err(llvm_err)?
+            .build_call(str_data_fn, &[str_param.into()], "data")
+            .map_err(llvm_err)?;
+        let str_data = str_data_cc
+            .try_as_basic_value()
+            .unwrap_basic()
             .into_pointer_value();
         let alloc_len = self
             .builder
@@ -292,10 +299,13 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(str_param, 0, "len")
             .map_err(llvm_err)?
             .into_int_value();
-        let str_data = self
+        let str_data_cc = self
             .builder
-            .build_extract_value(str_param, 1, "data")
-            .map_err(llvm_err)?
+            .build_call(str_data_fn, &[str_param.into()], "data")
+            .map_err(llvm_err)?;
+        let str_data = str_data_cc
+            .try_as_basic_value()
+            .unwrap_basic()
             .into_pointer_value();
 
         // Helper to build is-whitespace check for a char value

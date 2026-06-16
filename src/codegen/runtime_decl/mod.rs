@@ -143,6 +143,11 @@ impl<'ctx> CodeGen<'ctx> {
             ptr.fn_type(&[ptr.into(), ptr.into(), i64.into()], false),
             None,
         );
+        let _qsort_fn = self.module.add_function(
+            "qsort",
+            void.fn_type(&[ptr.into(), i64.into(), i64.into(), ptr.into()], false),
+            None,
+        );
         let _memset_fn = self.module.add_function(
             "memset",
             ptr.fn_type(&[ptr.into(), i32.into(), i64.into()], false),
@@ -410,6 +415,7 @@ impl<'ctx> CodeGen<'ctx> {
         // === Define group closures ===
 
         // === Execute runtime function groups ===
+        self.define_str_core()?;
         self.define_print()?;
         self.define_str_basic()?;
         self.define_list_core()?;
@@ -443,5 +449,6 @@ mod define_print;
 mod define_rand;
 mod define_str_adv;
 mod define_str_basic;
+mod define_str_core;
 mod define_str_extra;
 mod define_str_util;
