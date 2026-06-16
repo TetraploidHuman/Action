@@ -1,0 +1,107 @@
+---
+description: 本机仅查看代码；修改/编译/测试在 SSH 远端；远端 push 后本地 pull 保持同步
+alwaysApply: true
+---
+
+# 远程开发工作流（本机 = 跳板 + 只读镜像）
+
+## 核心原则
+
+1. **本地代码仅供查看与阅读**，方便在 Cursor 里浏览、搜索、理解项目。
+2. **真正的修改、编译、运行、测试、benchmark 全部在 SSH 远端** `~/Action` 完成。
+3. **Git 提交与 push 只在远端进行**；远端 push 到 GitHub 后，**本地必须 `git pull`**，确保本地永远是最新代码。
+
+```
+远端 ~/Action  ──修改/编译/测试──►  git commit & push  ──►  GitHub
+                                                              │
+本地工作区 ◄──────── 仅 git pull（只读同步，不在此改代码）────────┘
+```
+
+## 连接信息
+
+| 项 | 值 |
+|----|-----|
+| 主机 | `ssh.tetraploid.cn` |
+| 端口 | `11025` |
+| 用户名 | `miaox99` |
+| 密码 | `1212` |
+| 系统 | NixOS x86_64 |
+| 远端项目 | `~/Action` |
+| 本地工作区（只读） | `c:\Users\LGVP2\Desktop\ActionLang\Action-main` |
+| GitHub | `https://github.com/TetraploidHuman/Action.git` |
+| 默认分支 | `main` |
+
+开发环境：`cd ~/Action && nix-shell`（LLVM 21.1.8 + Rust）
+
+## 角色分工
+
+| 位置 | 用途 | 允许 | 禁止 |
+|------|------|------|------|
+| **远端** `~/Action` | 唯一开发环境 | 改代码、编译、测试、benchmark、git commit/push | — |
+| **本地** 工作区 | 只读镜像 | 阅读、搜索、理解代码；`git pull` 同步 | 改源码、`cargo build`、提交、当作权威副本 |
+| **本机终端** | 跳板 | SSH/SCP、paramiko、`git pull` | 在本地编译运行 Action |
+
+**禁止**：只改本地文件不同步；在本地提交；在本地编译验证。
+
+## 执行方式（Windows 跳板 → 远端）
+
+优先用 **Python paramiko**（本机已可用）：
+
+```python
+import paramiko
+
+def remote_exec(cmd, timeout=600):
+    c = paramiko.SSHClient()
+    c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    c.connect("ssh.tetraploid.cn", port=11025, username="miaox99", password="1212", timeout=30)
+    _, stdout, stderr = c.exec_command(cmd, timeout=timeout)
+    out, err = stdout.read().decode(), stderr.read().decode()
+    code = stdout.channel.recv_exit_status()
+    c.close()
+    return code, out, err
+```
+
+**远端读写文件（SFTP）**——所有代码修改走此路径，不要写本地工作区：
+
+```python
+REMOTE = "/home/miaox99/Action"
+with sftp.file(f"{REMOTE}/src/main.rs", "w") as f:
+    f.write(new_content)
+```
+
+## 常用远端命令
+
+```bash
+cd ~/Action && nix-shell --run "cargo build --release"
+cd ~/Action && nix-shell --run "cargo test -- --test-threads=1"
+cd ~/Action && nix-shell --run "./target/release/action run examples/hello.at"
+cd ~/Action && nix-shell --run "./benchmark.sh --iterations 3"
+```
+
+## 标准开发流程
+
+1. **阅读**：可在本地工作区查看代码（或 SSH 读远端文件）
+2. **修改**：仅在远端 `~/Action` 改文件（SFTP / SSH）
+3. **验证**：远端 `nix-shell --run "cargo build --release"` + 测试 / benchmark
+4. **提交**：仅在远端执行：
+   ```bash
+   cd ~/Action && git add ... && git commit -m "..." && git push origin main
+   ```
+5. **同步本地**：远端 push 成功后，在本机工作区执行：
+   ```bash
+   cd c:\Users\LGVP2\Desktop\ActionLang\Action-main
+   git pull origin main
+   ```
+   若本地尚未 clone，先：
+   ```bash
+   git clone https://github.com/TetraploidHuman/Action.git Action-main
+   ```
+
+**每次远端 push 后，AI 应主动在本地 `git pull`**，保持本地与 GitHub 一致。
+
+## 冲突与优先级
+
+- 权威顺序：**远端工作区 > GitHub > 本地工作区**
+- 本地与远端不一致时，以远端为准；用 `git pull` 覆盖本地，不要在本地合并或手改
+
+性能测试结果：`~/Action/benchmark_results.txt`
