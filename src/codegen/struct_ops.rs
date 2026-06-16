@@ -34,6 +34,25 @@ impl<'ctx> CodeGen<'ctx> {
         Err(format!("Field '{}' not found in struct", field))
     }
 
+    /// ValKind for a struct field from the type registry (List vs Map vs Set).
+    pub(super) fn struct_field_val_kind(
+        &self,
+        st: &StructType<'ctx>,
+        field_idx: u32,
+    ) -> ValKind {
+        for (name, named_st) in &self.named_structs {
+            if *named_st == *st {
+                if let Some(si) = self.registry.structs.get(name) {
+                    if let Some((_, ty)) = si.fields.get(field_idx as usize) {
+                        return self.param_val_kind(Some(ty));
+                    }
+                }
+                break;
+            }
+        }
+        ValKind::List
+    }
+
     /// Extract a field value from a TypedValue::Struct at the given index.
     /// `inner_type` is the InnerType of the data inside enum fields, if known.
     /// When None (struct name not tracked at codegen level), defaults to Int.

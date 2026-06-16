@@ -1,0 +1,12 @@
+// Set stress: 10k insert + union/intersection
+fun main() {
+    var s = Set[]; var i = 0
+    for i < 10000 { s = s.insert(i); i = i + 1 }
+    println(len(s))
+    var s2 = Set[]; i = 0
+    for i < 5000 { s2 = s2.insert(i + 5000); i = i + 1 }
+    val u = setUnion(s, s2)
+    val inter = setIntersection(s, s2)
+    println(len(u))
+    println(len(inter))
+}

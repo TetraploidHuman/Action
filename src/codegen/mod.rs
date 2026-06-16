@@ -705,6 +705,7 @@ mod builtins_stdlib;
 mod builtins_stdlib_datetime;
 mod builtins_stdlib_io;
 mod builtins_stdlib_math;
+mod builtins_stdlib_string;
 mod builtins_stream;
 mod builtins_thread;
 mod expr;

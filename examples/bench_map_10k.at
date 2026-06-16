@@ -1,0 +1,11 @@
+// Map stress: 10k insert + 10k contains (AOT-friendly scale)
+fun main() {
+    var m = Map[]; var i = 0
+    for i < 10000 { m = m.insert(i, i * 10); i = i + 1 }
+    println(m.len())
+    i = 0
+    for i < 10000 { var c = m.contains(i); i = i + 1 }
+    i = 0
+    for i < 10000 { var c = m.contains(i + 5000); i = i + 1 }
+    println(m.len())
+}

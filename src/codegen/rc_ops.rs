@@ -297,6 +297,7 @@ impl<'ctx> CodeGen<'ctx> {
         &self,
         field_ptr: PointerValue<'ctx>,
         field_type: inkwell::types::BasicTypeEnum<'ctx>,
+        field_kind: ValKind,
     ) -> Result<(), String> {
         match field_type {
             BasicTypeEnum::StructType(ft_st) if ft_st == self.string_type => {
@@ -318,14 +319,48 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_load(ft_st, field_ptr, "fd_old")
                     .map_err(llvm_err)?
                     .into_struct_value();
-                let data_ptr = self
+                self.rc_dec_heap_collection(old, field_kind)?;
+            }
+            _ => {} // scalar or user struct (Bug #1 handles recursive field RC)
+        }
+        Ok(())
+    }
+
+    /// Release a List/Map/Set struct value using the correct runtime dec path.
+    pub(super) fn rc_dec_heap_collection(
+        &self,
+        loaded: inkwell::values::StructValue<'ctx>,
+        kind: ValKind,
+    ) -> Result<(), String> {
+        let data_ptr = self
+            .builder
+            .build_extract_value(loaded, 0, "hdc_data")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        match kind {
+            ValKind::Map | ValKind::Set => {
+                let len = self
                     .builder
-                    .build_extract_value(old, 0, "fd_data")
+                    .build_extract_value(loaded, 1, "hdc_len")
                     .map_err(llvm_err)?
-                    .into_pointer_value();
+                    .into_int_value();
+                let cap = self
+                    .builder
+                    .build_extract_value(loaded, 2, "hdc_cap")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                let rht_fn = self
+                    .module
+                    .get_function("action_rc_dec_ht")
+                    .ok_or("action_rc_dec_ht not found")?;
+                self.builder
+                    .build_call(rht_fn, &[data_ptr.into(), cap.into(), len.into()], "")
+                    .map_err(llvm_err)?;
+            }
+            _ => {
                 let height = self
                     .builder
-                    .build_extract_value(old, 2, "fd_height")
+                    .build_extract_value(loaded, 2, "hdc_h")
                     .map_err(llvm_err)?
                     .into_int_value();
                 let rdl_fn = self
@@ -336,7 +371,6 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_call(rdl_fn, &[data_ptr.into(), height.into()], "")
                     .map_err(llvm_err)?;
             }
-            _ => {} // scalar or user struct (Bug #1 handles recursive field RC)
         }
         Ok(())
     }
@@ -376,15 +410,8 @@ impl<'ctx> CodeGen<'ctx> {
                     if inc {
                         self.rc_inc(data_ptr)?;
                     } else {
-                        let height = self
-                            .builder
-                            .build_extract_value(sv, 2, "rc_lh")
-                            .map_err(llvm_err)?
-                            .into_int_value();
-                        let rdl_fn = self.module.get_function("action_rc_dec_list_node").unwrap();
-                        self.builder
-                            .build_call(rdl_fn, &[data_ptr.into(), height.into()], "")
-                            .map_err(llvm_err)?;
+                        let field_kind = self.struct_field_val_kind(&struct_ty, i as u32);
+                        self.rc_dec_heap_collection(sv, field_kind)?;
                     }
                 }
                 BasicTypeEnum::StructType(ft_st)

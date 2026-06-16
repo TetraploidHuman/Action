@@ -842,7 +842,8 @@ impl<'ctx> CodeGen<'ctx> {
                         // RC-dec old value before overwriting (Bug #6)
                         let field_types = st.get_field_types();
                         if (idx as usize) < field_types.len() {
-                            self.rc_dec_field_val(field_ptr, field_types[idx as usize])?;
+                            let fk = self.struct_field_val_kind(&st, idx);
+                            self.rc_dec_field_val(field_ptr, field_types[idx as usize], fk)?;
                         }
                         if let Some(bv) = v.to_bv() {
                             self.builder.build_store(field_ptr, bv).map_err(llvm_err)?;
@@ -871,7 +872,8 @@ impl<'ctx> CodeGen<'ctx> {
                                 // RC-dec old value before overwriting (Bug #6)
                                 let field_types = st.get_field_types();
                                 if (idx as usize) < field_types.len() {
-                                    self.rc_dec_field_val(field_ptr, field_types[idx as usize])?;
+                                    let fk = self.struct_field_val_kind(&st, idx);
+                                    self.rc_dec_field_val(field_ptr, field_types[idx as usize], fk)?;
                                 }
                                 if let Some(bv) = v.to_bv() {
                                     self.builder.build_store(field_ptr, bv).map_err(llvm_err)?;
