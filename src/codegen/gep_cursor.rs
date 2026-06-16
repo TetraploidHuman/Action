@@ -70,7 +70,12 @@ impl<'ctx> GepCursor<'ctx> {
         } else {
             unsafe {
                 builder
-                    .build_gep(i8_ty, base_ptr, &[i8_ty.const_int(initial_offset, false)], name)
+                    .build_gep(
+                        i8_ty,
+                        base_ptr,
+                        &[i8_ty.const_int(initial_offset, false)],
+                        name,
+                    )
                     .map_err(llvm_err)?
             }
         };
@@ -132,7 +137,12 @@ impl<'ctx> GepCursor<'ctx> {
         } else {
             unsafe {
                 builder
-                    .build_gep(i8_ty, self.chained_ptr, &[i8_ty.const_int(delta, false)], name)
+                    .build_gep(
+                        i8_ty,
+                        self.chained_ptr,
+                        &[i8_ty.const_int(delta, false)],
+                        name,
+                    )
                     .map_err(llvm_err)?
             }
         };

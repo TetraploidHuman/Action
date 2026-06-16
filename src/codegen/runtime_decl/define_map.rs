@@ -217,7 +217,9 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(IntPredicate::SLT, mi_jv, mi_len, "jc")
             .map_err(llvm_err)?;
-        let _ = self.builder.build_conditional_branch(mi_jc, mi_rb_body, mi_rb_done);
+        let _ = self
+            .builder
+            .build_conditional_branch(mi_jc, mi_rb_body, mi_rb_done);
         // Check if at matched position
         self.builder.position_at_end(mi_rb_body);
         let mi_mv = self
@@ -229,7 +231,9 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(IntPredicate::EQ, mi_jv, mi_mv, "im")
             .map_err(llvm_err)?;
-        let _ = self.builder.build_conditional_branch(mi_im, mi_rb_match, mi_rb_copy);
+        let _ = self
+            .builder
+            .build_conditional_branch(mi_im, mi_rb_match, mi_rb_copy);
         // Push new key+value for matched entry
         self.builder.position_at_end(mi_rb_match);
         let mi_s1 = self
@@ -532,7 +536,13 @@ impl<'ctx> CodeGen<'ctx> {
         // Skip count header (8 bytes) via i8* GEP, then GEP to element index
         let mc_i8_ptr = self
             .builder
-            .build_pointer_cast(mc_dptr, self.context.i8_type().ptr_type(inkwell::AddressSpace::default()), "i8p")
+            .build_pointer_cast(
+                mc_dptr,
+                self.context
+                    .i8_type()
+                    .ptr_type(inkwell::AddressSpace::default()),
+                "i8p",
+            )
             .map_err(llvm_err)?;
         let mc_skip = self.i64_ty().const_int(8, false);
         let mc_data_start = unsafe {

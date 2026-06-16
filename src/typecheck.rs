@@ -354,7 +354,9 @@ impl TypeChecker {
                     rest,
                     ..
                 } => {
-                    let value_ty = self.infer_expr_type(value).unwrap_or(Type::Named("Int".into()));
+                    let value_ty = self
+                        .infer_expr_type(value)
+                        .unwrap_or(Type::Named("Int".into()));
                     let field_types: Vec<Type> = if *is_struct {
                         // Struct destructuring: val {x, y} = point
                         // names are local names, renames maps (field_name, local_name)

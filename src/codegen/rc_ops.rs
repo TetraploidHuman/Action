@@ -723,9 +723,15 @@ impl<'ctx> CodeGen<'ctx> {
     /// Check if `val` is a local variable in any scope (walks parent chain).
     fn is_var_in_full_scope_chain(&self, val: &TypedValue<'ctx>) -> bool {
         let alloca: Option<PointerValue<'ctx>> = match val {
-            TypedValue::Str(p) | TypedValue::List(p) | TypedValue::Map(p)
-            | TypedValue::Set(p) | TypedValue::Task(p) | TypedValue::Stream(p)
-            | TypedValue::LazyList(p) | TypedValue::CString(p) | TypedValue::FileHandle(p)
+            TypedValue::Str(p)
+            | TypedValue::List(p)
+            | TypedValue::Map(p)
+            | TypedValue::Set(p)
+            | TypedValue::Task(p)
+            | TypedValue::Stream(p)
+            | TypedValue::LazyList(p)
+            | TypedValue::CString(p)
+            | TypedValue::FileHandle(p)
             | TypedValue::Ptr(p) => Some(*p),
             TypedValue::Struct(p, _) => Some(*p),
             TypedValue::Enum(p, _, _, _) => Some(*p),
@@ -738,8 +744,13 @@ impl<'ctx> CodeGen<'ctx> {
             Some(ptr) => {
                 let mut s = &self.scope;
                 loop {
-                    if s.local_variables().values().any(|v| v.ptr == ptr) { return true; }
-                    match &s.parent { Some(p) => s = p.as_ref(), None => break }
+                    if s.local_variables().values().any(|v| v.ptr == ptr) {
+                        return true;
+                    }
+                    match &s.parent {
+                        Some(p) => s = p.as_ref(),
+                        None => break,
+                    }
                 }
                 false
             }
