@@ -30,6 +30,72 @@ impl<'ctx> CodeGen<'ctx> {
         let _list_create_fn = self.module.get_function("action_list_create").unwrap();
         let _list_push_fn = self.module.get_function("action_list_push").unwrap();
         let _list_get_fn = self.module.get_function("action_list_get").unwrap();
+        let _list_set_fn = self.module.get_function("action_list_set").unwrap();
+        let malloc_fn = self.module.get_function("malloc").unwrap();
+        let free_fn = self.module.get_function("free").unwrap();
+        let qsort_fn = self.module.get_function("qsort").unwrap();
+        let elem_sz = i64.const_int(16, false);
+        let zero_i64 = i64.const_int(0, false);
+        let one_i64 = i64.const_int(1, false);
+
+        // ---- action_list_sorted_cmp(ptr a, ptr b) -> i32 (qsort comparator, Int in field 0) ----
+        let scmp_fn = self.module.add_function(
+            "action_list_sorted_cmp",
+            i32.fn_type(&[ptr.into(), ptr.into()], false),
+            None,
+        );
+        let scmp_entry = self.context.append_basic_block(scmp_fn, "entry");
+        let scmp_ret_gt = self.context.append_basic_block(scmp_fn, "ret_gt");
+        let scmp_chk_lt = self.context.append_basic_block(scmp_fn, "chk_lt");
+        let scmp_ret_lt = self.context.append_basic_block(scmp_fn, "ret_lt");
+        let scmp_ret_eq = self.context.append_basic_block(scmp_fn, "ret_eq");
+        self.builder.position_at_end(scmp_entry);
+        let scmp_a = scmp_fn.get_first_param().unwrap().into_pointer_value();
+        let scmp_b = scmp_fn.get_nth_param(1).unwrap().into_pointer_value();
+        let scmp_ea = self
+            .builder
+            .build_load(self.string_type, scmp_a, "ea")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let scmp_eb = self
+            .builder
+            .build_load(self.string_type, scmp_b, "eb")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let scmp_va = self
+            .builder
+            .build_extract_value(scmp_ea, 0, "va")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let scmp_vb = self
+            .builder
+            .build_extract_value(scmp_eb, 0, "vb")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let scmp_gt = self
+            .builder
+            .build_int_compare(IntPredicate::SGT, scmp_va, scmp_vb, "gt")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(scmp_gt, scmp_ret_gt, scmp_chk_lt);
+        self.builder.position_at_end(scmp_ret_gt);
+        let _ = self.builder.build_return(Some(&i32.const_int(1, false)));
+        self.builder.position_at_end(scmp_chk_lt);
+        let scmp_lt = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, scmp_va, scmp_vb, "lt")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(scmp_lt, scmp_ret_lt, scmp_ret_eq);
+        self.builder.position_at_end(scmp_ret_lt);
+        let _ = self
+            .builder
+            .build_return(Some(&i32.const_int(-1i64 as u64, true)));
+        self.builder.position_at_end(scmp_ret_eq);
+        let _ = self.builder.build_return(Some(&i32.const_int(0, false)));
+
         // ---- action_list_sorted({ptr, i64, i64}) -> {ptr, i64, i64} (Int-only for now) ----
         let srt_fn = self.module.add_function(
             "action_list_sorted",
@@ -104,186 +170,445 @@ impl<'ctx> CodeGen<'ctx> {
             .build_store(srt_ci, srt_cinc)
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(srt_cloop);
-        // Simple bubble sort on the copy
+        // O(n log n) sort via qsort; height==0 fast path sorts B-tree leaf in place
         self.builder.position_at_end(srt_cdone);
-        let srt_i = self.builder.build_alloca(i64, "srt_i").map_err(llvm_err)?;
-        self.builder
-            .build_store(srt_i, i64.const_int(0, false))
-            .map_err(llvm_err)?;
-        let srt_oloop = self.context.append_basic_block(srt_fn, "oloop");
-        let srt_obody = self.context.append_basic_block(srt_fn, "obody");
-        let srt_odone = self.context.append_basic_block(srt_fn, "odone");
-        let _ = self.builder.build_unconditional_branch(srt_oloop);
-        self.builder.position_at_end(srt_oloop);
-        let srt_iv = self
+        let srt_two = i64.const_int(2, false);
+        let srt_le1 = self.context.append_basic_block(srt_fn, "le1");
+        let srt_sort = self.context.append_basic_block(srt_fn, "sort");
+        let srt_leaf_qsort = self.context.append_basic_block(srt_fn, "leaf_qsort");
+        let srt_flat_qsort = self.context.append_basic_block(srt_fn, "flat_qsort");
+        let srt_ret = self.context.append_basic_block(srt_fn, "ret");
+        let srt_len_le1 = self
             .builder
-            .build_load(i64, srt_i, "iv")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let srt_ocond = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, srt_iv, srt_len, "ocond")
+            .build_int_compare(IntPredicate::SLT, srt_len, srt_two, "len_le1")
             .map_err(llvm_err)?;
         let _ = self
             .builder
-            .build_conditional_branch(srt_ocond, srt_obody, srt_odone);
-        self.builder.position_at_end(srt_obody);
-        let srt_j = self.builder.build_alloca(i64, "srt_j").map_err(llvm_err)?;
-        self.builder
-            .build_store(srt_j, i64.const_int(0, false))
-            .map_err(llvm_err)?;
-        let srt_len1 = self
+            .build_conditional_branch(srt_len_le1, srt_le1, srt_sort);
+        self.builder.position_at_end(srt_le1);
+        let _ = self.builder.build_unconditional_branch(srt_ret);
+        self.builder.position_at_end(srt_sort);
+        let srt_copy_list = self
             .builder
-            .build_int_sub(srt_len, i64.const_int(1, false), "len1")
-            .map_err(llvm_err)?;
-        let srt_iloop = self.context.append_basic_block(srt_fn, "iloop");
-        let srt_ibody = self.context.append_basic_block(srt_fn, "ibody");
-        let srt_idone = self.context.append_basic_block(srt_fn, "idone");
-        let _ = self.builder.build_unconditional_branch(srt_iloop);
-        self.builder.position_at_end(srt_iloop);
-        let srt_jv = self
-            .builder
-            .build_load(i64, srt_j, "jv")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let srt_jc = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, srt_jv, srt_len1, "jc")
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(srt_jc, srt_ibody, srt_idone);
-        self.builder.position_at_end(srt_ibody);
-        let srt_cur = self
-            .builder
-            .build_load(self.list_type, srt_ra, "cur")
+            .build_load(self.list_type, srt_ra, "copy_list")
             .map_err(llvm_err)?
             .into_struct_value();
-        let srt_jp1 = self
+        let srt_height = self
             .builder
-            .build_int_add(srt_jv, i64.const_int(1, false), "jp1")
+            .build_extract_value(srt_copy_list, 2, "height")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let srt_h0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, srt_height, zero_i64, "h0")
             .map_err(llvm_err)?;
-        let srt_get_fn2 = self.module.get_function("action_list_get").unwrap();
-        let srt_ea = self
+        let _ = self
             .builder
-            .build_call(srt_get_fn2, &[srt_cur.into(), srt_jv.into()], "ea")
+            .build_conditional_branch(srt_h0, srt_leaf_qsort, srt_flat_qsort);
+        // Single-leaf list: qsort element array in place (max 64 elems per leaf)
+        self.builder.position_at_end(srt_leaf_qsort);
+        let srt_leaf_node = self
+            .builder
+            .build_extract_value(srt_copy_list, 0, "leaf_node")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let srt_leaf_i8 = self
+            .builder
+            .build_pointer_cast(srt_leaf_node, ptr, "leaf_i8")
+            .map_err(llvm_err)?;
+        let srt_elem_base = unsafe {
+            self.builder
+                .build_gep(i8, srt_leaf_i8, &[i64.const_int(8, false)], "elem_base")
+                .map_err(llvm_err)
+        }?;
+        let _ = self.builder.build_call(
+            qsort_fn,
+            &[
+                srt_elem_base.into(),
+                srt_len.into(),
+                elem_sz.into(),
+                scmp_fn.as_global_value().as_pointer_value().into(),
+            ],
+            "",
+        );
+        let _ = self.builder.build_unconditional_branch(srt_ret);
+        // Multi-level tree: extract to flat buffer, qsort, write back via list_set
+        self.builder.position_at_end(srt_flat_qsort);
+        let srt_bytes = self
+            .builder
+            .build_int_mul(srt_len, elem_sz, "bytes")
+            .map_err(llvm_err)?;
+        let srt_arr = self
+            .builder
+            .build_call(malloc_fn, &[srt_bytes.into()], "arr")
             .map_err(llvm_err)?
             .try_as_basic_value()
             .unwrap_basic()
-            .into_struct_value();
-        let srt_eb = self
+            .into_pointer_value();
+        let srt_fi = self.builder.build_alloca(i64, "srt_fi").map_err(llvm_err)?;
+        self.builder
+            .build_store(srt_fi, zero_i64)
+            .map_err(llvm_err)?;
+        let srt_floop = self.context.append_basic_block(srt_fn, "floop");
+        let srt_fbody = self.context.append_basic_block(srt_fn, "fbody");
+        let srt_fdone = self.context.append_basic_block(srt_fn, "fdone");
+        let _ = self.builder.build_unconditional_branch(srt_floop);
+        self.builder.position_at_end(srt_floop);
+        let srt_fiv = self
             .builder
-            .build_call(srt_get_fn2, &[srt_cur.into(), srt_jp1.into()], "eb")
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .unwrap_basic()
-            .into_struct_value();
-        // Compare Int values: extract data pointer as value for Tag=0
-        let _srt_ea_tag = self
-            .builder
-            .build_extract_value(srt_ea, 0, "eat")
+            .build_load(i64, srt_fi, "fiv")
             .map_err(llvm_err)?
             .into_int_value();
-        let _srt_eb_tag = self
+        let srt_fcond = self
             .builder
-            .build_extract_value(srt_eb, 0, "ebt")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let _srt_is_int = self
-            .builder
-            .build_int_compare(
-                IntPredicate::EQ,
-                _srt_ea_tag,
-                i64.const_int(0, false),
-                "isint",
-            )
+            .build_int_compare(IntPredicate::SLT, srt_fiv, srt_len, "fcond")
             .map_err(llvm_err)?;
-        let srt_ea_ptr = self
-            .builder
-            .build_extract_value(srt_ea, 1, "eap")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let srt_eb_ptr = self
-            .builder
-            .build_extract_value(srt_eb, 1, "ebp")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let srt_ea_int = self
-            .builder
-            .build_ptr_to_int(srt_ea_ptr, i64, "eai")
-            .map_err(llvm_err)?;
-        let srt_eb_int = self
-            .builder
-            .build_ptr_to_int(srt_eb_ptr, i64, "ebi")
-            .map_err(llvm_err)?;
-        let srt_swap_needed = self
-            .builder
-            .build_int_compare(IntPredicate::SGT, srt_ea_int, srt_eb_int, "swap")
-            .map_err(llvm_err)?;
-        let srt_swap = self.context.append_basic_block(srt_fn, "swap");
-        let srt_noswap = self.context.append_basic_block(srt_fn, "noswap");
         let _ = self
             .builder
-            .build_conditional_branch(srt_swap_needed, srt_swap, srt_noswap);
-        self.builder.position_at_end(srt_swap);
-        // Tree-aware swap: set element at j to eb, then set element at j+1 to ea
-        let srt_set_fn = self.module.get_function("action_list_set").unwrap();
-        let srt_after_j = self
+            .build_conditional_branch(srt_fcond, srt_fbody, srt_fdone);
+        self.builder.position_at_end(srt_fbody);
+        let srt_fl = self
+            .builder
+            .build_load(self.list_type, srt_ra, "fl")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let srt_fev = self
+            .builder
+            .build_call(_list_get_fn, &[srt_fl.into(), srt_fiv.into()], "fev")
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic();
+        let srt_slot = unsafe {
+            self.builder
+                .build_gep(self.string_type, srt_arr, &[srt_fiv], "slot")
+                .map_err(llvm_err)
+        }?;
+        self.builder
+            .build_store(srt_slot, srt_fev)
+            .map_err(llvm_err)?;
+        let srt_finc = self
+            .builder
+            .build_int_add(srt_fiv, one_i64, "finc")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(srt_fi, srt_finc)
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(srt_floop);
+        self.builder.position_at_end(srt_fdone);
+        let _ = self.builder.build_call(
+            qsort_fn,
+            &[
+                srt_arr.into(),
+                srt_len.into(),
+                elem_sz.into(),
+                scmp_fn.as_global_value().as_pointer_value().into(),
+            ],
+            "",
+        );
+        let srt_wi = self.builder.build_alloca(i64, "srt_wi").map_err(llvm_err)?;
+        self.builder
+            .build_store(srt_wi, zero_i64)
+            .map_err(llvm_err)?;
+        let srt_wloop = self.context.append_basic_block(srt_fn, "wloop");
+        let srt_wbody = self.context.append_basic_block(srt_fn, "wdone");
+        let srt_wcont = self.context.append_basic_block(srt_fn, "wbody");
+        let _ = self.builder.build_unconditional_branch(srt_wloop);
+        self.builder.position_at_end(srt_wloop);
+        let srt_wiv = self
+            .builder
+            .build_load(i64, srt_wi, "wiv")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let srt_wcond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, srt_wiv, srt_len, "wcond")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(srt_wcond, srt_wcont, srt_wbody);
+        self.builder.position_at_end(srt_wcont);
+        let srt_wl = self
+            .builder
+            .build_load(self.list_type, srt_ra, "wl")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let srt_wslot = unsafe {
+            self.builder
+                .build_gep(self.string_type, srt_arr, &[srt_wiv], "wslot")
+                .map_err(llvm_err)
+        }?;
+        let srt_wev = self
+            .builder
+            .build_load(self.string_type, srt_wslot, "wev")
+            .map_err(llvm_err)?;
+        let srt_wset = self
             .builder
             .build_call(
-                srt_set_fn,
-                &[srt_cur.into(), srt_jv.into(), srt_eb.into()],
-                "after_j",
+                _list_set_fn,
+                &[srt_wl.into(), srt_wiv.into(), srt_wev.into()],
+                "wset",
             )
             .map_err(llvm_err)?
             .try_as_basic_value()
             .unwrap_basic();
         self.builder
-            .build_store(srt_ra, srt_after_j)
+            .build_store(srt_ra, srt_wset)
             .map_err(llvm_err)?;
-        let srt_cur2 = self
+        let srt_winc = self
             .builder
-            .build_load(self.list_type, srt_ra, "cur2")
-            .map_err(llvm_err)?
-            .into_struct_value();
-        let srt_after_jp1 = self
-            .builder
-            .build_call(
-                srt_set_fn,
-                &[srt_cur2.into(), srt_jp1.into(), srt_ea.into()],
-                "after_jp1",
-            )
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .unwrap_basic();
-        self.builder
-            .build_store(srt_ra, srt_after_jp1)
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(srt_noswap);
-        self.builder.position_at_end(srt_noswap);
-        let srt_jinc = self
-            .builder
-            .build_int_add(srt_jv, i64.const_int(1, false), "jinc")
+            .build_int_add(srt_wiv, one_i64, "winc")
             .map_err(llvm_err)?;
         self.builder
-            .build_store(srt_j, srt_jinc)
+            .build_store(srt_wi, srt_winc)
             .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(srt_iloop);
-        self.builder.position_at_end(srt_idone);
-        let srt_iinc = self
+        let _ = self.builder.build_unconditional_branch(srt_wloop);
+        self.builder.position_at_end(srt_wbody);
+        let _ = self
             .builder
-            .build_int_add(srt_iv, i64.const_int(1, false), "iinc")
+            .build_call(free_fn, &[srt_arr.into()], "")
             .map_err(llvm_err)?;
-        self.builder
-            .build_store(srt_i, srt_iinc)
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(srt_oloop);
-        self.builder.position_at_end(srt_odone);
+        let _ = self.builder.build_unconditional_branch(srt_ret);
+        self.builder.position_at_end(srt_ret);
         let srt_rt = self
             .builder
             .build_load(self.list_type, srt_ra, "srt_rt")
             .map_err(llvm_err)?;
         let _ = self.builder.build_return(Some(&srt_rt));
+
+        // ---- action_list_sorted_by({ptr,i64,i64} list, ptr fn) -> {ptr,i64,i64} ----
+        // Custom comparator sort (insertion sort); fn(a_tag, b_tag) -> Bool, true if a > b
+        let sb_fn = self.module.add_function(
+            "action_list_sorted_by",
+            self.list_type
+                .fn_type(&[self.list_type.into(), ptr.into()], false),
+            None,
+        );
+        let lambda_fn_ty = self.string_type.fn_type(&[i64.into(), i64.into()], false);
+        let sb_entry = self.context.append_basic_block(sb_fn, "entry");
+        self.builder.position_at_end(sb_entry);
+        let sb_in = sb_fn.get_first_param().unwrap().into_struct_value();
+        let sb_fn_ptr = sb_fn.get_nth_param(1).unwrap().into_pointer_value();
+        let sb_len = self
+            .builder
+            .build_extract_value(sb_in, 1, "sb_len")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let sb_res_a = self
+            .builder
+            .build_alloca(self.list_type, "sb_res")
+            .map_err(llvm_err)?;
+        let sb_cc = self.call_rt("action_list_create", &[sb_len.into()])?;
+        self.builder
+            .build_store(sb_res_a, sb_cc.try_as_basic_value().unwrap_basic())
+            .map_err(llvm_err)?;
+        // Copy input elements to result
+        let sb_ci = self.builder.build_alloca(i64, "sb_ci").map_err(llvm_err)?;
+        self.builder
+            .build_store(sb_ci, zero_i64)
+            .map_err(llvm_err)?;
+        let sb_chdr = self.context.append_basic_block(sb_fn, "copy_hdr");
+        let sb_cbdy = self.context.append_basic_block(sb_fn, "copy_bdy");
+        let sb_cext = self.context.append_basic_block(sb_fn, "copy_ext");
+        let _ = self.builder.build_unconditional_branch(sb_chdr);
+        self.builder.position_at_end(sb_chdr);
+        let sb_civ = self
+            .builder
+            .build_load(i64, sb_ci, "civ")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let sb_ccond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, sb_civ, sb_len, "c_cond")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(sb_ccond, sb_cbdy, sb_cext);
+        self.builder.position_at_end(sb_cbdy);
+        let sb_elem = self
+            .builder
+            .build_call(_list_get_fn, &[sb_in.into(), sb_civ.into()], "elem")
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic();
+        let sb_rl = self
+            .builder
+            .build_load(self.list_type, sb_res_a, "rl")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let sb_rp = self.call_rt("action_list_push", &[sb_rl.into(), sb_elem.into()])?;
+        self.builder
+            .build_store(sb_res_a, sb_rp.try_as_basic_value().unwrap_basic())
+            .map_err(llvm_err)?;
+        let sb_cinc = self
+            .builder
+            .build_int_add(sb_civ, one_i64, "cinc")
+            .map_err(llvm_err)?;
+        self.builder.build_store(sb_ci, sb_cinc).map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(sb_chdr);
+        // Insertion sort
+        self.builder.position_at_end(sb_cext);
+        let sb_i = self.builder.build_alloca(i64, "sb_i").map_err(llvm_err)?;
+        self.builder.build_store(sb_i, one_i64).map_err(llvm_err)?;
+        let sb_ohdr = self.context.append_basic_block(sb_fn, "outer_hdr");
+        let sb_obdy = self.context.append_basic_block(sb_fn, "outer_bdy");
+        let sb_oext = self.context.append_basic_block(sb_fn, "outer_ext");
+        let _ = self.builder.build_unconditional_branch(sb_ohdr);
+        self.builder.position_at_end(sb_ohdr);
+        let sb_iv_o = self
+            .builder
+            .build_load(i64, sb_i, "iv_o")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let sb_o_cond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, sb_iv_o, sb_len, "o_cond")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(sb_o_cond, sb_obdy, sb_oext);
+        self.builder.position_at_end(sb_obdy);
+        let sb_j = self.builder.build_alloca(i64, "sb_j").map_err(llvm_err)?;
+        self.builder.build_store(sb_j, sb_iv_o).map_err(llvm_err)?;
+        let sb_ihdr = self.context.append_basic_block(sb_fn, "inner_hdr");
+        let sb_ibdy = self.context.append_basic_block(sb_fn, "inner_bdy");
+        let sb_iext = self.context.append_basic_block(sb_fn, "inner_ext");
+        let _ = self.builder.build_unconditional_branch(sb_ihdr);
+        self.builder.position_at_end(sb_ihdr);
+        let sb_jv = self
+            .builder
+            .build_load(i64, sb_j, "jv")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let sb_j_cond = self
+            .builder
+            .build_int_compare(IntPredicate::SGT, sb_jv, zero_i64, "j_cond")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(sb_j_cond, sb_ibdy, sb_iext);
+        self.builder.position_at_end(sb_ibdy);
+        let sb_jm1 = self
+            .builder
+            .build_int_sub(sb_jv, one_i64, "jm1")
+            .map_err(llvm_err)?;
+        let sb_rl_jm1 = self
+            .builder
+            .build_load(self.list_type, sb_res_a, "rl_jm1")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let sb_ev_jm1 = self
+            .builder
+            .build_call(_list_get_fn, &[sb_rl_jm1.into(), sb_jm1.into()], "ev_jm1")
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_struct_value();
+        let sb_tag_jm1 = self
+            .builder
+            .build_extract_value(sb_ev_jm1, 0, "t_jm1")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let sb_rl_j = self
+            .builder
+            .build_load(self.list_type, sb_res_a, "rl_j")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let sb_ev_j = self
+            .builder
+            .build_call(_list_get_fn, &[sb_rl_j.into(), sb_jv.into()], "ev_j")
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_struct_value();
+        let sb_tag_j = self
+            .builder
+            .build_extract_value(sb_ev_j, 0, "t_j")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let sb_cmp_r = self
+            .builder
+            .build_indirect_call(
+                lambda_fn_ty,
+                sb_fn_ptr,
+                &[sb_tag_jm1.into(), sb_tag_j.into()],
+                "sb_cmp",
+            )
+            .map_err(llvm_err)?;
+        let sb_cmp_bv = sb_cmp_r
+            .try_as_basic_value()
+            .basic()
+            .ok_or("sorted_by cmp failed")?;
+        let sb_cmp = if sb_cmp_bv.is_struct_value() {
+            self.builder
+                .build_extract_value(sb_cmp_bv.into_struct_value(), 0, "cmp")
+                .map_err(llvm_err)?
+                .into_int_value()
+        } else {
+            sb_cmp_bv.into_int_value()
+        };
+        let sb_should_swap = self
+            .builder
+            .build_int_compare(IntPredicate::NE, sb_cmp, zero_i64, "should_swap")
+            .map_err(llvm_err)?;
+        let sb_swap_bb = self.context.append_basic_block(sb_fn, "swap");
+        let sb_noswap_bb = self.context.append_basic_block(sb_fn, "noswap");
+        let _ = self
+            .builder
+            .build_conditional_branch(sb_should_swap, sb_swap_bb, sb_noswap_bb);
+        self.builder.position_at_end(sb_swap_bb);
+        let sb_rl_sw = self
+            .builder
+            .build_load(self.list_type, sb_res_a, "rl_sw")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let sb_set1 = self
+            .builder
+            .build_call(
+                _list_set_fn,
+                &[sb_rl_sw.into(), sb_jm1.into(), sb_ev_j.into()],
+                "set1",
+            )
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic();
+        self.builder
+            .build_store(sb_res_a, sb_set1)
+            .map_err(llvm_err)?;
+        let sb_rl2_sw = self
+            .builder
+            .build_load(self.list_type, sb_res_a, "rl2_sw")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let sb_set2 = self
+            .builder
+            .build_call(
+                _list_set_fn,
+                &[sb_rl2_sw.into(), sb_jv.into(), sb_ev_jm1.into()],
+                "set2",
+            )
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic();
+        self.builder
+            .build_store(sb_res_a, sb_set2)
+            .map_err(llvm_err)?;
+        self.builder.build_store(sb_j, sb_jm1).map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(sb_ihdr);
+        self.builder.position_at_end(sb_noswap_bb);
+        let _ = self.builder.build_unconditional_branch(sb_iext);
+        self.builder.position_at_end(sb_iext);
+        let sb_ni_o = self
+            .builder
+            .build_int_add(sb_iv_o, one_i64, "ni_o")
+            .map_err(llvm_err)?;
+        self.builder.build_store(sb_i, sb_ni_o).map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(sb_ohdr);
+        self.builder.position_at_end(sb_oext);
+        let sb_rt = self
+            .builder
+            .build_load(self.list_type, sb_res_a, "sb_rt")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_return(Some(&sb_rt));
 
         // ---- action_map_union({ptr, i64, i64}, {ptr, i64, i64}) -> {ptr, i64, i64} ----
         // Merges two maps. Entries from second map overwrite first.
@@ -874,12 +1199,27 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_conditional_branch(rdl_is_leaf, rdl_call_leaf, rdl_call_int);
 
-        // call_leaf: rc_dec the data pointer
+        // call_leaf: rc_dec the string element (slice-aware)
         self.builder.position_at_end(rdl_call_leaf);
-        let rc_dec_fn = self.module.get_function("action_rc_dec").unwrap();
+        let str_rc_dec_fn = self.module.get_function("action_string_rc_dec").unwrap();
+        let rdl_elem_base = unsafe {
+            self.builder
+                .build_gep(i8, rdl_node, &[i64.const_int(8, false)], "elem_base")
+                .map_err(llvm_err)
+        }?;
+        let rdl_str_gep = unsafe {
+            self.builder
+                .build_gep(self.string_type, rdl_elem_base, &[rdl_i], "str_gep")
+                .map_err(llvm_err)
+        }?;
+        let rdl_str_val = self
+            .builder
+            .build_load(self.string_type, rdl_str_gep, "str_val")
+            .map_err(llvm_err)?
+            .into_struct_value();
         let _ = self
             .builder
-            .build_call(rc_dec_fn, &[rdl_ptr.into()], "")
+            .build_call(str_rc_dec_fn, &[rdl_str_val.into()], "")
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(rdl_call_skip);
 

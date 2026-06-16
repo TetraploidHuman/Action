@@ -899,7 +899,6 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// sortedBy(list, fn) or sortedBy(list) { lambda } -> List<T>
-    /// Uses insertion sort since we can't easily do merge sort with callbacks in LLVM IR
     pub(super) fn builtin_sorted_by(
         &mut self,
         args: &[Expr],
@@ -907,183 +906,17 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<TypedValue<'ctx>, String> {
         let (fn_ptr, list_ptr) = self.extract_callback_args(args, trailing, 1, "sortedBy")?;
         let list_struct = self.load_list(list_ptr)?;
-        let input_len = self.list_len_val(list_struct)?;
-        let _input_data = self.list_data_ptr(list_struct)?;
-        let current_fn = self
-            .builder
-            .get_insert_block()
-            .and_then(|b| b.get_parent())
-            .ok_or("no function")?;
-        let i64 = self.i64_ty();
-        let zero = i64.const_int(0, false);
-        let one = i64.const_int(1, false);
-        // Create result list (copy of input)
-        let cc = self.call_rt("action_list_create", &[input_len.into()])?;
-        let res_bv = cc
-            .try_as_basic_value()
-            .basic()
-            .ok_or("list_create failed")?;
-        let res_a = self
+        let cc = self.call_rt(
+            "action_list_sorted_by",
+            &[list_struct.into(), fn_ptr.into()],
+        )?;
+        let result = cc.try_as_basic_value().basic().ok_or("sortedBy failed")?;
+        let alloca = self
             .builder
             .build_alloca(self.list_type, "sb_res")
             .map_err(llvm_err)?;
-        self.builder.build_store(res_a, res_bv).map_err(llvm_err)?;
-        // Copy all elements to result
-        let i_copy_a = self.builder.build_alloca(i64, "i_copy").map_err(llvm_err)?;
-        self.builder.build_store(i_copy_a, zero).map_err(llvm_err)?;
-        let copy_hdr = self.context.append_basic_block(current_fn, "sb_copy_hdr");
-        let copy_bdy = self.context.append_basic_block(current_fn, "sb_copy_bdy");
-        let copy_ext = self.context.append_basic_block(current_fn, "sb_copy_ext");
-        let _ = self.builder.build_unconditional_branch(copy_hdr);
-        self.builder.position_at_end(copy_hdr);
-        let ic = self
-            .builder
-            .build_load(i64, i_copy_a, "ic")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let cc_cond = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, ic, input_len, "c_cond")
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(cc_cond, copy_bdy, copy_ext);
-        self.builder.position_at_end(copy_bdy);
-        let input_list = self.load_list(list_ptr)?;
-        let elem = self.call_rt("action_list_get", &[input_list.into(), ic.into()])?;
-        let elem_val = elem.try_as_basic_value().basic().ok_or("list_get failed")?;
-        let rl = self
-            .builder
-            .build_load(self.list_type, res_a, "rl")
-            .map_err(llvm_err)?
-            .into_struct_value();
-        let rp = self.call_rt("action_list_push", &[rl.into(), elem_val.into()])?;
-        self.builder
-            .build_store(res_a, rp.try_as_basic_value().unwrap_basic())
-            .map_err(llvm_err)?;
-        let nic = self
-            .builder
-            .build_int_add(ic, one, "nic")
-            .map_err(llvm_err)?;
-        self.builder.build_store(i_copy_a, nic).map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(copy_hdr);
-        self.builder.position_at_end(copy_ext);
-        // Insertion sort: for i=1..len, for j=i..>0, compare res[j-1] > res[j], swap if so
-        let i_a = self.builder.build_alloca(i64, "sb_i").map_err(llvm_err)?;
-        self.builder.build_store(i_a, one).map_err(llvm_err)?;
-        let outer_hdr = self.context.append_basic_block(current_fn, "sb_outer_hdr");
-        let outer_bdy = self.context.append_basic_block(current_fn, "sb_outer_bdy");
-        let outer_ext = self.context.append_basic_block(current_fn, "sb_outer_ext");
-        let _ = self.builder.build_unconditional_branch(outer_hdr);
-        self.builder.position_at_end(outer_hdr);
-        let iv_o = self
-            .builder
-            .build_load(i64, i_a, "iv_o")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let o_cond = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, iv_o, input_len, "o_cond")
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(o_cond, outer_bdy, outer_ext);
-        self.builder.position_at_end(outer_bdy);
-        let j_a = self.builder.build_alloca(i64, "sb_j").map_err(llvm_err)?;
-        self.builder.build_store(j_a, iv_o).map_err(llvm_err)?;
-        let inner_hdr = self.context.append_basic_block(current_fn, "sb_inner_hdr");
-        let inner_bdy = self.context.append_basic_block(current_fn, "sb_inner_bdy");
-        let inner_ext = self.context.append_basic_block(current_fn, "sb_inner_ext");
-        let _ = self.builder.build_unconditional_branch(inner_hdr);
-        self.builder.position_at_end(inner_hdr);
-        let jv = self
-            .builder
-            .build_load(i64, j_a, "jv")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let j_cond = self
-            .builder
-            .build_int_compare(IntPredicate::SGT, jv, zero, "j_cond")
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(j_cond, inner_bdy, inner_ext);
-        self.builder.position_at_end(inner_bdy);
-        let jm1 = self
-            .builder
-            .build_int_sub(jv, one, "jm1")
-            .map_err(llvm_err)?;
-        let res_list_jm1 = self.load_list(res_a)?;
-        let elem_jm1 = self.call_rt("action_list_get", &[res_list_jm1.into(), jm1.into()])?;
-        let ev_jm1 = elem_jm1
-            .try_as_basic_value()
-            .basic()
-            .ok_or("list_get failed")?;
-        let tag_jm1 = self
-            .builder
-            .build_extract_value(ev_jm1.into_struct_value(), 0, "t_jm1")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let res_list_j = self.load_list(res_a)?;
-        let elem_j = self.call_rt("action_list_get", &[res_list_j.into(), jv.into()])?;
-        let ev_j = elem_j
-            .try_as_basic_value()
-            .basic()
-            .ok_or("list_get failed")?;
-        let tag_j = self
-            .builder
-            .build_extract_value(ev_j.into_struct_value(), 0, "t_j")
-            .map_err(llvm_err)?
-            .into_int_value();
-        // Call comparator: fn(a, b) -> Bool, returns true if a > b (need swap)
-        let fat_ret_ty = self.string_type;
-        let fn_type = fat_ret_ty.fn_type(&[i64.into(), i64.into()], false);
-        let call_r = self
-            .builder
-            .build_indirect_call(fn_type, fn_ptr, &[tag_jm1.into(), tag_j.into()], "sb_cmp")
-            .map_err(llvm_err)?;
-        let cmp_bv = call_r.try_as_basic_value().basic().ok_or("cmp failed")?;
-        let cmp = if cmp_bv.is_struct_value() {
-            self.builder
-                .build_extract_value(cmp_bv.into_struct_value(), 0, "cmp")
-                .map_err(llvm_err)?
-                .into_int_value()
-        } else {
-            cmp_bv.into_int_value()
-        };
-        let should_swap = self
-            .builder
-            .build_int_compare(IntPredicate::NE, cmp, zero, "should_swap")
-            .map_err(llvm_err)?;
-        let swap_bb = self.context.append_basic_block(current_fn, "sb_swap");
-        let no_swap_bb = self.context.append_basic_block(current_fn, "sb_noswap");
-        let _ = self
-            .builder
-            .build_conditional_branch(should_swap, swap_bb, no_swap_bb);
-        // Swap: use action_list_set
-        self.builder.position_at_end(swap_bb);
-        let rl_sw = self.load_list(res_a)?;
-        let _set1 = self.call_rt("action_list_set", &[rl_sw.into(), jm1.into(), ev_j.into()])?;
-        let rl2_sw = self.load_list(res_a)?;
-        let set2 = self.call_rt(
-            "action_list_set",
-            &[rl2_sw.into(), jv.into(), ev_jm1.into()],
-        )?;
-        let set_bv = set2.try_as_basic_value().basic().ok_or("list_set failed")?;
-        self.builder.build_store(res_a, set_bv).map_err(llvm_err)?;
-        self.builder.build_store(j_a, jm1).map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(inner_hdr);
-        self.builder.position_at_end(no_swap_bb);
-        let _ = self.builder.build_unconditional_branch(inner_ext);
-        self.builder.position_at_end(inner_ext);
-        let ni_o = self
-            .builder
-            .build_int_add(iv_o, one, "ni_o")
-            .map_err(llvm_err)?;
-        self.builder.build_store(i_a, ni_o).map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(outer_hdr);
-        self.builder.position_at_end(outer_ext);
-        Ok(TypedValue::List(res_a))
+        self.builder.build_store(alloca, result).map_err(llvm_err)?;
+        Ok(TypedValue::List(alloca))
     }
 
     /// partition(list, fn) or partition(list) { lambda } -> (List<T>, List<T>)
