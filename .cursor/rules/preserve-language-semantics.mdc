@@ -35,7 +35,7 @@ alwaysApply: true
 
 ## 改动后必须验证
 
-至少执行（在远端 `~/Action`）：
+至少执行：
 
 ```bash
 nix-shell --run "cargo test -- --test-threads=1"
