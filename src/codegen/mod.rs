@@ -702,6 +702,7 @@ mod builtins_nullable;
 mod builtins_print;
 mod builtins_range;
 mod builtins_stdlib;
+mod builtins_stdlib_collection;
 mod builtins_stdlib_datetime;
 mod builtins_stdlib_io;
 mod builtins_stdlib_math;
