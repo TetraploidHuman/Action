@@ -1,8 +1,9 @@
 // Submodule: builtins_call
 
 use crate::ast::*;
+use crate::builtin_registry::{self, BuiltinDispatch};
 use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
-use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum};
+use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum, PointerValue};
 use inkwell::IntPredicate;
 
 use super::{llvm_err, CodeGen, TypedValue};
@@ -24,9 +25,6 @@ impl<'ctx> CodeGen<'ctx> {
                     let target = self.compile_expr(func)?;
                     return self.compile_indirect_call(target, args, trailing);
                 }
-            }
-            if name == "print" || name == "println" {
-                return self.builtin_print(name, args);
             }
             if name == "__list" {
                 return self.builtin_list(args);
@@ -56,6 +54,49 @@ impl<'ctx> CodeGen<'ctx> {
             // Task<T> operations
             if name == "cancel" || name == "is_done" || name == "is_cancelled" || name == "wait" {
                 return self.builtin_task_op(name, args);
+            }
+            // Registry-backed builtins (single source of truth for metadata + dispatch)
+            if let Some(def) = builtin_registry::lookup(name) {
+                match def.dispatch {
+                    BuiltinDispatch::Print => return self.builtin_print(name, args),
+                    BuiltinDispatch::Map | BuiltinDispatch::Filter | BuiltinDispatch::Fold => {
+                        let list_arg_idx = def.list_operand_index(trailing.is_some(), args.len());
+                        let is_list_op = list_arg_idx.map_or(false, |idx| {
+                            idx < args.len()
+                                && matches!(self.compile_expr(&args[idx]), Ok(TypedValue::List(_)))
+                        });
+                        if is_list_op {
+                            return match def.dispatch {
+                                BuiltinDispatch::Map => self.builtin_map(args, trailing),
+                                BuiltinDispatch::Filter => self.builtin_filter(args, trailing),
+                                BuiltinDispatch::Fold => self.builtin_fold(args, trailing),
+                                _ => unreachable!(),
+                            };
+                        }
+                    }
+                    BuiltinDispatch::CallbackList => {
+                        let list_arg_idx = def.list_operand_index(trailing.is_some(), args.len());
+                        let is_list_op = list_arg_idx.map_or(false, |idx| {
+                            idx < args.len()
+                                && matches!(self.compile_expr(&args[idx]), Ok(TypedValue::List(_)))
+                        });
+                        if is_list_op {
+                            return self.builtin_callback_list(name, args, trailing);
+                        }
+                    }
+                    BuiltinDispatch::Stdlib => {
+                        if trailing.is_some()
+                            && (name == "lazyMap"
+                                || name == "lazyFilter"
+                                || name == "lazyTakeWhile")
+                        {
+                            let mut new_args = vec![*trailing.clone().unwrap()];
+                            new_args.extend_from_slice(args);
+                            return self.builtin_stdlib(name, &new_args);
+                        }
+                        return self.builtin_stdlib(name, args);
+                    }
+                }
             }
             if name == "len"
                 || name == "isEmpty"
@@ -247,43 +288,6 @@ impl<'ctx> CodeGen<'ctx> {
                     args.len()
                 ));
             }
-            // flatMap/flatMapResult no longer handle Option/Result enums
-            // (nullable types replace Option/Result)
-            if name == "map" || name == "filter" || name == "fold" {
-                let list_arg_idx: Option<usize> = if name == "map" || name == "filter" {
-                    if trailing.is_some() {
-                        Some(0)
-                    } else if args.len() >= 2 {
-                        Some(1)
-                    } else {
-                        None
-                    }
-                } else if name == "fold" {
-                    if trailing.is_some() && args.len() >= 2 {
-                        Some(1)
-                    } else if args.len() >= 3 {
-                        Some(1)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
-                let is_list_op = list_arg_idx.map_or(false, |idx| {
-                    idx < args.len()
-                        && matches!(self.compile_expr(&args[idx]), Ok(TypedValue::List(_)))
-                });
-                if is_list_op {
-                    if name == "map" {
-                        return self.builtin_map(args, trailing);
-                    } else if name == "filter" {
-                        return self.builtin_filter(args, trailing);
-                    } else if name == "fold" {
-                        return self.builtin_fold(args, trailing);
-                    }
-                }
-                // enum map (Option/Result) has been removed — nullable types replace them
-            }
             // flatMap for lists: flatMap(fn, list) or flatMap(list) { lambda }
             if name == "flatMap" {
                 let list_arg_idx: Option<usize> = if trailing.is_some() {
@@ -301,10 +305,8 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.builtin_flat_map_list(args, trailing);
                 }
             }
-            // Callback-based list functions
-            if name == "any"
-                || name == "all"
-                || name == "find"
+            // Callback-based list functions (registry handles any/all)
+            if name == "find"
                 || name == "findIndex"
                 || name == "reduce"
                 || name == "foldRight"
@@ -1385,35 +1387,23 @@ impl<'ctx> CodeGen<'ctx> {
             }
             // Handle List builtin methods inline — UFCS: list.method(args) ≡ method(list, args...)
             if let TypedValue::List(lp) = &recv_val {
+                if let Some(result) =
+                    self.compile_list_readonly_ufcs(*lp, &recv_val, method, args)?
+                {
+                    return Ok(result);
+                }
                 match method.as_str() {
                     "insert" => return self.builtin_list_insert(*lp, args),
                     "remove" => return self.builtin_list_remove(*lp, args),
                     "append" => return self.builtin_list_append(*lp, args),
-                    "len" => {
-                        let lv = self.load_list(*lp)?;
-                        let len = self.list_len_val(lv)?;
-                        self.rc_free_intermediate(&recv_val)?;
-                        return Ok(TypedValue::Int(len));
-                    }
-                    "isEmpty" => {
-                        let lv = self.load_list(*lp)?;
-                        let len = self.list_len_val(lv)?;
-                        let zero = self.i64_ty().const_int(0, false);
-                        let is_empty = self
-                            .builder
-                            .build_int_compare(IntPredicate::EQ, len, zero, "empty")
-                            .map_err(llvm_err)?;
-                        self.rc_free_intermediate(&recv_val)?;
-                        return Ok(TypedValue::Bool(is_empty));
-                    }
                     _ => {}
                 }
                 // Remaining methods: free intermediate then recompile via compile_call
                 self.rc_free_method_receiver(&recv_val)?;
                 match method.as_str() {
-                    // No-arg methods: f(list) — len/isEmpty handled above
-                    "head" | "last" | "tail" | "init" | "reverse" | "sum" | "product"
-                    | "sorted" | "flatten" | "unique" | "toList" | "toLazyList" => {
+                    // No-arg methods: f(list) — read-only handled above
+                    "last" | "init" | "reverse" | "sum" | "product" | "sorted" | "flatten"
+                    | "unique" | "toList" | "toLazyList" => {
                         let new_func = Expr::Ident(method.to_string());
                         return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                     }
@@ -1430,9 +1420,9 @@ impl<'ctx> CodeGen<'ctx> {
                         );
                     }
                     // Single-arg methods: f(list, arg) — dispatch to builtin_stdlib
-                    "get" | "contains" | "take" | "drop" | "append" | "prepend" | "indexOf"
-                    | "slice" | "splitAt" | "chunks" | "windows" | "repeat" | "withIndex"
-                    | "remove" | "zip" | "count" | "partition" => {
+                    "take" | "drop" | "append" | "prepend" | "slice" | "splitAt" | "chunks"
+                    | "windows" | "repeat" | "withIndex" | "remove" | "zip" | "count"
+                    | "partition" => {
                         if args.len() != 1 {
                             return Err(format!("list.{} expects 1 argument", method));
                         }
@@ -1517,42 +1507,36 @@ impl<'ctx> CodeGen<'ctx> {
             }
 
             // UFCS fallback: receiver.method(args) → method(receiver, args)
-            // Avoid rc_free + AST recompile for List len/isEmpty — that double-evaluates
-            // method chains (e.g. lst.remove(0).len()) and can free shared nodes early.
-            if matches!(method.as_str(), "len" | "isEmpty") {
-                if let TypedValue::List(lp) = &recv_val {
-                    let lv = self.load_list(*lp)?;
-                    let len = self.list_len_val(lv)?;
-                    if method == "isEmpty" {
-                        let zero = self.i64_ty().const_int(0, false);
-                        let is_empty = self
-                            .builder
-                            .build_int_compare(IntPredicate::EQ, len, zero, "empty")
-                            .map_err(llvm_err)?;
+            // Read-only collection len/isEmpty must use compiled recv_val — rc_free + AST
+            // recompile double-evaluates method chains (e.g. lst.remove(0).len()) and can SIGSEGV.
+            if let Some(def) = builtin_registry::lookup(method) {
+                if def.readonly && matches!(def.name, "len" | "isEmpty") {
+                    if matches!(recv_val, TypedValue::Map(_) | TypedValue::Set(_)) {
+                        let lp = match &recv_val {
+                            TypedValue::Map(p) | TypedValue::Set(p) => *p,
+                            _ => unreachable!(),
+                        };
+                        let lv = self.load_list(lp)?;
+                        let len = self.map_len_val(lv)?;
+                        if def.name == "isEmpty" {
+                            let zero = self.i64_ty().const_int(0, false);
+                            let is_empty = self
+                                .builder
+                                .build_int_compare(IntPredicate::EQ, len, zero, "empty")
+                                .map_err(llvm_err)?;
+                            self.rc_free_intermediate(&recv_val)?;
+                            return Ok(TypedValue::Bool(is_empty));
+                        }
                         self.rc_free_intermediate(&recv_val)?;
-                        return Ok(TypedValue::Bool(is_empty));
+                        return Ok(TypedValue::Int(len));
                     }
-                    self.rc_free_intermediate(&recv_val)?;
-                    return Ok(TypedValue::Int(len));
                 }
-                if matches!(recv_val, TypedValue::Map(_) | TypedValue::Set(_)) {
-                    let lp = match &recv_val {
-                        TypedValue::Map(p) | TypedValue::Set(p) => *p,
-                        _ => unreachable!(),
-                    };
-                    let lv = self.load_list(lp)?;
-                    let len = self.map_len_val(lv)?;
-                    if method == "isEmpty" {
-                        let zero = self.i64_ty().const_int(0, false);
-                        let is_empty = self
-                            .builder
-                            .build_int_compare(IntPredicate::EQ, len, zero, "empty")
-                            .map_err(llvm_err)?;
-                        self.rc_free_intermediate(&recv_val)?;
-                        return Ok(TypedValue::Bool(is_empty));
-                    }
-                    self.rc_free_intermediate(&recv_val)?;
-                    return Ok(TypedValue::Int(len));
+            }
+            if let TypedValue::List(lp) = &recv_val {
+                if let Some(result) =
+                    self.compile_list_readonly_ufcs(*lp, &recv_val, method, args)?
+                {
+                    return Ok(result);
                 }
             }
             self.rc_free_method_receiver(&recv_val)?;
@@ -1681,6 +1665,259 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
             _ => Err("Call target is not a function".to_string()),
+        }
+    }
+
+    /// Read-only List UFCS methods using the already-compiled receiver value.
+    /// Returns `None` when `method` is not handled here.
+    fn compile_list_readonly_ufcs(
+        &mut self,
+        lp: PointerValue<'ctx>,
+        recv_val: &TypedValue<'ctx>,
+        method: &str,
+        args: &[Expr],
+    ) -> Result<Option<TypedValue<'ctx>>, String> {
+        if !matches!(
+            method,
+            "len" | "isEmpty" | "head" | "tail" | "get" | "contains" | "indexOf"
+        ) {
+            return Ok(None);
+        }
+        let lv = self.load_list(lp)?;
+        let zero = self.i64_ty().const_int(0, false);
+        match method {
+            "len" => {
+                let len = self.list_len_val(lv)?;
+                self.rc_free_intermediate(recv_val)?;
+                Ok(Some(TypedValue::Int(len)))
+            }
+            "isEmpty" => {
+                let len = self.list_len_val(lv)?;
+                let is_empty = self
+                    .builder
+                    .build_int_compare(IntPredicate::EQ, len, zero, "empty")
+                    .map_err(llvm_err)?;
+                self.rc_free_intermediate(recv_val)?;
+                Ok(Some(TypedValue::Bool(is_empty)))
+            }
+            "head" => {
+                if !args.is_empty() {
+                    return Err("list.head expects 0 arguments".to_string());
+                }
+                let len = self.list_len_val(lv)?;
+                let empty = self
+                    .builder
+                    .build_int_compare(IntPredicate::EQ, len, zero, "empty")
+                    .map_err(llvm_err)?;
+                let nullable_ty = self.get_nullable_type(self.i64_ty().into(), "Nullable<Int>");
+                let current_fn = self
+                    .builder
+                    .get_insert_block()
+                    .and_then(|b| b.get_parent())
+                    .ok_or("no fn")?;
+                let some_bb = self
+                    .context
+                    .append_basic_block(current_fn, "ufcs_head_some");
+                let none_bb = self
+                    .context
+                    .append_basic_block(current_fn, "ufcs_head_none");
+                let merge_bb = self
+                    .context
+                    .append_basic_block(current_fn, "ufcs_head_merge");
+                let _ = self
+                    .builder
+                    .build_conditional_branch(empty, none_bb, some_bb);
+                self.builder.position_at_end(some_bb);
+                let elem = self.call_rt("action_list_get", &[lv.into(), zero.into()])?;
+                let elem_tag = elem
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("get failed")?
+                    .into_struct_value();
+                let elem_tag = self
+                    .builder
+                    .build_extract_value(elem_tag, 0, "elem_tag")
+                    .map_err(llvm_err)?;
+                let some_struct = {
+                    let undef = nullable_ty.get_undef();
+                    let r1 = self
+                        .builder
+                        .build_insert_value(
+                            undef,
+                            self.null_flag_ty().const_int(0, false),
+                            0,
+                            "s_flag",
+                        )
+                        .map_err(llvm_err)?;
+                    self.builder
+                        .build_insert_value(r1, elem_tag, 1, "s_val")
+                        .map_err(llvm_err)?
+                };
+                let _ = self.builder.build_unconditional_branch(merge_bb);
+                self.builder.position_at_end(none_bb);
+                let none_struct = {
+                    let undef = nullable_ty.get_undef();
+                    self.builder
+                        .build_insert_value(
+                            undef,
+                            self.null_flag_ty().const_int(1, false),
+                            0,
+                            "n_flag",
+                        )
+                        .map_err(llvm_err)?
+                };
+                let _ = self.builder.build_unconditional_branch(merge_bb);
+                self.builder.position_at_end(merge_bb);
+                let phi = self
+                    .builder
+                    .build_phi(nullable_ty, "ufcs_head_result")
+                    .map_err(llvm_err)?;
+                phi.add_incoming(&[(&some_struct, some_bb), (&none_struct, none_bb)]);
+                let alloca = self
+                    .builder
+                    .build_alloca(nullable_ty, "ufcs_head")
+                    .map_err(llvm_err)?;
+                self.builder
+                    .build_store(alloca, phi.as_basic_value())
+                    .map_err(llvm_err)?;
+                self.rc_free_intermediate(recv_val)?;
+                Ok(Some(TypedValue::Nullable(alloca, nullable_ty.into())))
+            }
+            "tail" => {
+                if !args.is_empty() {
+                    return Err("list.tail expects 0 arguments".to_string());
+                }
+                let len = self.list_len_val(lv)?;
+                let is_empty = self
+                    .builder
+                    .build_int_compare(IntPredicate::EQ, len, zero, "empty")
+                    .map_err(llvm_err)?;
+                let cc = self.call_rt("action_list_tail", &[lv.into()])?;
+                let result = cc
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("tail failed")?
+                    .into_struct_value();
+                self.rc_free_intermediate(recv_val)?;
+                self.build_nullable_list(result, is_empty).map(Some)
+            }
+            "get" => {
+                if args.len() != 1 {
+                    return Err("list.get expects 1 argument".to_string());
+                }
+                let idx_val = self.compile_expr(&args[0])?;
+                let iv = match idx_val {
+                    TypedValue::Int(v) => v,
+                    _ => return Err("list.get: index must be Int".to_string()),
+                };
+                let len = self.list_len_val(lv)?;
+                let neg = self
+                    .builder
+                    .build_int_compare(IntPredicate::SLT, iv, zero, "neg")
+                    .map_err(llvm_err)?;
+                let ge_len = self
+                    .builder
+                    .build_int_compare(IntPredicate::SGE, iv, len, "ge_len")
+                    .map_err(llvm_err)?;
+                let oob = self
+                    .builder
+                    .build_or(neg, ge_len, "oob")
+                    .map_err(llvm_err)?;
+                let current_fn = self
+                    .builder
+                    .get_insert_block()
+                    .and_then(|b| b.get_parent())
+                    .ok_or("no fn")?;
+                let some_bb = self.context.append_basic_block(current_fn, "ufcs_get_some");
+                let none_bb = self.context.append_basic_block(current_fn, "ufcs_get_none");
+                let merge_bb = self
+                    .context
+                    .append_basic_block(current_fn, "ufcs_get_merge");
+                let _ = self.builder.build_conditional_branch(oob, none_bb, some_bb);
+                self.builder.position_at_end(some_bb);
+                let elem = self.call_rt("action_list_get", &[lv.into(), iv.into()])?;
+                let elem_bv = elem.try_as_basic_value().basic().ok_or("get failed")?;
+                let nullable_ty = self.get_nullable_type(self.string_type.into(), "Nullable<Str>");
+                let some_struct = {
+                    let undef = nullable_ty.get_undef();
+                    let r1 = self
+                        .builder
+                        .build_insert_value(
+                            undef,
+                            self.null_flag_ty().const_int(0, false),
+                            0,
+                            "s_flag",
+                        )
+                        .map_err(llvm_err)?;
+                    self.builder
+                        .build_insert_value(r1, elem_bv, 1, "s_val")
+                        .map_err(llvm_err)?
+                };
+                let _ = self.builder.build_unconditional_branch(merge_bb);
+                self.builder.position_at_end(none_bb);
+                let none_struct = {
+                    let undef = nullable_ty.get_undef();
+                    self.builder
+                        .build_insert_value(
+                            undef,
+                            self.null_flag_ty().const_int(1, false),
+                            0,
+                            "n_flag",
+                        )
+                        .map_err(llvm_err)?
+                };
+                let _ = self.builder.build_unconditional_branch(merge_bb);
+                self.builder.position_at_end(merge_bb);
+                let phi = self
+                    .builder
+                    .build_phi(nullable_ty, "ufcs_get_result")
+                    .map_err(llvm_err)?;
+                phi.add_incoming(&[(&some_struct, some_bb), (&none_struct, none_bb)]);
+                let alloca = self
+                    .builder
+                    .build_alloca(nullable_ty, "ufcs_get")
+                    .map_err(llvm_err)?;
+                self.builder
+                    .build_store(alloca, phi.as_basic_value())
+                    .map_err(llvm_err)?;
+                self.rc_free_intermediate(recv_val)?;
+                Ok(Some(TypedValue::Nullable(alloca, nullable_ty.into())))
+            }
+            "contains" => {
+                if args.len() != 1 {
+                    return Err("list.contains expects 1 argument".to_string());
+                }
+                let elem_val = self.compile_expr(&args[0])?;
+                let fat = self.to_fat_struct(&elem_val)?;
+                let cc = self.call_rt("action_list_contains", &[lv.into(), fat.into()])?;
+                let result = cc
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("contains failed")?
+                    .into_int_value();
+                self.rc_free_intermediate(recv_val)?;
+                Ok(Some(TypedValue::Bool(result)))
+            }
+            "indexOf" => {
+                if args.len() != 1 {
+                    return Err("list.indexOf expects 1 argument".to_string());
+                }
+                let elem_val = self.compile_expr(&args[0])?;
+                let fat = self.to_fat_struct(&elem_val)?;
+                let cc = self.call_rt("action_list_index_of", &[lv.into(), fat.into()])?;
+                let result = cc
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("indexOf failed")?
+                    .into_int_value();
+                let found = self
+                    .builder
+                    .build_int_compare(IntPredicate::SGE, result, zero, "found")
+                    .map_err(llvm_err)?;
+                self.rc_free_intermediate(recv_val)?;
+                self.build_nullable_int(result, found).map(Some)
+            }
+            _ => Ok(None),
         }
     }
 

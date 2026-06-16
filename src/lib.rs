@@ -2,6 +2,8 @@
 // Core modules re-exported for the CLI binary and external consumers.
 
 pub mod ast;
+#[path = "codegen/builtin_registry.rs"]
+pub mod builtin_registry;
 pub mod codegen;
 pub mod config;
 pub mod error;

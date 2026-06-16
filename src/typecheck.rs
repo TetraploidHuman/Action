@@ -1,4 +1,5 @@
 use crate::ast::*;
+use crate::builtin_registry;
 use crate::error::CompilerError;
 use crate::lexer::Span;
 use std::cell::RefCell;
@@ -1396,14 +1397,15 @@ impl TypeChecker {
                         "is_done" | "is_cancelled" => Ok(Type::Named("Bool".into())),
                         "withTimeout" => Ok(Type::Nullable(Box::new(Type::Named("Int".into())))),
                         "coroutineScope" => Ok(Type::Named("list".into())),
-                        // Callback-based list functions
-                        "any" | "all" => Ok(Type::Named("Bool".into())),
                         "find" | "findIndex" | "reduce" => {
                             Ok(Type::Nullable(Box::new(Type::Named("Int".into()))))
                         }
                         "foldRight" => Ok(Type::Named("Int".into())),
                         "takeWhile" | "dropWhile" | "sortedBy" => Ok(Type::Named("list".into())),
                         _ => {
+                            if let Some(def) = builtin_registry::lookup(name) {
+                                return Ok(def.return_type.clone());
+                            }
                             if self.registry.lookup_variant(name).is_some() {
                                 let enum_name = self
                                     .registry
@@ -1424,6 +1426,11 @@ impl TypeChecker {
                     }
                 } else if let Expr::FieldAccess(receiver, method) = func.as_ref() {
                     let recv_type = self.infer_expr_type(receiver)?;
+                    if let Some(kind) = builtin_registry::receiver_kind_from_type(&recv_type) {
+                        if let Some(def) = builtin_registry::lookup_ufcs(kind, method) {
+                            return Ok(def.return_type.clone());
+                        }
+                    }
                     match (recv_type, method.as_str()) {
                         // Map/Set UFCS methods
                         (Type::Map(_, _), "contains")
@@ -1446,7 +1453,6 @@ impl TypeChecker {
                             Ok(Type::Named("Bool".into()))
                         }
                         (Type::Task(_), "wait") => Ok(Type::Named("Int".into())),
-                        (Type::Named(_), "len") => Ok(Type::Named("Int".into())),
                         _ => {
                             // UFCS fallback: receiver.method(args) → method(receiver, args)
                             let mut all_args = vec![receiver.as_ref().clone()];
