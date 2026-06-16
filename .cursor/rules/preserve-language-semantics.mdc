@@ -47,7 +47,7 @@ nix-shell --run "cargo test -- --test-threads=1"
 - `test_rc_pressure`、`test_rc_cycle`
 - `examples/bench_cow.at` 输出仍为预期（当前为 `11`）
 
-涉及性能时，用 `./benchmark.sh` 对比，并说明测的是 JIT 全路径还是 AOT 纯执行。
+涉及性能时，用 `./benchmark.sh` 与 `scripts/perf_report.py` 对比，并说明测的是 JIT 全路径（`--mode run`）还是 AOT 纯执行（`--mode aot`）。详见 `BENCHMARK.md`。
 
 ## 原则
 

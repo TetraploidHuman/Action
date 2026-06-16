@@ -76,16 +76,22 @@ cd ~/Action && nix-shell --run "cargo build --release"
 cd ~/Action && nix-shell --run "cargo test -- --test-threads=1"
 cd ~/Action && nix-shell --run "./target/release/action run examples/hello.at"
 cd ~/Action && nix-shell --run "./benchmark.sh --iterations 3"
+cd ~/Action && nix-shell --run "./benchmark.sh --mode aot -O2"
+cd ~/Action && nix-shell --run "python3 scripts/perf_phase_split.py"
+cd ~/Action && nix-shell --run "python3 scripts/perf_report.py"
 ```
+
+详见 `BENCHMARK.md` 与 `scripts/perf_*.py`。
 
 ## 标准开发流程
 
 1. **阅读**：可在本地工作区查看代码（或 SSH 读远端文件）
 2. **修改**：仅在远端 `~/Action` 改文件（SFTP / SSH）
 3. **验证**：远端 `nix-shell --run "cargo build --release"` + 测试 / benchmark
-4. **提交**：仅在远端执行：
+4. **提交**：仅在远端执行（**直连 GitHub，不走 FlClash 全局代理**）：
    ```bash
-   cd ~/Action && git add ... && git commit -m "..." && git push origin main
+   cd ~/Action && git add ... && git commit -m "..."
+   cd ~/Action && ./scripts/git-push.sh origin main
    ```
 5. **同步本地**：远端 push 成功后，在本机工作区执行：
    ```bash
