@@ -14,6 +14,7 @@ alwaysApply: true
 | **持久化数据结构** | `List`/`Map`/`Set` 等操作返回新值；**已有绑定在未被重新赋值前，其内容不得被后续操作改变** |
 | **CoW（写时复制）** | 共享引用（`rc > 1`）写入前必须拷贝；唯一引用（`rc == 1`）可原地更新。**禁止**为提速而对共享数据做破坏性写入 |
 | **引用计数** | 不泄漏、不提前释放；不破坏 `action_malloc_rc` / `action_rc_inc` / `action_rc_dec` 与作用域清理的约定 |
+| **Codegen 与 RC** | UFCS 方法链（如 `lst.remove(0).len()`）不得对中间 `List` 结果 `rc_free` 后再按 AST 重求值；共享节点会被提前释放（见 `ai-agent-workflow.mdc` 踩坑 §2） |
 | **类型与空安全** | 不改变 `T?` 传播、`or {}`、智能转换、赋值与类型检查规则 |
 | **绑定可变性** | `val` 不可重新赋值；`var` 可赋；`lazy val` 只初始化一次 |
 | **控制流与模式** | `when` 穷尽性、模式匹配、TCO（尾调用优化）行为与现有一致 |
@@ -46,6 +47,7 @@ nix-shell --run "cargo test -- --test-threads=1"
 - `test_list_insert_remove`、`test_list_stress`、`test_list_concat`
 - `test_rc_pressure`、`test_rc_cycle`
 - `examples/bench_cow.at` 输出仍为预期（当前为 `11`）
+- `examples/bench_all.at` 不 SIGSEGV（方法链 + concat 树变异路径）
 
 涉及性能时，用 `./benchmark.sh` 与 `scripts/perf_report.py` 对比，并说明测的是 JIT 全路径（`--mode run`）还是 AOT 纯执行（`--mode aot`）。详见 `BENCHMARK.md`。
 

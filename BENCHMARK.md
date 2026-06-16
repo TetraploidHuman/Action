@@ -20,7 +20,7 @@ nix-shell --run "./benchmark.sh -n 5 -O0"
 | 选项 | 说明 |
 |------|------|
 | `-n, --iterations N` | 每项基准计时次数（默认 3） |
-| `--mode run\|aot` | `run`：每次 `action run`（含 JIT）；`aot`：编译 exe 后只测执行 |
+| `--mode run\|aot` | `run`：每次 `action run`（含 JIT 编译+执行）；`aot`：先编译 exe 一次，**仅对 exe 执行计时**（不含 emit/link） |
 | `-O0`…`-O3` / `--opt N` | LLVM 优化级别 |
 | `--warmup` / `--no-warmup` | 是否先跑 1 次不计时（默认预热） |
 | `-b, --build` | 运行前先 `cargo build --release` |
@@ -63,10 +63,10 @@ cd ~/Action && nix-shell --run "python3 scripts/perf_report.py"
 
 ## 测量说明
 
-1. **`run` 模式（默认）**：墙钟时间 = 编译 IR + JIT 冷启动 + 程序执行；小用例中 JIT 固定开销可达 ~50–60 ms。
-2. **`aot` 模式**：先 `action run --emit exe`，只计 exe 执行时间，反映纯运行时。
+1. **`run` 模式（默认）**：墙钟时间 = 编译 IR + JIT 冷启动 + 程序执行；小用例中 JIT 固定开销可达 ~50–60 ms。**`-O2` 会显著增加 JIT 编译耗时**，轻量用例总时间可能反而变长。
+2. **`aot` 模式**：每个用例先 `action run --emit exe` 编译一次（不计时），预热与计时段**只运行 exe**，反映纯运行时；适合对比 `-O0` vs `-O2` 的代码生成质量。
 3. **阶段拆分**：`perf_phase_split.py` 用 `build` 与 `run` 差值估算 JIT+执行。
-4. 对比优化前后应在同一机器、同一 `nix-shell` 环境下，使用 **release** 二进制。
+4. 对比优化前后应在同一机器、同一 `nix-shell` 环境下，使用 **release** 二进制，且 **aot 模式用同一 `--mode`**。
 
 ## 优化后验证清单
 

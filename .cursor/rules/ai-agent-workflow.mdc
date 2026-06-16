@@ -1,0 +1,168 @@
+---
+description: AI 代理在本项目的运行、验证与性能优化前置须知
+alwaysApply: true
+---
+
+# AI 代理工作流（Action 项目）
+
+## 必须亲自执行
+
+- **自己跑命令**，不要只告诉用户「请你运行」；`nix-shell` 等命令异常失败时再试 `required_permissions: ["all"]`，不要误判为「环境跑不了」。
+- 改动编译器/运行时代码后，**必须**完成：build → 集成测试 → 语义回归 →（涉及性能时）benchmark。
+
+## 环境与路径
+
+```bash
+cd ~/Action   # 即 /home/miaox99/Action（symlink → ~/桌面/Action）
+nix-shell     # 所有 cargo / action / benchmark 均在此环境内
+```
+
+- Agent 已配置 **Run Everything (Unsandboxed)**，命令在 Remote-SSH 真实终端执行，与手动 `nix-shell` 一致。
+- 工作区即远端真环境（Remote-SSH），不是模拟环境。
+
+## ⚠️ 踩坑备忘（后续 AI 必读）
+
+### 1. 编译产物路径
+
+`cargo build --release` 产物位于：
+
+```bash
+./target/release/action    # 即 ~/Action/target/release/action
+```
+
+- 改 codegen/runtime 后先 `cargo build --release`，再用 `./target/release/action run ...` 验证。
+- 若 `./target/release/action` 时间戳很旧，说明未重新编译，或误用了其它 build 目录（见下）。
+- 使用 `./build.sh` 时产物在 `~/action-build/target/release/action`（Unicode 路径规避），与项目 `target/` 独立；勿与 `./target/release/action` 混用。
+
+改 `define_list_*.rs` 后若 IR 不像预期，先 `touch` 该文件或 `cargo clean -p action` 再编，并用 `./target/release/action run --emit ir ...` 核对生成 IR。
+
+> **历史备忘**：若将来重新开启 Cursor 沙箱（Auto-Run in Sandbox），`CARGO_TARGET_DIR` 可能指向 `/tmp/cursor-sandbox-cache/.../cargo-target`；届时查 `$CARGO_TARGET_DIR/release/action` 或改回 Unsandboxed。
+
+### 2. 方法链 + UFCS：`lst.remove(0).len()` 类 SIGSEGV
+
+**现象**（仅变量绑定 + 链式调用，字面量链式正常）：
+
+```action
+val lst = List[1, 2, 3]
+println(lst.remove(0).len())   // SIGSEGV
+var x = lst.remove(0); println(x.len())  // 正常
+println(List[1,2,3].remove(0).len())    // 正常
+```
+
+**根因**（`src/codegen/builtins_call.rs`）：UFCS fallback 对 `len`/`isEmpty` 等走 `rc_free_method_receiver` + **按 AST 重编译 receiver**。链式调用时：
+
+1. 第一次 `compile_expr(receiver)` 已执行 `remove`，结果与 `lst` **共享节点**；
+2. `rc_free` 释放中间结果 → 共享树被提前 `rc_dec`；
+3. 重编译 `remove(lst, …)` 再访问 `lst` → **use-after-free / SIGSEGV**。
+
+**修复原则**：对 `TypedValue::List` 的 `len`/`isEmpty`（及同类只读方法）在 UFCS 分支**直接用已编译的 `recv_val`**，禁止 `rc_free` 后再 `compile_call(Ident("len"), [receiver AST])`。相关逻辑在 `builtins_call.rs` List 分支与 UFCS fallback 两处。
+
+**回归用例**：`bench_all.at`、上式 `t_d.at`；IR 中 `@main` 对同一 receiver **不应出现两次** `action_list_remove`。
+
+### 3. List 运行时：ConcatNode（`height == -1`）
+
+**现象**：`append` 大列表 → `insert` → `remove`/`take`/`flatten` 崩溃；`get` 仍正常（树可读、变异路径有问题）。
+
+**根因**：`action_list_push_subtree` 未处理 ConcatNode，把 `height == -1` 当 internal node 遍历。
+
+**位置**：`src/codegen/runtime_decl/define_list_tree.rs` 的 `push_subtree` 实现；**验证 IR** 应含：
+
+```llvm
+entry:
+  %is_concat = icmp eq i64 %2, -1
+  br i1 %is_concat, label %concat, label %normal
+```
+
+若 entry 直接 `icmp eq %2, 0`，说明**未编进当前二进制**（重新 `cargo build --release` 并核对 IR）。
+
+### 4. AOT benchmark：`-O2`「变慢」常是计量方式问题
+
+- **JIT 全路径**（`./benchmark.sh -n 3`）：`-O2` 增大 MCJIT 编译时间，小用例总时间常变长。
+- **AOT 纯执行**（`./benchmark.sh --mode aot --opt 2 -n 3`）：每项**先编译 exe 一次（不计时）**，迭代**只计 exe 运行**；`-O2` 对重负载通常更快。
+
+对比优化前后必须用**同一 `--mode`**；详见 `BENCHMARK.md`。
+
+### 5. 其它 codegen / 运行时惯例
+
+| 项 | 说明 |
+|----|------|
+| `define_list_*.rs` 体积大 | `git status` 若显示 `D`，立即 `git checkout HEAD -- <file>` 恢复 |
+| 新基本块 | 每 block 必须以 `br`/`ret` 终结（见下文「写 LLVM 运行时的坑」） |
+| `opt_level` | 只影响 JIT/AOT 引擎与 `TargetMachine`，**无**独立 IR PassManager |
+| 临时调试文件 | 勿提交 `examples/_bisect*.at`、`examples/_test_*.at` 等 |
+
+## 标准验证命令
+
+```bash
+# 在 nix-shell 内：
+
+# 1. 编译（改 runtime_decl 较慢，约 1–2 分钟）
+cargo build --release
+
+# 2. 集成测试（113 项，语言语义权威）
+cargo test --test integration -- --test-threads=1
+
+# 3. 语义快检（List/CoW/map-filter / 方法链）
+./target/release/action run examples/bench_cow.at      # 预期: 11
+./target/release/action run examples/map_filter.at    # 预期: 210215
+./target/release/action run examples/bench_all.at       # 方法链 + concat 回归
+
+# 4. 性能（默认 JIT 全路径）
+./benchmark.sh -n 3
+```
+
+（从宿主机一条命令：`nix-shell --run 'cargo build --release && cargo test --test integration -- --test-threads=1'`）
+
+`cargo test`（lib）含无关 proptest，可能偶发失败；**以 integration 测试为准**。
+
+## 性能测试注意
+
+| 模式 | 命令 | 含义 |
+|------|------|------|
+| JIT 全路径 | `./benchmark.sh -n 3` | 编译 + JIT + 执行（小用例约 50–60ms 固定开销） |
+| 纯执行 | `./benchmark.sh --mode aot --opt 2 -n 3` | 每项先编译 exe 一次（不计时），迭代只计 exe 执行 |
+| 深度报告 | `python3 scripts/perf_report.py` | 阶段拆分 + Top5 |
+
+- 优化级别用 **`--opt 2`**，不是 `-O2`（`benchmark.sh` 会报 unknown）。
+- 对比优化前后用**同一模式**；小用例看 AOT 更能反映运行时热点。
+- AOT object 发射对 Linux/macOS 等 ELF 目标使用 **PIC 重定位**（`jit.rs` `aot_reloc_mode`），以兼容默认 PIE 链接；`-O2` 下若见 `R_X86_64_32 ... PIE` 链接错误，检查此处。
+
+## 改动热点文件
+
+| 路径 | 说明 |
+|------|------|
+| `src/codegen/runtime_decl/define_list_core.rs` | List 核心 + walk 类优化 |
+| `src/codegen/runtime_decl/define_list_tree.rs` | insert/concat/flatten、`push_subtree` ConcatNode |
+| `src/codegen/builtins_call.rs` | UFCS 方法链、`len`/`isEmpty` 勿 double-eval |
+| `src/codegen/builtins_iter.rs` | map/filter/fold 等 |
+| `src/codegen/runtime_decl/define_map.rs` | Map O(n) rebuild 热点 |
+
+- 这些文件**体积大、勿删**；若 `git status` 显示 `D`，立即 `git checkout HEAD -- <file>` 恢复后重改。
+- 语言语义约束见 `preserve-language-semantics.mdc`（CoW、RC、持久化 List/Map）。
+
+## 写 LLVM 运行时的坑
+
+在 `define_list_*.rs` 新增基本块时，**每个 block 必须以 terminator 结束**（`br` / `ret`），不能只用 `position_at_end` 跳去另一块：
+
+```rust
+// ❌ leaf_chk 无 br，verify 报 "does not have terminator"
+self.builder.build_store(...)?;
+self.builder.position_at_end(leaf_next);
+
+// ✅
+self.builder.build_store(...)?;
+self.builder.build_unconditional_branch(leaf_next)?;
+self.builder.position_at_end(leaf_next);
+```
+
+改完若报 `Basic Block ... does not have terminator`，检查 `leaf_chk`、`int_child` 等循环体末尾。
+
+## 并行加速
+
+- 大范围探索可用 **Task 子代理**（`explore` / `shell`）并行：一边跑测试，一边分析热点。
+- 子代理结论需在本机编译/测试验证，不要直接采信未跑过的性能数字。
+
+## Git
+
+- **未经用户明确要求不要 commit / push**。
+- push 用 `./scripts/git-push.sh origin main`（优先直连 GitHub）。

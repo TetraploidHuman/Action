@@ -60,14 +60,20 @@ bench_exe_path() {
     local f="$1"
     echo "${f%.at}"
 }
+# AOT: emit+link once per benchmark (not timed).
+compile_aot() {
+    local bench_file="$1"
+    local exe; exe="$(bench_exe_path "$bench_file")"
+    rm -f "$exe"
+    if ! "$ACTION_BIN" run "-O$OPT" --emit exe "$bench_file" >/dev/null 2>&1; then
+        return 1
+    fi
+    [[ -x "$exe" ]]
+}
 run_bench() {
     local bench_file="$1"
     if [[ "$MODE" == "aot" ]]; then
-        local exe; exe="$(bench_exe_path "$bench_file")"
-        if ! "$ACTION_BIN" run "-O$OPT" --emit exe "$bench_file" >/dev/null 2>&1; then
-            return 1
-        fi
-        "$exe" >/dev/null 2>&1
+        "$(bench_exe_path "$bench_file")" >/dev/null 2>&1
         return $?
     fi
     local profile_arg=()
@@ -86,16 +92,18 @@ echo -e "${BOLD}==============================================${NC}"
 echo -e "${BOLD}  Action Language — 性能测试套件${NC}"
 echo -e "${BOLD}==============================================${NC}"
 echo -e "  binary:      ${ACTION_BIN}"
-echo -e "  mode:        ${MODE}"
+echo -e "  mode:        ${MODE}$([[ "$MODE" == "aot" ]] && echo ' (timed: exe only)')"
 echo -e "  opt:         -O${OPT}"
 echo -e "  warmup:      ${WARMUP}"
 echo -e "  iterations:  ${ITERATIONS}"
 echo -e "  count:       ${#BENCH_FILES[@]}"
 echo ""
 RESULTS_PATH="$SRC_DIR/$RESULTS_FILE"
+AOT_NOTE=""
+[[ "$MODE" == "aot" ]] && AOT_NOTE=" | timed: exe-only (compile excluded)"
 cat > "$RESULTS_PATH" << FOE
 # Action Language Benchmark Results
-# $(date '+%Y-%m-%d %H:%M:%S') | binary: $ACTION_BIN | mode: $MODE | opt: -O$OPT | warmup: $WARMUP | iterations: $ITERATIONS
+# $(date '+%Y-%m-%d %H:%M:%S') | binary: $ACTION_BIN | mode: $MODE | opt: -O$OPT | warmup: $WARMUP | iterations: $ITERATIONS${AOT_NOTE}
 # benchmark          min(ms)  avg(ms)  max(ms)  status
 FOE
 printf "${BOLD}%-38s %10s %10s %10s  %s${NC}\n" "Benchmark" "Min (ms)" "Avg (ms)" "Max (ms)" "Status"
@@ -103,7 +111,10 @@ printf "%s\n" "─────────────────────�
 PASS=0; FAIL=0; TOTAL=${#BENCH_FILES[@]}
 for bench_file in "${BENCH_FILES[@]}"; do
     name="$(basename "$bench_file" .at)"; times=(); ok=true
-    if [[ "$WARMUP" -gt 0 ]]; then
+    if [[ "$MODE" == "aot" ]]; then
+        compile_aot "$bench_file" || ok=false
+    fi
+    if $ok && [[ "$WARMUP" -gt 0 ]]; then
         run_bench "$bench_file" || { ok=false; }
     fi
     if $ok; then
@@ -120,14 +131,14 @@ for bench_file in "${BENCH_FILES[@]}"; do
         FAIL=$((FAIL+1))
         continue
     fi
-    min=${times[0]}; max=${times[0]}; sum=0
+    min=${times[0]}; max=${times[0]}; sum=0; n=${#times[@]}
     for t in "${times[@]}"; do (( t < min )) && min=$t; (( t > max )) && max=$t; (( sum += t )); done
-    avg=$(( (sum + ITERATIONS/2) / ITERATIONS ))
+    avg=$(( (sum + n/2) / n ))
     printf "%-38s %8d ms %8d ms %8d ms  ${GREEN}PASS${NC}\n" "$name" "$min" "$avg" "$max"
     printf "%-38s %8d %8d %8d  PASS\n" "$name" "$min" "$avg" "$max" >> "$RESULTS_PATH"
     PASS=$((PASS+1))
     if [[ "$MODE" == "aot" ]]; then
-        rm -f "$(bench_exe_path "$bench_file")"
+        rm -f "$(bench_exe_path "$bench_file")" "${bench_file%.at}.o"
     fi
 done
 echo ""; echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

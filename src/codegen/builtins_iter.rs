@@ -38,101 +38,26 @@ impl<'ctx> CodeGen<'ctx> {
             _ => return Err("map: second argument must be a list".to_string()),
         };
 
-        // Build the result list
         let list_struct = self.load_list(list_ptr)?;
-        let input_len = self.list_len_val(list_struct)?;
+        let input_list = list_struct;
 
-        // Create new list with same capacity
-        let new_list_cc = self.call_rt("action_list_create", &[input_len.into()])?;
-        let new_list_bv = new_list_cc
-            .try_as_basic_value()
-            .basic()
-            .ok_or("list_create failed")?;
         let result_alloca = self
             .builder
             .build_alloca(self.list_type, "map_result")
             .map_err(llvm_err)?;
-        self.builder
-            .build_store(result_alloca, new_list_bv)
-            .map_err(llvm_err)?;
 
-        // Build loop
-        let current_fn = self
-            .builder
-            .get_insert_block()
-            .and_then(|b| b.get_parent())
-            .ok_or("Cannot compile map outside function")?;
-
-        let i64 = self.i64_ty();
-        let i_alloca = self.builder.build_alloca(i64, "map_i").map_err(llvm_err)?;
-        let zero = i64.const_int(0, false);
-        self.builder.build_store(i_alloca, zero).map_err(llvm_err)?;
-
-        let loop_header = self.context.append_basic_block(current_fn, "map_header");
-        let loop_body = self.context.append_basic_block(current_fn, "map_body");
-        let loop_exit = self.context.append_basic_block(current_fn, "map_exit");
-
-        let _ = self.builder.build_unconditional_branch(loop_header);
-
-        self.builder.position_at_end(loop_header);
-        let i_val = self
-            .builder
-            .build_load(i64, i_alloca, "i_val")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let cond = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, i_val, input_len, "map_cond")
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(cond, loop_body, loop_exit);
-
-        self.builder.position_at_end(loop_body);
-
-        // Get element from input list (fat {i64,ptr} struct)
-        let input_list = self.load_list(list_ptr)?;
-        let elem = self.call_rt("action_list_get", &[input_list.into(), i_val.into()])?;
-        let elem_val = elem.try_as_basic_value().basic().ok_or("list_get failed")?;
-        // Extract tag (first field) to pass to lambda (lambdas still take i64)
-        let elem_tag = self
-            .builder
-            .build_extract_value(elem_val.into_struct_value(), 0, "elem_tag")
-            .map_err(llvm_err)?;
-
-        // Call the lambda with the element tag (returns fat {i64,ptr})
-        let fat_ret_ty = self.string_type;
-        let fn_type = fat_ret_ty.fn_type(&[i64.into()], false);
-        let call_result = self
-            .builder
-            .build_indirect_call(fn_type, fn_ptr, &[elem_tag.into()], "map_call")
-            .map_err(llvm_err)?;
-        let mapped_bv = call_result
+        let map_cc = self.call_rt(
+            "action_list_map_walk",
+            &[input_list.into(), fn_ptr.into()],
+        )?;
+        let result_bv = map_cc
             .try_as_basic_value()
             .basic()
-            .ok_or("map call failed")?;
-
-        // Push lambda result (fat {i64,ptr}) to result list
-        let result_list = self.load_list(result_alloca)?;
-        let push_cc = self.call_rt("action_list_push", &[result_list.into(), mapped_bv.into()])?;
-        let pushed = push_cc
-            .try_as_basic_value()
-            .basic()
-            .ok_or("list_push failed")?;
+            .ok_or("map_walk failed")?;
         self.builder
-            .build_store(result_alloca, pushed)
+            .build_store(result_alloca, result_bv)
             .map_err(llvm_err)?;
 
-        // Increment counter
-        let one = i64.const_int(1, false);
-        let next = self
-            .builder
-            .build_int_add(i_val, one, "i_next")
-            .map_err(llvm_err)?;
-        self.builder.build_store(i_alloca, next).map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(loop_header);
-
-        self.builder.position_at_end(loop_exit);
         Ok(TypedValue::List(result_alloca))
     }
 
@@ -166,124 +91,25 @@ impl<'ctx> CodeGen<'ctx> {
         };
 
         let list_struct = self.load_list(list_ptr)?;
-        let input_len = self.list_len_val(list_struct)?;
+        let input_list = list_struct;
 
-        let new_list_cc = self.call_rt("action_list_create", &[input_len.into()])?;
-        let new_list_bv = new_list_cc
-            .try_as_basic_value()
-            .basic()
-            .ok_or("list_create failed")?;
         let result_alloca = self
             .builder
             .build_alloca(self.list_type, "filter_result")
             .map_err(llvm_err)?;
-        self.builder
-            .build_store(result_alloca, new_list_bv)
-            .map_err(llvm_err)?;
 
-        let current_fn = self
-            .builder
-            .get_insert_block()
-            .and_then(|b| b.get_parent())
-            .ok_or("Cannot compile filter outside function")?;
-
-        let i64 = self.i64_ty();
-        let i_alloca = self
-            .builder
-            .build_alloca(i64, "filter_i")
-            .map_err(llvm_err)?;
-        let zero = i64.const_int(0, false);
-        self.builder.build_store(i_alloca, zero).map_err(llvm_err)?;
-
-        let loop_header = self.context.append_basic_block(current_fn, "filter_header");
-        let loop_body = self.context.append_basic_block(current_fn, "filter_body");
-        let loop_push = self.context.append_basic_block(current_fn, "filter_push");
-        let loop_inc = self.context.append_basic_block(current_fn, "filter_inc");
-        let loop_exit = self.context.append_basic_block(current_fn, "filter_exit");
-
-        let _ = self.builder.build_unconditional_branch(loop_header);
-
-        // Header: check i < len
-        self.builder.position_at_end(loop_header);
-        let i_val = self
-            .builder
-            .build_load(i64, i_alloca, "i_val")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let cond = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, i_val, input_len, "filter_cond")
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(cond, loop_body, loop_exit);
-
-        // Body: get element, call predicate
-        self.builder.position_at_end(loop_body);
-        let input_list = self.load_list(list_ptr)?;
-        let elem = self.call_rt("action_list_get", &[input_list.into(), i_val.into()])?;
-        let elem_val = elem.try_as_basic_value().basic().ok_or("list_get failed")?;
-        // Extract tag to pass to predicate (lambdas still take i64)
-        let elem_tag = self
-            .builder
-            .build_extract_value(elem_val.into_struct_value(), 0, "elem_tag")
-            .map_err(llvm_err)?;
-
-        let fat_ret_ty = self.string_type;
-        let fn_type = fat_ret_ty.fn_type(&[i64.into()], false);
-        let call_result = self
-            .builder
-            .build_indirect_call(fn_type, fn_ptr, &[elem_tag.into()], "filter_call")
-            .map_err(llvm_err)?;
-        let pred_bv = call_result
+        let filter_cc = self.call_rt(
+            "action_list_filter_walk",
+            &[input_list.into(), fn_ptr.into()],
+        )?;
+        let result_bv = filter_cc
             .try_as_basic_value()
             .basic()
-            .ok_or("filter call failed")?;
-        let pred = if pred_bv.is_struct_value() {
-            self.builder
-                .build_extract_value(pred_bv.into_struct_value(), 0, "filter_val")
-                .map_err(llvm_err)?
-                .into_int_value()
-        } else {
-            pred_bv.into_int_value()
-        };
-        let is_true = self
-            .builder
-            .build_int_compare(IntPredicate::NE, pred, zero, "is_true")
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(is_true, loop_push, loop_inc);
-
-        // Push: add original fat struct element to result list
-        self.builder.position_at_end(loop_push);
-        let result_list = self.load_list(result_alloca)?;
-        let push_cc = self.call_rt("action_list_push", &[result_list.into(), elem_val.into()])?;
-        let pushed = push_cc
-            .try_as_basic_value()
-            .basic()
-            .ok_or("list_push failed")?;
+            .ok_or("filter_walk failed")?;
         self.builder
-            .build_store(result_alloca, pushed)
+            .build_store(result_alloca, result_bv)
             .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(loop_inc);
 
-        // Increment: i++ then back to header
-        self.builder.position_at_end(loop_inc);
-        let i_next = self
-            .builder
-            .build_load(i64, i_alloca, "i_next")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let one = i64.const_int(1, false);
-        let next = self
-            .builder
-            .build_int_add(i_next, one, "i_inc")
-            .map_err(llvm_err)?;
-        self.builder.build_store(i_alloca, next).map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(loop_header);
-
-        self.builder.position_at_end(loop_exit);
         Ok(TypedValue::List(result_alloca))
     }
 
@@ -326,97 +152,18 @@ impl<'ctx> CodeGen<'ctx> {
         };
 
         let list_struct = self.load_list(list_ptr)?;
-        let input_len = self.list_len_val(list_struct)?;
+        let input_list = list_struct;
 
-        let current_fn = self
-            .builder
-            .get_insert_block()
-            .and_then(|b| b.get_parent())
-            .ok_or("Cannot compile fold outside function")?;
-
-        let i64 = self.i64_ty();
-        let acc_alloca = self
-            .builder
-            .build_alloca(i64, "fold_acc")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(acc_alloca, init_i64)
-            .map_err(llvm_err)?;
-
-        let i_alloca = self.builder.build_alloca(i64, "fold_i").map_err(llvm_err)?;
-        let zero = i64.const_int(0, false);
-        self.builder.build_store(i_alloca, zero).map_err(llvm_err)?;
-
-        let loop_header = self.context.append_basic_block(current_fn, "fold_header");
-        let loop_body = self.context.append_basic_block(current_fn, "fold_body");
-        let loop_exit = self.context.append_basic_block(current_fn, "fold_exit");
-
-        let _ = self.builder.build_unconditional_branch(loop_header);
-
-        self.builder.position_at_end(loop_header);
-        let i_val = self
-            .builder
-            .build_load(i64, i_alloca, "i_val")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let cond = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, i_val, input_len, "fold_cond")
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(cond, loop_body, loop_exit);
-
-        self.builder.position_at_end(loop_body);
-        let input_list = self.load_list(list_ptr)?;
-        let elem = self.call_rt("action_list_get", &[input_list.into(), i_val.into()])?;
-        let elem_val = elem.try_as_basic_value().basic().ok_or("list_get failed")?;
-        // Extract tag to pass to fold lambda
-        let elem_tag = self
-            .builder
-            .build_extract_value(elem_val.into_struct_value(), 0, "elem_tag")
-            .map_err(llvm_err)?;
-        let acc = self
-            .builder
-            .build_load(i64, acc_alloca, "acc")
-            .map_err(llvm_err)?;
-
-        let fat_ret_ty = self.string_type;
-        let fn_type = fat_ret_ty.fn_type(&[i64.into(), i64.into()], false);
-        let call_result = self
-            .builder
-            .build_indirect_call(fn_type, fn_ptr, &[acc.into(), elem_tag.into()], "fold_call")
-            .map_err(llvm_err)?;
-        let new_acc_bv = call_result
+        let fold_cc = self.call_rt(
+            "action_list_fold_walk",
+            &[input_list.into(), fn_ptr.into(), init_i64.into()],
+        )?;
+        let final_acc = fold_cc
             .try_as_basic_value()
             .basic()
-            .ok_or("fold call failed")?;
-        let new_acc = if new_acc_bv.is_struct_value() {
-            self.builder
-                .build_extract_value(new_acc_bv.into_struct_value(), 0, "fold_val")
-                .map_err(llvm_err)?
-                .into_int_value()
-        } else {
-            new_acc_bv.into_int_value()
-        };
-        self.builder
-            .build_store(acc_alloca, new_acc)
-            .map_err(llvm_err)?;
-
-        let one = i64.const_int(1, false);
-        let next = self
-            .builder
-            .build_int_add(i_val, one, "i_next")
-            .map_err(llvm_err)?;
-        self.builder.build_store(i_alloca, next).map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(loop_header);
-
-        self.builder.position_at_end(loop_exit);
-        let final_acc = self
-            .builder
-            .build_load(i64, acc_alloca, "final_acc")
-            .map_err(llvm_err)?;
-        Ok(TypedValue::Int(final_acc.into_int_value()))
+            .ok_or("fold_walk failed")?
+            .into_int_value();
+        Ok(TypedValue::Int(final_acc))
     }
 
     /// flatMap(fn, list) = flatten(map(fn, list))
@@ -471,92 +218,18 @@ impl<'ctx> CodeGen<'ctx> {
         trailing: &Option<Box<Expr>>,
     ) -> Result<TypedValue<'ctx>, String> {
         let (fn_ptr, list_ptr) = self.extract_callback_args(args, trailing, 1, "any")?;
-        let input_len = self.list_len_val(self.load_list(list_ptr)?)?;
-        let current_fn = self
-            .builder
-            .get_insert_block()
-            .and_then(|b| b.get_parent())
-            .ok_or("no function")?;
-        let i64 = self.i64_ty();
-        let i_a = self.builder.build_alloca(i64, "i").map_err(llvm_err)?;
-        self.builder
-            .build_store(i_a, i64.const_int(0, false))
-            .map_err(llvm_err)?;
-        let result_a = self
-            .builder
-            .build_alloca(self.bool_ty(), "any_res")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(result_a, self.bool_ty().const_zero())
-            .map_err(llvm_err)?;
-        let hdr = self.context.append_basic_block(current_fn, "any_hdr");
-        let bdy = self.context.append_basic_block(current_fn, "any_bdy");
-        let ext = self.context.append_basic_block(current_fn, "any_ext");
-        let _ = self.builder.build_unconditional_branch(hdr);
-        self.builder.position_at_end(hdr);
-        let iv = self
-            .builder
-            .build_load(i64, i_a, "iv")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let cond = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, iv, input_len, "cond")
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_conditional_branch(cond, bdy, ext);
-        self.builder.position_at_end(bdy);
         let input_list = self.load_list(list_ptr)?;
-        let elem = self.call_rt("action_list_get", &[input_list.into(), iv.into()])?;
-        let elem_val = elem.try_as_basic_value().basic().ok_or("list_get failed")?;
-        let elem_tag = self
-            .builder
-            .build_extract_value(elem_val.into_struct_value(), 0, "et")
-            .map_err(llvm_err)?
+
+        let any_cc = self.call_rt(
+            "action_list_any_walk",
+            &[input_list.into(), fn_ptr.into()],
+        )?;
+        let res = any_cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("any_walk failed")?
             .into_int_value();
-        let fat_ret_ty = self.string_type;
-        let fn_type = fat_ret_ty.fn_type(&[i64.into()], false);
-        let call_r = self
-            .builder
-            .build_indirect_call(fn_type, fn_ptr, &[elem_tag.into()], "any_call")
-            .map_err(llvm_err)?;
-        let pred_bv = call_r.try_as_basic_value().basic().ok_or("call failed")?;
-        let pred = if pred_bv.is_struct_value() {
-            self.builder
-                .build_extract_value(pred_bv.into_struct_value(), 0, "pred")
-                .map_err(llvm_err)?
-                .into_int_value()
-        } else {
-            pred_bv.into_int_value()
-        };
-        let is_true = self
-            .builder
-            .build_int_compare(IntPredicate::NE, pred, i64.const_int(0, false), "is_true")
-            .map_err(llvm_err)?;
-        // Accumulate: result = result OR is_true
-        let cur = self
-            .builder
-            .build_load(self.bool_ty(), result_a, "cur")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let new_res = self
-            .builder
-            .build_or(cur, is_true, "new_res")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(result_a, new_res)
-            .map_err(llvm_err)?;
-        let ni = self
-            .builder
-            .build_int_add(iv, i64.const_int(1, false), "ni")
-            .map_err(llvm_err)?;
-        self.builder.build_store(i_a, ni).map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(hdr);
-        self.builder.position_at_end(ext);
-        let res = self
-            .builder
-            .build_load(self.bool_ty(), result_a, "res")
-            .map_err(llvm_err)?;
-        Ok(TypedValue::Bool(res.into_int_value()))
+        Ok(TypedValue::Bool(res))
     }
 
     /// all(list, fn) or all(list) { lambda } -> Bool
@@ -566,92 +239,18 @@ impl<'ctx> CodeGen<'ctx> {
         trailing: &Option<Box<Expr>>,
     ) -> Result<TypedValue<'ctx>, String> {
         let (fn_ptr, list_ptr) = self.extract_callback_args(args, trailing, 1, "all")?;
-        let input_len = self.list_len_val(self.load_list(list_ptr)?)?;
-        let current_fn = self
-            .builder
-            .get_insert_block()
-            .and_then(|b| b.get_parent())
-            .ok_or("no function")?;
-        let i64 = self.i64_ty();
-        let i_a = self.builder.build_alloca(i64, "i").map_err(llvm_err)?;
-        self.builder
-            .build_store(i_a, i64.const_int(0, false))
-            .map_err(llvm_err)?;
-        let result_a = self
-            .builder
-            .build_alloca(self.bool_ty(), "all_res")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(result_a, self.bool_ty().const_int(1, false))
-            .map_err(llvm_err)?;
-        let hdr = self.context.append_basic_block(current_fn, "all_hdr");
-        let bdy = self.context.append_basic_block(current_fn, "all_bdy");
-        let ext = self.context.append_basic_block(current_fn, "all_ext");
-        let _ = self.builder.build_unconditional_branch(hdr);
-        self.builder.position_at_end(hdr);
-        let iv = self
-            .builder
-            .build_load(i64, i_a, "iv")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let cond = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, iv, input_len, "cond")
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_conditional_branch(cond, bdy, ext);
-        self.builder.position_at_end(bdy);
         let input_list = self.load_list(list_ptr)?;
-        let elem = self.call_rt("action_list_get", &[input_list.into(), iv.into()])?;
-        let elem_val = elem.try_as_basic_value().basic().ok_or("list_get failed")?;
-        let elem_tag = self
-            .builder
-            .build_extract_value(elem_val.into_struct_value(), 0, "et")
-            .map_err(llvm_err)?
+
+        let all_cc = self.call_rt(
+            "action_list_all_walk",
+            &[input_list.into(), fn_ptr.into()],
+        )?;
+        let res = all_cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("all_walk failed")?
             .into_int_value();
-        let fat_ret_ty = self.string_type;
-        let fn_type = fat_ret_ty.fn_type(&[i64.into()], false);
-        let call_r = self
-            .builder
-            .build_indirect_call(fn_type, fn_ptr, &[elem_tag.into()], "all_call")
-            .map_err(llvm_err)?;
-        let pred_bv = call_r.try_as_basic_value().basic().ok_or("call failed")?;
-        let pred = if pred_bv.is_struct_value() {
-            self.builder
-                .build_extract_value(pred_bv.into_struct_value(), 0, "pred")
-                .map_err(llvm_err)?
-                .into_int_value()
-        } else {
-            pred_bv.into_int_value()
-        };
-        let is_true = self
-            .builder
-            .build_int_compare(IntPredicate::NE, pred, i64.const_int(0, false), "is_true")
-            .map_err(llvm_err)?;
-        // Accumulate: result = result AND is_true
-        let cur = self
-            .builder
-            .build_load(self.bool_ty(), result_a, "cur")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let new_res = self
-            .builder
-            .build_and(cur, is_true, "new_res")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(result_a, new_res)
-            .map_err(llvm_err)?;
-        let ni = self
-            .builder
-            .build_int_add(iv, i64.const_int(1, false), "ni")
-            .map_err(llvm_err)?;
-        self.builder.build_store(i_a, ni).map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(hdr);
-        self.builder.position_at_end(ext);
-        let res = self
-            .builder
-            .build_load(self.bool_ty(), result_a, "res")
-            .map_err(llvm_err)?;
-        Ok(TypedValue::Bool(res.into_int_value()))
+        Ok(TypedValue::Bool(res))
     }
 
     /// find(list, fn) or find(list) { lambda } -> Option<T>

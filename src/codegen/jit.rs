@@ -416,6 +416,19 @@ fn map_host_symbols(cg: &CodeGen, engine: &inkwell::execution_engine::ExecutionE
 // Output methods: emit bitcode, assembly, object files
 // ---------------------------------------------------------------------------
 
+/// PIC relocations are required when linking AOT objects into PIE executables
+/// (default on modern Linux). Without this, -O2+ can emit R_X86_64_32 against
+/// .rodata that ld rejects under PIE.
+fn aot_reloc_mode(triple: &inkwell::targets::TargetTriple) -> inkwell::targets::RelocMode {
+    use inkwell::targets::RelocMode;
+    let t = triple.as_str().to_string_lossy();
+    if t.contains("windows") || t.starts_with("wasm") {
+        RelocMode::Default
+    } else {
+        RelocMode::PIC
+    }
+}
+
 impl<'ctx> CodeGen<'ctx> {
     pub fn emit_bitcode(&self, path: &std::path::Path) -> Result<(), String> {
         if !self.module.write_bitcode_to_path(path) {
@@ -490,13 +503,14 @@ impl<'ctx> CodeGen<'ctx> {
             2 => inkwell::OptimizationLevel::Default,
             _ => inkwell::OptimizationLevel::Aggressive,
         };
+        let reloc = aot_reloc_mode(&target_triple);
         let target_machine = target
             .create_target_machine(
                 &target_triple,
                 &cpu,
                 &features,
                 opt,
-                inkwell::targets::RelocMode::Default,
+                reloc,
                 inkwell::targets::CodeModel::Default,
             )
             .ok_or_else(|| "Failed to create target machine".to_string())?;

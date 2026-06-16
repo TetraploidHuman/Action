@@ -1355,28 +1355,35 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
             // Handle List builtin methods inline — UFCS: list.method(args) ≡ method(list, args...)
-            if matches!(recv_val, TypedValue::List(_) | TypedValue::LazyList(_)) {
-                let list_ptr = match &recv_val {
-                    TypedValue::List(p) => Some(*p),
-                    _ => None,
-                };
-                // Methods that operate on the list alloca directly — no recompilation needed
-                if let Some(lp) = list_ptr {
-                    if method == "insert" {
-                        return self.builtin_list_insert(lp, args);
+            if let TypedValue::List(lp) = &recv_val {
+                match method.as_str() {
+                    "insert" => return self.builtin_list_insert(*lp, args),
+                    "remove" => return self.builtin_list_remove(*lp, args),
+                    "append" => return self.builtin_list_append(*lp, args),
+                    "len" => {
+                        let lv = self.load_list(*lp)?;
+                        let len = self.list_len_val(lv)?;
+                        self.rc_free_method_receiver(&recv_val)?;
+                        return Ok(TypedValue::Int(len));
                     }
-                    if method == "remove" {
-                        return self.builtin_list_remove(lp, args);
+                    "isEmpty" => {
+                        let lv = self.load_list(*lp)?;
+                        let len = self.list_len_val(lv)?;
+                        let zero = self.i64_ty().const_int(0, false);
+                        let is_empty = self
+                            .builder
+                            .build_int_compare(IntPredicate::EQ, len, zero, "empty")
+                            .map_err(llvm_err)?;
+                        self.rc_free_method_receiver(&recv_val)?;
+                        return Ok(TypedValue::Bool(is_empty));
                     }
-                    if method == "append" {
-                        return self.builtin_list_append(lp, args);
-                    }
+                    _ => {}
                 }
                 // Remaining methods: free intermediate then recompile via compile_call
                 self.rc_free_method_receiver(&recv_val)?;
                 match method.as_str() {
-                    // No-arg methods: f(list)
-                    "len" | "isEmpty" | "head" | "last" | "tail" | "init" | "reverse" | "sum"
+                    // No-arg methods: f(list) — len/isEmpty handled above
+                    "head" | "last" | "tail" | "init" | "reverse" | "sum"
                     | "product" | "sorted" | "flatten" | "unique" | "toList" | "toLazyList" => {
                         let new_func = Expr::Ident(method.to_string());
                         return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
@@ -1481,7 +1488,25 @@ impl<'ctx> CodeGen<'ctx> {
             }
 
             // UFCS fallback: receiver.method(args) → method(receiver, args)
-            // 将任意函数的方法调用语法解糖为普通函数调用
+            // Avoid rc_free + AST recompile for List len/isEmpty — that double-evaluates
+            // method chains (e.g. lst.remove(0).len()) and can free shared nodes early.
+            if matches!(method.as_str(), "len" | "isEmpty") {
+                if let TypedValue::List(lp) = &recv_val {
+                    let lv = self.load_list(*lp)?;
+                    let len = self.list_len_val(lv)?;
+                    if method == "isEmpty" {
+                        let zero = self.i64_ty().const_int(0, false);
+                        let is_empty = self
+                            .builder
+                            .build_int_compare(IntPredicate::EQ, len, zero, "empty")
+                            .map_err(llvm_err)?;
+                        self.rc_free_method_receiver(&recv_val)?;
+                        return Ok(TypedValue::Bool(is_empty));
+                    }
+                    self.rc_free_method_receiver(&recv_val)?;
+                    return Ok(TypedValue::Int(len));
+                }
+            }
             self.rc_free_method_receiver(&recv_val)?;
             let new_func = Expr::Ident(method.to_string());
             let mut new_args = vec![receiver.as_ref().clone()];
