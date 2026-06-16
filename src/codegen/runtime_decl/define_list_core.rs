@@ -2443,7 +2443,9 @@ impl<'ctx> CodeGen<'ctx> {
         let lw_leaf_content = self.context.append_basic_block(lc_walk_fn, "leaf_content");
         let lw_leaf_str_gate = self.context.append_basic_block(lc_walk_fn, "leaf_str_gate");
         let lw_leaf_str_cmp = self.context.append_basic_block(lc_walk_fn, "leaf_str_cmp");
-        let lw_leaf_str_found = self.context.append_basic_block(lc_walk_fn, "leaf_str_found");
+        let lw_leaf_str_found = self
+            .context
+            .append_basic_block(lc_walk_fn, "leaf_str_found");
         let lw_int_hdr = self.context.append_basic_block(lc_walk_fn, "int_hdr");
         let lw_int_bdy = self.context.append_basic_block(lc_walk_fn, "int_bdy");
         let lw_int_next = self.context.append_basic_block(lc_walk_fn, "int_next");
@@ -2491,7 +2493,12 @@ impl<'ctx> CodeGen<'ctx> {
         let lw_i = self.builder.build_phi(i64, "lw_i").map_err(llvm_err)?;
         let lw_done_leaf = self
             .builder
-            .build_int_compare(IntPredicate::SGE, lw_i.as_basic_value().into_int_value(), lw_count, "lw_done")
+            .build_int_compare(
+                IntPredicate::SGE,
+                lw_i.as_basic_value().into_int_value(),
+                lw_count,
+                "lw_done",
+            )
             .map_err(llvm_err)?;
         let _ = self
             .builder
@@ -2548,12 +2555,18 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_and(lw_ed_null, lw_kd_null, "lw_both_null")
             .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(lw_both_null, lw_leaf_found, lw_leaf_str_gate);
+        let _ =
+            self.builder
+                .build_conditional_branch(lw_both_null, lw_leaf_found, lw_leaf_str_gate);
         self.builder.position_at_end(lw_leaf_str_gate);
-        let lw_ed_nn = self.builder.build_not(lw_ed_null, "lw_ed_nn").map_err(llvm_err)?;
-        let lw_kd_nn = self.builder.build_not(lw_kd_null, "lw_kd_nn").map_err(llvm_err)?;
+        let lw_ed_nn = self
+            .builder
+            .build_not(lw_ed_null, "lw_ed_nn")
+            .map_err(llvm_err)?;
+        let lw_kd_nn = self
+            .builder
+            .build_not(lw_kd_null, "lw_kd_nn")
+            .map_err(llvm_err)?;
         let lw_both_nn = self
             .builder
             .build_and(lw_ed_nn, lw_kd_nn, "lw_both_nn")
@@ -2758,26 +2771,32 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(i64, mwr_rh_p, "mwr_rh")
             .map_err(llvm_err)?
             .into_int_value();
-        let _ = self.builder.build_call(
-            mw_rec_fn,
-            &[
-                mwr_left_node.into(),
-                mwr_left_h.into(),
-                mwr_fn.into(),
-                mwr_acc.into(),
-            ],
-            "",
-        ).map_err(llvm_err)?;
-        let _ = self.builder.build_call(
-            mw_rec_fn,
-            &[
-                mwr_right_node.into(),
-                mwr_right_h.into(),
-                mwr_fn.into(),
-                mwr_acc.into(),
-            ],
-            "",
-        ).map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_call(
+                mw_rec_fn,
+                &[
+                    mwr_left_node.into(),
+                    mwr_left_h.into(),
+                    mwr_fn.into(),
+                    mwr_acc.into(),
+                ],
+                "",
+            )
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_call(
+                mw_rec_fn,
+                &[
+                    mwr_right_node.into(),
+                    mwr_right_h.into(),
+                    mwr_fn.into(),
+                    mwr_acc.into(),
+                ],
+                "",
+            )
+            .map_err(llvm_err)?;
         let _ = self.builder.build_return(None);
         self.builder.position_at_end(mwr_normal);
         let mwr_is_leaf = self
@@ -2867,10 +2886,10 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?
             .try_as_basic_value()
             .unwrap_basic();
-        self.builder.build_store(mwr_acc, mwr_pushed).map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_unconditional_branch(mwr_leaf_next);
+        self.builder
+            .build_store(mwr_acc, mwr_pushed)
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(mwr_leaf_next);
         self.builder.position_at_end(mwr_leaf_next);
         let mwr_next_i = self
             .builder
@@ -2959,9 +2978,7 @@ impl<'ctx> CodeGen<'ctx> {
                 "",
             )
             .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_unconditional_branch(mwr_int_next);
+        let _ = self.builder.build_unconditional_branch(mwr_int_next);
         self.builder.position_at_end(mwr_int_next);
         let mwr_next_ci = self
             .builder
@@ -3013,7 +3030,9 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?
             .try_as_basic_value()
             .unwrap_basic();
-        self.builder.build_store(mw_acc, mw_init).map_err(llvm_err)?;
+        self.builder
+            .build_store(mw_acc, mw_init)
+            .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(mw_walk);
         self.builder.position_at_end(mw_walk);
         let _ = self
@@ -3108,26 +3127,32 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(i64, fwr_rh_p, "fwr_rh")
             .map_err(llvm_err)?
             .into_int_value();
-        let _ = self.builder.build_call(
-            fw_rec_fn,
-            &[
-                fwr_left_node.into(),
-                fwr_left_h.into(),
-                fwr_fn.into(),
-                fwr_acc.into(),
-            ],
-            "",
-        ).map_err(llvm_err)?;
-        let _ = self.builder.build_call(
-            fw_rec_fn,
-            &[
-                fwr_right_node.into(),
-                fwr_right_h.into(),
-                fwr_fn.into(),
-                fwr_acc.into(),
-            ],
-            "",
-        ).map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_call(
+                fw_rec_fn,
+                &[
+                    fwr_left_node.into(),
+                    fwr_left_h.into(),
+                    fwr_fn.into(),
+                    fwr_acc.into(),
+                ],
+                "",
+            )
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_call(
+                fw_rec_fn,
+                &[
+                    fwr_right_node.into(),
+                    fwr_right_h.into(),
+                    fwr_fn.into(),
+                    fwr_acc.into(),
+                ],
+                "",
+            )
+            .map_err(llvm_err)?;
         let _ = self.builder.build_return(None);
         self.builder.position_at_end(fwr_normal);
         let fwr_is_leaf = self
@@ -3319,9 +3344,7 @@ impl<'ctx> CodeGen<'ctx> {
                 "",
             )
             .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_unconditional_branch(fwr_int_next);
+        let _ = self.builder.build_unconditional_branch(fwr_int_next);
         self.builder.position_at_end(fwr_int_next);
         let fwr_next_ci = self
             .builder
@@ -3372,7 +3395,9 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?
             .try_as_basic_value()
             .unwrap_basic();
-        self.builder.build_store(fw_acc, fw_init).map_err(llvm_err)?;
+        self.builder
+            .build_store(fw_acc, fw_init)
+            .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(fw_walk);
         self.builder.position_at_end(fw_walk);
         let _ = self
@@ -3467,26 +3492,32 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(i64, fdr_rh_p, "fdr_rh")
             .map_err(llvm_err)?
             .into_int_value();
-        let _ = self.builder.build_call(
-            fd_rec_fn,
-            &[
-                fdr_left_node.into(),
-                fdr_left_h.into(),
-                fdr_fn.into(),
-                fdr_acc.into(),
-            ],
-            "",
-        ).map_err(llvm_err)?;
-        let _ = self.builder.build_call(
-            fd_rec_fn,
-            &[
-                fdr_right_node.into(),
-                fdr_right_h.into(),
-                fdr_fn.into(),
-                fdr_acc.into(),
-            ],
-            "",
-        ).map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_call(
+                fd_rec_fn,
+                &[
+                    fdr_left_node.into(),
+                    fdr_left_h.into(),
+                    fdr_fn.into(),
+                    fdr_acc.into(),
+                ],
+                "",
+            )
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_call(
+                fd_rec_fn,
+                &[
+                    fdr_right_node.into(),
+                    fdr_right_h.into(),
+                    fdr_fn.into(),
+                    fdr_acc.into(),
+                ],
+                "",
+            )
+            .map_err(llvm_err)?;
         let _ = self.builder.build_return(None);
         self.builder.position_at_end(fdr_normal);
         let fdr_is_leaf = self
@@ -3580,9 +3611,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(fdr_acc, fdr_new_acc)
             .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_unconditional_branch(fdr_leaf_next);
+        let _ = self.builder.build_unconditional_branch(fdr_leaf_next);
         self.builder.position_at_end(fdr_leaf_next);
         let fdr_next_i = self
             .builder
@@ -3669,9 +3698,7 @@ impl<'ctx> CodeGen<'ctx> {
                 "",
             )
             .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_unconditional_branch(fdr_int_next);
+        let _ = self.builder.build_unconditional_branch(fdr_int_next);
         self.builder.position_at_end(fdr_int_next);
         let fdr_next_ci = self
             .builder
@@ -3707,7 +3734,9 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?
             .into_int_value();
         let fd_acc = self.builder.build_alloca(i64, "fd_acc").map_err(llvm_err)?;
-        self.builder.build_store(fd_acc, fd_init).map_err(llvm_err)?;
+        self.builder
+            .build_store(fd_acc, fd_init)
+            .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(fd_walk);
         self.builder.position_at_end(fd_walk);
         let _ = self

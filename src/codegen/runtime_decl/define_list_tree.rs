@@ -664,9 +664,11 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(IntPredicate::SLT, li_index, li_cc_left_len, "cc_lt_l")
             .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(li_cc_lt_left, li_concat_ins_left, li_concat_route);
+        let _ = self.builder.build_conditional_branch(
+            li_cc_lt_left,
+            li_concat_ins_left,
+            li_concat_route,
+        );
         // idx >= left.len: boundary vs insert-right
         self.builder.position_at_end(li_concat_route);
         let li_cc_is_boundary = self
@@ -1227,24 +1229,18 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_compare(IntPredicate::SLT, lrm_index, lrm_cn_left_len, "cn_lt")
             .map_err(llvm_err)?;
         let lrm_cn_chk_right = self.context.append_basic_block(lrm_fn, "concat_chk_right");
-        let _ = self
-            .builder
-            .build_conditional_branch(lrm_cn_lt, lrm_concat_rm_left, lrm_cn_chk_right);
+        let _ =
+            self.builder
+                .build_conditional_branch(lrm_cn_lt, lrm_concat_rm_left, lrm_cn_chk_right);
         self.builder.position_at_end(lrm_cn_chk_right);
-        let _ = self
-            .builder
-            .build_unconditional_branch(lrm_concat_rm_right);
+        let _ = self.builder.build_unconditional_branch(lrm_concat_rm_right);
 
         let lrm_concat_fn = self.module.get_function("action_list_concat").unwrap();
 
         self.builder.position_at_end(lrm_concat_rm_left);
         let lrm_cn_new_left = self
             .builder
-            .build_call(
-                lrm_fn,
-                &[lrm_cn_left.into(), lrm_index.into()],
-                "cn_nl",
-            )
+            .build_call(lrm_fn, &[lrm_cn_left.into(), lrm_index.into()], "cn_nl")
             .map_err(llvm_err)?
             .try_as_basic_value()
             .unwrap_basic()

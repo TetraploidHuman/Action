@@ -5,8 +5,8 @@
 // Submodule: builtins_stdlib
 
 use crate::ast::*;
-use inkwell::IntPredicate;
 use inkwell::values::BasicValue;
+use inkwell::IntPredicate;
 
 use super::{llvm_err, CodeGen, TypedValue};
 

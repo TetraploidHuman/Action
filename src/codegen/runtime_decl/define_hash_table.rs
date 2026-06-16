@@ -5,8 +5,8 @@
 
 use super::{llvm_err, CodeGen};
 use inkwell::types::BasicType;
-use inkwell::IntPredicate;
 use inkwell::values::{BasicValue, BasicValueEnum, IntValue, PointerValue};
+use inkwell::IntPredicate;
 
 impl<'ctx> CodeGen<'ctx> {
     const HT_ENTRY_I64S: u64 = 4;
@@ -111,10 +111,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_call(list_len_fn, &[lst.into()], "ll")
             .map_err(llvm_err)?;
-        let len = len_cc
-            .try_as_basic_value()
-            .unwrap_basic()
-            .into_int_value();
+        let len = len_cc.try_as_basic_value().unwrap_basic().into_int_value();
         let cap = self
             .builder
             .build_int_add(len, i64.const_int(4, false), "cap")
@@ -131,7 +128,9 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_store(set_a, set0).map_err(llvm_err)?;
         let i_a = self.builder.build_alloca(i64, "i").map_err(llvm_err)?;
         self.builder.build_store(i_a, zero).map_err(llvm_err)?;
-        self.builder.build_unconditional_branch(loop_bb).map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(loop_bb)
+            .map_err(llvm_err)?;
 
         self.builder.position_at_end(loop_bb);
         let iv = self.load_i64(i_a, "iv")?;
@@ -166,9 +165,14 @@ impl<'ctx> CodeGen<'ctx> {
             .try_as_basic_value()
             .unwrap_basic();
         self.builder.build_store(set_a, ins).map_err(llvm_err)?;
-        let niv = self.builder.build_int_add(iv, one, "niv").map_err(llvm_err)?;
+        let niv = self
+            .builder
+            .build_int_add(iv, one, "niv")
+            .map_err(llvm_err)?;
         self.builder.build_store(i_a, niv).map_err(llvm_err)?;
-        self.builder.build_unconditional_branch(loop_bb).map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(loop_bb)
+            .map_err(llvm_err)?;
 
         self.builder.position_at_end(done);
         let ret = self
@@ -267,7 +271,9 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?,
             )
             .map_err(llvm_err)?;
-        self.builder.build_unconditional_branch(merge).map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(merge)
+            .map_err(llvm_err)?;
 
         self.builder.position_at_end(merge);
         let phi = self.builder.build_phi(ptr, "dphi").map_err(llvm_err)?;
@@ -337,7 +343,15 @@ impl<'ctx> CodeGen<'ctx> {
         &self,
         data: PointerValue<'ctx>,
         slot: IntValue<'ctx>,
-    ) -> Result<(IntValue<'ctx>, IntValue<'ctx>, IntValue<'ctx>, IntValue<'ctx>), String> {
+    ) -> Result<
+        (
+            IntValue<'ctx>,
+            IntValue<'ctx>,
+            IntValue<'ctx>,
+            IntValue<'ctx>,
+        ),
+        String,
+    > {
         let i64 = self.i64_ty();
         let ptr = self.ptr_ty();
         let off = self
@@ -454,21 +468,29 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(key, 1, "kp")
             .map_err(llvm_err)?
             .into_pointer_value();
-        let kpi = self.builder.build_ptr_to_int(kp, i64, "kpi").map_err(llvm_err)?;
+        let kpi = self
+            .builder
+            .build_ptr_to_int(kp, i64, "kpi")
+            .map_err(llvm_err)?;
         let vt = self.extract_int(val, 0, "vt")?;
         let vp = self
             .builder
             .build_extract_value(val, 1, "vp")
             .map_err(llvm_err)?
             .into_pointer_value();
-        let vpi = self.builder.build_ptr_to_int(vp, i64, "vpi").map_err(llvm_err)?;
+        let vpi = self
+            .builder
+            .build_ptr_to_int(vp, i64, "vpi")
+            .map_err(llvm_err)?;
 
         let data = self.ht_cow(data0, cap0, entry, cow, merge)?;
 
         self.builder.position_at_end(merge);
         let i_a = self.builder.build_alloca(i64, "i").map_err(llvm_err)?;
         self.builder.build_store(i_a, zero).map_err(llvm_err)?;
-        self.builder.build_unconditional_branch(search).map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(search)
+            .map_err(llvm_err)?;
 
         self.builder.position_at_end(search);
         let iv = self.load_i64(i_a, "iv")?;
@@ -505,10 +527,14 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(
                 i_a,
-                self.builder.build_int_add(iv, one, "niv").map_err(llvm_err)?,
+                self.builder
+                    .build_int_add(iv, one, "niv")
+                    .map_err(llvm_err)?,
             )
             .map_err(llvm_err)?;
-        self.builder.build_unconditional_branch(search).map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(search)
+            .map_err(llvm_err)?;
 
         self.builder.position_at_end(append_ck);
         let need_grow = self
@@ -524,7 +550,10 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(IntPredicate::SLT, cap0, four, "cs")
             .map_err(llvm_err)?;
-        let cap2x = self.builder.build_int_mul(cap0, i64.const_int(2, false), "c2").map_err(llvm_err)?;
+        let cap2x = self
+            .builder
+            .build_int_mul(cap0, i64.const_int(2, false), "c2")
+            .map_err(llvm_err)?;
         let new_cap = self
             .builder
             .build_select(cap_small, four, cap2x, "ncap")
@@ -551,7 +580,9 @@ impl<'ctx> CodeGen<'ctx> {
             &[new_data2.into(), data.into(), old_bytes.into()],
             "",
         );
-        self.builder.build_unconditional_branch(append_store).map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(append_store)
+            .map_err(llvm_err)?;
 
         self.builder.position_at_end(append_store);
         let phi_data = self.builder.build_phi(ptr, "pd").map_err(llvm_err)?;
@@ -561,7 +592,10 @@ impl<'ctx> CodeGen<'ctx> {
         let ad = phi_data.as_basic_value().into_pointer_value();
         let ac = phi_cap.as_basic_value().into_int_value();
         self.ht_store_slot(ad, len0, kt, kpi, vt, vpi)?;
-        let nl = self.builder.build_int_add(len0, one, "nl").map_err(llvm_err)?;
+        let nl = self
+            .builder
+            .build_int_add(len0, one, "nl")
+            .map_err(llvm_err)?;
         let rr = self.ht_pack(ad, nl, ac)?;
         self.builder.build_return(Some(&rr)).map_err(llvm_err)?;
 
@@ -606,7 +640,9 @@ impl<'ctx> CodeGen<'ctx> {
             let kt = self.extract_int(key, 0, "kt")?;
             let i_a = self.builder.build_alloca(i64, "i").map_err(llvm_err)?;
             self.builder.build_store(i_a, zero).map_err(llvm_err)?;
-            self.builder.build_unconditional_branch(b1_bb).map_err(llvm_err)?;
+            self.builder
+                .build_unconditional_branch(b1_bb)
+                .map_err(llvm_err)?;
 
             self.builder.position_at_end(b1_bb);
             let iv = self.load_i64(i_a, "iv")?;
@@ -636,7 +672,10 @@ impl<'ctx> CodeGen<'ctx> {
 
             self.builder.position_at_end(b4);
             if is_get {
-                let vp = self.builder.build_int_to_ptr(svp, ptr, "vp").map_err(llvm_err)?;
+                let vp = self
+                    .builder
+                    .build_int_to_ptr(svp, ptr, "vp")
+                    .map_err(llvm_err)?;
                 let u = str_ty.get_undef();
                 let r1 = self
                     .builder
@@ -657,10 +696,14 @@ impl<'ctx> CodeGen<'ctx> {
             self.builder
                 .build_store(
                     i_a,
-                    self.builder.build_int_add(iv, one, "niv").map_err(llvm_err)?,
+                    self.builder
+                        .build_int_add(iv, one, "niv")
+                        .map_err(llvm_err)?,
                 )
                 .map_err(llvm_err)?;
-            self.builder.build_unconditional_branch(b1_bb).map_err(llvm_err)?;
+            self.builder
+                .build_unconditional_branch(b1_bb)
+                .map_err(llvm_err)?;
 
             self.builder.position_at_end(b6);
             if is_get {
@@ -700,7 +743,8 @@ impl<'ctx> CodeGen<'ctx> {
 
         let f = self.module.add_function(
             "action_ht_remove",
-            self.list_type.fn_type(&[self.list_type.into(), str_ty.into()], false),
+            self.list_type
+                .fn_type(&[self.list_type.into(), str_ty.into()], false),
             None,
         );
         let b0 = self.context.append_basic_block(f, "b0");
@@ -726,7 +770,9 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(merge);
         let i_a = self.builder.build_alloca(i64, "i").map_err(llvm_err)?;
         self.builder.build_store(i_a, zero).map_err(llvm_err)?;
-        self.builder.build_unconditional_branch(b1).map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(b1)
+            .map_err(llvm_err)?;
 
         self.builder.position_at_end(b1);
         let iv = self.load_i64(i_a, "iv")?;
@@ -755,8 +801,14 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
 
         self.builder.position_at_end(b4);
-        let len_dec = self.builder.build_int_sub(len0, one, "ld").map_err(llvm_err)?;
-        let iv_p1 = self.builder.build_int_add(iv, one, "ip1").map_err(llvm_err)?;
+        let len_dec = self
+            .builder
+            .build_int_sub(len0, one, "ld")
+            .map_err(llvm_err)?;
+        let iv_p1 = self
+            .builder
+            .build_int_add(iv, one, "ip1")
+            .map_err(llvm_err)?;
         let remaining = self
             .builder
             .build_int_sub(len0, iv_p1, "rem")
@@ -792,21 +844,25 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_mul(remaining, i64.const_int(Self::HT_ENTRY_BYTES, false), "rb")
             .map_err(llvm_err)?;
-        let _ = self.builder.build_call(
-            memcpy_fn,
-            &[dst.into(), src.into(), rem_bytes.into()],
-            "",
-        );
-        self.builder.build_unconditional_branch(b7).map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_call(memcpy_fn, &[dst.into(), src.into(), rem_bytes.into()], "");
+        self.builder
+            .build_unconditional_branch(b7)
+            .map_err(llvm_err)?;
 
         self.builder.position_at_end(b6);
         self.builder
             .build_store(
                 i_a,
-                self.builder.build_int_add(iv, one, "niv").map_err(llvm_err)?,
+                self.builder
+                    .build_int_add(iv, one, "niv")
+                    .map_err(llvm_err)?,
             )
             .map_err(llvm_err)?;
-        self.builder.build_unconditional_branch(b1).map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(b1)
+            .map_err(llvm_err)?;
 
         self.builder.position_at_end(b7);
         let ret_len = self.builder.build_phi(i64, "rl").map_err(llvm_err)?;
@@ -829,7 +885,8 @@ impl<'ctx> CodeGen<'ctx> {
 
         let f = self.module.add_function(
             "action_rc_dec_ht",
-            self.void_ty().fn_type(&[ptr.into(), i64.into(), i64.into()], false),
+            self.void_ty()
+                .fn_type(&[ptr.into(), i64.into(), i64.into()], false),
             None,
         );
         let entry = self.context.append_basic_block(f, "entry");
@@ -854,7 +911,10 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_return(None).map_err(llvm_err)?;
 
         self.builder.position_at_end(do_dec);
-        let di = self.builder.build_ptr_to_int(data, i64, "di").map_err(llvm_err)?;
+        let di = self
+            .builder
+            .build_ptr_to_int(data, i64, "di")
+            .map_err(llvm_err)?;
         let rc_a = self
             .builder
             .build_int_sub(di, i64.const_int(8, false), "rca")
@@ -868,9 +928,14 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(i64, rc_p, "rc")
             .map_err(llvm_err)?
             .into_int_value();
-        let nrc = self.builder.build_int_sub(rc, one, "nrc").map_err(llvm_err)?;
+        let nrc = self
+            .builder
+            .build_int_sub(rc, one, "nrc")
+            .map_err(llvm_err)?;
         self.builder.build_store(rc_p, nrc).map_err(llvm_err)?;
-        self.builder.build_unconditional_branch(chk).map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(chk)
+            .map_err(llvm_err)?;
 
         self.builder.position_at_end(chk);
         let is_z = self
@@ -886,7 +951,9 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(clean);
         let si = self.builder.build_alloca(i64, "si").map_err(llvm_err)?;
         self.builder.build_store(si, zero).map_err(llvm_err)?;
-        self.builder.build_unconditional_branch(clp).map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(clp)
+            .map_err(llvm_err)?;
 
         self.builder.position_at_end(clp);
         let siv = self.load_i64(si, "siv")?;
@@ -913,10 +980,16 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(kp_bb);
         let _ = self.builder.build_call(
             rc_dec_fn,
-            &[self.builder.build_int_to_ptr(kp, ptr, "kpp").map_err(llvm_err)?.into()],
+            &[self
+                .builder
+                .build_int_to_ptr(kp, ptr, "kpp")
+                .map_err(llvm_err)?
+                .into()],
             "",
         );
-        self.builder.build_unconditional_branch(vp_bb).map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(vp_bb)
+            .map_err(llvm_err)?;
         self.builder.position_at_end(vp_bb);
         let vp_ok = self
             .builder
@@ -929,23 +1002,37 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(vp_dec);
         let _ = self.builder.build_call(
             rc_dec_fn,
-            &[self.builder.build_int_to_ptr(vp, ptr, "vpp").map_err(llvm_err)?.into()],
+            &[self
+                .builder
+                .build_int_to_ptr(vp, ptr, "vpp")
+                .map_err(llvm_err)?
+                .into()],
             "",
         );
-        self.builder.build_unconditional_branch(skip).map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(skip)
+            .map_err(llvm_err)?;
         self.builder.position_at_end(skip);
         self.builder
             .build_store(
                 si,
-                self.builder.build_int_add(siv, one, "ni").map_err(llvm_err)?,
+                self.builder
+                    .build_int_add(siv, one, "ni")
+                    .map_err(llvm_err)?,
             )
             .map_err(llvm_err)?;
-        self.builder.build_unconditional_branch(clp).map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(clp)
+            .map_err(llvm_err)?;
 
         self.builder.position_at_end(free_bb);
         let _ = self.builder.build_call(
             free_fn,
-            &[self.builder.build_int_to_ptr(rc_a, ptr, "fp").map_err(llvm_err)?.into()],
+            &[self
+                .builder
+                .build_int_to_ptr(rc_a, ptr, "fp")
+                .map_err(llvm_err)?
+                .into()],
             "",
         );
         self.builder.build_return(None).map_err(llvm_err)?;

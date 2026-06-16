@@ -395,11 +395,11 @@ impl<'ctx> CodeGen<'ctx> {
 
 // ---- Submodules ----
 mod define_file_parse;
+mod define_hash_table;
 mod define_list_core;
 mod define_list_extra;
 mod define_list_tree;
 mod define_list_xform;
-mod define_hash_table;
 mod define_map;
 mod define_math_ms;
 mod define_misc;

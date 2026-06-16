@@ -238,10 +238,30 @@ impl<'ctx> CodeGen<'ctx> {
                     _ => Err("concat: arguments must be both strings, both lists, both maps, or both sets".to_string()),
                 }
             }
-            "toUpper" | "toLower" | "trim" | "startsWith" | "endsWith" | "substring" | "parseInt" | "split" | "join" | "replace" | "trimStart" | "trimEnd" | "stringContains" | "stringRepeat" | "splitLines" | "indexOf" | "chars" | "charAt" | "isAlpha" | "codeToChar" | "toChar" | "charCode" => self.builtin_stdlib_string(name, args),
-            "head" | "last" | "get" | "remove" | "reverse" | "contains" | "prepend" | "take" | "drop" | "range" | "repeat" | "tail" | "zip" | "insert" | "init" | "withIndex" | "unique" | "slice" | "flatten" | "splitAt" | "chunks" | "windows" | "sorted" | "containsKey" | "setToList" | "mapKeys" | "mapValues" | "mapEntries" | "mapUnion" | "setUnion" | "setIntersection" | "setDifference" | "setIsSubset" | "sum" | "product" | "digits" | "randChoice" | "randShuffle" => self.builtin_stdlib_collection(name, args),
-            "readLine" | "readFile" | "writeFile" | "appendFile" | "exists" | "deleteFile" | "openFile" | "closeFile" | "isEof" | "fileReadLine" | "fileReadBytes" | "fileWrite" | "fileWriteLine" | "fileFlush" | "fileSeek" | "fileTell" | "readDir" => self.builtin_stdlib_io(name, args),
-            "abs" | "min" | "max" | "sqrt" | "cbrt" | "sin" | "cos" | "tan" | "asin" | "acos" | "atan" | "atan2" | "log" | "log2" | "log10" | "exp" | "floor" | "ceil" | "round" | "pi" | "e" | "clamp" | "isNaN" | "isInfinite" | "pow" => self.builtin_stdlib_math(name, args),
+            "toUpper" | "toLower" | "trim" | "startsWith" | "endsWith" | "substring"
+            | "parseInt" | "split" | "join" | "replace" | "trimStart" | "trimEnd"
+            | "stringContains" | "stringRepeat" | "splitLines" | "indexOf" | "chars" | "charAt"
+            | "isAlpha" | "codeToChar" | "toChar" | "charCode" => {
+                self.builtin_stdlib_string(name, args)
+            }
+            "head" | "last" | "get" | "remove" | "reverse" | "contains" | "prepend" | "take"
+            | "drop" | "range" | "repeat" | "tail" | "zip" | "insert" | "init" | "withIndex"
+            | "unique" | "slice" | "flatten" | "splitAt" | "chunks" | "windows" | "sorted"
+            | "containsKey" | "setToList" | "mapKeys" | "mapValues" | "mapEntries" | "mapUnion"
+            | "setUnion" | "setIntersection" | "setDifference" | "setIsSubset" | "sum"
+            | "product" | "digits" | "randChoice" | "randShuffle" => {
+                self.builtin_stdlib_collection(name, args)
+            }
+            "readLine" | "readFile" | "writeFile" | "appendFile" | "exists" | "deleteFile"
+            | "openFile" | "closeFile" | "isEof" | "fileReadLine" | "fileReadBytes"
+            | "fileWrite" | "fileWriteLine" | "fileFlush" | "fileSeek" | "fileTell" | "readDir" => {
+                self.builtin_stdlib_io(name, args)
+            }
+            "abs" | "min" | "max" | "sqrt" | "cbrt" | "sin" | "cos" | "tan" | "asin" | "acos"
+            | "atan" | "atan2" | "log" | "log2" | "log10" | "exp" | "floor" | "ceil" | "round"
+            | "pi" | "e" | "clamp" | "isNaN" | "isInfinite" | "pow" => {
+                self.builtin_stdlib_math(name, args)
+            }
             "panic" => {
                 if args.len() != 1 {
                     return Err("panic expects 1 argument (message)".to_string());
@@ -424,7 +444,10 @@ impl<'ctx> CodeGen<'ctx> {
                     TypedValue::List(p) => {
                         let lv = self.load_list(p)?;
                         let cc = self.call_rt("action_set_from_list", &[lv.into()])?;
-                        let sv = cc.try_as_basic_value().basic().ok_or("set_from_list failed")?;
+                        let sv = cc
+                            .try_as_basic_value()
+                            .basic()
+                            .ok_or("set_from_list failed")?;
                         let alloca = self
                             .builder
                             .build_alloca(self.list_type, "set_from_list")

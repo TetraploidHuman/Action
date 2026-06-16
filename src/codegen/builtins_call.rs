@@ -582,11 +582,9 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let ast_ret = self.fun_return_types.get(&mangled).cloned();
                     return match cc.try_as_basic_value().basic() {
-                        Some(bv) => self.unpack_call_return(
-                            bv,
-                            fn_type.get_return_type(),
-                            ast_ret.as_ref(),
-                        ),
+                        Some(bv) => {
+                            self.unpack_call_return(bv, fn_type.get_return_type(), ast_ret.as_ref())
+                        }
                         None => Ok(TypedValue::Unit),
                     };
                 }
@@ -1414,8 +1412,8 @@ impl<'ctx> CodeGen<'ctx> {
                 self.rc_free_method_receiver(&recv_val)?;
                 match method.as_str() {
                     // No-arg methods: f(list) — len/isEmpty handled above
-                    "head" | "last" | "tail" | "init" | "reverse" | "sum"
-                    | "product" | "sorted" | "flatten" | "unique" | "toList" | "toLazyList" => {
+                    "head" | "last" | "tail" | "init" | "reverse" | "sum" | "product"
+                    | "sorted" | "flatten" | "unique" | "toList" | "toLazyList" => {
                         let new_func = Expr::Ident(method.to_string());
                         return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                     }

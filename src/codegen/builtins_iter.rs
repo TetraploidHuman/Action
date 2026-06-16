@@ -46,10 +46,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_alloca(self.list_type, "map_result")
             .map_err(llvm_err)?;
 
-        let map_cc = self.call_rt(
-            "action_list_map_walk",
-            &[input_list.into(), fn_ptr.into()],
-        )?;
+        let map_cc = self.call_rt("action_list_map_walk", &[input_list.into(), fn_ptr.into()])?;
         let result_bv = map_cc
             .try_as_basic_value()
             .basic()
@@ -220,10 +217,7 @@ impl<'ctx> CodeGen<'ctx> {
         let (fn_ptr, list_ptr) = self.extract_callback_args(args, trailing, 1, "any")?;
         let input_list = self.load_list(list_ptr)?;
 
-        let any_cc = self.call_rt(
-            "action_list_any_walk",
-            &[input_list.into(), fn_ptr.into()],
-        )?;
+        let any_cc = self.call_rt("action_list_any_walk", &[input_list.into(), fn_ptr.into()])?;
         let res = any_cc
             .try_as_basic_value()
             .basic()
@@ -241,10 +235,7 @@ impl<'ctx> CodeGen<'ctx> {
         let (fn_ptr, list_ptr) = self.extract_callback_args(args, trailing, 1, "all")?;
         let input_list = self.load_list(list_ptr)?;
 
-        let all_cc = self.call_rt(
-            "action_list_all_walk",
-            &[input_list.into(), fn_ptr.into()],
-        )?;
+        let all_cc = self.call_rt("action_list_all_walk", &[input_list.into(), fn_ptr.into()])?;
         let res = all_cc
             .try_as_basic_value()
             .basic()

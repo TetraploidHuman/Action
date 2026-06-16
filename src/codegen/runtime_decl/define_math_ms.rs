@@ -917,16 +917,9 @@ impl<'ctx> CodeGen<'ctx> {
         let ss_key = self.ht_key_fat_at(ss_adata, ss_iv)?;
         let ss_cont = self
             .builder
-            .build_call(
-                ss_ht_contains,
-                &[ss_b.into(), ss_key.into()],
-                "cont",
-            )
+            .build_call(ss_ht_contains, &[ss_b.into(), ss_key.into()], "cont")
             .map_err(llvm_err)?;
-        let ss_found = ss_cont
-            .try_as_basic_value()
-            .unwrap_basic()
-            .into_int_value();
+        let ss_found = ss_cont.try_as_basic_value().unwrap_basic().into_int_value();
         let ss_next = self.context.append_basic_block(ss_fn, "next");
         let _ = self
             .builder

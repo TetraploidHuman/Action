@@ -2767,6 +2767,13 @@ mod tests {
 
         #[test]
         fn proptest_parse_simple_val(name in "[a-zA-Z][a-zA-Z0-9_]{0,20}", n in 0i64..10000i64) {
+            const KEYWORDS: &[&str] = &[
+                "val", "var", "fun", "when", "else", "for", "in", "is", "break", "continue",
+                "return", "enum", "type", "import", "module", "export", "const", "copy",
+                "extension", "as", "and", "or", "not", "lazy", "unsafe", "external", "null",
+                "Task", "true", "false",
+            ];
+            prop_assume!(!KEYWORDS.contains(&name.as_str()));
             let s = format!("val {} = {}", name, n);
             let tokens = crate::lexer::Lexer::new(&s).tokenize();
             let mut parser = Parser::new(tokens);

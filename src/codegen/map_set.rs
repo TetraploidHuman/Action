@@ -305,10 +305,7 @@ impl<'ctx> CodeGen<'ctx> {
                 return Err(e);
             }
         };
-        let new_set = cc
-            .try_as_basic_value()
-            .basic()
-            .ok_or("map_insert failed")?;
+        let new_set = cc.try_as_basic_value().basic().ok_or("map_insert failed")?;
         let alloca = self
             .builder
             .build_alloca(self.list_type, "set_inserted")

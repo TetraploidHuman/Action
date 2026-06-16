@@ -602,7 +602,11 @@ impl<'ctx> CodeGen<'ctx> {
                 let v = self.compile_expr(value)?;
                 // Skip rc_dec/rc_inc when in-place update reuses the same heap pointer.
                 let skip_rc_transfer = match (&old_list, &old_str, &v) {
-                    (Some(old), _, TypedValue::List(np) | TypedValue::Map(np) | TypedValue::Set(np)) => {
+                    (
+                        Some(old),
+                        _,
+                        TypedValue::List(np) | TypedValue::Map(np) | TypedValue::Set(np),
+                    ) => {
                         let new_loaded = self.load_list(*np)?;
                         let old_data = self
                             .builder
@@ -652,11 +656,7 @@ impl<'ctx> CodeGen<'ctx> {
                             )
                             .map_err(llvm_err)?
                     }
-                    _ => self
-                        .context
-                        .bool_type()
-                        .const_int(0, false)
-                        .into(),
+                    _ => self.context.bool_type().const_int(0, false).into(),
                 };
                 let fn_val = self
                     .builder
@@ -690,10 +690,8 @@ impl<'ctx> CodeGen<'ctx> {
                                 .build_extract_value(old, 2, "old_h")
                                 .map_err(llvm_err)?
                                 .into_int_value();
-                            let rdl_fn = self
-                                .module
-                                .get_function("action_rc_dec_list_node")
-                                .unwrap();
+                            let rdl_fn =
+                                self.module.get_function("action_rc_dec_list_node").unwrap();
                             let _ = self.builder.build_call(
                                 rdl_fn,
                                 &[data_ptr.into(), height.into()],
@@ -873,7 +871,11 @@ impl<'ctx> CodeGen<'ctx> {
                                 let field_types = st.get_field_types();
                                 if (idx as usize) < field_types.len() {
                                     let fk = self.struct_field_val_kind(&st, idx);
-                                    self.rc_dec_field_val(field_ptr, field_types[idx as usize], fk)?;
+                                    self.rc_dec_field_val(
+                                        field_ptr,
+                                        field_types[idx as usize],
+                                        fk,
+                                    )?;
                                 }
                                 if let Some(bv) = v.to_bv() {
                                     self.builder.build_store(field_ptr, bv).map_err(llvm_err)?;

@@ -943,10 +943,7 @@ fn test_tuple_pattern() {
 
 #[test]
 fn test_method_chain_remove_len() {
-    assert_eq!(
-        run_example("test_method_chain_remove_len.at"),
-        "2\n2\n2\n"
-    );
+    assert_eq!(run_example("test_method_chain_remove_len.at"), "2\n2\n2\n");
 }
 
 #[test]

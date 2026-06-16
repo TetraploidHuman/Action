@@ -378,11 +378,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_struct_value();
         let lt_cn_tb_res = self
             .builder
-            .build_call(
-                lt_concat_fn,
-                &[lt_cn_left.into(), lt_cn_tr.into()],
-                "cn_tb",
-            )
+            .build_call(lt_concat_fn, &[lt_cn_left.into(), lt_cn_tr.into()], "cn_tb")
             .map_err(llvm_err)?
             .try_as_basic_value()
             .unwrap_basic();
