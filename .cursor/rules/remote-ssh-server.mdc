@@ -99,27 +99,41 @@ cd ~/Action && nix-shell --run "./benchmark.sh --iterations 3"
 
 **每次远端 push 后，AI 应主动在本地 `git pull`**，保持本地与 GitHub 一致。
 
-## GitHub 访问（FlClash 代理）
+## GitHub 访问（直连优先 / FlClash 备选）
 
-远端访问 GitHub 不稳定时，走本机 **FlClash** 混合代理端口 **7890**（须先确认 FlClash 已启动且节点可用，否则会出现 `502 Bad Gateway` / TLS 错误）。
+远端 **直连 GitHub 通常可用**（`curl https://api.github.com` → 200）。全局 `git config` 若设置了 `http.proxy=127.0.0.1:7890`，会导致 git 走 FlClash；节点异常时会 push 失败。
 
-`~/Action` 仓库已配置 **仅本仓库** 的 git 代理（不修改全局 `git config`）：
+**推荐 push 方式**（绕过全局代理，优先直连）：
 
 ```bash
-# 查看
-cd ~/Action && git config --local --get http.proxy
-
-# push（任选其一）
 cd ~/Action && ./scripts/git-push.sh origin main
-# 或
-cd ~/Action && http_proxy=http://127.0.0.1:7890 https_proxy=http://127.0.0.1:7890 git push origin main
+# 等价于先尝试：
+git -c http.proxy= -c https.proxy= push origin main
 ```
 
-推送前自检代理是否通：
+直连失败时脚本会自动回退到 FlClash `7890`。
+
+### FlClash 节点切换（SSH 能力有限）
+
+当前 FlClash **未开启** Clash External Controller（`external-controller` 为空），`/tmp/FlClashSocket_*.sock` 是 GUI 专用 IPC，**无法**用标准 `curl http://127.0.0.1:9090/proxies` 切换节点。
+
+若需 SSH 自动化切节点，请在 FlClash 设置中开启 **External Controller**（如 `127.0.0.1:9090`），之后可用：
 
 ```bash
-curl -x http://127.0.0.1:7890 -I --connect-timeout 5 https://api.github.com
-# 应返回 HTTP/2 200 或 HTTP/1.1 200/301，而非 000 或 502
+# 查看组与当前节点
+curl http://127.0.0.1:9090/proxies
+
+# 切换（组名、节点名按实际配置替换）
+curl -X PUT http://127.0.0.1:9090/proxies/Pikayun \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"节点名称"}'
+```
+
+代理自检：
+
+```bash
+curl -x http://127.0.0.1:7890 -I --connect-timeout 5 https://api.github.com  # 代理
+curl -I --connect-timeout 5 https://api.github.com                          # 直连
 ```
 
 ## 冲突与优先级
