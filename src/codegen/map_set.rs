@@ -7,6 +7,18 @@ use inkwell::values::{BasicValue, BasicValueEnum, PointerValue};
 use super::{llvm_err, CodeGen, GepCursor, InnerType, TypedValue};
 
 impl<'ctx> CodeGen<'ctx> {
+    /// Extract map/set length from a loaded {ptr, len, cap} struct (field 1).
+    pub(super) fn map_len_val(
+        &self,
+        map: inkwell::values::StructValue<'ctx>,
+    ) -> Result<inkwell::values::IntValue<'ctx>, String> {
+        Ok(self
+            .builder
+            .build_extract_value(map, 1, "map_len")
+            .map_err(llvm_err)?
+            .into_int_value())
+    }
+
     pub(super) fn compile_map_lit(
         &mut self,
         entries: &[(Expr, Expr)],
@@ -172,23 +184,14 @@ impl<'ctx> CodeGen<'ctx> {
             }
         };
         let new_map = cc.try_as_basic_value().basic().ok_or("map_insert failed")?;
-        self.builder
-            .build_store(map_ptr, new_map)
+        let alloca = self
+            .builder
+            .build_alloca(self.list_type, "map_inserted")
             .map_err(llvm_err)?;
-        // RC management: inc new data buffer, dec old
-        let new_data = self
-            .builder
-            .build_extract_value(new_map.into_struct_value(), 0, "mi_new_data")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        self.rc_inc(new_data)?;
-        let old_data = self
-            .builder
-            .build_extract_value(map_loaded, 0, "mi_old_data")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        self.rc_dec(old_data)?;
-        Ok(TypedValue::Map(map_ptr))
+        self.builder
+            .build_store(alloca, new_map)
+            .map_err(llvm_err)?;
+        Ok(TypedValue::Map(alloca))
     }
 
     /// map.remove(key) — receiver alloca is pre-compiled to avoid double compilation.
@@ -218,23 +221,14 @@ impl<'ctx> CodeGen<'ctx> {
             Err(e) => return Err(e),
         };
         let new_map = rc.try_as_basic_value().basic().ok_or("remove failed")?;
-        self.builder
-            .build_store(map_ptr, new_map)
+        let alloca = self
+            .builder
+            .build_alloca(self.list_type, "map_removed")
             .map_err(llvm_err)?;
-        // RC management: inc new data buffer, dec old
-        let new_data = self
-            .builder
-            .build_extract_value(new_map.into_struct_value(), 0, "mr_new_data")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        self.rc_inc(new_data)?;
-        let old_data = self
-            .builder
-            .build_extract_value(map_loaded, 0, "mr_old_data")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        self.rc_dec(old_data)?;
-        Ok(TypedValue::Map(map_ptr))
+        self.builder
+            .build_store(alloca, new_map)
+            .map_err(llvm_err)?;
+        Ok(TypedValue::Map(alloca))
     }
 
     /// map.contains(key) — receiver alloca is pre-compiled to avoid double compilation.
@@ -287,6 +281,19 @@ impl<'ctx> CodeGen<'ctx> {
         let elem_val = self.compile_expr(&args[0])?;
         let elem_fat = self.to_fat_struct(&elem_val)?;
 
+        let null_val: BasicValueEnum = {
+            let undef = self.string_type.get_undef();
+            let r1 = self
+                .builder
+                .build_insert_value(undef, self.i64_ty().const_int(0, false), 0, "sn0")
+                .map_err(llvm_err)?;
+            let r2 = self
+                .builder
+                .build_insert_value(r1, self.ptr_ty().const_zero(), 1, "sn1")
+                .map_err(llvm_err)?;
+            r2.as_basic_value_enum()
+        };
+
         let set_loaded = self.load_list(set_ptr)?;
         // Check if element already exists
         let contains_fn = self
@@ -314,6 +321,10 @@ impl<'ctx> CodeGen<'ctx> {
             .get_insert_block()
             .and_then(|b| b.get_parent())
             .ok_or("not in function")?;
+        let result_alloca = self
+            .builder
+            .build_alloca(self.list_type, "set_insert_result")
+            .map_err(llvm_err)?;
         let insert_bb = self.context.append_basic_block(current_fn, "si_insert");
         let skip_bb = self.context.append_basic_block(current_fn, "si_skip");
         let merge_bb = self.context.append_basic_block(current_fn, "si_merge");
@@ -324,7 +335,7 @@ impl<'ctx> CodeGen<'ctx> {
         let set_loaded2 = self.load_list(set_ptr)?;
         let cc2 = match self.call_rt(
             "action_map_insert",
-            &[set_loaded2.into(), elem_fat.into(), elem_fat.into()],
+            &[set_loaded2.into(), elem_fat.into(), null_val.into()],
         ) {
             Ok(v) => v,
             Err(e) => {
@@ -337,27 +348,16 @@ impl<'ctx> CodeGen<'ctx> {
             .basic()
             .ok_or("map_insert failed")?;
         self.builder
-            .build_store(set_ptr, new_set)
+            .build_store(result_alloca, new_set)
             .map_err(llvm_err)?;
-        // RC management: inc new data buffer, dec old
-        let new_data = self
-            .builder
-            .build_extract_value(new_set.into_struct_value(), 0, "si_new_data")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        self.rc_inc(new_data)?;
-        let old_data = self
-            .builder
-            .build_extract_value(set_loaded2, 0, "si_old_data")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        self.rc_dec(old_data)?;
         let _ = self.builder.build_unconditional_branch(merge_bb);
-        // Skip path: element was a duplicate, no insert happened
         self.builder.position_at_end(skip_bb);
+        self.builder
+            .build_store(result_alloca, set_loaded)
+            .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(merge_bb);
         self.builder.position_at_end(merge_bb);
-        Ok(TypedValue::Set(set_ptr))
+        Ok(TypedValue::Set(result_alloca))
     }
 
     /// set.remove(elem) — receiver alloca is pre-compiled to avoid double compilation.
@@ -387,10 +387,14 @@ impl<'ctx> CodeGen<'ctx> {
             Err(e) => return Err(e),
         };
         let new_set = rc.try_as_basic_value().basic().ok_or("remove failed")?;
-        self.builder
-            .build_store(set_ptr, new_set)
+        let alloca = self
+            .builder
+            .build_alloca(self.list_type, "set_removed")
             .map_err(llvm_err)?;
-        Ok(TypedValue::Set(set_ptr))
+        self.builder
+            .build_store(alloca, new_set)
+            .map_err(llvm_err)?;
+        Ok(TypedValue::Set(alloca))
     }
 
     /// set.contains(elem) — receiver alloca is pre-compiled to avoid double compilation.

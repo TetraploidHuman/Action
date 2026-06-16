@@ -456,6 +456,8 @@ pub struct CodeGen<'ctx> {
     /// Generic function definitions with type_params, indexed by name.
     /// Used for monomorphization at call sites.
     pub(super) generic_fun_defs: HashMap<String, Stmt>,
+    /// LLVM function name → AST return type (Pass 1), for call-site List/Map/Set tagging.
+    pub(super) fun_return_types: HashMap<String, Type>,
     /// Tracks whether compile_block did an rc_inc on the last expression.
     /// val stmt uses this to apply a balancing rc_dec.
     pub(super) block_did_rc_inc: bool,
@@ -643,6 +645,7 @@ impl<'ctx> CodeGen<'ctx> {
             nullable_types: HashMap::new(),
             not_null_set: HashSet::new(),
             generic_fun_defs: HashMap::new(),
+            fun_return_types: HashMap::new(),
             block_did_rc_inc: false,
         }
     }
@@ -700,6 +703,8 @@ mod builtins_print;
 mod builtins_range;
 mod builtins_stdlib;
 mod builtins_stdlib_datetime;
+mod builtins_stdlib_io;
+mod builtins_stdlib_math;
 mod builtins_stream;
 mod builtins_thread;
 mod expr;

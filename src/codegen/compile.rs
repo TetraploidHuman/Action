@@ -105,6 +105,11 @@ impl<'ctx> CodeGen<'ctx> {
                 };
                 let fn_type = self.build_fn_type(ret_type.as_ref(), &mangled, &param_llvm_tys);
                 self.module.add_function(&mangled, fn_type, None);
+                if name != "main" {
+                    if let Some(rt) = ret_type {
+                        self.fun_return_types.insert(mangled, rt);
+                    }
+                }
             }
             if let Stmt::Module {
                 name: mod_name,
@@ -141,6 +146,9 @@ impl<'ctx> CodeGen<'ctx> {
                         let fn_type =
                             self.build_fn_type(ret_type.as_ref(), &mangled, &param_llvm_tys);
                         self.module.add_function(&mangled, fn_type, None);
+                        if let Some(rt) = ret_type {
+                            self.fun_return_types.insert(mangled, rt);
+                        }
                     }
                 }
             }
@@ -174,6 +182,9 @@ impl<'ctx> CodeGen<'ctx> {
                         let fn_type =
                             self.build_fn_type(ret_type.as_ref(), &fn_name, &param_llvm_tys);
                         self.module.add_function(&fn_name, fn_type, None);
+                        if let Some(rt) = ret_type {
+                            self.fun_return_types.insert(fn_name, rt);
+                        }
                     }
                 }
             }

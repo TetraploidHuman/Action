@@ -478,8 +478,11 @@ impl<'ctx> CodeGen<'ctx> {
                 for av in &arg_vals {
                     self.rc_free_intermediate(av)?;
                 }
+                let ast_ret = self.fun_return_types.get(fn_name).cloned();
                 return match cc.try_as_basic_value().basic() {
-                    Some(bv) => self.bv_to_typed(bv),
+                    Some(bv) => {
+                        self.unpack_call_return(bv, fn_type.get_return_type(), ast_ret.as_ref())
+                    }
                     None => Ok(TypedValue::Unit),
                 };
             }
@@ -527,8 +530,11 @@ impl<'ctx> CodeGen<'ctx> {
                 for av in &direct_arg_vals {
                     self.rc_free_intermediate(av)?;
                 }
+                let ast_ret = self.fun_return_types.get(name).cloned();
                 return match cc.try_as_basic_value().basic() {
-                    Some(bv) => self.bv_to_typed(bv),
+                    Some(bv) => {
+                        self.unpack_call_return(bv, fn_type.get_return_type(), ast_ret.as_ref())
+                    }
                     None => Ok(TypedValue::Unit),
                 };
             }
@@ -574,8 +580,13 @@ impl<'ctx> CodeGen<'ctx> {
                     for av in &tracked_args {
                         self.rc_free_intermediate(av)?;
                     }
+                    let ast_ret = self.fun_return_types.get(&mangled).cloned();
                     return match cc.try_as_basic_value().basic() {
-                        Some(bv) => self.bv_to_typed(bv),
+                        Some(bv) => self.unpack_call_return(
+                            bv,
+                            fn_type.get_return_type(),
+                            ast_ret.as_ref(),
+                        ),
                         None => Ok(TypedValue::Unit),
                     };
                 }
@@ -617,9 +628,19 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.builtin_map_contains(map_ptr, args);
                 }
                 if method == "len" || method == "isEmpty" {
-                    self.rc_free_method_receiver(&recv_val)?;
-                    let new_func = Expr::Ident(method.to_string());
-                    return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
+                    let map_loaded = self.load_list(map_ptr)?;
+                    let len = self.map_len_val(map_loaded)?;
+                    if method == "isEmpty" {
+                        let zero = self.i64_ty().const_int(0, false);
+                        let is_empty = self
+                            .builder
+                            .build_int_compare(IntPredicate::EQ, len, zero, "empty")
+                            .map_err(llvm_err)?;
+                        self.rc_free_intermediate(&recv_val)?;
+                        return Ok(TypedValue::Bool(is_empty));
+                    }
+                    self.rc_free_intermediate(&recv_val)?;
+                    return Ok(TypedValue::Int(len));
                 }
                 if method == "keys" {
                     self.rc_free_method_receiver(&recv_val)?;
@@ -682,9 +703,19 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.builtin_set_contains(set_ptr, args);
                 }
                 if method == "len" || method == "isEmpty" {
-                    self.rc_free_method_receiver(&recv_val)?;
-                    let new_func = Expr::Ident(method.to_string());
-                    return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
+                    let set_loaded = self.load_list(set_ptr)?;
+                    let len = self.map_len_val(set_loaded)?;
+                    if method == "isEmpty" {
+                        let zero = self.i64_ty().const_int(0, false);
+                        let is_empty = self
+                            .builder
+                            .build_int_compare(IntPredicate::EQ, len, zero, "empty")
+                            .map_err(llvm_err)?;
+                        self.rc_free_intermediate(&recv_val)?;
+                        return Ok(TypedValue::Bool(is_empty));
+                    }
+                    self.rc_free_intermediate(&recv_val)?;
+                    return Ok(TypedValue::Int(len));
                 }
                 if method == "union" {
                     if args.len() != 1 {
@@ -1363,7 +1394,7 @@ impl<'ctx> CodeGen<'ctx> {
                     "len" => {
                         let lv = self.load_list(*lp)?;
                         let len = self.list_len_val(lv)?;
-                        self.rc_free_method_receiver(&recv_val)?;
+                        self.rc_free_intermediate(&recv_val)?;
                         return Ok(TypedValue::Int(len));
                     }
                     "isEmpty" => {
@@ -1374,7 +1405,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .builder
                             .build_int_compare(IntPredicate::EQ, len, zero, "empty")
                             .map_err(llvm_err)?;
-                        self.rc_free_method_receiver(&recv_val)?;
+                        self.rc_free_intermediate(&recv_val)?;
                         return Ok(TypedValue::Bool(is_empty));
                     }
                     _ => {}
@@ -1500,10 +1531,29 @@ impl<'ctx> CodeGen<'ctx> {
                             .builder
                             .build_int_compare(IntPredicate::EQ, len, zero, "empty")
                             .map_err(llvm_err)?;
-                        self.rc_free_method_receiver(&recv_val)?;
+                        self.rc_free_intermediate(&recv_val)?;
                         return Ok(TypedValue::Bool(is_empty));
                     }
-                    self.rc_free_method_receiver(&recv_val)?;
+                    self.rc_free_intermediate(&recv_val)?;
+                    return Ok(TypedValue::Int(len));
+                }
+                if matches!(recv_val, TypedValue::Map(_) | TypedValue::Set(_)) {
+                    let lp = match &recv_val {
+                        TypedValue::Map(p) | TypedValue::Set(p) => *p,
+                        _ => unreachable!(),
+                    };
+                    let lv = self.load_list(lp)?;
+                    let len = self.map_len_val(lv)?;
+                    if method == "isEmpty" {
+                        let zero = self.i64_ty().const_int(0, false);
+                        let is_empty = self
+                            .builder
+                            .build_int_compare(IntPredicate::EQ, len, zero, "empty")
+                            .map_err(llvm_err)?;
+                        self.rc_free_intermediate(&recv_val)?;
+                        return Ok(TypedValue::Bool(is_empty));
+                    }
+                    self.rc_free_intermediate(&recv_val)?;
                     return Ok(TypedValue::Int(len));
                 }
             }

@@ -379,6 +379,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.define_list_core()?;
         self.define_list_xform()?;
         self.define_str_util()?;
+        self.define_hash_table()?;
         self.define_map()?;
         self.define_str_extra()?;
         self.define_file_parse()?;
@@ -398,6 +399,7 @@ mod define_list_core;
 mod define_list_extra;
 mod define_list_tree;
 mod define_list_xform;
+mod define_hash_table;
 mod define_map;
 mod define_math_ms;
 mod define_misc;

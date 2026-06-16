@@ -87,15 +87,20 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_extract_value(list_val, 0, "data")
                         .map_err(llvm_err)?
                         .into_pointer_value();
-                    let height = self
+                    let len = self
                         .builder
-                        .build_extract_value(list_val, 2, "height")
+                        .build_extract_value(list_val, 1, "len")
                         .map_err(llvm_err)?
                         .into_int_value();
-                    let rdl_fn = self.module.get_function("action_rc_dec_list_node").unwrap();
+                    let cap = self
+                        .builder
+                        .build_extract_value(list_val, 2, "cap")
+                        .map_err(llvm_err)?
+                        .into_int_value();
+                    let rht_fn = self.module.get_function("action_rc_dec_ht").unwrap();
                     let _ = self
                         .builder
-                        .build_call(rdl_fn, &[data_ptr.into(), height.into()], "")
+                        .build_call(rht_fn, &[data_ptr.into(), cap.into(), len.into()], "")
                         .map_err(llvm_err)?;
                 }
                 ValKind::LazyList => {
@@ -240,15 +245,20 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_extract_value(list_val, 0, "data")
                     .map_err(llvm_err)?
                     .into_pointer_value();
-                let height = self
+                let len = self
                     .builder
-                    .build_extract_value(list_val, 2, "height")
+                    .build_extract_value(list_val, 1, "len")
                     .map_err(llvm_err)?
                     .into_int_value();
-                let rdl_fn = self.module.get_function("action_rc_dec_list_node").unwrap();
+                let cap = self
+                    .builder
+                    .build_extract_value(list_val, 2, "cap")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                let rht_fn = self.module.get_function("action_rc_dec_ht").unwrap();
                 let _ = self
                     .builder
-                    .build_call(rdl_fn, &[data_ptr.into(), height.into()], "")
+                    .build_call(rht_fn, &[data_ptr.into(), cap.into(), len.into()], "")
                     .map_err(llvm_err)?;
             }
             ValKind::Enum if rc_managed => {
@@ -645,7 +655,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .into_pointer_value();
                 self.rc_dec(data_ptr)?;
             }
-            TypedValue::List(ptr) | TypedValue::Map(ptr) | TypedValue::Set(ptr) => {
+            TypedValue::List(ptr) => {
                 let list_val = self.load_list(*ptr)?;
                 let data_ptr = self
                     .builder
@@ -664,6 +674,32 @@ impl<'ctx> CodeGen<'ctx> {
                 let _ = self
                     .builder
                     .build_call(rdl_fn, &[data_ptr.into(), height.into()], "")
+                    .map_err(llvm_err)?;
+            }
+            TypedValue::Map(ptr) | TypedValue::Set(ptr) => {
+                let list_val = self.load_list(*ptr)?;
+                let data_ptr = self
+                    .builder
+                    .build_extract_value(list_val, 0, "data")
+                    .map_err(llvm_err)?
+                    .into_pointer_value();
+                let len = self
+                    .builder
+                    .build_extract_value(list_val, 1, "len")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                let cap = self
+                    .builder
+                    .build_extract_value(list_val, 2, "cap")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                let rht_fn = self
+                    .module
+                    .get_function("action_rc_dec_ht")
+                    .ok_or("action_rc_dec_ht not found")?;
+                let _ = self
+                    .builder
+                    .build_call(rht_fn, &[data_ptr.into(), cap.into(), len.into()], "")
                     .map_err(llvm_err)?;
             }
             TypedValue::LazyList(_) => {}

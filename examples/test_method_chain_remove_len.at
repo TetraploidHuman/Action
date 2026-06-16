@@ -1,0 +1,9 @@
+// Regression: UFCS method chain must not double-evaluate receiver or SIGSEGV.
+// See .cursor/rules/ai-agent-workflow.mdc §2
+fun main() {
+    val lst = List[1, 2, 3]
+    println(lst.remove(0).len())
+    var x = lst.remove(0)
+    println(x.len())
+    println(List[1, 2, 3].remove(0).len())
+}

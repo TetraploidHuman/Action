@@ -940,3 +940,32 @@ fn test_tuple_pattern() {
     assert!(out.contains("ab"));
     assert!(out.contains("first"));
 }
+
+#[test]
+fn test_method_chain_remove_len() {
+    assert_eq!(
+        run_example("test_method_chain_remove_len.at"),
+        "2\n2\n2\n"
+    );
+}
+
+#[test]
+fn test_bench_cow() {
+    assert_eq!(run_example("bench_cow.at"), "11\n");
+}
+
+#[test]
+fn test_bench_all() {
+    assert_eq!(
+        run_example("bench_all.at"),
+        "2000\n2000\n1000\n2100\n2000\n1000\n"
+    );
+}
+
+#[test]
+fn test_cow_semantics() {
+    let out = run_example("cow_test.at");
+    assert!(out.contains("List CoW a len (expect 3): 3"));
+    assert!(out.contains("Map CoW m1 len (expect 2): 2"));
+    assert!(out.contains("All CoW tests passed"));
+}

@@ -566,9 +566,6 @@ impl<'ctx> CodeGen<'ctx> {
         target: &Expr,
         value: &Expr,
     ) -> Result<TypedValue<'ctx>, String> {
-        let v = self.compile_expr(value)?;
-        // RC inc the new value before storing
-        self.rc_inc_typed_value(&v)?;
         match target {
             Expr::Ident(name) => {
                 let (var_ptr, var_kind, var_ty, var_rc_managed, var_is_closure) = {
@@ -590,7 +587,89 @@ impl<'ctx> CodeGen<'ctx> {
                         var.is_closure,
                     )
                 };
-                // Dec RC of old value before overwriting
+                // Snapshot old heap value before RHS — self-assignments like `m = m.insert(...)`
+                // read the variable during RHS; dec must happen after RHS using the snapshot.
+                let old_list = if matches!(var_kind, ValKind::List | ValKind::Map | ValKind::Set) {
+                    Some(self.load_list(var_ptr)?)
+                } else {
+                    None
+                };
+                let old_str = if var_kind == ValKind::Str {
+                    Some(self.load_string(var_ptr)?)
+                } else {
+                    None
+                };
+                let v = self.compile_expr(value)?;
+                // Skip rc_dec/rc_inc when in-place update reuses the same heap pointer.
+                let skip_rc_transfer = match (&old_list, &old_str, &v) {
+                    (Some(old), _, TypedValue::List(np) | TypedValue::Map(np) | TypedValue::Set(np)) => {
+                        let new_loaded = self.load_list(*np)?;
+                        let old_data = self
+                            .builder
+                            .build_extract_value(*old, 0, "cmp_od")
+                            .map_err(llvm_err)?
+                            .into_pointer_value();
+                        let new_data = self
+                            .builder
+                            .build_extract_value(new_loaded, 0, "cmp_nd")
+                            .map_err(llvm_err)?
+                            .into_pointer_value();
+                        self.builder
+                            .build_int_compare(
+                                inkwell::IntPredicate::EQ,
+                                self.builder
+                                    .build_ptr_to_int(old_data, self.i64_ty(), "odi")
+                                    .map_err(llvm_err)?,
+                                self.builder
+                                    .build_ptr_to_int(new_data, self.i64_ty(), "ndi")
+                                    .map_err(llvm_err)?,
+                                "same_ptr",
+                            )
+                            .map_err(llvm_err)?
+                    }
+                    (_, Some(old), TypedValue::Str(sp)) => {
+                        let new_loaded = self.load_string(*sp)?;
+                        let old_data = self
+                            .builder
+                            .build_extract_value(*old, 1, "cmp_os")
+                            .map_err(llvm_err)?
+                            .into_pointer_value();
+                        let new_data = self
+                            .builder
+                            .build_extract_value(new_loaded, 1, "cmp_ns")
+                            .map_err(llvm_err)?
+                            .into_pointer_value();
+                        self.builder
+                            .build_int_compare(
+                                inkwell::IntPredicate::EQ,
+                                self.builder
+                                    .build_ptr_to_int(old_data, self.i64_ty(), "osi")
+                                    .map_err(llvm_err)?,
+                                self.builder
+                                    .build_ptr_to_int(new_data, self.i64_ty(), "nsi")
+                                    .map_err(llvm_err)?,
+                                "same_sptr",
+                            )
+                            .map_err(llvm_err)?
+                    }
+                    _ => self
+                        .context
+                        .bool_type()
+                        .const_int(0, false)
+                        .into(),
+                };
+                let fn_val = self
+                    .builder
+                    .get_insert_block()
+                    .and_then(|b| b.get_parent())
+                    .ok_or("not in fn")?;
+                let do_rc_bb = self.context.append_basic_block(fn_val, "asg_rc");
+                let skip_rc_bb = self.context.append_basic_block(fn_val, "asg_skip_rc");
+                let after_rc_bb = self.context.append_basic_block(fn_val, "asg_after_rc");
+                self.builder
+                    .build_conditional_branch(skip_rc_transfer, skip_rc_bb, do_rc_bb)
+                    .map_err(llvm_err)?;
+                self.builder.position_at_end(do_rc_bb);
                 if var_is_closure {
                     let cap_ptr = self
                         .builder
@@ -598,9 +677,73 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(llvm_err)?
                         .into_pointer_value();
                     self.rc_dec(cap_ptr)?;
+                } else if let Some(old) = old_list {
+                    match var_kind {
+                        ValKind::List => {
+                            let data_ptr = self
+                                .builder
+                                .build_extract_value(old, 0, "old_data")
+                                .map_err(llvm_err)?
+                                .into_pointer_value();
+                            let height = self
+                                .builder
+                                .build_extract_value(old, 2, "old_h")
+                                .map_err(llvm_err)?
+                                .into_int_value();
+                            let rdl_fn = self
+                                .module
+                                .get_function("action_rc_dec_list_node")
+                                .unwrap();
+                            let _ = self.builder.build_call(
+                                rdl_fn,
+                                &[data_ptr.into(), height.into()],
+                                "",
+                            );
+                        }
+                        ValKind::Map | ValKind::Set => {
+                            let data_ptr = self
+                                .builder
+                                .build_extract_value(old, 0, "old_data")
+                                .map_err(llvm_err)?
+                                .into_pointer_value();
+                            let len = self
+                                .builder
+                                .build_extract_value(old, 1, "old_len")
+                                .map_err(llvm_err)?
+                                .into_int_value();
+                            let cap = self
+                                .builder
+                                .build_extract_value(old, 2, "old_cap")
+                                .map_err(llvm_err)?
+                                .into_int_value();
+                            let rht_fn = self.module.get_function("action_rc_dec_ht").unwrap();
+                            let _ = self.builder.build_call(
+                                rht_fn,
+                                &[data_ptr.into(), cap.into(), len.into()],
+                                "",
+                            );
+                        }
+                        _ => {}
+                    }
+                } else if let Some(old) = old_str {
+                    let data_ptr = self
+                        .builder
+                        .build_extract_value(old, 1, "old_sdata")
+                        .map_err(llvm_err)?
+                        .into_pointer_value();
+                    self.rc_dec(data_ptr)?;
                 } else {
                     self.rc_dec_at(var_ptr, var_kind, var_ty, var_rc_managed)?;
                 }
+                self.rc_inc_typed_value(&v)?;
+                self.builder
+                    .build_unconditional_branch(after_rc_bb)
+                    .map_err(llvm_err)?;
+                self.builder.position_at_end(skip_rc_bb);
+                self.builder
+                    .build_unconditional_branch(after_rc_bb)
+                    .map_err(llvm_err)?;
+                self.builder.position_at_end(after_rc_bb);
                 // Wrap non-nullable value into nullable when target is nullable
                 let v = if var_kind == ValKind::Nullable && !matches!(&v, TypedValue::Nullable(..))
                 {
@@ -673,6 +816,20 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 Ok(v)
             }
+            _ => {
+                let v = self.compile_expr(value)?;
+                self.rc_inc_typed_value(&v)?;
+                self.compile_assign_field(target, &v)
+            }
+        }
+    }
+
+    fn compile_assign_field(
+        &mut self,
+        target: &Expr,
+        v: &TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        match target {
             Expr::FieldAccess(obj, field) => {
                 let obj_val = self.compile_expr(obj)?;
                 match obj_val {
@@ -690,7 +847,7 @@ impl<'ctx> CodeGen<'ctx> {
                         if let Some(bv) = v.to_bv() {
                             self.builder.build_store(field_ptr, bv).map_err(llvm_err)?;
                         }
-                        Ok(v)
+                        Ok(v.clone())
                     }
                     TypedValue::Nullable(nullable_ptr, inner_bt) => {
                         // Extract the inner struct from the nullable wrapper
@@ -732,7 +889,7 @@ impl<'ctx> CodeGen<'ctx> {
                                 self.builder
                                     .build_store(nullable_ptr, updated_nf)
                                     .map_err(llvm_err)?;
-                                Ok(v)
+                                Ok(v.clone())
                             }
                             _ => Err(format!(
                                 "Cannot assign to field '{}' of non-struct inner",
@@ -765,7 +922,7 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(var_ptr, bv).map_err(llvm_err)?;
                     }
                 }
-                Ok(v)
+                Ok(v.clone())
             }
             _ => Err("Complex assignment not yet supported".to_string()),
         }

@@ -1022,7 +1022,18 @@ impl<'ctx> CodeGen<'ctx> {
         bv: BasicValueEnum<'ctx>,
         ret_ty: Option<BasicTypeEnum<'ctx>>,
     ) -> Result<TypedValue<'ctx>, String> {
-        if let Some(rt) = ret_ty {
+        self.unpack_call_return(bv, ret_ty, None)
+    }
+
+    /// Unpack a direct/indirect call result, using AST return type when the LLVM
+    /// type is the shared `{ptr,i64,i64}` layout so List/Map/Set dispatch correctly.
+    pub(super) fn unpack_call_return(
+        &mut self,
+        bv: BasicValueEnum<'ctx>,
+        llvm_ret: Option<BasicTypeEnum<'ctx>>,
+        ast_ret: Option<&Type>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        if let Some(rt) = llvm_ret {
             if let BasicTypeEnum::StructType(fat_ty) = rt {
                 if fat_ty == self.fat_return_type {
                     if let BasicValueEnum::StructValue(sv) = bv {
@@ -1031,7 +1042,6 @@ impl<'ctx> CodeGen<'ctx> {
                             .build_alloca(fat_ty, "fat_unpack")
                             .map_err(llvm_err)?;
                         self.builder.build_store(alloca, sv).map_err(llvm_err)?;
-                        // Save the full fat_ret alloca for potential bitcast later
                         self.last_fat_ret = Some((alloca, fat_ty));
                         let gep0 = self
                             .builder
@@ -1047,7 +1057,38 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
         }
+        if let BasicValueEnum::StructValue(sv) = bv {
+            if sv.get_type() == self.list_type {
+                if let Some(kind) = ast_ret.and_then(Self::heap_collection_kind) {
+                    let alloca = self
+                        .builder
+                        .build_alloca(self.list_type, "call_heap_ret")
+                        .map_err(llvm_err)?;
+                    self.builder.build_store(alloca, sv).map_err(llvm_err)?;
+                    return Ok(match kind {
+                        ValKind::Map => TypedValue::Map(alloca),
+                        ValKind::Set => TypedValue::Set(alloca),
+                        _ => TypedValue::List(alloca),
+                    });
+                }
+            }
+        }
         self.bv_to_typed(bv)
+    }
+
+    fn heap_collection_kind(t: &Type) -> Option<ValKind> {
+        match t {
+            Type::Map(_, _) => Some(ValKind::Map),
+            Type::Set(_) => Some(ValKind::Set),
+            Type::Named(name) => match name.as_str() {
+                "map" => Some(ValKind::Map),
+                "set" => Some(ValKind::Set),
+                "list" => Some(ValKind::List),
+                _ => None,
+            },
+            Type::Nullable(inner) => Self::heap_collection_kind(inner),
+            _ => None,
+        }
     }
 
     pub(super) fn bv_to_typed(

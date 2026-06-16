@@ -297,6 +297,16 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(mu_entry);
         let mu_a = mu_fn.get_first_param().unwrap().into_struct_value();
         let mu_b = mu_fn.get_nth_param(1).unwrap().into_struct_value();
+        let mu_adata = self
+            .builder
+            .build_extract_value(mu_a, 0, "adata")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let mu_bdata = self
+            .builder
+            .build_extract_value(mu_b, 0, "bdata")
+            .map_err(llvm_err)?
+            .into_pointer_value();
         let mu_alen = self
             .builder
             .build_extract_value(mu_a, 1, "alen")
@@ -329,18 +339,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_alloca(self.list_type, "mu_ra")
             .map_err(llvm_err)?;
         self.builder.build_store(mu_ra, mu_resv).map_err(llvm_err)?;
-        let mu_get_fn = self.module.get_function("action_list_get").unwrap();
-        // Each entry occupies 2 list elements (key+value); compute pair count
-        let mu_two = i64.const_int(2, false);
-        let mu_npairs_a = self
-            .builder
-            .build_int_signed_div(mu_alen, mu_two, "npairs_a")
-            .map_err(llvm_err)?;
-        let mu_npairs_b = self
-            .builder
-            .build_int_signed_div(mu_blen, mu_two, "npairs_b")
-            .map_err(llvm_err)?;
-        // Loop 1: insert all from A
+        // Dense flat table: iterate i=0..len-1 per map
         let mu_i = self.builder.build_alloca(i64, "mu_i").map_err(llvm_err)?;
         self.builder
             .build_store(mu_i, i64.const_int(0, false))
@@ -357,32 +356,14 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
         let mu_c1 = self
             .builder
-            .build_int_compare(IntPredicate::SLT, mu_iv, mu_npairs_a, "c1")
+            .build_int_compare(IntPredicate::SLT, mu_iv, mu_alen, "c1")
             .map_err(llvm_err)?;
         let _ = self
             .builder
             .build_conditional_branch(mu_c1, mu_body1, mu_done1);
         self.builder.position_at_end(mu_body1);
-        let mu_kidx = self
-            .builder
-            .build_int_mul(mu_iv, i64.const_int(2, false), "kidx")
-            .map_err(llvm_err)?;
-        let mu_vidx = self
-            .builder
-            .build_int_add(mu_kidx, i64.const_int(1, false), "vidx")
-            .map_err(llvm_err)?;
-        let mu_key = self
-            .builder
-            .build_call(mu_get_fn, &[mu_a.into(), mu_kidx.into()], "key")
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .unwrap_basic();
-        let mu_val = self
-            .builder
-            .build_call(mu_get_fn, &[mu_a.into(), mu_vidx.into()], "val")
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .unwrap_basic();
+        let mu_key = self.ht_key_fat_at(mu_adata, mu_iv)?;
+        let mu_val = self.ht_val_fat_at(mu_adata, mu_iv)?;
         let mu_cl1 = self
             .builder
             .build_load(self.list_type, mu_ra, "cl1")
@@ -419,32 +400,14 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
         let mu_c2 = self
             .builder
-            .build_int_compare(IntPredicate::SLT, mu_jv, mu_npairs_b, "c2")
+            .build_int_compare(IntPredicate::SLT, mu_jv, mu_blen, "c2")
             .map_err(llvm_err)?;
         let _ = self
             .builder
             .build_conditional_branch(mu_c2, mu_body2, mu_done2);
         self.builder.position_at_end(mu_body2);
-        let mu_kidx2 = self
-            .builder
-            .build_int_mul(mu_jv, i64.const_int(2, false), "kidx2")
-            .map_err(llvm_err)?;
-        let mu_vidx2 = self
-            .builder
-            .build_int_add(mu_kidx2, i64.const_int(1, false), "vidx2")
-            .map_err(llvm_err)?;
-        let mu_key2 = self
-            .builder
-            .build_call(mu_get_fn, &[mu_b.into(), mu_kidx2.into()], "key2")
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .unwrap_basic();
-        let mu_val2 = self
-            .builder
-            .build_call(mu_get_fn, &[mu_b.into(), mu_vidx2.into()], "val2")
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .unwrap_basic();
+        let mu_key2 = self.ht_key_fat_at(mu_bdata, mu_jv)?;
+        let mu_val2 = self.ht_val_fat_at(mu_bdata, mu_jv)?;
         let mu_cl2 = self
             .builder
             .build_load(self.list_type, mu_ra, "cl2")

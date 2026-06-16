@@ -135,7 +135,7 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self.builder.build_return(Some(&af_r));
 
         // ---- action_map_keys({ptr, i64, i64}) -> {ptr, i64, i64} ----
-        // Tree-based: keys are at even indices, step by 2.
+        // Flat table: dense slots i=0..len-1, key at slot i (32-byte entry).
         let mk_fn = self.module.add_function(
             "action_map_keys",
             self.list_type.fn_type(&[self.list_type.into()], false),
@@ -144,12 +144,17 @@ impl<'ctx> CodeGen<'ctx> {
         let mk_entry = self.context.append_basic_block(mk_fn, "entry");
         self.builder.position_at_end(mk_entry);
         let mk_in = mk_fn.get_first_param().unwrap().into_struct_value();
+        let mk_data = self
+            .builder
+            .build_extract_value(mk_in, 0, "data")
+            .map_err(llvm_err)?
+            .into_pointer_value();
         let mk_len = self
             .builder
             .build_extract_value(mk_in, 1, "len")
             .map_err(llvm_err)?
             .into_int_value();
-        let mk_res = self.call_rt("action_list_create", &[i64.const_int(0, false).into()])?;
+        let mk_res = self.call_rt("action_list_create", &[i64.const_int(4, false).into()])?;
         let mk_resv = mk_res.try_as_basic_value().unwrap_basic();
         let mk_ra = self
             .builder
@@ -178,15 +183,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_conditional_branch(mk_cond, mk_body, mk_done);
         self.builder.position_at_end(mk_body);
-        // Get key at even index via action_list_get (returns fat struct directly)
-        let mk_get_fn = self.module.get_function("action_list_get").unwrap();
-        let mk_key = self
-            .builder
-            .build_call(mk_get_fn, &[mk_in.into(), mk_iv.into()], "key")
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .basic()
-            .ok_or("get key failed")?;
+        let mk_key = self.ht_key_fat_at(mk_data, mk_iv)?;
         let mk_cl = self
             .builder
             .build_load(self.list_type, mk_ra, "cl")
@@ -198,7 +195,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let mk_inc = self
             .builder
-            .build_int_add(mk_iv, i64.const_int(2, false), "inc")
+            .build_int_add(mk_iv, i64.const_int(1, false), "inc")
             .map_err(llvm_err)?;
         self.builder.build_store(mk_i, mk_inc).map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(mk_loop);
@@ -210,7 +207,7 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self.builder.build_return(Some(&mk_rt));
 
         // ---- action_map_values({ptr, i64, i64}) -> {ptr, i64, i64} ----
-        // Tree-based: values are at odd indices (1, 3, 5, ...), step by 2.
+        // Flat table: value at offsets +2,+3 within slot i.
         let mv_fn = self.module.add_function(
             "action_map_values",
             self.list_type.fn_type(&[self.list_type.into()], false),
@@ -219,12 +216,17 @@ impl<'ctx> CodeGen<'ctx> {
         let mv_entry = self.context.append_basic_block(mv_fn, "entry");
         self.builder.position_at_end(mv_entry);
         let mv_in = mv_fn.get_first_param().unwrap().into_struct_value();
+        let mv_data = self
+            .builder
+            .build_extract_value(mv_in, 0, "data")
+            .map_err(llvm_err)?
+            .into_pointer_value();
         let mv_len = self
             .builder
             .build_extract_value(mv_in, 1, "len")
             .map_err(llvm_err)?
             .into_int_value();
-        let mv_res = self.call_rt("action_list_create", &[i64.const_int(0, false).into()])?;
+        let mv_res = self.call_rt("action_list_create", &[i64.const_int(4, false).into()])?;
         let mv_resv = mv_res.try_as_basic_value().unwrap_basic();
         let mv_ra = self
             .builder
@@ -233,7 +235,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_store(mv_ra, mv_resv).map_err(llvm_err)?;
         let mv_i = self.builder.build_alloca(i64, "mv_i").map_err(llvm_err)?;
         self.builder
-            .build_store(mv_i, i64.const_int(1, false))
+            .build_store(mv_i, i64.const_int(0, false))
             .map_err(llvm_err)?;
         let mv_loop = self.context.append_basic_block(mv_fn, "loop");
         let mv_body = self.context.append_basic_block(mv_fn, "body");
@@ -253,14 +255,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_conditional_branch(mv_cond, mv_body, mv_done);
         self.builder.position_at_end(mv_body);
-        let mv_get_fn = self.module.get_function("action_list_get").unwrap();
-        let mv_val = self
-            .builder
-            .build_call(mv_get_fn, &[mv_in.into(), mv_iv.into()], "val")
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .basic()
-            .ok_or("get val failed")?;
+        let mv_val = self.ht_val_fat_at(mv_data, mv_iv)?;
         let mv_cl = self
             .builder
             .build_load(self.list_type, mv_ra, "cl")
@@ -272,7 +267,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let mv_inc = self
             .builder
-            .build_int_add(mv_iv, i64.const_int(2, false), "inc")
+            .build_int_add(mv_iv, i64.const_int(1, false), "inc")
             .map_err(llvm_err)?;
         self.builder.build_store(mv_i, mv_inc).map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(mv_loop);
@@ -284,7 +279,7 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self.builder.build_return(Some(&mv_rt));
 
         // ---- action_map_entries({ptr, i64, i64}) -> {ptr, i64, i64} ----
-        // Tree-based: step by 2, get key at i and value at i+1.
+        // Flat table: key+value from slot i.
         let me_fn = self.module.add_function(
             "action_map_entries",
             self.list_type.fn_type(&[self.list_type.into()], false),
@@ -293,12 +288,17 @@ impl<'ctx> CodeGen<'ctx> {
         let me_entry = self.context.append_basic_block(me_fn, "entry");
         self.builder.position_at_end(me_entry);
         let me_in = me_fn.get_first_param().unwrap().into_struct_value();
+        let me_data = self
+            .builder
+            .build_extract_value(me_in, 0, "data")
+            .map_err(llvm_err)?
+            .into_pointer_value();
         let me_len = self
             .builder
             .build_extract_value(me_in, 1, "len")
             .map_err(llvm_err)?
             .into_int_value();
-        let me_res = self.call_rt("action_list_create", &[i64.const_int(0, false).into()])?;
+        let me_res = self.call_rt("action_list_create", &[i64.const_int(4, false).into()])?;
         let me_resv = me_res.try_as_basic_value().unwrap_basic();
         let me_ra = self
             .builder
@@ -327,25 +327,8 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_conditional_branch(me_cond, me_body, me_done);
         self.builder.position_at_end(me_body);
-        let me_get_fn = self.module.get_function("action_list_get").unwrap();
-        let me_key = self
-            .builder
-            .build_call(me_get_fn, &[me_in.into(), me_iv.into()], "key")
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .basic()
-            .ok_or("get key failed")?;
-        let me_vp1 = self
-            .builder
-            .build_int_add(me_iv, i64.const_int(1, false), "vp1")
-            .map_err(llvm_err)?;
-        let me_val = self
-            .builder
-            .build_call(me_get_fn, &[me_in.into(), me_vp1.into()], "val")
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .basic()
-            .ok_or("get val failed")?;
+        let me_key = self.ht_key_fat_at(me_data, me_iv)?;
+        let me_val = self.ht_val_fat_at(me_data, me_iv)?;
         // Build tuple: allocate 2 fat structs and point to them
         let me_tuple_ty = self
             .context
@@ -414,7 +397,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let me_inc = self
             .builder
-            .build_int_add(me_iv, i64.const_int(2, false), "inc")
+            .build_int_add(me_iv, i64.const_int(1, false), "inc")
             .map_err(llvm_err)?;
         self.builder.build_store(me_i, me_inc).map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(me_loop);
@@ -437,11 +420,21 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(su_entry);
         let su_a = su_fn.get_first_param().unwrap().into_struct_value();
         let su_b = su_fn.get_nth_param(1).unwrap().into_struct_value();
+        let su_adata = self
+            .builder
+            .build_extract_value(su_a, 0, "adata")
+            .map_err(llvm_err)?
+            .into_pointer_value();
         let su_alen = self
             .builder
             .build_extract_value(su_a, 1, "alen")
             .map_err(llvm_err)?
             .into_int_value();
+        let su_bdata = self
+            .builder
+            .build_extract_value(su_b, 0, "bdata")
+            .map_err(llvm_err)?
+            .into_pointer_value();
         let su_blen = self
             .builder
             .build_extract_value(su_b, 1, "blen")
@@ -478,13 +471,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .build_insert_value(u1, self.ptr_ty().const_zero(), 1, "n1")
                 .map_err(llvm_err)?
         };
-        let su_get_fn = self.module.get_function("action_list_get").unwrap();
-        // Add all from A (each set entry occupies 2 list elements: key + null)
-        // su_alen = total list elements = 2 * num_entries
-        let su_npairs1 = self
-            .builder
-            .build_int_signed_div(su_alen, i64.const_int(2, false), "npairs1")
-            .map_err(llvm_err)?;
+        // Dense flat table: iterate i=0..len-1
         let su_i = self.builder.build_alloca(i64, "su_i").map_err(llvm_err)?;
         self.builder
             .build_store(su_i, i64.const_int(0, false))
@@ -501,22 +488,13 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
         let su_c1 = self
             .builder
-            .build_int_compare(IntPredicate::SLT, su_iv, su_npairs1, "c1")
+            .build_int_compare(IntPredicate::SLT, su_iv, su_alen, "c1")
             .map_err(llvm_err)?;
         let _ = self
             .builder
             .build_conditional_branch(su_c1, su_body1, su_done1);
         self.builder.position_at_end(su_body1);
-        let su_kidx = self
-            .builder
-            .build_int_mul(su_iv, i64.const_int(2, false), "kidx")
-            .map_err(llvm_err)?;
-        let su_key = self
-            .builder
-            .build_call(su_get_fn, &[su_a.into(), su_kidx.into()], "key")
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .unwrap_basic();
+        let su_key = self.ht_key_fat_at(su_adata, su_iv)?;
         let su_cl1 = self
             .builder
             .build_load(self.list_type, su_ra, "cl1")
@@ -545,11 +523,6 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self.builder.build_unconditional_branch(su_loop1);
         // Add from B only if not already in result
         self.builder.position_at_end(su_done1);
-        // Add from B only if not already in result
-        let su_npairs2 = self
-            .builder
-            .build_int_signed_div(su_blen, i64.const_int(2, false), "npairs2")
-            .map_err(llvm_err)?;
         let su_j = self.builder.build_alloca(i64, "su_j").map_err(llvm_err)?;
         self.builder
             .build_store(su_j, i64.const_int(0, false))
@@ -566,22 +539,13 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
         let su_c2 = self
             .builder
-            .build_int_compare(IntPredicate::SLT, su_jv, su_npairs2, "c2")
+            .build_int_compare(IntPredicate::SLT, su_jv, su_blen, "c2")
             .map_err(llvm_err)?;
         let _ = self
             .builder
             .build_conditional_branch(su_c2, su_body2, su_done2);
         self.builder.position_at_end(su_body2);
-        let su_kidx2 = self
-            .builder
-            .build_int_mul(su_jv, i64.const_int(2, false), "kidx2")
-            .map_err(llvm_err)?;
-        let su_key2 = self
-            .builder
-            .build_call(su_get_fn, &[su_b.into(), su_kidx2.into()], "key2")
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .unwrap_basic();
+        let su_key2 = self.ht_key_fat_at(su_bdata, su_jv)?;
         let su_cl2 = self
             .builder
             .build_load(self.list_type, su_ra, "cl2")
@@ -658,6 +622,11 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(si_entry);
         let si_a = si_fn.get_first_param().unwrap().into_struct_value();
         let si_b = si_fn.get_nth_param(1).unwrap().into_struct_value();
+        let si_adata = self
+            .builder
+            .build_extract_value(si_a, 0, "adata")
+            .map_err(llvm_err)?
+            .into_pointer_value();
         let si_alen = self
             .builder
             .build_extract_value(si_a, 1, "alen")
@@ -690,12 +659,6 @@ impl<'ctx> CodeGen<'ctx> {
                 .build_insert_value(u1, self.ptr_ty().const_zero(), 1, "n1")
                 .map_err(llvm_err)?
         };
-        let si_get_fn = self.module.get_function("action_list_get").unwrap();
-        // Each set entry occupies 2 list elements; iterate num_entries = alen/2
-        let si_npairs = self
-            .builder
-            .build_int_signed_div(si_alen, i64.const_int(2, false), "si_np")
-            .map_err(llvm_err)?;
         let si_i = self.builder.build_alloca(i64, "si_i").map_err(llvm_err)?;
         self.builder
             .build_store(si_i, i64.const_int(0, false))
@@ -712,22 +675,13 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
         let si_cond = self
             .builder
-            .build_int_compare(IntPredicate::SLT, si_iv, si_npairs, "cond")
+            .build_int_compare(IntPredicate::SLT, si_iv, si_alen, "cond")
             .map_err(llvm_err)?;
         let _ = self
             .builder
             .build_conditional_branch(si_cond, si_body, si_done);
         self.builder.position_at_end(si_body);
-        let si_kidx = self
-            .builder
-            .build_int_mul(si_iv, i64.const_int(2, false), "kidx")
-            .map_err(llvm_err)?;
-        let si_key = self
-            .builder
-            .build_call(si_get_fn, &[si_a.into(), si_kidx.into()], "key")
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .unwrap_basic();
+        let si_key = self.ht_key_fat_at(si_adata, si_iv)?;
         // Check if element is in B (use map_contains for correct layout)
         let si_contains = self
             .builder
@@ -794,6 +748,11 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(sd_entry);
         let sd_a = sd_fn.get_first_param().unwrap().into_struct_value();
         let sd_b = sd_fn.get_nth_param(1).unwrap().into_struct_value();
+        let sd_adata = self
+            .builder
+            .build_extract_value(sd_a, 0, "adata")
+            .map_err(llvm_err)?
+            .into_pointer_value();
         let sd_alen = self
             .builder
             .build_extract_value(sd_a, 1, "alen")
@@ -826,12 +785,6 @@ impl<'ctx> CodeGen<'ctx> {
                 .build_insert_value(u1, self.ptr_ty().const_zero(), 1, "n1")
                 .map_err(llvm_err)?
         };
-        let sd_get_fn = self.module.get_function("action_list_get").unwrap();
-        // Each set entry occupies 2 list elements; iterate num_entries = alen/2
-        let sd_npairs = self
-            .builder
-            .build_int_signed_div(sd_alen, i64.const_int(2, false), "sd_np")
-            .map_err(llvm_err)?;
         let sd_i = self.builder.build_alloca(i64, "sd_i").map_err(llvm_err)?;
         self.builder
             .build_store(sd_i, i64.const_int(0, false))
@@ -848,22 +801,13 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
         let sd_cond = self
             .builder
-            .build_int_compare(IntPredicate::SLT, sd_iv, sd_npairs, "cond")
+            .build_int_compare(IntPredicate::SLT, sd_iv, sd_alen, "cond")
             .map_err(llvm_err)?;
         let _ = self
             .builder
             .build_conditional_branch(sd_cond, sd_body, sd_done);
         self.builder.position_at_end(sd_body);
-        let sd_kidx = self
-            .builder
-            .build_int_mul(sd_iv, i64.const_int(2, false), "kidx")
-            .map_err(llvm_err)?;
-        let sd_key = self
-            .builder
-            .build_call(sd_get_fn, &[sd_a.into(), sd_kidx.into()], "key")
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .unwrap_basic();
+        let sd_key = self.ht_key_fat_at(sd_adata, sd_iv)?;
         // Check if element is NOT in B (use map_contains for correct layout)
         let sd_contains = self
             .builder
