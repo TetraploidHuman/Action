@@ -209,6 +209,8 @@ impl<'ctx> CodeGen<'ctx> {
         );
         let lt_entry = self.context.append_basic_block(lt_fn, "entry");
         let lt_concat = self.context.append_basic_block(lt_fn, "concat");
+        let lt_concat_take_left = self.context.append_basic_block(lt_fn, "concat_take_left");
+        let lt_concat_take_both = self.context.append_basic_block(lt_fn, "concat_take_both");
         let lt_normal = self.context.append_basic_block(lt_fn, "normal");
         let lt_h0 = self.context.append_basic_block(lt_fn, "h0");
         let lt_h0_dec_loop = self.context.append_basic_block(lt_fn, "h0_dec_loop");
@@ -254,23 +256,137 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self
             .builder
             .build_conditional_branch(lt_is_concat, lt_concat, lt_normal);
-        // ConcatNode: flatten then take
+        // ConcatNode: lazy dispatch — take from left or concat(left, take(right))
         self.builder.position_at_end(lt_concat);
-        let lt_flat_fn = self.module.get_function("action_list_flatten").unwrap();
-        let lt_flat = self
+        let lt_cn_ln_p = unsafe {
+            self.builder
+                .build_gep(ptr, lt_node, &[i64.const_int(2, false)], "cn_ln_p")
+                .map_err(llvm_err)
+        }?;
+        let lt_cn_left_node = self
             .builder
-            .build_call(lt_flat_fn, &[lt_list.into()], "flat")
+            .build_load(ptr, lt_cn_ln_p, "cn_ln")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let lt_cn_ll_p = unsafe {
+            self.builder
+                .build_gep(i64, lt_node, &[i64.const_int(3, false)], "cn_ll_p")
+                .map_err(llvm_err)
+        }?;
+        let lt_cn_left_len = self
+            .builder
+            .build_load(i64, lt_cn_ll_p, "cn_ll")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let lt_cn_lh_p = unsafe {
+            self.builder
+                .build_gep(i64, lt_node, &[i64.const_int(4, false)], "cn_lh_p")
+                .map_err(llvm_err)
+        }?;
+        let lt_cn_left_h = self
+            .builder
+            .build_load(i64, lt_cn_lh_p, "cn_lh")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let lt_cn_l_undef = self.list_type.get_undef();
+        let lt_cn_l1 = self
+            .builder
+            .build_insert_value(lt_cn_l_undef, lt_cn_left_node, 0, "cn_l1")
+            .map_err(llvm_err)?;
+        let lt_cn_l2 = self
+            .builder
+            .build_insert_value(lt_cn_l1, lt_cn_left_len, 1, "cn_l2")
+            .map_err(llvm_err)?;
+        let lt_cn_left = self
+            .builder
+            .build_insert_value(lt_cn_l2, lt_cn_left_h, 2, "cn_left")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let lt_cn_rn_p = unsafe {
+            self.builder
+                .build_gep(ptr, lt_node, &[i64.const_int(5, false)], "cn_rn_p")
+                .map_err(llvm_err)
+        }?;
+        let lt_cn_right_node = self
+            .builder
+            .build_load(ptr, lt_cn_rn_p, "cn_rn")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let lt_cn_rl_p = unsafe {
+            self.builder
+                .build_gep(i64, lt_node, &[i64.const_int(6, false)], "cn_rl_p")
+                .map_err(llvm_err)
+        }?;
+        let lt_cn_right_len = self
+            .builder
+            .build_load(i64, lt_cn_rl_p, "cn_rl")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let lt_cn_rh_p = unsafe {
+            self.builder
+                .build_gep(i64, lt_node, &[i64.const_int(7, false)], "cn_rh_p")
+                .map_err(llvm_err)
+        }?;
+        let lt_cn_right_h = self
+            .builder
+            .build_load(i64, lt_cn_rh_p, "cn_rh")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let lt_cn_r_undef = self.list_type.get_undef();
+        let lt_cn_r1 = self
+            .builder
+            .build_insert_value(lt_cn_r_undef, lt_cn_right_node, 0, "cn_r1")
+            .map_err(llvm_err)?;
+        let lt_cn_r2 = self
+            .builder
+            .build_insert_value(lt_cn_r1, lt_cn_right_len, 1, "cn_r2")
+            .map_err(llvm_err)?;
+        let lt_cn_right = self
+            .builder
+            .build_insert_value(lt_cn_r2, lt_cn_right_h, 2, "cn_right")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let lt_cn_n_le = self
+            .builder
+            .build_int_compare(IntPredicate::SLE, lt_n, lt_cn_left_len, "cn_n_le")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_conditional_branch(
+            lt_cn_n_le,
+            lt_concat_take_left,
+            lt_concat_take_both,
+        );
+        self.builder.position_at_end(lt_concat_take_left);
+        let lt_cn_tl_res = self
+            .builder
+            .build_call(lt_fn, &[lt_cn_left.into(), lt_n.into()], "cn_tl")
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic();
+        let _ = self.builder.build_return(Some(&lt_cn_tl_res));
+        self.builder.position_at_end(lt_concat_take_both);
+        let lt_concat_fn = self.module.get_function("action_list_concat").unwrap();
+        let lt_cn_rn = self
+            .builder
+            .build_int_sub(lt_n, lt_cn_left_len, "cn_rn_idx")
+            .map_err(llvm_err)?;
+        let lt_cn_tr = self
+            .builder
+            .build_call(lt_fn, &[lt_cn_right.into(), lt_cn_rn.into()], "cn_tr")
             .map_err(llvm_err)?
             .try_as_basic_value()
             .unwrap_basic()
             .into_struct_value();
-        let lt_take_flat = self
+        let lt_cn_tb_res = self
             .builder
-            .build_call(lt_fn, &[lt_flat.into(), lt_n.into()], "take_flat")
+            .build_call(
+                lt_concat_fn,
+                &[lt_cn_left.into(), lt_cn_tr.into()],
+                "cn_tb",
+            )
             .map_err(llvm_err)?
             .try_as_basic_value()
             .unwrap_basic();
-        let _ = self.builder.build_return(Some(&lt_take_flat));
+        let _ = self.builder.build_return(Some(&lt_cn_tb_res));
         // Normal path: check h=0 vs h>0
         self.builder.position_at_end(lt_normal);
         let lt_is_h0 = self

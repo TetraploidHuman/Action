@@ -2702,11 +2702,84 @@ impl<'ctx> CodeGen<'ctx> {
         let mwr_int_bdy = self.context.append_basic_block(mw_rec_fn, "int_bdy");
         let mwr_int_child = self.context.append_basic_block(mw_rec_fn, "int_child");
         let mwr_int_next = self.context.append_basic_block(mw_rec_fn, "int_next");
+        let mwr_concat = self.context.append_basic_block(mw_rec_fn, "concat");
+        let mwr_normal = self.context.append_basic_block(mw_rec_fn, "normal");
         self.builder.position_at_end(mwr_entry);
         let mwr_node = mw_rec_fn.get_first_param().unwrap().into_pointer_value();
         let mwr_height = mw_rec_fn.get_nth_param(1).unwrap().into_int_value();
         let mwr_fn = mw_rec_fn.get_nth_param(2).unwrap().into_pointer_value();
         let mwr_acc = mw_rec_fn.get_nth_param(3).unwrap().into_pointer_value();
+        let mwr_neg1 = i64.const_int(-1i64 as u64, true);
+        let mwr_is_concat = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, mwr_height, mwr_neg1, "mwr_is_concat")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(mwr_is_concat, mwr_concat, mwr_normal);
+        self.builder.position_at_end(mwr_concat);
+        let mwr_ln_p = unsafe {
+            self.builder
+                .build_gep(ptr, mwr_node, &[i64.const_int(2, false)], "mwr_ln_p")
+                .map_err(llvm_err)
+        }?;
+        let mwr_left_node = self
+            .builder
+            .build_load(ptr, mwr_ln_p, "mwr_ln")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let mwr_lh_p = unsafe {
+            self.builder
+                .build_gep(i64, mwr_node, &[i64.const_int(4, false)], "mwr_lh_p")
+                .map_err(llvm_err)
+        }?;
+        let mwr_left_h = self
+            .builder
+            .build_load(i64, mwr_lh_p, "mwr_lh")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let mwr_rn_p = unsafe {
+            self.builder
+                .build_gep(ptr, mwr_node, &[i64.const_int(5, false)], "mwr_rn_p")
+                .map_err(llvm_err)
+        }?;
+        let mwr_right_node = self
+            .builder
+            .build_load(ptr, mwr_rn_p, "mwr_rn")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let mwr_rh_p = unsafe {
+            self.builder
+                .build_gep(i64, mwr_node, &[i64.const_int(7, false)], "mwr_rh_p")
+                .map_err(llvm_err)
+        }?;
+        let mwr_right_h = self
+            .builder
+            .build_load(i64, mwr_rh_p, "mwr_rh")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let _ = self.builder.build_call(
+            mw_rec_fn,
+            &[
+                mwr_left_node.into(),
+                mwr_left_h.into(),
+                mwr_fn.into(),
+                mwr_acc.into(),
+            ],
+            "",
+        ).map_err(llvm_err)?;
+        let _ = self.builder.build_call(
+            mw_rec_fn,
+            &[
+                mwr_right_node.into(),
+                mwr_right_h.into(),
+                mwr_fn.into(),
+                mwr_acc.into(),
+            ],
+            "",
+        ).map_err(llvm_err)?;
+        let _ = self.builder.build_return(None);
+        self.builder.position_at_end(mwr_normal);
         let mwr_is_leaf = self
             .builder
             .build_int_compare(IntPredicate::EQ, mwr_height, zero, "mwr_is_leaf")
@@ -2904,7 +2977,6 @@ impl<'ctx> CodeGen<'ctx> {
 
         // ---- action_list_map_walk({ptr,i64,i64} list, ptr fn) -> {ptr,i64,i64} ----
         let create_fn = self.module.get_function("action_list_create").unwrap();
-        let flatten_fn = self.module.get_function("action_list_flatten").unwrap();
         let mw_fn = self.module.add_function(
             "action_list_map_walk",
             self.list_type
@@ -2912,7 +2984,6 @@ impl<'ctx> CodeGen<'ctx> {
             None,
         );
         let mw_entry = self.context.append_basic_block(mw_fn, "entry");
-        let mw_concat = self.context.append_basic_block(mw_fn, "concat");
         let mw_walk = self.context.append_basic_block(mw_fn, "walk");
         self.builder.position_at_end(mw_entry);
         let mw_list = mw_fn.get_first_param().unwrap().into_struct_value();
@@ -2943,54 +3014,7 @@ impl<'ctx> CodeGen<'ctx> {
             .try_as_basic_value()
             .unwrap_basic();
         self.builder.build_store(mw_acc, mw_init).map_err(llvm_err)?;
-        let mw_is_concat = self
-            .builder
-            .build_int_compare(
-                IntPredicate::EQ,
-                mw_height,
-                i64.const_int(-1i64 as u64, true),
-                "mw_is_concat",
-            )
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(mw_is_concat, mw_concat, mw_walk);
-        self.builder.position_at_end(mw_concat);
-        let mw_flat = self
-            .builder
-            .build_call(flatten_fn, &[mw_list.into()], "mw_flat")
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .unwrap_basic()
-            .into_struct_value();
-        let mw_flat_node = self
-            .builder
-            .build_extract_value(mw_flat, 0, "mw_flat_node")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let mw_flat_h = self
-            .builder
-            .build_extract_value(mw_flat, 2, "mw_flat_h")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let _ = self
-            .builder
-            .build_call(
-                mw_rec_fn,
-                &[
-                    mw_flat_node.into(),
-                    mw_flat_h.into(),
-                    mw_fn_ptr.into(),
-                    mw_acc.into(),
-                ],
-                "",
-            )
-            .map_err(llvm_err)?;
-        let mw_flat_res = self
-            .builder
-            .build_load(self.list_type, mw_acc, "mw_flat_res")
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_return(Some(&mw_flat_res));
+        let _ = self.builder.build_unconditional_branch(mw_walk);
         self.builder.position_at_end(mw_walk);
         let _ = self
             .builder
@@ -3028,11 +3052,84 @@ impl<'ctx> CodeGen<'ctx> {
         let fwr_int_bdy = self.context.append_basic_block(fw_rec_fn, "int_bdy");
         let fwr_int_child = self.context.append_basic_block(fw_rec_fn, "int_child");
         let fwr_int_next = self.context.append_basic_block(fw_rec_fn, "int_next");
+        let fwr_concat = self.context.append_basic_block(fw_rec_fn, "concat");
+        let fwr_normal = self.context.append_basic_block(fw_rec_fn, "normal");
         self.builder.position_at_end(fwr_entry);
         let fwr_node = fw_rec_fn.get_first_param().unwrap().into_pointer_value();
         let fwr_height = fw_rec_fn.get_nth_param(1).unwrap().into_int_value();
         let fwr_fn = fw_rec_fn.get_nth_param(2).unwrap().into_pointer_value();
         let fwr_acc = fw_rec_fn.get_nth_param(3).unwrap().into_pointer_value();
+        let fwr_neg1 = i64.const_int(-1i64 as u64, true);
+        let fwr_is_concat = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, fwr_height, fwr_neg1, "fwr_is_concat")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(fwr_is_concat, fwr_concat, fwr_normal);
+        self.builder.position_at_end(fwr_concat);
+        let fwr_ln_p = unsafe {
+            self.builder
+                .build_gep(ptr, fwr_node, &[i64.const_int(2, false)], "fwr_ln_p")
+                .map_err(llvm_err)
+        }?;
+        let fwr_left_node = self
+            .builder
+            .build_load(ptr, fwr_ln_p, "fwr_ln")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let fwr_lh_p = unsafe {
+            self.builder
+                .build_gep(i64, fwr_node, &[i64.const_int(4, false)], "fwr_lh_p")
+                .map_err(llvm_err)
+        }?;
+        let fwr_left_h = self
+            .builder
+            .build_load(i64, fwr_lh_p, "fwr_lh")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let fwr_rn_p = unsafe {
+            self.builder
+                .build_gep(ptr, fwr_node, &[i64.const_int(5, false)], "fwr_rn_p")
+                .map_err(llvm_err)
+        }?;
+        let fwr_right_node = self
+            .builder
+            .build_load(ptr, fwr_rn_p, "fwr_rn")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let fwr_rh_p = unsafe {
+            self.builder
+                .build_gep(i64, fwr_node, &[i64.const_int(7, false)], "fwr_rh_p")
+                .map_err(llvm_err)
+        }?;
+        let fwr_right_h = self
+            .builder
+            .build_load(i64, fwr_rh_p, "fwr_rh")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let _ = self.builder.build_call(
+            fw_rec_fn,
+            &[
+                fwr_left_node.into(),
+                fwr_left_h.into(),
+                fwr_fn.into(),
+                fwr_acc.into(),
+            ],
+            "",
+        ).map_err(llvm_err)?;
+        let _ = self.builder.build_call(
+            fw_rec_fn,
+            &[
+                fwr_right_node.into(),
+                fwr_right_h.into(),
+                fwr_fn.into(),
+                fwr_acc.into(),
+            ],
+            "",
+        ).map_err(llvm_err)?;
+        let _ = self.builder.build_return(None);
+        self.builder.position_at_end(fwr_normal);
         let fwr_is_leaf = self
             .builder
             .build_int_compare(IntPredicate::EQ, fwr_height, zero, "fwr_is_leaf")
@@ -3246,7 +3343,6 @@ impl<'ctx> CodeGen<'ctx> {
             None,
         );
         let fw_entry = self.context.append_basic_block(fw_fn, "entry");
-        let fw_concat = self.context.append_basic_block(fw_fn, "concat");
         let fw_walk = self.context.append_basic_block(fw_fn, "walk");
         self.builder.position_at_end(fw_entry);
         let fw_list = fw_fn.get_first_param().unwrap().into_struct_value();
@@ -3277,54 +3373,7 @@ impl<'ctx> CodeGen<'ctx> {
             .try_as_basic_value()
             .unwrap_basic();
         self.builder.build_store(fw_acc, fw_init).map_err(llvm_err)?;
-        let fw_is_concat = self
-            .builder
-            .build_int_compare(
-                IntPredicate::EQ,
-                fw_height,
-                i64.const_int(-1i64 as u64, true),
-                "fw_is_concat",
-            )
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(fw_is_concat, fw_concat, fw_walk);
-        self.builder.position_at_end(fw_concat);
-        let fw_flat = self
-            .builder
-            .build_call(flatten_fn, &[fw_list.into()], "fw_flat")
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .unwrap_basic()
-            .into_struct_value();
-        let fw_flat_node = self
-            .builder
-            .build_extract_value(fw_flat, 0, "fw_flat_node")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let fw_flat_h = self
-            .builder
-            .build_extract_value(fw_flat, 2, "fw_flat_h")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let _ = self
-            .builder
-            .build_call(
-                fw_rec_fn,
-                &[
-                    fw_flat_node.into(),
-                    fw_flat_h.into(),
-                    fw_fn_ptr.into(),
-                    fw_acc.into(),
-                ],
-                "",
-            )
-            .map_err(llvm_err)?;
-        let fw_flat_res = self
-            .builder
-            .build_load(self.list_type, fw_acc, "fw_flat_res")
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_return(Some(&fw_flat_res));
+        let _ = self.builder.build_unconditional_branch(fw_walk);
         self.builder.position_at_end(fw_walk);
         let _ = self
             .builder
@@ -3362,11 +3411,84 @@ impl<'ctx> CodeGen<'ctx> {
         let fdr_int_bdy = self.context.append_basic_block(fd_rec_fn, "int_bdy");
         let fdr_int_child = self.context.append_basic_block(fd_rec_fn, "int_child");
         let fdr_int_next = self.context.append_basic_block(fd_rec_fn, "int_next");
+        let fdr_concat = self.context.append_basic_block(fd_rec_fn, "concat");
+        let fdr_normal = self.context.append_basic_block(fd_rec_fn, "normal");
         self.builder.position_at_end(fdr_entry);
         let fdr_node = fd_rec_fn.get_first_param().unwrap().into_pointer_value();
         let fdr_height = fd_rec_fn.get_nth_param(1).unwrap().into_int_value();
         let fdr_fn = fd_rec_fn.get_nth_param(2).unwrap().into_pointer_value();
         let fdr_acc = fd_rec_fn.get_nth_param(3).unwrap().into_pointer_value();
+        let fdr_neg1 = i64.const_int(-1i64 as u64, true);
+        let fdr_is_concat = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, fdr_height, fdr_neg1, "fdr_is_concat")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(fdr_is_concat, fdr_concat, fdr_normal);
+        self.builder.position_at_end(fdr_concat);
+        let fdr_ln_p = unsafe {
+            self.builder
+                .build_gep(ptr, fdr_node, &[i64.const_int(2, false)], "fdr_ln_p")
+                .map_err(llvm_err)
+        }?;
+        let fdr_left_node = self
+            .builder
+            .build_load(ptr, fdr_ln_p, "fdr_ln")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let fdr_lh_p = unsafe {
+            self.builder
+                .build_gep(i64, fdr_node, &[i64.const_int(4, false)], "fdr_lh_p")
+                .map_err(llvm_err)
+        }?;
+        let fdr_left_h = self
+            .builder
+            .build_load(i64, fdr_lh_p, "fdr_lh")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let fdr_rn_p = unsafe {
+            self.builder
+                .build_gep(ptr, fdr_node, &[i64.const_int(5, false)], "fdr_rn_p")
+                .map_err(llvm_err)
+        }?;
+        let fdr_right_node = self
+            .builder
+            .build_load(ptr, fdr_rn_p, "fdr_rn")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let fdr_rh_p = unsafe {
+            self.builder
+                .build_gep(i64, fdr_node, &[i64.const_int(7, false)], "fdr_rh_p")
+                .map_err(llvm_err)
+        }?;
+        let fdr_right_h = self
+            .builder
+            .build_load(i64, fdr_rh_p, "fdr_rh")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let _ = self.builder.build_call(
+            fd_rec_fn,
+            &[
+                fdr_left_node.into(),
+                fdr_left_h.into(),
+                fdr_fn.into(),
+                fdr_acc.into(),
+            ],
+            "",
+        ).map_err(llvm_err)?;
+        let _ = self.builder.build_call(
+            fd_rec_fn,
+            &[
+                fdr_right_node.into(),
+                fdr_right_h.into(),
+                fdr_fn.into(),
+                fdr_acc.into(),
+            ],
+            "",
+        ).map_err(llvm_err)?;
+        let _ = self.builder.build_return(None);
+        self.builder.position_at_end(fdr_normal);
         let fdr_is_leaf = self
             .builder
             .build_int_compare(IntPredicate::EQ, fdr_height, zero, "fdr_is_leaf")
@@ -3569,7 +3691,6 @@ impl<'ctx> CodeGen<'ctx> {
             None,
         );
         let fd_entry = self.context.append_basic_block(fd_fn, "entry");
-        let fd_concat = self.context.append_basic_block(fd_fn, "concat");
         let fd_walk = self.context.append_basic_block(fd_fn, "walk");
         self.builder.position_at_end(fd_entry);
         let fd_list = fd_fn.get_first_param().unwrap().into_struct_value();
@@ -3587,54 +3708,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
         let fd_acc = self.builder.build_alloca(i64, "fd_acc").map_err(llvm_err)?;
         self.builder.build_store(fd_acc, fd_init).map_err(llvm_err)?;
-        let fd_is_concat = self
-            .builder
-            .build_int_compare(
-                IntPredicate::EQ,
-                fd_height,
-                i64.const_int(-1i64 as u64, true),
-                "fd_is_concat",
-            )
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(fd_is_concat, fd_concat, fd_walk);
-        self.builder.position_at_end(fd_concat);
-        let fd_flat = self
-            .builder
-            .build_call(flatten_fn, &[fd_list.into()], "fd_flat")
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .unwrap_basic()
-            .into_struct_value();
-        let fd_flat_node = self
-            .builder
-            .build_extract_value(fd_flat, 0, "fd_flat_node")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let fd_flat_h = self
-            .builder
-            .build_extract_value(fd_flat, 2, "fd_flat_h")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let _ = self
-            .builder
-            .build_call(
-                fd_rec_fn,
-                &[
-                    fd_flat_node.into(),
-                    fd_flat_h.into(),
-                    fd_fn_ptr.into(),
-                    fd_acc.into(),
-                ],
-                "",
-            )
-            .map_err(llvm_err)?;
-        let fd_flat_res = self
-            .builder
-            .build_load(i64, fd_acc, "fd_flat_res")
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_return(Some(&fd_flat_res));
+        let _ = self.builder.build_unconditional_branch(fd_walk);
         self.builder.position_at_end(fd_walk);
         let _ = self
             .builder
@@ -3672,10 +3746,90 @@ impl<'ctx> CodeGen<'ctx> {
         let ayr_int_bdy = self.context.append_basic_block(ay_rec_fn, "int_bdy");
         let ayr_int_child = self.context.append_basic_block(ay_rec_fn, "int_child");
         let ayr_int_next = self.context.append_basic_block(ay_rec_fn, "int_next");
+        let ayr_concat = self.context.append_basic_block(ay_rec_fn, "concat");
+        let ayr_concat_right = self.context.append_basic_block(ay_rec_fn, "concat_right");
+        let ayr_normal = self.context.append_basic_block(ay_rec_fn, "normal");
         self.builder.position_at_end(ayr_entry);
         let ayr_node = ay_rec_fn.get_first_param().unwrap().into_pointer_value();
         let ayr_height = ay_rec_fn.get_nth_param(1).unwrap().into_int_value();
         let ayr_fn = ay_rec_fn.get_nth_param(2).unwrap().into_pointer_value();
+        let ayr_neg1 = i64.const_int(-1i64 as u64, true);
+        let ayr_is_concat = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, ayr_height, ayr_neg1, "ayr_is_concat")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(ayr_is_concat, ayr_concat, ayr_normal);
+        self.builder.position_at_end(ayr_concat);
+        let ayr_ln_p = unsafe {
+            self.builder
+                .build_gep(ptr, ayr_node, &[i64.const_int(2, false)], "ayr_ln_p")
+                .map_err(llvm_err)
+        }?;
+        let ayr_left_node = self
+            .builder
+            .build_load(ptr, ayr_ln_p, "ayr_ln")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let ayr_lh_p = unsafe {
+            self.builder
+                .build_gep(i64, ayr_node, &[i64.const_int(4, false)], "ayr_lh_p")
+                .map_err(llvm_err)
+        }?;
+        let ayr_left_h = self
+            .builder
+            .build_load(i64, ayr_lh_p, "ayr_lh")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let ayr_rn_p = unsafe {
+            self.builder
+                .build_gep(ptr, ayr_node, &[i64.const_int(5, false)], "ayr_rn_p")
+                .map_err(llvm_err)
+        }?;
+        let ayr_right_node = self
+            .builder
+            .build_load(ptr, ayr_rn_p, "ayr_rn")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let ayr_rh_p = unsafe {
+            self.builder
+                .build_gep(i64, ayr_node, &[i64.const_int(7, false)], "ayr_rh_p")
+                .map_err(llvm_err)
+        }?;
+        let ayr_right_h = self
+            .builder
+            .build_load(i64, ayr_rh_p, "ayr_rh")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let ayr_lhit = self
+            .builder
+            .build_call(
+                ay_rec_fn,
+                &[ayr_left_node.into(), ayr_left_h.into(), ayr_fn.into()],
+                "ayr_lhit",
+            )
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_int_value();
+        let _ = self
+            .builder
+            .build_conditional_branch(ayr_lhit, ayr_true, ayr_concat_right);
+        self.builder.position_at_end(ayr_concat_right);
+        let ayr_rhit = self
+            .builder
+            .build_call(
+                ay_rec_fn,
+                &[ayr_right_node.into(), ayr_right_h.into(), ayr_fn.into()],
+                "ayr_rhit",
+            )
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_int_value();
+        let _ = self.builder.build_return(Some(&ayr_rhit));
+        self.builder.position_at_end(ayr_normal);
         let ayr_is_leaf = self
             .builder
             .build_int_compare(IntPredicate::EQ, ayr_height, zero, "ayr_is_leaf")
@@ -3869,7 +4023,6 @@ impl<'ctx> CodeGen<'ctx> {
             None,
         );
         let ay_entry = self.context.append_basic_block(ay_fn, "entry");
-        let ay_concat = self.context.append_basic_block(ay_fn, "concat");
         let ay_walk = self.context.append_basic_block(ay_fn, "walk");
         self.builder.position_at_end(ay_entry);
         let ay_list = ay_fn.get_first_param().unwrap().into_struct_value();
@@ -3884,48 +4037,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(ay_list, 2, "ay_height")
             .map_err(llvm_err)?
             .into_int_value();
-        let ay_is_concat = self
-            .builder
-            .build_int_compare(
-                IntPredicate::EQ,
-                ay_height,
-                i64.const_int(-1i64 as u64, true),
-                "ay_is_concat",
-            )
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(ay_is_concat, ay_concat, ay_walk);
-        self.builder.position_at_end(ay_concat);
-        let ay_flat = self
-            .builder
-            .build_call(flatten_fn, &[ay_list.into()], "ay_flat")
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .unwrap_basic()
-            .into_struct_value();
-        let ay_flat_node = self
-            .builder
-            .build_extract_value(ay_flat, 0, "ay_flat_node")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let ay_flat_h = self
-            .builder
-            .build_extract_value(ay_flat, 2, "ay_flat_h")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let ay_flat_hit = self
-            .builder
-            .build_call(
-                ay_rec_fn,
-                &[ay_flat_node.into(), ay_flat_h.into(), ay_fn_ptr.into()],
-                "ay_flat_hit",
-            )
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .unwrap_basic()
-            .into_int_value();
-        let _ = self.builder.build_return(Some(&ay_flat_hit));
+        let _ = self.builder.build_unconditional_branch(ay_walk);
         self.builder.position_at_end(ay_walk);
         let ay_hit = self
             .builder
@@ -3957,10 +4069,90 @@ impl<'ctx> CodeGen<'ctx> {
         let alr_int_bdy = self.context.append_basic_block(al_rec_fn, "int_bdy");
         let alr_int_child = self.context.append_basic_block(al_rec_fn, "int_child");
         let alr_int_next = self.context.append_basic_block(al_rec_fn, "int_next");
+        let alr_concat = self.context.append_basic_block(al_rec_fn, "concat");
+        let alr_concat_right = self.context.append_basic_block(al_rec_fn, "concat_right");
+        let alr_normal = self.context.append_basic_block(al_rec_fn, "normal");
         self.builder.position_at_end(alr_entry);
         let alr_node = al_rec_fn.get_first_param().unwrap().into_pointer_value();
         let alr_height = al_rec_fn.get_nth_param(1).unwrap().into_int_value();
         let alr_fn = al_rec_fn.get_nth_param(2).unwrap().into_pointer_value();
+        let alr_neg1 = i64.const_int(-1i64 as u64, true);
+        let alr_is_concat = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, alr_height, alr_neg1, "alr_is_concat")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(alr_is_concat, alr_concat, alr_normal);
+        self.builder.position_at_end(alr_concat);
+        let alr_ln_p = unsafe {
+            self.builder
+                .build_gep(ptr, alr_node, &[i64.const_int(2, false)], "alr_ln_p")
+                .map_err(llvm_err)
+        }?;
+        let alr_left_node = self
+            .builder
+            .build_load(ptr, alr_ln_p, "alr_ln")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let alr_lh_p = unsafe {
+            self.builder
+                .build_gep(i64, alr_node, &[i64.const_int(4, false)], "alr_lh_p")
+                .map_err(llvm_err)
+        }?;
+        let alr_left_h = self
+            .builder
+            .build_load(i64, alr_lh_p, "alr_lh")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let alr_rn_p = unsafe {
+            self.builder
+                .build_gep(ptr, alr_node, &[i64.const_int(5, false)], "alr_rn_p")
+                .map_err(llvm_err)
+        }?;
+        let alr_right_node = self
+            .builder
+            .build_load(ptr, alr_rn_p, "alr_rn")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let alr_rh_p = unsafe {
+            self.builder
+                .build_gep(i64, alr_node, &[i64.const_int(7, false)], "alr_rh_p")
+                .map_err(llvm_err)
+        }?;
+        let alr_right_h = self
+            .builder
+            .build_load(i64, alr_rh_p, "alr_rh")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let alr_lok = self
+            .builder
+            .build_call(
+                al_rec_fn,
+                &[alr_left_node.into(), alr_left_h.into(), alr_fn.into()],
+                "alr_lok",
+            )
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_int_value();
+        let _ = self
+            .builder
+            .build_conditional_branch(alr_lok, alr_concat_right, alr_false);
+        self.builder.position_at_end(alr_concat_right);
+        let alr_rok = self
+            .builder
+            .build_call(
+                al_rec_fn,
+                &[alr_right_node.into(), alr_right_h.into(), alr_fn.into()],
+                "alr_rok",
+            )
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_int_value();
+        let _ = self.builder.build_return(Some(&alr_rok));
+        self.builder.position_at_end(alr_normal);
         let alr_is_leaf = self
             .builder
             .build_int_compare(IntPredicate::EQ, alr_height, zero, "alr_is_leaf")
@@ -4154,7 +4346,6 @@ impl<'ctx> CodeGen<'ctx> {
             None,
         );
         let al_entry = self.context.append_basic_block(al_fn, "entry");
-        let al_concat = self.context.append_basic_block(al_fn, "concat");
         let al_walk = self.context.append_basic_block(al_fn, "walk");
         self.builder.position_at_end(al_entry);
         let al_list = al_fn.get_first_param().unwrap().into_struct_value();
@@ -4169,48 +4360,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(al_list, 2, "al_height")
             .map_err(llvm_err)?
             .into_int_value();
-        let al_is_concat = self
-            .builder
-            .build_int_compare(
-                IntPredicate::EQ,
-                al_height,
-                i64.const_int(-1i64 as u64, true),
-                "al_is_concat",
-            )
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(al_is_concat, al_concat, al_walk);
-        self.builder.position_at_end(al_concat);
-        let al_flat = self
-            .builder
-            .build_call(flatten_fn, &[al_list.into()], "al_flat")
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .unwrap_basic()
-            .into_struct_value();
-        let al_flat_node = self
-            .builder
-            .build_extract_value(al_flat, 0, "al_flat_node")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let al_flat_h = self
-            .builder
-            .build_extract_value(al_flat, 2, "al_flat_h")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let al_flat_ok = self
-            .builder
-            .build_call(
-                al_rec_fn,
-                &[al_flat_node.into(), al_flat_h.into(), al_fn_ptr.into()],
-                "al_flat_ok",
-            )
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .unwrap_basic()
-            .into_int_value();
-        let _ = self.builder.build_return(Some(&al_flat_ok));
+        let _ = self.builder.build_unconditional_branch(al_walk);
         self.builder.position_at_end(al_walk);
         let al_ok = self
             .builder
