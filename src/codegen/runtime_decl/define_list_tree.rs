@@ -2477,15 +2477,15 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self.builder.build_return(None);
 
         // ---- action_list_push_subtree(ptr acc, ptr node, i64 height) -> void ----
-        // Pushes all elements from a materialized B-tree subtree (height >= 0) into acc.
-        // ConcatNode (height == -1) must be flattened first — delegate to action_list_flatten.
+        // Pushes all elements from a B-tree subtree (height >= 0) or ConcatNode DAG into acc.
+        // ConcatNode (height == -1): walk left/right without flattening the entire DAG.
         let ps_fn = self
             .module
             .get_function("action_list_push_subtree")
             .unwrap();
         let child_entry_ty = self.child_entry_type;
         let ps_entry = self.context.append_basic_block(ps_fn, "entry");
-        let ps_flatten_push = self.context.append_basic_block(ps_fn, "flatten_push");
+        let ps_concat_walk = self.context.append_basic_block(ps_fn, "concat_walk");
         let ps_h0_leaf = self.context.append_basic_block(ps_fn, "h0_leaf");
         let ps_h1_intl = self.context.append_basic_block(ps_fn, "h1_intl");
         let ps_hgt1_recurse = self.context.append_basic_block(ps_fn, "hgt1");
@@ -2506,62 +2506,60 @@ impl<'ctx> CodeGen<'ctx> {
         let ps_not_concat = self.context.append_basic_block(ps_fn, "not_concat");
         let _ = self
             .builder
-            .build_conditional_branch(ps_is_concat, ps_flatten_push, ps_not_concat);
-        // ConcatNode: flatten to materialized tree, then push (never walk concat in-place)
-        self.builder.position_at_end(ps_flatten_push);
+            .build_conditional_branch(ps_is_concat, ps_concat_walk, ps_not_concat);
+        // ConcatNode: recursively push left then right subtrees (lazy concat-tree walk)
+        self.builder.position_at_end(ps_concat_walk);
         let ps_cn_i8 = self
             .builder
             .build_pointer_cast(ps_node, ptr, "cn_i8")
             .map_err(llvm_err)?;
-        let ps_len_p = unsafe {
+        let ps_left_ptr = unsafe {
             self.builder
-                .build_gep(i64, ps_cn_i8, &[i64.const_int(1, false)], "len_p")
+                .build_gep(i8, ps_cn_i8, &[i64.const_int(16, false)], "left_ptr")
                 .map_err(llvm_err)
         }?;
-        let ps_len_v = self
+        let ps_left = self
             .builder
-            .build_load(i64, ps_len_p, "len_v")
-            .map_err(llvm_err)?;
-        let ps_neg1 = i64.const_int(-1i64 as u64, true);
-        let ps_cn_list_undef = self.list_type.get_undef();
-        let ps_cn_list_v = self
-            .builder
-            .build_insert_value(ps_cn_list_undef, ps_node, 0, "cn_l0")
-            .map_err(llvm_err)?;
-        let ps_cn_list_v = self
-            .builder
-            .build_insert_value(ps_cn_list_v, ps_len_v, 1, "cn_l1")
-            .map_err(llvm_err)?;
-        let ps_cn_list = self
-            .builder
-            .build_insert_value(ps_cn_list_v, ps_neg1, 2, "cn_l2")
+            .build_load(self.list_type, ps_left_ptr, "left")
             .map_err(llvm_err)?
             .into_struct_value();
-        let ps_flat_fn = self.module.get_function("action_list_flatten").unwrap();
-        let ps_flat_v = self
+        let ps_right_ptr = unsafe {
+            self.builder
+                .build_gep(i8, ps_cn_i8, &[i64.const_int(40, false)], "right_ptr")
+                .map_err(llvm_err)
+        }?;
+        let ps_right = self
             .builder
-            .build_call(ps_flat_fn, &[ps_cn_list.into()], "flat")
+            .build_load(self.list_type, ps_right_ptr, "right")
             .map_err(llvm_err)?
-            .try_as_basic_value()
-            .unwrap_basic()
             .into_struct_value();
-        let ps_flat_node = self
+        let ps_l_node = self
             .builder
-            .build_extract_value(ps_flat_v, 0, "flat_n")
+            .build_extract_value(ps_left, 0, "l_fn")
             .map_err(llvm_err)?
             .into_pointer_value();
-        let ps_flat_h = self
+        let ps_l_h = self
             .builder
-            .build_extract_value(ps_flat_v, 2, "flat_h")
+            .build_extract_value(ps_left, 2, "l_fh")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let ps_r_node = self
+            .builder
+            .build_extract_value(ps_right, 0, "r_fn")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let ps_r_h = self
+            .builder
+            .build_extract_value(ps_right, 2, "r_fh")
             .map_err(llvm_err)?
             .into_int_value();
         let _ = self
             .builder
-            .build_call(
-                ps_fn,
-                &[ps_acc.into(), ps_flat_node.into(), ps_flat_h.into()],
-                "",
-            )
+            .build_call(ps_fn, &[ps_acc.into(), ps_l_node.into(), ps_l_h.into()], "")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_call(ps_fn, &[ps_acc.into(), ps_r_node.into(), ps_r_h.into()], "")
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(ps_done);
         // Three-way dispatch: h==0, h==1, h>=2
