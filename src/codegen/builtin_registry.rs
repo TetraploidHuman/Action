@@ -379,7 +379,8 @@ mod tests {
     fn registry_has_hot_builtins() {
         assert!(lookup("len").is_some());
         assert!(lookup("map").is_some());
-        assert!(lookup_ufcs(UfcsReceiverKind::List, "len").is_none());
+        // Collection builtins (len/isEmpty) also match List UFCS receivers.
+        assert!(lookup_ufcs(UfcsReceiverKind::List, "len").is_some());
         assert!(lookup_ufcs(UfcsReceiverKind::Collection, "len").is_some());
         assert!(lookup_ufcs(UfcsReceiverKind::List, "map").is_some());
     }
