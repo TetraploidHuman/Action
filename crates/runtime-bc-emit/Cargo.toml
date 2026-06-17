@@ -1,0 +1,12 @@
+[package]
+name = "runtime-bc-emit"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "runtime-bc-emit"
+path = "src/main.rs"
+
+[dependencies]
+action = { path = "../.." }

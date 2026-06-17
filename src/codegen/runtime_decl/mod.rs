@@ -1,14 +1,32 @@
 // Submodule: runtime_decl
 
 use super::{llvm_err, CodeGen};
+use crate::typecheck::TypeRegistry;
+use inkwell::context::Context;
 use inkwell::memory_buffer::MemoryBuffer;
 use inkwell::module::Module;
 use std::sync::OnceLock;
+
+// Validated at build time by build.rs (not linked at runtime — see define_runtime).
+include!(concat!(env!("OUT_DIR"), "/runtime_bc_embed.rs"));
 
 /// Process-wide cache of LLVM bitcode for the runtime module (List/Map/String/RC etc.).
 /// Populated on the first `define_runtime` call; subsequent compilations link this in
 /// instead of regenerating thousands of lines of IR.
 static RUNTIME_BITCODE: OnceLock<Vec<u8>> = OnceLock::new();
+
+fn link_runtime_bitcode_into<'ctx>(
+    module: &Module<'ctx>,
+    context: &'ctx Context,
+    bitcode: &[u8],
+) -> Result<(), String> {
+    let buffer = MemoryBuffer::create_from_memory_range_copy(bitcode, "action_runtime.bc");
+    let runtime_mod =
+        Module::parse_bitcode_from_buffer(&buffer, context).map_err(|e| e.to_string())?;
+    module
+        .link_in_module(runtime_mod)
+        .map_err(|e| e.to_string())
+}
 
 impl<'ctx> CodeGen<'ctx> {
     /// Create a global string constant in the LLVM module.
@@ -26,8 +44,10 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     pub(super) fn define_runtime(&self) -> Result<(), String> {
+        // Build-time embed is validated only; linking duplicates LLVM types from CodeGen::new().
+        let _ = EMBEDDED_RUNTIME_BC;
         if let Some(bitcode) = RUNTIME_BITCODE.get() {
-            return self.link_runtime_bitcode(bitcode);
+            return link_runtime_bitcode_into(&self.module, self.context, bitcode);
         }
 
         self.define_runtime_generate()?;
@@ -39,13 +59,20 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
+    /// Emit LLVM bitcode for the Action runtime (build.rs / runtime-bc-emit).
+    pub fn generate_runtime_bitcode() -> Result<Vec<u8>, String> {
+        let context = Context::create();
+        let registry = TypeRegistry::default();
+        let cg = CodeGen::new(&context, "action_runtime", registry, None);
+        cg.define_runtime_generate()?;
+        cg.module
+            .verify()
+            .map_err(|e| format!("runtime bitcode verify failed: {e}"))?;
+        Ok(cg.module.write_bitcode_to_memory().as_slice().to_vec())
+    }
+
     fn link_runtime_bitcode(&self, bitcode: &[u8]) -> Result<(), String> {
-        let buffer = MemoryBuffer::create_from_memory_range_copy(bitcode, "action_runtime.bc");
-        let runtime_mod =
-            Module::parse_bitcode_from_buffer(&buffer, self.context).map_err(|e| e.to_string())?;
-        self.module
-            .link_in_module(runtime_mod)
-            .map_err(|e| e.to_string())
+        link_runtime_bitcode_into(&self.module, self.context, bitcode)
     }
 
     fn define_runtime_generate(&self) -> Result<(), String> {
