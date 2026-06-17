@@ -1,0 +1,4 @@
+// Error: import a module that does not exist
+import no_such_module_xyz
+
+fun main() {}

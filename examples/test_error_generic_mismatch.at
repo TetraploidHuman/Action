@@ -1,0 +1,9 @@
+// Error: conflicting type inference for generic parameter T
+fun <T> first(a: T, b: T) -> T {
+    a
+}
+
+fun main() {
+    val x = first(1, "two")
+    println(x)
+}

@@ -1,0 +1,8 @@
+// Error: wrong number of arguments at call site
+fun add(x: Int, y: Int) -> Int {
+    x + y
+}
+
+fun main() {
+    println(add(1))
+}

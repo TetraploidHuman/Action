@@ -825,6 +825,31 @@ fn test_nullable_method_call() {
 }
 
 // ============================================================
+// Compile-error tests — imports, generics, arity
+// ============================================================
+
+#[test]
+fn test_error_import_not_found() {
+    assert_compile_error(
+        "test_error_import_not_found.at",
+        "Module 'no_such_module_xyz' not found",
+    );
+}
+
+#[test]
+fn test_error_generic_mismatch() {
+    assert_compile_error(
+        "test_error_generic_mismatch.at",
+        "Cannot infer type arguments for 'first'",
+    );
+}
+
+#[test]
+fn test_error_arg_count() {
+    assert_compile_error("test_error_arg_count.at", "expects 2 arguments, but got 1");
+}
+
+// ============================================================
 // Compile-error tests — nullable type system rejects bad code
 // ============================================================
 

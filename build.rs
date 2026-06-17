@@ -4,6 +4,7 @@ use std::process::Command;
 fn main() {
     configure_llvm_linking();
     generate_runtime_bitcode_embed();
+    build_host_runtime_staticlib();
 }
 
 fn configure_llvm_linking() {
@@ -132,4 +133,83 @@ fn build_and_run_runtime_bc_helper(out_dir: &Path, embed_rs: &Path) -> Result<()
 
     write_embed_some(embed_rs);
     Ok(())
+}
+
+/// Build `libaction_host_rt.a` for AOT executable linking (JSON/HTTP/threading C ABI).
+fn build_host_runtime_staticlib() {
+    if std::env::var("ACTION_BUILDING_RUNTIME_BC").is_ok()
+        || std::env::var("ACTION_BUILDING_HOST_RT").is_ok()
+    {
+        return;
+    }
+
+    let manifest_dir = match std::env::var("CARGO_MANIFEST_DIR") {
+        Ok(d) => PathBuf::from(d),
+        Err(_) => return,
+    };
+    let host_rt_manifest = manifest_dir.join("crates/host-rt/Cargo.toml");
+    if !host_rt_manifest.exists() {
+        return;
+    }
+
+    println!("cargo:rerun-if-changed=crates/host-rt/");
+    println!("cargo:rerun-if-changed=src/runtime_json.rs");
+    println!("cargo:rerun-if-changed=src/http_runtime.rs");
+    println!("cargo:rerun-if-changed=src/runtime_threading.rs");
+
+    let profile = if std::env::var("PROFILE").unwrap_or_default() == "release" {
+        "release"
+    } else {
+        "debug"
+    };
+    let target_dir = std::env::var("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| manifest_dir.join("target"));
+
+    let lib_path = target_dir.join(profile).join("libaction_host_rt.a");
+    let sources = [
+        host_rt_manifest.clone(),
+        manifest_dir.join("src/runtime_json.rs"),
+        manifest_dir.join("src/http_runtime.rs"),
+        manifest_dir.join("src/runtime_threading.rs"),
+    ];
+    if lib_path.exists() && !host_rt_sources_changed(&lib_path, &sources) {
+        return;
+    }
+
+    let mut cmd = Command::new("cargo");
+    cmd.current_dir(&manifest_dir);
+    cmd.env("ACTION_BUILDING_HOST_RT", "1");
+    cmd.env("CARGO_TARGET_DIR", &target_dir);
+    cmd.args(["build", "--manifest-path"])
+        .arg(&host_rt_manifest);
+    if profile == "release" {
+        cmd.arg("--release");
+    }
+
+    let status = cmd.status();
+    match status {
+        Ok(s) if s.success() => {}
+        Ok(s) => {
+            eprintln!(
+                "cargo:warning=action-host-rt build failed (exit {}); AOT --emit exe may fail to link",
+                s.code().unwrap_or(-1)
+            );
+        }
+        Err(e) => {
+            eprintln!("cargo:warning=failed to spawn action-host-rt build: {e}");
+        }
+    }
+}
+
+fn host_rt_sources_changed(lib: &Path, sources: &[PathBuf]) -> bool {
+    let Ok(lib_mtime) = std::fs::metadata(lib).and_then(|m| m.modified()) else {
+        return true;
+    };
+    sources.iter().any(|src| {
+        std::fs::metadata(src)
+            .and_then(|m| m.modified())
+            .map(|t| t > lib_mtime)
+            .unwrap_or(true)
+    })
 }
