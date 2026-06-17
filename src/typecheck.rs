@@ -447,6 +447,20 @@ impl TypeChecker {
                     let ty = type_ann.clone().unwrap_or(inferred);
                     self.type_env.insert(name.clone(), ty);
                 }
+                Stmt::External {
+                    name,
+                    params,
+                    return_type,
+                    ..
+                } => {
+                    let param_tys: Vec<Type> = params
+                        .iter()
+                        .map(|p| p.ty.clone().unwrap_or(Type::Named("Int".into())))
+                        .collect();
+                    let ret_ty = return_type.clone().unwrap_or(Type::Unit);
+                    let fn_type = Type::Function(param_tys, Box::new(ret_ty));
+                    self.type_env.insert(name.clone(), fn_type);
+                }
                 _ => {}
             }
         }
@@ -1390,6 +1404,12 @@ impl TypeChecker {
                 if let Expr::Ident(name) = func.as_ref() {
                     match name.as_str() {
                         "print" | "println" | "send" | "close" | "cancel" => Ok(Type::Unit),
+                        "toCString" => Ok(Type::Named("CString".into())),
+                        "fromCString" => Ok(Type::Named("String".into())),
+                        "readLine" => Ok(Type::Nullable(Box::new(Type::Named("String".into())))),
+                        "httpRequest" | "jsonEscape" | "unwrapOr" | "substring" | "str" => {
+                            Ok(Type::Named("String".into()))
+                        }
                         "toString" | "toUpper" | "toLower" => Ok(Type::Named("String".into())),
                         "receive" | "wait" => Ok(Type::Named("Int".into())),
                         "launch" => Ok(Type::Task(Box::new(Type::Named("Int".into())))),
@@ -1813,6 +1833,14 @@ impl TypeChecker {
             (Type::LazyList(la), Type::LazyList(lb)) => self.types_compatible(la, lb),
             (Type::Ptr(pa), Type::Ptr(pb)) => self.types_compatible(pa, pb),
             (Type::CString, Type::CString) | (Type::FileHandle, Type::FileHandle) => true,
+            (Type::CString, Type::Named(n)) | (Type::Named(n), Type::CString) if n == "CString" => {
+                true
+            }
+            (Type::FileHandle, Type::Named(n)) | (Type::Named(n), Type::FileHandle)
+                if n == "FileHandle" =>
+            {
+                true
+            }
             (Type::Function(pa, ra), Type::Function(pb, rb)) => {
                 if pa.len() != pb.len() {
                     return false;

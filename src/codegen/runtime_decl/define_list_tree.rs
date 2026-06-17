@@ -2857,101 +2857,52 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_store(sa_i, sa_inc).map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(sa_loop);
         self.builder.position_at_end(sa_done);
-        // Return as list of 2 lists
-        let sa_malloc = self
+        // Return as list of 2 lists (same push pattern as chunks)
+        let sa_res = self.call_rt("action_list_create", &[i64.const_int(2, false).into()])?;
+        let sa_resv = sa_res.try_as_basic_value().unwrap_basic();
+        let sa_ra = self
             .builder
-            .build_call(malloc_rc_fn, &[i64.const_int(16, false).into()], "sa_m")
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .unwrap_basic()
-            .into_pointer_value();
-        // Set RC=1 for newly allocated buffer
-        let sa_rc_addr = self
-            .builder
-            .build_int_sub(
-                self.builder
-                    .build_ptr_to_int(sa_malloc, i64, "sa_m_i64")
-                    .map_err(llvm_err)?,
-                i64.const_int(8, false),
-                "sa_rc_addr",
-            )
+            .build_alloca(self.list_type, "sa_ra")
             .map_err(llvm_err)?;
-        self.builder
-            .build_store(
-                self.builder
-                    .build_int_to_ptr(sa_rc_addr, ptr, "")
-                    .map_err(llvm_err)?,
-                i64.const_int(1, false),
-            )
-            .map_err(llvm_err)?;
-        let sa_l1f = self
-            .builder
-            .build_load(self.list_type, sa_a1, "l1f")
-            .map_err(llvm_err)?
-            .into_struct_value();
-        let sa_fat1 = self.string_type.get_undef();
-        let sa_fat1t = self
-            .builder
-            .build_insert_value(sa_fat1, i64.const_int(6, false), 0, "t1")
-            .map_err(llvm_err)?;
-        let sa_l1p = self
-            .builder
-            .build_alloca(self.list_type, "l1p")
-            .map_err(llvm_err)?;
-        self.builder.build_store(sa_l1p, sa_l1f).map_err(llvm_err)?;
-        let sa_fat1v = self
-            .builder
-            .build_insert_value(sa_fat1t, sa_l1p, 1, "v1")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(sa_malloc, sa_fat1v)
-            .map_err(llvm_err)?;
-        let sa_slot2 = unsafe {
+        self.builder.build_store(sa_ra, sa_resv).map_err(llvm_err)?;
+        for (sa_src, sa_tag) in [(sa_a1, "1"), (sa_a2, "2")] {
+            let sa_sub = self
+                .builder
+                .build_load(self.list_type, sa_src, &format!("l{sa_tag}f"))
+                .map_err(llvm_err)?
+                .into_struct_value();
+            let sa_fat = self.string_type.get_undef();
+            let sa_fatt = self
+                .builder
+                .build_insert_value(sa_fat, i64.const_int(6, false), 0, &format!("t{sa_tag}"))
+                .map_err(llvm_err)?;
+            let sa_sp = self
+                .builder
+                .build_alloca(self.list_type, &format!("sp{sa_tag}"))
+                .map_err(llvm_err)?;
+            self.builder.build_store(sa_sp, sa_sub).map_err(llvm_err)?;
+            let sa_fatv = self
+                .builder
+                .build_insert_value(sa_fatt, sa_sp, 1, &format!("v{sa_tag}"))
+                .map_err(llvm_err)?;
+            let sa_rl = self
+                .builder
+                .build_load(self.list_type, sa_ra, "rl")
+                .map_err(llvm_err)?
+                .into_struct_value();
+            let sa_rps = self.call_rt(
+                "action_list_push",
+                &[sa_rl.into(), sa_fatv.as_basic_value_enum().into()],
+            )?;
             self.builder
-                .build_gep(
-                    self.string_type,
-                    sa_malloc,
-                    &[i64.const_int(1, false)],
-                    "s2",
-                )
-                .map_err(llvm_err)
-        }?;
-        let sa_l2f = self
+                .build_store(sa_ra, sa_rps.try_as_basic_value().unwrap_basic())
+                .map_err(llvm_err)?;
+        }
+        let sa_rt = self
             .builder
-            .build_load(self.list_type, sa_a2, "l2f")
-            .map_err(llvm_err)?
-            .into_struct_value();
-        let sa_fat2 = self.string_type.get_undef();
-        let sa_fat2t = self
-            .builder
-            .build_insert_value(sa_fat2, i64.const_int(6, false), 0, "t2")
+            .build_load(self.list_type, sa_ra, "sa_rt")
             .map_err(llvm_err)?;
-        let sa_l2p = self
-            .builder
-            .build_alloca(self.list_type, "l2p")
-            .map_err(llvm_err)?;
-        self.builder.build_store(sa_l2p, sa_l2f).map_err(llvm_err)?;
-        let sa_fat2v = self
-            .builder
-            .build_insert_value(sa_fat2t, sa_l2p, 1, "v2")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(sa_slot2, sa_fat2v)
-            .map_err(llvm_err)?;
-        let sa_rt = self.list_type.get_undef();
-        let sa_rtd = self
-            .builder
-            .build_insert_value(sa_rt, sa_malloc, 0, "d")
-            .map_err(llvm_err)?;
-        let sa_rtl = self
-            .builder
-            .build_insert_value(sa_rtd, i64.const_int(2, false), 1, "l")
-            .map_err(llvm_err)?;
-        let sa_rtc = self
-            .builder
-            .build_insert_value(sa_rtl, i64.const_int(2, false), 2, "c")
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_return(Some(&sa_rtc));
+        let _ = self.builder.build_return(Some(&sa_rt));
 
         // ---- action_list_chunks({ptr, i64, i64}, i64 chunk_size) -> {ptr, i64, i64} ----
         let ch_fn = self.module.add_function(

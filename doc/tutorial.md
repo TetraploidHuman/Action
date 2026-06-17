@@ -1255,36 +1255,58 @@ coroutineScope {
 
 # 第十六章：JSON 支持
 
+推荐使用 `lib/json.at` 模块（`import json`），其公开 API 与底层 `action_json_*` FFI 一一对应：
+
+| 模块函数 | FFI |
+|----------|-----|
+| `jsonParse` | `action_json_parse` |
+| `jsonStringify` | `action_json_stringify` |
+| `jsonFree` | `action_json_free` |
+| `jsonType` | `action_json_type` |
+| `jsonGet` | `action_json_get` |
+| `jsonGetIdx` | `action_json_get_idx` |
+| `jsonAsStr` | `action_json_as_str` |
+| `jsonAsFloat` | `action_json_as_float` |
+| `jsonAsBool` | `action_json_as_bool` |
+| `jsonLen` | `action_json_len` |
+
 ## 16.1 解析
 
 ```action
-val json = action_json_parse("{\"a\": 1, \"b\": 2}")
+import json.{jsonParse, jsonFree, jsonType}
+
+val root = jsonParse("{\"a\": 1, \"b\": 2}")
 ```
 
 ## 16.2 访问
 
 ```action
-val a = action_json_get(json, "a")
-val aVal = action_json_as_float(a)  // 1.0
-val t = action_json_type(json)      // 类型常量
+import json.{jsonGet, jsonAsFloat, jsonType}
+
+val a = jsonGet(root, "a")
+val aVal = jsonAsFloat(a)  // 1.0
+val t = jsonType(root)     // 类型常量
 ```
 
 ## 16.3 序列化
 
 ```action
-val str = action_json_stringify(json)
+import json.jsonStringify
+
+val str = jsonStringify(root)
+jsonFree(root)
 ```
 
-### 类型常量
+### 类型常量（`lib/json.at`）
 
 | 常量 | 值 | 说明 |
 |------|-----|------|
-| null | 0 | null |
-| bool | 1 | 布尔值 |
-| number | 2 | 数字 |
-| string | 3 | 字符串 |
-| array | 4 | 数组 |
-| object | 5 | 对象 |
+| `JSON_NULL` | 0 | null |
+| `JSON_BOOL` | 1 | 布尔值 |
+| `JSON_NUMBER` | 2 | 数字 |
+| `JSON_STRING` | 3 | 字符串 |
+| `JSON_ARRAY` | 4 | 数组 |
+| `JSON_OBJECT` | 5 | 对象 |
 
 ---
 
@@ -1300,8 +1322,9 @@ val resp = httpRequest(
 println(resp)
 // 返回 "状态码\n响应体"
 
-// 网络连通性测试
-ping("8.8.8.8")
+// 网络连通性测试（FFI 示例，需链接测试运行时）
+external fun action_test_ping() -> Int
+action_test_ping()
 ```
 
 ---
@@ -1323,7 +1346,7 @@ deleteFile("/tmp/test.txt")               // 删除
 ```action
 val f = openFile("/tmp/test.txt", "r")    // 打开文件
 val line = fileReadLine(f)                 // 读取一行
-val bytes = fileReadBytes(f)               // 读取二进制
+val bytes = fileReadBytes(f, 4096)         // 读取最多 4096 字节（二进制）
 fileWrite(f, "data")                       // 写入
 fileWriteLine(f, "line")                   // 写入一行
 fileFlush(f)                               // 刷新缓冲区
@@ -1383,7 +1406,6 @@ abs(-5)          // 5
 min(3, 7)        // 3
 max(3, 7)        // 7
 
-gcd(48, 18)      // 6
 clamp(0.5, 0.0, 1.0)  // 限制在区间内
 ```
 

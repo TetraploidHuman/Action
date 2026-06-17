@@ -46,6 +46,10 @@ external fun readLine() -> String?
 // Reads one line from file. Returns null on EOF.
 external fun fileReadLine(file: FileHandle) -> String?
 
+// fileReadBytes(file: FileHandle, size: Int) -> String
+// Reads up to `size` bytes from an open file (binary mode). Returns bytes as a string.
+external fun fileReadBytes(file: FileHandle, size: Int) -> String
+
 // ---- Text Mode Writing ----
 
 // writeFile(path: String, content: String) -> Bool
@@ -59,12 +63,6 @@ external fun appendFile(path: String, content: String) -> Bool
 // fileWrite(file: FileHandle, content: String) -> Bool
 // Writes string to an open file.
 external fun fileWrite(file: FileHandle, content: String) -> Bool
-
-// ---- Binary Mode Reading ----
-
-// readBytes(path: String) -> String
-// Reads entire binary file. Returns bytes as a string (each byte as char).
-external fun readBytes(path: String) -> String
 
 // ---- File Properties ----
 
@@ -88,6 +86,6 @@ external fun mkdir(path: String) -> Bool
 // Removes an empty directory. Returns true on success.
 external fun removeDir(path: String) -> Bool
 
-// listDir(path: String) -> List[String]?
+// readDir(path: String) -> List[String]?
 // Lists directory entries. Returns null on error.
-external fun listDir(path: String) -> List[String]?
+external fun readDir(path: String) -> List[String]?

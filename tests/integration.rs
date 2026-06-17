@@ -1047,3 +1047,100 @@ fn test_lazy_drop() {
 fn test_bench_map_10k() {
     run_example_starts_with("bench_map_10k.at", "10000\n10000");
 }
+
+// ---- Example coverage (stdlib / IO / builtins) ----
+
+#[test]
+fn test_integration_stdlib() {
+    assert_eq!(
+        run_example("integration_test.at"),
+        "845299411003false456332true"
+    );
+}
+
+#[test]
+fn test_io_builtins() {
+    assert_eq!(
+        run_example("io_test.at"),
+        "exists self: true\n\
+         exists nofile: false\n\
+         delete nofile: false\n\
+         append: true\n\
+         appended exists: true\n\
+         delete test: true\n\
+         done\n"
+    );
+}
+
+#[test]
+fn test_new_list_builtins() {
+    assert_eq!(
+        run_example("new_list_builtins_test.at"),
+        "flatten len: 3\n\
+         splitAt parts len: 2\n\
+         chunks len: 2\n\
+         windows len: 2\n\
+         sorted len: 5\n\
+         unique len: 3\n\
+         abs(-3.5): 3.5\n\
+         pow(2.0, 3.0): 8\n\
+         identity: 42\n\
+         shuffled len: 3\n\
+         withIndex len: 3\n\
+         slice len: 3\n\
+         done\n"
+    );
+}
+
+#[test]
+fn test_map_set_builtins() {
+    assert_eq!(
+        run_example("map_set_builtins_test.at"),
+        "keys len: 3\n\
+         values len: 3\n\
+         entries len: 3\n\
+         union len: 4\n\
+         intersection len: 2\n\
+         difference len: 1\n\
+         subset true: true\n\
+         subset false: false\n\
+         done\n"
+    );
+}
+
+#[test]
+fn test_range_api() {
+    assert_eq!(
+        run_example("range_api.at"),
+        "0..10.contains(5): true\n\
+         0..10.contains(15): false\n\
+         0..10.toList().len: 11\n\
+         Range API works\n"
+    );
+}
+
+#[test]
+fn test_datetime() {
+    assert_eq!(
+        run_example("datetime_test.at"),
+        "date year: 2026 month: 6\n\
+         datetime hour: 12\n\
+         random seed: 42\n\
+         rand: 51\n\
+         done\n"
+    );
+}
+
+#[test]
+fn test_assert() {
+    assert_eq!(
+        run_example("assert_test.at"),
+        "Int: 42\n\
+         Float: 3.14\n\
+         true: true\n\
+         false: false\n\
+         str: hello\n\
+         after_assert\n\
+         done\n"
+    );
+}

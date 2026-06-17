@@ -1398,12 +1398,21 @@ impl<'ctx> CodeGen<'ctx> {
                     "append" => return self.builtin_list_append(*lp, args),
                     _ => {}
                 }
+                // Read-only UFCS must not rc_free + AST recompile (method-chain SIGSEGV).
+                if let Some(def) = builtin_registry::lookup_ufcs(UfcsReceiverKind::List, method) {
+                    if def.readonly && !def.supports_trailing_lambda {
+                        return Err(format!(
+                            "internal: readonly list method '{}' missing UFCS fast path",
+                            method
+                        ));
+                    }
+                }
                 // Remaining methods: free intermediate then recompile via compile_call
                 self.rc_free_method_receiver(&recv_val)?;
                 match method.as_str() {
                     // No-arg methods: f(list) — read-only handled above
-                    "last" | "init" | "reverse" | "sum" | "product" | "sorted" | "flatten"
-                    | "unique" | "toList" | "toLazyList" => {
+                    "init" | "toList" | "toLazyList" | "flatten" | "unique" | "sorted"
+                    | "product" => {
                         let new_func = Expr::Ident(method.to_string());
                         return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                     }
@@ -1916,6 +1925,129 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?;
                 self.rc_free_intermediate(recv_val)?;
                 self.build_nullable_int(result, found).map(Some)
+            }
+            "last" => {
+                if !args.is_empty() {
+                    return Err("list.last expects 0 arguments".to_string());
+                }
+                let len = self.list_len_val(lv)?;
+                let empty = self
+                    .builder
+                    .build_int_compare(IntPredicate::EQ, len, zero, "empty")
+                    .map_err(llvm_err)?;
+                let last_idx = self
+                    .builder
+                    .build_int_sub(len, self.i64_ty().const_int(1, false), "last_idx")
+                    .map_err(llvm_err)?;
+                let nullable_ty = self.get_nullable_type(self.i64_ty().into(), "Nullable<Int>");
+                let current_fn = self
+                    .builder
+                    .get_insert_block()
+                    .and_then(|b| b.get_parent())
+                    .ok_or("no fn")?;
+                let some_bb = self
+                    .context
+                    .append_basic_block(current_fn, "ufcs_last_some");
+                let none_bb = self
+                    .context
+                    .append_basic_block(current_fn, "ufcs_last_none");
+                let merge_bb = self
+                    .context
+                    .append_basic_block(current_fn, "ufcs_last_merge");
+                let _ = self
+                    .builder
+                    .build_conditional_branch(empty, none_bb, some_bb);
+                self.builder.position_at_end(some_bb);
+                let elem = self.call_rt("action_list_get", &[lv.into(), last_idx.into()])?;
+                let elem_tag = elem
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("get failed")?
+                    .into_struct_value();
+                let elem_tag = self
+                    .builder
+                    .build_extract_value(elem_tag, 0, "elem_tag")
+                    .map_err(llvm_err)?;
+                let some_struct = {
+                    let undef = nullable_ty.get_undef();
+                    let r1 = self
+                        .builder
+                        .build_insert_value(
+                            undef,
+                            self.null_flag_ty().const_int(0, false),
+                            0,
+                            "s_flag",
+                        )
+                        .map_err(llvm_err)?;
+                    self.builder
+                        .build_insert_value(r1, elem_tag, 1, "s_val")
+                        .map_err(llvm_err)?
+                };
+                let _ = self.builder.build_unconditional_branch(merge_bb);
+                self.builder.position_at_end(none_bb);
+                let none_struct = {
+                    let undef = nullable_ty.get_undef();
+                    self.builder
+                        .build_insert_value(
+                            undef,
+                            self.null_flag_ty().const_int(1, false),
+                            0,
+                            "n_flag",
+                        )
+                        .map_err(llvm_err)?
+                };
+                let _ = self.builder.build_unconditional_branch(merge_bb);
+                self.builder.position_at_end(merge_bb);
+                let phi = self
+                    .builder
+                    .build_phi(nullable_ty, "ufcs_last_result")
+                    .map_err(llvm_err)?;
+                phi.add_incoming(&[(&some_struct, some_bb), (&none_struct, none_bb)]);
+                let alloca = self
+                    .builder
+                    .build_alloca(nullable_ty, "ufcs_last")
+                    .map_err(llvm_err)?;
+                self.builder
+                    .build_store(alloca, phi.as_basic_value())
+                    .map_err(llvm_err)?;
+                self.rc_free_intermediate(recv_val)?;
+                Ok(Some(TypedValue::Nullable(alloca, nullable_ty.into())))
+            }
+            "reverse" => {
+                if !args.is_empty() {
+                    return Err("list.reverse expects 0 arguments".to_string());
+                }
+                let cc = self.call_rt("action_list_reverse", &[lv.into()])?;
+                let result = cc.try_as_basic_value().basic().ok_or("reverse failed")?;
+                let alloca = self
+                    .builder
+                    .build_alloca(self.list_type, "ufcs_rev")
+                    .map_err(llvm_err)?;
+                self.builder.build_store(alloca, result).map_err(llvm_err)?;
+                self.rc_free_intermediate(recv_val)?;
+                Ok(Some(TypedValue::List(alloca)))
+            }
+            "sum" => {
+                if !args.is_empty() {
+                    return Err("list.sum expects 0 arguments".to_string());
+                }
+                let result = self.list_sum_from_loaded(lv)?;
+                self.rc_free_intermediate(recv_val)?;
+                Ok(Some(TypedValue::Int(result)))
+            }
+            "withIndex" => {
+                if !args.is_empty() {
+                    return Err("list.withIndex expects 0 arguments".to_string());
+                }
+                let cc = self.call_rt("action_list_with_index", &[lv.into()])?;
+                let result = cc.try_as_basic_value().basic().ok_or("withIndex failed")?;
+                let alloca = self
+                    .builder
+                    .build_alloca(self.list_type, "ufcs_wi")
+                    .map_err(llvm_err)?;
+                self.builder.build_store(alloca, result).map_err(llvm_err)?;
+                self.rc_free_intermediate(recv_val)?;
+                Ok(Some(TypedValue::List(alloca)))
             }
             _ => Ok(None),
         }

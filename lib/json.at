@@ -1,6 +1,9 @@
 // JSON Library for Action
 // Provides JSON parsing, serialization, and data access.
 // Backed by serde_json via FFI (src/runtime_json.rs).
+//
+// Naming: public API uses jsonCamelCase; each wrapper calls the matching
+// action_json_* builtin (e.g. jsonParse -> action_json_parse).
 
 external type JsonNode
 

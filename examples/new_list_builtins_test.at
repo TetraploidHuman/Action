@@ -2,42 +2,33 @@
 fun main() {
     // Test flatten
     val nested = List[List[1, 2], List[3, 4], List[5]]
-    val flat = flatten(nested)
     print("flatten len: ")
-    print(len(flat))
+    print(len(flatten(nested)))
     println("")
 
     // Test splitAt
-    val xs = range(1, 7)
-    val parts = splitAt(xs, 3)
     print("splitAt parts len: ")
-    print(len(parts))
+    print(len(splitAt(range(1, 7), 3)))
     println("")
 
     // Test chunks
-    val ch = chunks(xs, 3)
     print("chunks len: ")
-    print(len(ch))
+    print(len(chunks(range(1, 7), 3)))
     println("")
 
     // Test windows
-    val wins = windows(range(1, 4), 2)
     print("windows len: ")
-    print(len(wins))
+    print(len(windows(range(1, 4), 2)))
     println("")
 
     // Test sorted
-    val unsorted = List[3, 1, 4, 1, 5]
-    val s = sorted(unsorted)
     print("sorted len: ")
-    print(len(s))
+    print(len(sorted(List[3, 1, 4, 1, 5])))
     println("")
 
     // Test unique
-    val dups = List[1, 2, 2, 3, 1]
-    val u = unique(dups)
     print("unique len: ")
-    print(len(u))
+    print(len(unique(List[1, 2, 2, 3, 1])))
     println("")
 
     // Test abs for Float
@@ -56,21 +47,18 @@ fun main() {
     println("")
 
     // Test randShuffle
-    val shuffled = randShuffle(range(1, 4))
     print("shuffled len: ")
-    print(len(shuffled))
+    print(len(randShuffle(range(1, 4))))
     println("")
 
     // Test withIndex
-    val wi = withIndex(List[10, 20, 30])
     print("withIndex len: ")
-    print(len(wi))
+    print(len(withIndex(List[10, 20, 30])))
     println("")
 
     // Test slice
-    val sl = slice(range(0, 10), 2, 5)
     print("slice len: ")
-    print(len(sl))
+    print(len(slice(range(0, 10), 2, 5)))
     println("")
 
     println("done")

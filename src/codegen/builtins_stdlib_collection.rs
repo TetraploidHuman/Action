@@ -5,12 +5,91 @@
 // Submodule: builtins_stdlib
 
 use crate::ast::*;
-use inkwell::values::BasicValue;
+use inkwell::values::{BasicValue, IntValue, StructValue};
 use inkwell::IntPredicate;
 
 use super::{llvm_err, CodeGen, TypedValue};
 
 impl<'ctx> CodeGen<'ctx> {
+    /// Sum elements of an already-loaded list struct (Int tags only).
+    pub(super) fn list_sum_from_loaded(
+        &mut self,
+        list: StructValue<'ctx>,
+    ) -> Result<IntValue<'ctx>, String> {
+        let len = self.list_len_val(list)?;
+        let data = self.list_data_ptr(list)?;
+        let current = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("no function")?;
+        let sum_a = self
+            .builder
+            .build_alloca(self.i64_ty(), "sum")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(sum_a, self.i64_ty().const_int(0, false))
+            .map_err(llvm_err)?;
+        let i_a = self
+            .builder
+            .build_alloca(self.i64_ty(), "i")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(i_a, self.i64_ty().const_int(0, false))
+            .map_err(llvm_err)?;
+        let hdr = self.context.append_basic_block(current, "sum_hdr");
+        let bdy = self.context.append_basic_block(current, "sum_bdy");
+        let ext = self.context.append_basic_block(current, "sum_ext");
+        let _ = self.builder.build_unconditional_branch(hdr);
+        self.builder.position_at_end(hdr);
+        let iv = self
+            .builder
+            .build_load(self.i64_ty(), i_a, "iv")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let cond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, iv, len, "cond")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_conditional_branch(cond, bdy, ext);
+        self.builder.position_at_end(bdy);
+        let ep = unsafe {
+            self.builder
+                .build_gep(self.string_type, data, &[iv], "ep")
+                .map_err(llvm_err)
+        }?;
+        let ev = self
+            .builder
+            .build_load(self.string_type, ep, "ev")
+            .map_err(llvm_err)?;
+        let etag = self
+            .builder
+            .build_extract_value(ev.into_struct_value(), 0, "etag")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let cur = self
+            .builder
+            .build_load(self.i64_ty(), sum_a, "cur")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let new_sum = self
+            .builder
+            .build_int_add(cur, etag, "new_sum")
+            .map_err(llvm_err)?;
+        self.builder.build_store(sum_a, new_sum).map_err(llvm_err)?;
+        let ni = self
+            .builder
+            .build_int_add(iv, self.i64_ty().const_int(1, false), "ni")
+            .map_err(llvm_err)?;
+        self.builder.build_store(i_a, ni).map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(hdr);
+        self.builder.position_at_end(ext);
+        self.builder
+            .build_load(self.i64_ty(), sum_a, "result")
+            .map_err(llvm_err)
+            .map(|v| v.into_int_value())
+    }
+
     pub(super) fn builtin_stdlib_collection(
         &mut self,
         name: &str,
@@ -1270,79 +1349,8 @@ impl<'ctx> CodeGen<'ctx> {
                     _ => return Err("sum: argument must be a list".to_string()),
                 };
                 let list = self.load_list(list_ptr)?;
-                let len = self.list_len_val(list)?;
-                let data = self.list_data_ptr(list)?;
-                let current = self
-                    .builder
-                    .get_insert_block()
-                    .and_then(|b| b.get_parent())
-                    .ok_or("no function")?;
-                let sum_a = self
-                    .builder
-                    .build_alloca(self.i64_ty(), "sum")
-                    .map_err(llvm_err)?;
-                self.builder
-                    .build_store(sum_a, self.i64_ty().const_int(0, false))
-                    .map_err(llvm_err)?;
-                let i_a = self
-                    .builder
-                    .build_alloca(self.i64_ty(), "i")
-                    .map_err(llvm_err)?;
-                self.builder
-                    .build_store(i_a, self.i64_ty().const_int(0, false))
-                    .map_err(llvm_err)?;
-                let hdr = self.context.append_basic_block(current, "sum_hdr");
-                let bdy = self.context.append_basic_block(current, "sum_bdy");
-                let ext = self.context.append_basic_block(current, "sum_ext");
-                let _ = self.builder.build_unconditional_branch(hdr);
-                self.builder.position_at_end(hdr);
-                let iv = self
-                    .builder
-                    .build_load(self.i64_ty(), i_a, "iv")
-                    .map_err(llvm_err)?
-                    .into_int_value();
-                let cond = self
-                    .builder
-                    .build_int_compare(IntPredicate::SLT, iv, len, "cond")
-                    .map_err(llvm_err)?;
-                let _ = self.builder.build_conditional_branch(cond, bdy, ext);
-                self.builder.position_at_end(bdy);
-                let ep = unsafe {
-                    self.builder
-                        .build_gep(self.string_type, data, &[iv], "ep")
-                        .map_err(llvm_err)
-                }?;
-                let ev = self
-                    .builder
-                    .build_load(self.string_type, ep, "ev")
-                    .map_err(llvm_err)?;
-                let etag = self
-                    .builder
-                    .build_extract_value(ev.into_struct_value(), 0, "etag")
-                    .map_err(llvm_err)?
-                    .into_int_value();
-                let cur = self
-                    .builder
-                    .build_load(self.i64_ty(), sum_a, "cur")
-                    .map_err(llvm_err)?
-                    .into_int_value();
-                let new_sum = self
-                    .builder
-                    .build_int_add(cur, etag, "new_sum")
-                    .map_err(llvm_err)?;
-                self.builder.build_store(sum_a, new_sum).map_err(llvm_err)?;
-                let ni = self
-                    .builder
-                    .build_int_add(iv, self.i64_ty().const_int(1, false), "ni")
-                    .map_err(llvm_err)?;
-                self.builder.build_store(i_a, ni).map_err(llvm_err)?;
-                let _ = self.builder.build_unconditional_branch(hdr);
-                self.builder.position_at_end(ext);
-                let result = self
-                    .builder
-                    .build_load(self.i64_ty(), sum_a, "result")
-                    .map_err(llvm_err)?;
-                Ok(TypedValue::Int(result.into_int_value()))
+                let result = self.list_sum_from_loaded(list)?;
+                Ok(TypedValue::Int(result))
             }
             "product" => {
                 if args.len() != 1 {

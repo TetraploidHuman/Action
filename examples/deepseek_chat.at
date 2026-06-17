@@ -1,5 +1,10 @@
 // DeepSeek AI Chat - using JSON library for response parsing
+// Set DEEPSEEK_API_KEY in the environment before running.
 import json.{jsonParse, jsonGet, jsonGetIdx, jsonAsStr, jsonFree, jsonEscape}
+
+external fun getenv(name: CString) -> CString
+
+fun apiToken() -> String = fromCString(getenv(toCString("DEEPSEEK_API_KEY")))
 
 fun main() {
     println("=== DeepSeek AI Chat ===")
@@ -10,7 +15,7 @@ fun main() {
     var running = true
     for running {
         print("You: ")
-        val input = unwrapOr(readLine(), "quit")
+        val input = readLine() or { "quit" }
         running = when input == "quit" { false else true }
         messages = when running { handleChat(input, messages) else messages }
     }
@@ -28,7 +33,7 @@ fun chatOnce(input: String, msgs: String) -> String = {
     val userMsg = "{\"role\": \"user\", \"content\": \"" + jsonEscape(input) + "\"}"
     val newMsgs = when msgs == "" { userMsg else msgs + ", " + userMsg }
     val body = "{\"model\": \"deepseek-chat\", \"messages\": [" + newMsgs + "]}"
-    val headers = "Authorization: Bearer sk-83dcfb84f4e945df9dadf73257781119\nContent-Type: application/json"
+    val headers = "Authorization: Bearer " + apiToken() + "\nContent-Type: application/json"
     val resp = httpRequest("POST", "https://api.deepseek.com/chat/completions", headers, body)
     extractContent(resp)
 }

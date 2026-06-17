@@ -450,21 +450,19 @@ println(resp)
 
 ### JSON 支持
 
+推荐使用 `lib/json.at` 模块（封装底层 `action_json_*` FFI）：
+
 ```action
-// 解析 JSON 字符串
-val json = action_json_parse("{\"a\": 1, \"b\": 2}")
+import json.{jsonParse, jsonGet, jsonAsFloat, jsonStringify, jsonFree, jsonType}
 
-// 获取字段值
-val a = action_json_get(json, "a")
-val aVal = action_json_as_float(a)  // 1.0
+val root = jsonParse("{\"a\": 1, \"b\": 2}")
+val a = jsonGet(root, "a")
+val aVal = jsonAsFloat(a)           // 1.0
+val t = jsonType(root)              // 5 = object
+val str = jsonStringify(root)       // "{\"a\":1,\"b\":2}"
+jsonFree(root)
 
-// 类型检查
-val t = action_json_type(json)     // 5 = object
-
-// 序列化
-val str = action_json_stringify(json)  // "{\"a\":1,\"b\":2}"
-
-// 类型常量: 0=null, 1=bool, 2=number, 3=string, 4=array, 5=object
+// json 模块类型常量: JSON_NULL=0, JSON_BOOL=1, JSON_NUMBER=2, ...
 ```
 
 ### 类型转换
@@ -498,7 +496,6 @@ log2(8.0)        // 3.0
 log10(100.0)     // 2.0
 exp(1.0)         // e
 cbrt(27.0)       // 3.0（立方根）
-gcd(48, 18)      // 6
 ```
 
 ### 协程与流
