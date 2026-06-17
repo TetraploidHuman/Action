@@ -54,12 +54,12 @@ cd ~/Action && nix-shell --run "python3 scripts/perf_report.py"
 | 全量 | bench_all |
 | 渐进定位 | bench_step1 ~ bench_step6 |
 | 循环 / 高阶 | bench_for_chain, bench_for_collect, bench_for_list, bench_for_method, bench_for_nested, bench_for_range |
-| 集合 | bench_map, bench_set |
+| 集合 | bench_map, bench_map_10k, bench_set, bench_set_10k |
 | 枚举 / 模式 | bench_enum, bench_when |
 | 函数 | bench_funcall, bench_lambda |
 | 字符串 / 数学 | bench_string, bench_math |
 | CoW | bench_cow |
-| insert 梯度 | bench_insert2/10/50/100, bench_insert_bisect, bench_insert_bisect_small |
+| insert 梯度 | bench_insert2/10/50/100；bisect 调试见 `examples/_dev/bench_insert_bisect*` |
 
 ## 测量说明
 
@@ -76,5 +76,20 @@ nix-shell --run "./target/release/action run examples/bench_cow.at"   # 预期�
 nix-shell --run "./benchmark.sh -n 3"
 nix-shell --run "python3 scripts/perf_report.py"
 ```
+
+
+## Post-optimization（2026-06）
+
+在 Remote-SSH 远端 NixOS、`target/release/action`、**AOT 纯执行**（`./benchmark.sh --mode aot --opt 2 -n 3`，预热 1 次 + 计时 3 次，emit/link 不计入）下的快照。完整 32 项见 `benchmark_results_aot_o2.txt`。
+
+| 用例 | Min (ms) | Avg (ms) | Max (ms) |
+|------|----------|----------|----------|
+| bench_map_10k | 6 | 6 | 7 |
+| bench_set_10k | 8 | 9 | 10 |
+| bench_all | 19 | 19 | 20 |
+| bench_cow | 5 | 5 | 6 |
+| bench_insert100 | 17 | 18 | 19 |
+
+**说明**：`bench_map_10k` / `bench_set_10k` 用于 1 万元素级 Map/Set 压力；与 `bench_map` / `bench_set`（小规模 smoke）互补。对比优化前后请固定 `--mode` 与 `--opt`。
 
 性能改动须保持语言语义（见 `.cursor/rules/preserve-language-semantics.mdc`）。
