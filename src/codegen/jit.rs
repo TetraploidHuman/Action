@@ -419,7 +419,7 @@ fn map_host_symbols(cg: &CodeGen, engine: &inkwell::execution_engine::ExecutionE
 /// PIC relocations are required when linking AOT objects into PIE executables
 /// (default on modern Linux). Without this, -O2+ can emit R_X86_64_32 against
 /// .rodata that ld rejects under PIE.
-fn aot_reloc_mode(triple: &inkwell::targets::TargetTriple) -> inkwell::targets::RelocMode {
+pub(super) fn aot_reloc_mode(triple: &inkwell::targets::TargetTriple) -> inkwell::targets::RelocMode {
     use inkwell::targets::RelocMode;
     let t = triple.as_str().to_string_lossy();
     if t.contains("windows") || t.starts_with("wasm") {
@@ -524,6 +524,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     pub fn emit_object(&self, path: &std::path::Path) -> Result<(), String> {
+        self.run_aot_module_passes()?;
         self.emit_via_target_machine(path, inkwell::targets::FileType::Object)
     }
 }

@@ -29,8 +29,13 @@ impl<'ctx> CodeGen<'ctx> {
             return Err("map expects 2 arguments (fn, list)".to_string());
         };
 
+        if let Some(result) = self.try_builtin_map_direct(fn_ptr, list_val)? {
+            return Ok(result);
+        }
+
         let fn_ptr = match fn_ptr {
             TypedValue::Fn(p, _) => p,
+            TypedValue::Closure { fn_ptr, .. } => fn_ptr,
             _ => return Err("map: first argument must be a function".to_string()),
         };
         let list_ptr = match list_val {
@@ -78,8 +83,13 @@ impl<'ctx> CodeGen<'ctx> {
             return Err("filter expects 2 arguments (fn, list)".to_string());
         };
 
+        if let Some(result) = self.try_builtin_filter_direct(fn_ptr, list_val)? {
+            return Ok(result);
+        }
+
         let fn_ptr = match fn_ptr {
             TypedValue::Fn(p, _) => p,
+            TypedValue::Closure { fn_ptr, .. } => fn_ptr,
             _ => return Err("filter: first argument must be a function".to_string()),
         };
         let list_ptr = match list_val {
