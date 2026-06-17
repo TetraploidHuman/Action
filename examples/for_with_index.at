@@ -1,0 +1,13 @@
+fun main() {
+    var sum = 0
+    for index, item in List[10, 20, 30] {
+        sum = sum + index + item
+    }
+    println(sum)
+
+    var rsum = 0
+    for i, v in 1..4 {
+        rsum = rsum + i + v
+    }
+    println(rsum)
+}

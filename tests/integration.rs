@@ -54,10 +54,14 @@ fn run_example(name: &str) -> String {
     let example = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("examples")
         .join(name);
+    run_action_file(&example)
+}
+
+fn run_action_file(path: &std::path::Path) -> String {
     let output = Command::new(action_binary())
-        .args(["run", example.to_str().unwrap()])
+        .args(["run", path.to_str().unwrap()])
         .output()
-        .expect(&format!("Failed to run example: {}", name));
+        .expect(&format!("Failed to run: {}", path.display()));
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     // Normalize CRLF -> LF so tests pass on Windows where CRT emits \r\n.
     // Strip all \r to handle cases where git CRLF conversion adds an extra
@@ -178,6 +182,16 @@ fn test_for_loop() {
 }
 
 #[test]
+fn test_for_with_index() {
+    assert_eq!(run_example("for_with_index.at"), "63\n9\n");
+}
+
+#[test]
+fn test_lazy_val() {
+    assert_eq!(run_example("lazy_val_test.at"), "142\n42\n");
+}
+
+#[test]
 fn test_yield() {
     assert_eq!(run_example("yield.at"), "125210127");
 }
@@ -245,6 +259,18 @@ fn test_when_chain() {
 #[test]
 fn test_stdlib() {
     assert_eq!(run_example("stdlib.at"), "42993150200");
+}
+
+#[test]
+fn test_import_math() {
+    assert_eq!(run_example("import.at"), "15712");
+}
+
+#[test]
+fn test_atom_path_dependency() {
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/path_dep");
+    let main = fixture.join("main.at");
+    assert_eq!(run_action_file(&main), "42\n");
 }
 
 #[test]
@@ -965,4 +991,59 @@ fn test_cow_semantics() {
     assert!(out.contains("List CoW a len (expect 3): 3"));
     assert!(out.contains("Map CoW m1 len (expect 2): 2"));
     assert!(out.contains("All CoW tests passed"));
+}
+
+// ---- Example coverage (Phase 2) ----
+
+#[test]
+fn test_extension() {
+    assert_eq!(run_example("extension.at"), "108");
+}
+
+#[test]
+fn test_copy() {
+    assert_eq!(run_example("copy.at"), "421020");
+}
+
+#[test]
+fn test_var_mut() {
+    assert_eq!(run_example("var_mut.at"), "10205042");
+}
+
+#[test]
+fn test_non_exhaustive() {
+    assert_compile_error(
+        "non_exhaustive.at",
+        "Non-exhaustive when: enum 'Color' is missing variant(s): 'Blue'",
+    );
+}
+
+#[test]
+fn test_lazy_filter() {
+    assert_eq!(
+        run_example("lazy_filter_test.at"),
+        "squares: [0, 1, 4, 9, 16]\n\
+         evens: [0, 2, 4, 6, 8]\n\
+         mapFilter: [16, 25, 36]\n\
+         filter_map: [0, 4, 16, 36]\n\
+         done\n"
+    );
+}
+
+#[test]
+fn test_lazy_drop() {
+    assert_eq!(
+        run_example("lazy_drop_test.at"),
+        "drop3_take4: [3, 4, 5, 6]\n\
+         drop_map_take: [10, 12, 14]\n\
+         list_drop2: [0, 0, 0]\n\
+         drop_all len: 1\n\
+         drop0: [42, 43, 44]\n\
+         done\n"
+    );
+}
+
+#[test]
+fn test_bench_map_10k() {
+    run_example_starts_with("bench_map_10k.at", "10000\n10000");
 }

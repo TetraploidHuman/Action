@@ -1,0 +1,10 @@
+fun initOnce() {
+    print(1)
+    42
+}
+
+fun main() {
+    lazy val x = initOnce()
+    println(x)
+    println(x)
+}

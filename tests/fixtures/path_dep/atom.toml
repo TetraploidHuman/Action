@@ -1,0 +1,6 @@
+[project]
+name = "path_dep_test"
+version = "0.1.0"
+
+[dependencies]
+helper = { path = "deps/helper" }
