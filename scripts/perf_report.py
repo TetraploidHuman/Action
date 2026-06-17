@@ -82,7 +82,7 @@ def phase_split() -> None:
         "bench_step3.at",
         "bench_step6.at",
         "bench_all.at",
-        "bench_insert_bisect.at",
+        "_dev/bench_insert_bisect.at",
         "bench_for_method.at",
         "bench_cow.at",
     ]
@@ -112,7 +112,7 @@ def aot_runtime() -> None:
         "bench_step3.at",
         "bench_step6.at",
         "bench_all.at",
-        "bench_insert_bisect.at",
+        "_dev/bench_insert_bisect.at",
         "bench_cow.at",
     ):
         f = EXAMPLES / name

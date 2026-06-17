@@ -89,7 +89,7 @@ entry:
 | `define_list_*.rs` 体积大 | `git status` 若显示 `D`，立即 `git checkout HEAD -- <file>` 恢复 |
 | 新基本块 | 每 block 必须以 `br`/`ret` 终结（见下文「写 LLVM 运行时的坑」） |
 | `opt_level` | 只影响 JIT/AOT 引擎与 `TargetMachine`，**无**独立 IR PassManager |
-| 临时调试文件 | 勿提交 `examples/_bisect*.at`、`examples/_test_*.at` 等 |
+| 临时调试文件 | 勿提交 `examples/_dev/` 下临时文件（如 `_bisect*.at`、`_test_*.at`） |
 
 ## 标准验证命令
 

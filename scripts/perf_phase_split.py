@@ -44,7 +44,7 @@ def main() -> None:
     print()
     for name in (
         "bench_all.at",
-        "bench_insert_bisect.at",
+        "_dev/bench_insert_bisect.at",
         "bench_for_method.at",
         "bench_funcall.at",
         "bench_cow.at",
