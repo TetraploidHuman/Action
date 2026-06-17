@@ -1813,8 +1813,7 @@ impl TypeChecker {
             (Type::LazyList(la), Type::LazyList(lb)) => self.types_compatible(la, lb),
             (Type::Ptr(pa), Type::Ptr(pb)) => self.types_compatible(pa, pb),
             (Type::CString, Type::CString)
-            | (Type::FileHandle, Type::FileHandle)
-            | (Type::Unit, Type::Unit) => true,
+            | (Type::FileHandle, Type::FileHandle) => true,
             (Type::Function(pa, ra), Type::Function(pb, rb)) => {
                 if pa.len() != pb.len() {
                     return false;

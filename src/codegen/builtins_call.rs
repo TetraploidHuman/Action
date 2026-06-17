@@ -1,7 +1,7 @@
 // Submodule: builtins_call
 
 use crate::ast::*;
-use crate::builtin_registry::{self, BuiltinDispatch};
+use crate::builtin_registry::{self, BuiltinDispatch, UfcsReceiverKind};
 use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum, PointerValue};
 use inkwell::IntPredicate;
@@ -1510,7 +1510,7 @@ impl<'ctx> CodeGen<'ctx> {
             // Read-only collection len/isEmpty must use compiled recv_val — rc_free + AST
             // recompile double-evaluates method chains (e.g. lst.remove(0).len()) and can SIGSEGV.
             if let Some(def) = builtin_registry::lookup(method) {
-                if def.readonly && matches!(def.name, "len" | "isEmpty") {
+                if def.is_readonly_ufcs_on_collection() {
                     if matches!(recv_val, TypedValue::Map(_) | TypedValue::Set(_)) {
                         let lp = match &recv_val {
                             TypedValue::Map(p) | TypedValue::Set(p) => *p,
@@ -1677,10 +1677,10 @@ impl<'ctx> CodeGen<'ctx> {
         method: &str,
         args: &[Expr],
     ) -> Result<Option<TypedValue<'ctx>>, String> {
-        if !matches!(
-            method,
-            "len" | "isEmpty" | "head" | "tail" | "get" | "contains" | "indexOf"
-        ) {
+        let Some(def) = builtin_registry::lookup_ufcs(UfcsReceiverKind::List, method) else {
+            return Ok(None);
+        };
+        if !def.readonly {
             return Ok(None);
         }
         let lv = self.load_list(lp)?;

@@ -288,6 +288,56 @@ fn build_registry() -> Vec<BuiltinDef> {
             dispatch: BuiltinDispatch::CallbackList,
             supports_trailing_lambda: true,
         },
+        BuiltinDef {
+            name: "indexOf",
+            param_types: vec![list(), int()],
+            return_type: nullable_int(),
+            ufcs_receiver: UfcsReceiverKind::List,
+            readonly: true,
+            runtime_fn: "",
+            dispatch: BuiltinDispatch::Stdlib,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "tail",
+            param_types: vec![list()],
+            return_type: list(),
+            ufcs_receiver: UfcsReceiverKind::List,
+            readonly: true,
+            runtime_fn: "",
+            dispatch: BuiltinDispatch::Stdlib,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "remove",
+            param_types: vec![list(), int()],
+            return_type: list(),
+            ufcs_receiver: UfcsReceiverKind::List,
+            readonly: false,
+            runtime_fn: "action_list_remove",
+            dispatch: BuiltinDispatch::Stdlib,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "insert",
+            param_types: vec![list(), int(), int()],
+            return_type: list(),
+            ufcs_receiver: UfcsReceiverKind::List,
+            readonly: false,
+            runtime_fn: "action_list_insert",
+            dispatch: BuiltinDispatch::Stdlib,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "withIndex",
+            param_types: vec![list()],
+            return_type: list(),
+            ufcs_receiver: UfcsReceiverKind::List,
+            readonly: true,
+            runtime_fn: "action_list_with_index",
+            dispatch: BuiltinDispatch::Stdlib,
+            supports_trailing_lambda: false,
+        },
     ]
 }
 
@@ -379,9 +429,13 @@ mod tests {
     fn registry_has_hot_builtins() {
         assert!(lookup("len").is_some());
         assert!(lookup("map").is_some());
+        assert!(lookup("indexOf").is_some());
+        assert!(lookup("remove").is_some());
+        assert!(lookup("insert").is_some());
         // Collection builtins (len/isEmpty) also match List UFCS receivers.
         assert!(lookup_ufcs(UfcsReceiverKind::List, "len").is_some());
         assert!(lookup_ufcs(UfcsReceiverKind::Collection, "len").is_some());
         assert!(lookup_ufcs(UfcsReceiverKind::List, "map").is_some());
+        assert!(lookup_ufcs(UfcsReceiverKind::List, "indexOf").is_some());
     }
 }
