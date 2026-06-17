@@ -39,6 +39,11 @@ impl Default for ProjectConfig {
 impl ProjectConfig {
     /// Find and load atom.toml by walking up from the given directory.
     pub fn find_and_load(source_dir: &Path) -> Option<Self> {
+        Self::find_and_load_with_root(source_dir).map(|(_, config)| config)
+    }
+
+    /// Like [`find_and_load`](Self::find_and_load), but also returns the directory containing `atom.toml`.
+    pub fn find_and_load_with_root(source_dir: &Path) -> Option<(PathBuf, Self)> {
         let mut dir = if source_dir.is_dir() {
             source_dir.to_path_buf()
         } else {
@@ -49,7 +54,7 @@ impl ProjectConfig {
             let candidate = dir.join("atom.toml");
             if candidate.exists() {
                 match Self::load(&candidate) {
-                    Ok(config) => return Some(config),
+                    Ok(config) => return Some((dir, config)),
                     Err(e) => {
                         eprintln!("Warning: failed to parse {}: {}", candidate.display(), e);
                         return None;
@@ -61,6 +66,17 @@ impl ProjectConfig {
             }
         }
         None
+    }
+
+    /// Local path dependencies from `[dependencies]` entries using `path = "..."`.
+    pub fn path_dependencies(&self) -> Vec<PathBuf> {
+        let mut paths = Vec::new();
+        for value in self.dependencies.values() {
+            if let Some(path) = parse_path_dependency(value) {
+                paths.push(path);
+            }
+        }
+        paths
     }
 
     /// Load and parse an atom.toml file.
@@ -113,6 +129,12 @@ impl ProjectConfig {
             for (name, ver) in deps {
                 if let Some(v) = ver.as_str() {
                     config.dependencies.insert(name.clone(), v.to_string());
+                } else if let Some(table) = ver.as_table() {
+                    if let Some(path) = table.get("path").and_then(|v| v.as_str()) {
+                        config
+                            .dependencies
+                            .insert(name.clone(), format!("path:{path}"));
+                    }
                 }
             }
         }
@@ -171,6 +193,11 @@ impl ProjectConfig {
             0
         }
     }
+}
+
+fn parse_path_dependency(value: &str) -> Option<PathBuf> {
+    let path = value.strip_prefix("path:")?;
+    Some(PathBuf::from(path))
 }
 
 #[cfg(test)]

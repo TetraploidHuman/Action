@@ -20,15 +20,20 @@ impl<'ctx> CodeGen<'ctx> {
             } => {
                 if *lazy_init {
                     // Lazy val: defer evaluation to first access
-                    let (ty, kind) = if let Some(ann) = type_ann {
+                    let (ty, kind, ast_type) = if let Some(ann) = type_ann {
                         (
                             self.ast_type_to_basic_type(ann),
                             self.param_val_kind(Some(ann)),
+                            Some(ann.clone()),
                         )
                     } else {
-                        // For lazy val without type annotation, infer from expression
-                        // We need to peek at the expression type without evaluating it
-                        (self.i64_ty().into(), ValKind::Int) // default, will be refined on access
+                        // AST-only type inference — do not evaluate the initializer here
+                        let inferred = self.infer_expr_type(value);
+                        (
+                            self.ast_type_to_basic_type(&inferred),
+                            self.param_val_kind(Some(&inferred)),
+                            Some(inferred),
+                        )
                     };
                     let alloca = self.builder.build_alloca(ty, name).map_err(llvm_err)?;
                     let flag = self
@@ -38,8 +43,15 @@ impl<'ctx> CodeGen<'ctx> {
                     self.builder
                         .build_store(flag, self.bool_ty().const_int(0, false))
                         .map_err(llvm_err)?;
-                    self.scope
-                        .set_lazy(name.clone(), alloca, ty, kind, flag, value.clone());
+                    self.scope.set_lazy(
+                        name.clone(),
+                        alloca,
+                        ty,
+                        kind,
+                        flag,
+                        value.clone(),
+                        ast_type,
+                    );
                 } else {
                     let raw_val = self.compile_expr(value)?;
                     let (ty, kind) = if let Some(ann) = type_ann {
@@ -1000,8 +1012,12 @@ impl<'ctx> CodeGen<'ctx> {
         })?;
         let entry = self.context.append_basic_block(function, "entry");
 
-        // Save builder position
-        let saved_pos = self.builder.get_insert_block();
+        // Save builder position (skip runtime `action_*` blocks left by define_runtime).
+        let saved_pos = self.builder.get_insert_block().filter(|bb| {
+            !bb.get_parent()
+                .map(|f| f.get_name().to_string_lossy().starts_with("action_"))
+                .unwrap_or(false)
+        });
         self.builder.position_at_end(entry);
 
         let mut saved_scope = Scope::new();

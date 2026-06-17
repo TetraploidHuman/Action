@@ -5,13 +5,13 @@
 external type JsonNode
 
 // ---- FFI declarations ----
-external fun action_json_parse(s: CString): Ptr[JsonNode]
-external fun action_json_stringify(node: Ptr[JsonNode]): CString
+external fun action_json_parse(s: CString) -> Ptr[JsonNode]
+external fun action_json_stringify(node: Ptr[JsonNode]) -> CString
 external fun action_json_free(node: Ptr[JsonNode])
 external fun action_json_type(node: Ptr[JsonNode]) -> Int
-external fun action_json_get(node: Ptr[JsonNode], key: CString): Ptr[JsonNode]
-external fun action_json_get_idx(node: Ptr[JsonNode], idx: Int): Ptr[JsonNode]
-external fun action_json_as_str(node: Ptr[JsonNode]): CString
+external fun action_json_get(node: Ptr[JsonNode], key: CString) -> Ptr[JsonNode]
+external fun action_json_get_idx(node: Ptr[JsonNode], idx: Int) -> Ptr[JsonNode]
+external fun action_json_as_str(node: Ptr[JsonNode]) -> CString
 external fun action_json_as_float(node: Ptr[JsonNode]) -> Float
 external fun action_json_as_bool(node: Ptr[JsonNode]) -> Int
 external fun action_json_len(node: Ptr[JsonNode]) -> Int
@@ -27,7 +27,7 @@ val JSON_OBJECT = 5
 // ---- Public API wrappers ----
 
 // Parse a JSON String. Returns null on parse error (check with jsonType).
-fun jsonParse(s: String): Ptr[JsonNode] = {
+fun jsonParse(s: String) -> Ptr[JsonNode] = {
     val cstr = toCString(s)
     return action_json_parse(cstr)
 }
@@ -53,13 +53,13 @@ fun jsonIsNull(node: Ptr[JsonNode]) -> Bool = {
 }
 
 // Get an object field by key. Returns null ptr if not found (check with jsonIsNull).
-fun jsonGet(node: Ptr[JsonNode], key: String): Ptr[JsonNode] = {
+fun jsonGet(node: Ptr[JsonNode], key: String) -> Ptr[JsonNode] = {
     val k = toCString(key)
     return action_json_get(node, k)
 }
 
 // Get an array element by index. Returns null ptr if out of bounds.
-fun jsonGetIdx(node: Ptr[JsonNode], idx: Int): Ptr[JsonNode] = {
+fun jsonGetIdx(node: Ptr[JsonNode], idx: Int) -> Ptr[JsonNode] = {
     return action_json_get_idx(node, idx)
 }
 
