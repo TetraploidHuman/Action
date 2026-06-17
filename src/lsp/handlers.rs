@@ -14,6 +14,7 @@ use lsp_types::{
 };
 
 use crate::ast::{Expr, Stmt, Type};
+use crate::fmt::{self, FormatOptions};
 use crate::lexer::{Span, Token, TokenKind};
 use crate::typecheck::TypeRegistry;
 
@@ -544,72 +545,35 @@ pub fn handle_formatting(
     let doc = state.project.documents.get(uri)?;
 
     let source = &doc.source;
-    let tab_size = params.options.tab_size as usize;
-    let use_spaces = params.options.insert_spaces;
-
-    let indent_str = if use_spaces {
-        " ".repeat(tab_size)
-    } else {
-        "\t".to_string()
+    let options = FormatOptions {
+        tab_size: params.options.tab_size as usize,
+        insert_spaces: params.options.insert_spaces,
     };
-
-    let mut line_braces: HashMap<u32, (u32, u32)> = HashMap::new();
-    for token in &doc.tokens {
-        let line = (token.span.line as u32).saturating_sub(1);
-        let entry = line_braces.entry(line).or_insert((0, 0));
-        match token.kind {
-            TokenKind::LBrace => entry.0 += 1,
-            TokenKind::RBrace => entry.1 += 1,
-            _ => {}
-        }
+    let formatted = fmt::format_source(source, &doc.tokens, &options);
+    if formatted == *source {
+        return None;
     }
 
-    let mut edits = Vec::new();
-    let mut expected_depth: i32 = 0;
+    let end_line = source.lines().count().saturating_sub(1) as u32;
+    let end_char = source
+        .lines()
+        .last()
+        .map(|l| l.chars().count() as u32)
+        .unwrap_or(0);
 
-    for (line_num, line) in source.lines().enumerate() {
-        let trimmed = line.trim_start();
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        let (open_count, close_count) = line_braces
-            .get(&(line_num as u32))
-            .copied()
-            .unwrap_or((0, 0));
-
-        let current_depth = expected_depth.saturating_sub(close_count as i32);
-
-        let current_indent_len = line.len() - trimmed.len();
-        let expected_indent = indent_str.repeat(current_depth as usize);
-
-        if current_indent_len != expected_indent.len() || !line.starts_with(&expected_indent) {
-            let line_start = lsp_types::Position {
-                line: line_num as u32,
+    Some(vec![TextEdit {
+        range: Range {
+            start: Position {
+                line: 0,
                 character: 0,
-            };
-            let line_end = lsp_types::Position {
-                line: line_num as u32,
-                character: current_indent_len as u32,
-            };
-            edits.push(TextEdit {
-                range: Range {
-                    start: line_start,
-                    end: line_end,
-                },
-                new_text: expected_indent,
-            });
-        }
-
-        let next_depth = current_depth.saturating_add(open_count as i32);
-        expected_depth = next_depth;
-    }
-
-    if edits.is_empty() {
-        None
-    } else {
-        Some(edits)
-    }
+            },
+            end: Position {
+                line: end_line,
+                character: end_char,
+            },
+        },
+        new_text: formatted,
+    }])
 }
 
 pub fn handle_code_actions(

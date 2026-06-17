@@ -7,6 +7,7 @@ pub mod builtin_registry;
 pub mod codegen;
 pub mod config;
 pub mod error;
+pub mod fmt;
 pub mod http_runtime;
 pub mod lexer;
 pub mod loader;

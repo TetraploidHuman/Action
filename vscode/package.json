@@ -2,7 +2,7 @@
   "name": "action-language",
   "displayName": "Action Language",
   "description": "Action language support with LSP",
-  "version": "0.2.0",
+  "version": "0.5.2",
   "publisher": "action-lang",
   "engines": {
     "vscode": "^1.75.0"

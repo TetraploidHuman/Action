@@ -786,27 +786,10 @@ pub fn load_program(
     let errors = checker.check(&program);
     if !errors.is_empty() {
         if explain {
-            let mut explained = Vec::new();
-            for e in errors {
-                let msg = e.to_string();
-                let help = if msg.contains("Undefined variable") {
-                    Some("Check that the variable is defined in the current scope. Variable names are case-sensitive.".to_string())
-                } else if msg.contains("type") && msg.contains("expected") {
-                    Some("Type annotations and inferred types must match. Consider adding an explicit type annotation.".to_string())
-                } else if msg.contains("Undefined function") {
-                    Some("Functions must be defined before they are called. Check for typos in the function name.".to_string())
-                } else if msg.contains("not exhaustive") {
-                    Some("When expressions must cover all possible cases. Add an 'else' arm or cover all enum variants.".to_string())
-                } else {
-                    None
-                };
-                let mut new_e = CompilerError::new(msg);
-                if let Some(h) = help {
-                    new_e = new_e.with_help(h);
-                }
-                explained.push(new_e);
-            }
-            return Err(explained);
+            return Err(errors
+                .into_iter()
+                .map(crate::error::enrich_with_explain)
+                .collect());
         }
         return Err(errors);
     }

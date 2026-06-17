@@ -1,5 +1,5 @@
 use action::config::ProjectConfig;
-use action::error::CompilerError;
+use action::error::{self, CompilerError};
 use action::*;
 use ariadne::{Color, Label, Report, ReportKind, Source};
 use clap::{Parser as ClapParser, Subcommand};
@@ -60,9 +60,23 @@ enum Commands {
     Check {
         /// Source file path (.at or .atom)
         file: PathBuf,
-        /// Enable verbose error messages
+        /// Enable verbose error messages with suggestions
         #[arg(long)]
         explain: bool,
+    },
+    /// Format an Action source file (indentation)
+    Fmt {
+        /// Source file path (.at or .atom)
+        file: PathBuf,
+        /// Check formatting without writing (exit 1 if changes needed)
+        #[arg(long)]
+        check: bool,
+        /// Number of spaces per indent level
+        #[arg(long, default_value_t = 4)]
+        tab_size: u8,
+        /// Indent with spaces instead of tabs
+        #[arg(long, default_value_t = true)]
+        insert_spaces: bool,
     },
     /// Start the Action Language LSP server
     Lsp,
@@ -148,7 +162,7 @@ fn main() {
             }
             Err(errors) => {
                 if let Ok(source) = fs::read_to_string(&file) {
-                    report_compiler_errors(&source, &file.to_string_lossy(), &errors);
+                    error::report_compiler_errors(&source, &file.to_string_lossy(), &errors);
                 } else {
                     for e in &errors {
                         eprintln!("Error: {}", e);
@@ -157,6 +171,16 @@ fn main() {
                 std::process::exit(1);
             }
         },
+        Commands::Fmt {
+            file,
+            check,
+            tab_size,
+            insert_spaces,
+        } => {
+            if let Err(code) = fmt_file(&file, check, tab_size, insert_spaces) {
+                std::process::exit(code);
+            }
+        }
         Commands::Repl {
             opt,
             target,
@@ -185,53 +209,6 @@ fn main() {
                     eprintln!("Error: {}", e);
                 }
                 std::process::exit(1);
-            }
-        }
-    }
-}
-
-/// Convert line (1-indexed) and col (1-indexed) to byte offset in source
-fn line_col_to_offset(source: &str, line: usize, col: usize) -> usize {
-    let mut cur_line = 1;
-    let mut cur_col = 1;
-    for (i, ch) in source.char_indices() {
-        if cur_line == line && cur_col == col {
-            return i;
-        }
-        if ch == '\n' {
-            cur_line += 1;
-            cur_col = 1;
-        } else {
-            cur_col += 1;
-        }
-    }
-    source.len()
-}
-
-/// Report structured compiler errors with span-aware highlighting.
-fn report_compiler_errors(source: &str, path: &str, errors: &[CompilerError]) {
-    for err in errors {
-        if let Some(span) = &err.span {
-            let start = line_col_to_offset(source, span.line, span.col);
-            let len = span.highlight_len();
-            let mut report = Report::build(ReportKind::Error, path, start)
-                .with_message(&err.message)
-                .with_label(
-                    Label::new((path, start..start + len))
-                        .with_message("here")
-                        .with_color(Color::Red),
-                );
-            if let Some(ref help) = err.help {
-                report = report.with_help(help.clone());
-            }
-            report
-                .finish()
-                .eprint((path, Source::from(source)))
-                .unwrap_or_else(|_| eprintln!("Error: {}", err.message));
-        } else {
-            eprintln!("\x1b[1;31merror:\x1b[0m {}", err.message);
-            if let Some(ref help) = err.help {
-                eprintln!("  \x1b[1;36mhelp:\x1b[0m {}", help);
             }
         }
     }
@@ -283,7 +260,7 @@ fn report_error(source: &str, path: &str, error: &str) {
         }
 
         if let Some((line_num, col, msg, _)) = parse_error_line(line) {
-            let offset = line_col_to_offset(source, line_num, col);
+            let offset = error::line_col_to_offset(source, line_num, col);
             let highlight_len = 1usize;
             let mut report = Report::build(ReportKind::Error, path, offset)
                 .with_message(&msg)
@@ -494,12 +471,16 @@ fn emit_output(
             };
             let mut link_cmd = std::process::Command::new(linker);
             link_cmd.arg("-o").arg(&exe_path).arg(&obj_path);
+            // Link Rust host runtime (JSON/HTTP/threading C ABI) for AOT executables.
+            if let Some(host_lib) = find_aot_host_staticlib() {
+                link_cmd.arg(host_lib);
+            }
             // Runtime math helpers (pow, sin, ...) are declared as external libc symbols.
             if !matches!(
                 target,
                 "windows-x64" | "x86_64-pc-windows-gnu" | "wasm" | "wasm32-unknown-unknown"
             ) {
-                link_cmd.arg("-lm");
+                link_cmd.args(["-lm", "-lpthread", "-ldl"]);
             }
             let status = link_cmd
                 .status()
@@ -520,6 +501,60 @@ fn emit_output(
     Ok(())
 }
 
+fn find_aot_host_staticlib() -> Option<String> {
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let candidates = [
+        manifest.join("target/release/libaction_host_rt.a"),
+        manifest.join("target/debug/libaction_host_rt.a"),
+    ];
+    for path in &candidates {
+        if path.exists() {
+            return Some(path.to_string_lossy().into_owned());
+        }
+    }
+    None
+}
+
 fn check_file(path: &PathBuf, explain: bool) -> Result<(), Vec<CompilerError>> {
     loader::load_program(path, explain).map(|_| ())
+}
+
+fn fmt_file(path: &PathBuf, check: bool, tab_size: u8, insert_spaces: bool) -> Result<(), i32> {
+    let source = fs::read_to_string(path).map_err(|e| {
+        eprintln!("Cannot read '{}': {}", path.display(), e);
+        1
+    })?;
+
+    let mut lexer = lexer::Lexer::new(&source);
+    let tokens = lexer.tokenize();
+    let lexer_errors = lexer.take_errors();
+    if !lexer_errors.is_empty() {
+        error::report_compiler_errors(&source, &path.to_string_lossy(), &lexer_errors);
+        return Err(1);
+    }
+
+    let options = fmt::FormatOptions {
+        tab_size: tab_size as usize,
+        insert_spaces,
+    };
+    let formatted = fmt::format_source(&source, &tokens, &options);
+
+    if formatted == source {
+        if check {
+            println!("{}: formatted", path.display());
+        }
+        return Ok(());
+    }
+
+    if check {
+        eprintln!("{}: would reformat", path.display());
+        return Err(1);
+    }
+
+    fs::write(path, &formatted).map_err(|e| {
+        eprintln!("Cannot write '{}': {}", path.display(), e);
+        1
+    })?;
+    println!("Formatted {}", path.display());
+    Ok(())
 }
