@@ -89,16 +89,7 @@ impl Document {
         let mut diags = Vec::new();
 
         for e in &self.parse_errors {
-            let range = Range {
-                start: Position {
-                    line: (e.line as u32).saturating_sub(1),
-                    character: (e.col as u32).saturating_sub(1),
-                },
-                end: Position {
-                    line: (e.line as u32).saturating_sub(1),
-                    character: (e.col as u32).saturating_sub(1),
-                },
-            };
+            let range = position::span_to_lsp_range(&e.span, &self.source);
             diags.push(Diagnostic {
                 range,
                 severity: Some(DiagnosticSeverity::ERROR),

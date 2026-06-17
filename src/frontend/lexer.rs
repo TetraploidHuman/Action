@@ -1,50 +1,7 @@
-use crate::error::CompilerError;
+use crate::frontend::error::CompilerError;
 use std::fmt;
 
-/// Position in source code
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Span {
-    pub start: usize,
-    pub end: usize,
-    pub line: usize,
-    pub col: usize,
-}
-
-impl Span {
-    pub fn new(start: usize, line: usize, col: usize) -> Self {
-        Span {
-            start,
-            end: start,
-            line,
-            col,
-        }
-    }
-
-    pub fn with_end(mut self, end: usize) -> Self {
-        self.end = end;
-        self
-    }
-
-    /// Byte length for diagnostic highlighting (at least 1).
-    pub fn highlight_len(&self) -> usize {
-        if self.end > self.start {
-            self.end - self.start
-        } else {
-            1
-        }
-    }
-}
-
-impl Default for Span {
-    fn default() -> Self {
-        Span {
-            start: 0,
-            end: 0,
-            line: 1,
-            col: 1,
-        }
-    }
-}
+pub use crate::span::Span;
 
 /// All token types in the Atomic language
 #[derive(Debug, Clone, PartialEq)]

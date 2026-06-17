@@ -1,8 +1,8 @@
-use crate::ast::*;
-use crate::builtin_registry;
-use crate::error::CompilerError;
-use crate::lexer::Span;
-use crate::types::{infer_type_args, mangle_name, types_compatible, unify};
+use crate::frontend::ast::*;
+use crate::frontend::builtin;
+use crate::frontend::error::CompilerError;
+use crate::frontend::types::{infer_type_args, mangle_name, types_compatible, unify};
+use crate::span::Span;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
@@ -1559,7 +1559,7 @@ impl TypeChecker {
                         "foldRight" => Ok(Type::Named("Int".into())),
                         "takeWhile" | "dropWhile" | "sortedBy" => Ok(Type::Named("list".into())),
                         _ => {
-                            if let Some(def) = builtin_registry::lookup(name) {
+                            if let Some(def) = builtin::lookup(name) {
                                 return Ok(def.return_type.clone());
                             }
                             if self.registry.lookup_variant(name).is_some() {
@@ -1582,8 +1582,8 @@ impl TypeChecker {
                     }
                 } else if let Expr::FieldAccess(receiver, method) = func.as_ref() {
                     let recv_type = self.infer_expr_type_with_locals(receiver, locals)?;
-                    if let Some(kind) = builtin_registry::receiver_kind_from_type(&recv_type) {
-                        if let Some(def) = builtin_registry::lookup_ufcs(kind, method) {
+                    if let Some(kind) = builtin::receiver_kind_from_type(&recv_type) {
+                        if let Some(def) = builtin::lookup_ufcs(kind, method) {
                             return Ok(def.return_type.clone());
                         }
                     }
@@ -1704,8 +1704,8 @@ impl TypeChecker {
                         }
                     }
                     Ok(ty.clone())
-                } else if builtin_registry::lookup(name).is_some() {
-                    Ok(builtin_registry::lookup(name).unwrap().return_type.clone())
+                } else if builtin::lookup(name).is_some() {
+                    Ok(builtin::lookup(name).unwrap().return_type.clone())
                 } else {
                     Err(CompilerError::new(format!("Unknown variable: '{}'", name)))
                 }

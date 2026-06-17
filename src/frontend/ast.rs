@@ -1,4 +1,4 @@
-use crate::lexer::Span;
+use crate::span::Span;
 use std::collections::HashMap;
 use std::fmt;
 

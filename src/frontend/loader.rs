@@ -1,8 +1,8 @@
-use crate::ast::*;
-use crate::config::ProjectConfig;
-use crate::error::CompilerError;
-use crate::lexer::Span;
-use crate::typecheck::{TypeChecker, TypeRegistry};
+use crate::frontend::ast::*;
+use crate::frontend::config::ProjectConfig;
+use crate::frontend::error::CompilerError;
+use crate::frontend::typecheck::{TypeChecker, TypeRegistry};
+use crate::span::Span;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -77,10 +77,7 @@ fn parse_source_file(path: &Path) -> Result<Vec<Stmt>, String> {
     }
     let mut parser = crate::parser::Parser::new(tokens);
     let program = parser.parse_program().map_err(|e| {
-        format!(
-            "Parse error in {} at line {}, col {}: {}",
-            file_name, e.line, e.col, e.message
-        )
+        format!("Parse error in {}: {}", file_name, e)
     })?;
     Ok(program.stmts)
 }
@@ -175,10 +172,7 @@ fn load_module(module_name: &str, search_dirs: &[PathBuf]) -> Result<Vec<Stmt>, 
                 }
                 let mut parser = crate::parser::Parser::new(tokens);
                 let program = parser.parse_program().map_err(|e| {
-                    format!(
-                        "Parse error in {} at line {}, col {}: {}",
-                        file_name, e.line, e.col, e.message
-                    )
+                    format!("Parse error in {}: {}", file_name, e)
                 })?;
                 return Ok(program.stmts);
             }
@@ -741,12 +735,7 @@ pub fn load_program(
     }
 
     let mut parser = crate::parser::Parser::new(tokens);
-    let mut program = parser.parse_program().map_err(|e| {
-        vec![CompilerError::new(format!(
-            "Parse error at line {}, col {}: {}",
-            e.line, e.col, e.message
-        ))]
-    })?;
+    let mut program = parser.parse_program().map_err(|e| vec![e.to_compiler_error()])?;
 
     let builtins_types = builtin_types(&program);
     let stdlib = load_stdlib().map_err(|e| vec![CompilerError::new(e)])?;

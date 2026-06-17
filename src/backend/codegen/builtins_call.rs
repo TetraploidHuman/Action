@@ -1,7 +1,8 @@
 // Submodule: builtins_call
 
 use crate::ast::*;
-use crate::builtin_registry::{self, BuiltinDispatch, UfcsReceiverKind};
+use crate::builtin_registry::{self, UfcsReceiverKind};
+use super::builtin_dispatch::BuiltinDispatch;
 use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum, PointerValue};
 use inkwell::IntPredicate;
@@ -57,16 +58,17 @@ impl<'ctx> CodeGen<'ctx> {
             }
             // Registry-backed builtins (single source of truth for metadata + dispatch)
             if let Some(def) = builtin_registry::lookup(name) {
-                match def.dispatch {
+                match BuiltinDispatch::for_builtin(def) {
                     BuiltinDispatch::Print => return self.builtin_print(name, args),
                     BuiltinDispatch::Map | BuiltinDispatch::Filter | BuiltinDispatch::Fold => {
-                        let list_arg_idx = def.list_operand_index(trailing.is_some(), args.len());
+                        let list_arg_idx =
+                            BuiltinDispatch::list_operand_index(def, trailing.is_some(), args.len());
                         let is_list_op = list_arg_idx.map_or(false, |idx| {
                             idx < args.len()
                                 && matches!(self.compile_expr(&args[idx]), Ok(TypedValue::List(_)))
                         });
                         if is_list_op {
-                            return match def.dispatch {
+                            return match BuiltinDispatch::for_builtin(def) {
                                 BuiltinDispatch::Map => self.builtin_map(args, trailing),
                                 BuiltinDispatch::Filter => self.builtin_filter(args, trailing),
                                 BuiltinDispatch::Fold => self.builtin_fold(args, trailing),
@@ -75,7 +77,8 @@ impl<'ctx> CodeGen<'ctx> {
                         }
                     }
                     BuiltinDispatch::CallbackList => {
-                        let list_arg_idx = def.list_operand_index(trailing.is_some(), args.len());
+                        let list_arg_idx =
+                            BuiltinDispatch::list_operand_index(def, trailing.is_some(), args.len());
                         let is_list_op = list_arg_idx.map_or(false, |idx| {
                             idx < args.len()
                                 && matches!(self.compile_expr(&args[idx]), Ok(TypedValue::List(_)))
@@ -1519,7 +1522,7 @@ impl<'ctx> CodeGen<'ctx> {
             // Read-only collection len/isEmpty must use compiled recv_val — rc_free + AST
             // recompile double-evaluates method chains (e.g. lst.remove(0).len()) and can SIGSEGV.
             if let Some(def) = builtin_registry::lookup(method) {
-                if def.is_readonly_ufcs_on_collection() {
+                if BuiltinDispatch::is_readonly_ufcs_on_collection(def) {
                     if matches!(recv_val, TypedValue::Map(_) | TypedValue::Set(_)) {
                         let lp = match &recv_val {
                             TypedValue::Map(p) | TypedValue::Set(p) => *p,

@@ -695,6 +695,7 @@ impl<'ctx> CodeGen<'ctx> {
 
 mod compile;
 // ---- Submodules ----
+mod builtin_dispatch;
 mod builtins_call;
 mod builtins_conversion;
 mod builtins_ffi;

@@ -1,12 +1,19 @@
-use crate::ast::*;
-use crate::lexer::{Lexer, Span, Token, TokenKind};
+use crate::frontend::ast::*;
+use crate::frontend::error::CompilerError;
+use crate::frontend::lexer::{Lexer, Token, TokenKind};
+use crate::span::Span;
 
-/// Parse error with location info
+/// Parse error with source location.
 #[derive(Debug, Clone)]
 pub struct ParseError {
     pub message: String,
-    pub line: usize,
-    pub col: usize,
+    pub span: Span,
+}
+
+impl ParseError {
+    pub fn to_compiler_error(&self) -> CompilerError {
+        CompilerError::new(self.message.clone()).with_span(self.span)
+    }
 }
 
 impl std::fmt::Display for ParseError {
@@ -14,7 +21,7 @@ impl std::fmt::Display for ParseError {
         write!(
             f,
             "Parse error at line {}, col {}: {}",
-            self.line, self.col, self.message
+            self.span.line, self.span.col, self.message
         )
     }
 }
@@ -239,11 +246,9 @@ impl Parser {
     }
 
     fn error(&self, msg: &str) -> ParseError {
-        let tok = self.current();
         ParseError {
             message: msg.to_string(),
-            line: tok.span.line,
-            col: tok.span.col,
+            span: self.current().span,
         }
     }
 
@@ -251,8 +256,7 @@ impl Parser {
     fn error_at(&self, msg: &str, line: usize, col: usize) -> ParseError {
         ParseError {
             message: msg.to_string(),
-            line,
-            col,
+            span: Span::new(0, line, col),
         }
     }
 
@@ -1258,8 +1262,7 @@ impl Parser {
                     let msgs: Vec<String> = sub_errors.iter().map(|e| e.to_string()).collect();
                     return Err(ParseError {
                         message: msgs.join("\n"),
-                        line: str_span.line,
-                        col: str_span.col,
+                        span: str_span,
                     });
                 }
                 let mut sub_parser = Parser::new(sub_tokens);
@@ -1268,8 +1271,7 @@ impl Parser {
                 // was emitted as a literal — this made interpolation typos invisible.
                 let expr = sub_parser.parse_expr().map_err(|e| ParseError {
                     message: format!("In string interpolation: {}", e.message),
-                    line: str_span.line,
-                    col: str_span.col,
+                    span: str_span,
                 })?;
                 parts.push(StringPart::Expr(Box::new(expr)));
             } else {

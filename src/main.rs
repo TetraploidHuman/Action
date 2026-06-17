@@ -504,6 +504,8 @@ fn emit_output(
 fn find_aot_host_staticlib() -> Option<String> {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let candidates = [
+        manifest.join("target/host_rt_build/release/libaction_host_rt.a"),
+        manifest.join("target/host_rt_build/debug/libaction_host_rt.a"),
         manifest.join("target/release/libaction_host_rt.a"),
         manifest.join("target/debug/libaction_host_rt.a"),
     ];

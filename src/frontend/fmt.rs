@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use crate::lexer::Token;
+use crate::frontend::lexer::Token;
 
 /// Formatting options (LSP `FormattingOptions` equivalent).
 #[derive(Debug, Clone, Copy)]
@@ -73,7 +73,7 @@ pub fn format_source(source: &str, _tokens: &[Token], options: &FormatOptions) -
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lexer::Lexer;
+    use crate::frontend::lexer::Lexer;
 
     fn format_at(source: &str) -> String {
         let mut lexer = Lexer::new(source);

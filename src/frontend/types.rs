@@ -1,6 +1,6 @@
 //! Shared type operations used by the type checker and codegen.
 
-use crate::ast::Type;
+use crate::frontend::ast::Type;
 use std::collections::HashMap;
 
 /// Mangle a function name by appending parameter types: `add(Int, Float)` → `add_Int_Float`.
@@ -179,7 +179,7 @@ pub fn infer_type_args(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::Type;
+    use crate::frontend::ast::Type;
 
     #[test]
     fn mangle_name_empty_params() {

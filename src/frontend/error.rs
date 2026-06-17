@@ -1,4 +1,4 @@
-use crate::lexer::Span;
+use crate::span::Span;
 use ariadne::{Color, Label, Report, ReportKind, Source};
 
 /// Structured compiler error with optional source location and help text

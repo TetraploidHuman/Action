@@ -1,8 +1,4 @@
-//! Single source of truth for builtin function metadata (typecheck + codegen).
-//!
-//! Registered at crate root via `#[path]` in `lib.rs` to avoid a typecheck ↔ codegen cycle.
-
-use crate::ast::Type;
+use crate::frontend::ast::Type;
 use std::sync::OnceLock;
 
 /// UFCS receiver kind: which type `recv.method(...)` may bind to.
@@ -18,17 +14,6 @@ pub enum UfcsReceiverKind {
     Collection,
 }
 
-/// Codegen dispatch target for a builtin.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BuiltinDispatch {
-    Stdlib,
-    Print,
-    Map,
-    Filter,
-    Fold,
-    CallbackList,
-}
-
 /// Metadata for one builtin function.
 #[derive(Clone, Debug)]
 pub struct BuiltinDef {
@@ -37,9 +22,6 @@ pub struct BuiltinDef {
     pub return_type: Type,
     pub ufcs_receiver: UfcsReceiverKind,
     pub readonly: bool,
-    /// LLVM runtime symbol when applicable; empty for inline / stdlib-dispatched paths.
-    pub runtime_fn: &'static str,
-    pub dispatch: BuiltinDispatch,
     pub supports_trailing_lambda: bool,
 }
 
@@ -73,8 +55,6 @@ fn build_registry() -> Vec<BuiltinDef> {
             return_type: int(),
             ufcs_receiver: UfcsReceiverKind::Collection,
             readonly: true,
-            runtime_fn: "",
-            dispatch: BuiltinDispatch::Stdlib,
             supports_trailing_lambda: false,
         },
         BuiltinDef {
@@ -83,8 +63,6 @@ fn build_registry() -> Vec<BuiltinDef> {
             return_type: bool(),
             ufcs_receiver: UfcsReceiverKind::Collection,
             readonly: true,
-            runtime_fn: "",
-            dispatch: BuiltinDispatch::Stdlib,
             supports_trailing_lambda: false,
         },
         BuiltinDef {
@@ -93,8 +71,6 @@ fn build_registry() -> Vec<BuiltinDef> {
             return_type: list(),
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: false,
-            runtime_fn: "action_list_map_walk",
-            dispatch: BuiltinDispatch::Map,
             supports_trailing_lambda: true,
         },
         BuiltinDef {
@@ -103,8 +79,6 @@ fn build_registry() -> Vec<BuiltinDef> {
             return_type: list(),
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: false,
-            runtime_fn: "action_list_filter_walk",
-            dispatch: BuiltinDispatch::Filter,
             supports_trailing_lambda: true,
         },
         BuiltinDef {
@@ -113,8 +87,6 @@ fn build_registry() -> Vec<BuiltinDef> {
             return_type: int(),
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: false,
-            runtime_fn: "action_list_fold_walk",
-            dispatch: BuiltinDispatch::Fold,
             supports_trailing_lambda: true,
         },
         BuiltinDef {
@@ -123,8 +95,6 @@ fn build_registry() -> Vec<BuiltinDef> {
             return_type: list(),
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: false,
-            runtime_fn: "action_list_push",
-            dispatch: BuiltinDispatch::Stdlib,
             supports_trailing_lambda: false,
         },
         BuiltinDef {
@@ -133,8 +103,6 @@ fn build_registry() -> Vec<BuiltinDef> {
             return_type: list(),
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: false,
-            runtime_fn: "action_list_prepend",
-            dispatch: BuiltinDispatch::Stdlib,
             supports_trailing_lambda: false,
         },
         BuiltinDef {
@@ -143,8 +111,6 @@ fn build_registry() -> Vec<BuiltinDef> {
             return_type: nullable_int(),
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: true,
-            runtime_fn: "action_list_get",
-            dispatch: BuiltinDispatch::Stdlib,
             supports_trailing_lambda: false,
         },
         BuiltinDef {
@@ -153,8 +119,6 @@ fn build_registry() -> Vec<BuiltinDef> {
             return_type: nullable_int(),
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: true,
-            runtime_fn: "action_list_get",
-            dispatch: BuiltinDispatch::Stdlib,
             supports_trailing_lambda: false,
         },
         BuiltinDef {
@@ -163,8 +127,6 @@ fn build_registry() -> Vec<BuiltinDef> {
             return_type: nullable_int(),
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: true,
-            runtime_fn: "action_list_get",
-            dispatch: BuiltinDispatch::Stdlib,
             supports_trailing_lambda: false,
         },
         BuiltinDef {
@@ -173,8 +135,6 @@ fn build_registry() -> Vec<BuiltinDef> {
             return_type: bool(),
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: true,
-            runtime_fn: "",
-            dispatch: BuiltinDispatch::Stdlib,
             supports_trailing_lambda: false,
         },
         BuiltinDef {
@@ -183,8 +143,6 @@ fn build_registry() -> Vec<BuiltinDef> {
             return_type: list(),
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: false,
-            runtime_fn: "action_list_take",
-            dispatch: BuiltinDispatch::Stdlib,
             supports_trailing_lambda: false,
         },
         BuiltinDef {
@@ -193,8 +151,6 @@ fn build_registry() -> Vec<BuiltinDef> {
             return_type: list(),
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: false,
-            runtime_fn: "action_list_drop",
-            dispatch: BuiltinDispatch::Stdlib,
             supports_trailing_lambda: false,
         },
         BuiltinDef {
@@ -203,8 +159,6 @@ fn build_registry() -> Vec<BuiltinDef> {
             return_type: list(),
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: true,
-            runtime_fn: "",
-            dispatch: BuiltinDispatch::Stdlib,
             supports_trailing_lambda: false,
         },
         BuiltinDef {
@@ -213,8 +167,6 @@ fn build_registry() -> Vec<BuiltinDef> {
             return_type: list(),
             ufcs_receiver: UfcsReceiverKind::Global,
             readonly: false,
-            runtime_fn: "action_list_concat",
-            dispatch: BuiltinDispatch::Stdlib,
             supports_trailing_lambda: false,
         },
         BuiltinDef {
@@ -223,8 +175,6 @@ fn build_registry() -> Vec<BuiltinDef> {
             return_type: list(),
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: false,
-            runtime_fn: "action_list_flatten",
-            dispatch: BuiltinDispatch::Stdlib,
             supports_trailing_lambda: false,
         },
         BuiltinDef {
@@ -233,8 +183,6 @@ fn build_registry() -> Vec<BuiltinDef> {
             return_type: int(),
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: true,
-            runtime_fn: "",
-            dispatch: BuiltinDispatch::Stdlib,
             supports_trailing_lambda: false,
         },
         BuiltinDef {
@@ -243,8 +191,6 @@ fn build_registry() -> Vec<BuiltinDef> {
             return_type: unit(),
             ufcs_receiver: UfcsReceiverKind::Global,
             readonly: false,
-            runtime_fn: "",
-            dispatch: BuiltinDispatch::Print,
             supports_trailing_lambda: false,
         },
         BuiltinDef {
@@ -253,8 +199,6 @@ fn build_registry() -> Vec<BuiltinDef> {
             return_type: unit(),
             ufcs_receiver: UfcsReceiverKind::Global,
             readonly: false,
-            runtime_fn: "",
-            dispatch: BuiltinDispatch::Print,
             supports_trailing_lambda: false,
         },
         BuiltinDef {
@@ -263,8 +207,6 @@ fn build_registry() -> Vec<BuiltinDef> {
             return_type: string(),
             ufcs_receiver: UfcsReceiverKind::Global,
             readonly: true,
-            runtime_fn: "",
-            dispatch: BuiltinDispatch::Stdlib,
             supports_trailing_lambda: false,
         },
         // Callback-based list builtins (hot path; dispatch via builtin_callback_list)
@@ -274,8 +216,6 @@ fn build_registry() -> Vec<BuiltinDef> {
             return_type: bool(),
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: true,
-            runtime_fn: "action_list_any_walk",
-            dispatch: BuiltinDispatch::CallbackList,
             supports_trailing_lambda: true,
         },
         BuiltinDef {
@@ -284,8 +224,6 @@ fn build_registry() -> Vec<BuiltinDef> {
             return_type: bool(),
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: true,
-            runtime_fn: "action_list_all_walk",
-            dispatch: BuiltinDispatch::CallbackList,
             supports_trailing_lambda: true,
         },
         BuiltinDef {
@@ -294,8 +232,6 @@ fn build_registry() -> Vec<BuiltinDef> {
             return_type: nullable_int(),
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: true,
-            runtime_fn: "",
-            dispatch: BuiltinDispatch::Stdlib,
             supports_trailing_lambda: false,
         },
         BuiltinDef {
@@ -304,8 +240,6 @@ fn build_registry() -> Vec<BuiltinDef> {
             return_type: list(),
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: true,
-            runtime_fn: "",
-            dispatch: BuiltinDispatch::Stdlib,
             supports_trailing_lambda: false,
         },
         BuiltinDef {
@@ -314,8 +248,6 @@ fn build_registry() -> Vec<BuiltinDef> {
             return_type: list(),
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: false,
-            runtime_fn: "action_list_remove",
-            dispatch: BuiltinDispatch::Stdlib,
             supports_trailing_lambda: false,
         },
         BuiltinDef {
@@ -324,8 +256,6 @@ fn build_registry() -> Vec<BuiltinDef> {
             return_type: list(),
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: false,
-            runtime_fn: "action_list_insert",
-            dispatch: BuiltinDispatch::Stdlib,
             supports_trailing_lambda: false,
         },
         BuiltinDef {
@@ -334,8 +264,6 @@ fn build_registry() -> Vec<BuiltinDef> {
             return_type: list(),
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: true,
-            runtime_fn: "action_list_with_index",
-            dispatch: BuiltinDispatch::Stdlib,
             supports_trailing_lambda: false,
         },
     ]
@@ -384,41 +312,6 @@ fn ufcs_matches(def: &BuiltinDef, kind: UfcsReceiverKind) -> bool {
 /// Lookup a UFCS method on a receiver kind.
 pub fn lookup_ufcs(kind: UfcsReceiverKind, method: &str) -> Option<&'static BuiltinDef> {
     lookup(method).filter(|d| ufcs_matches(d, kind))
-}
-
-impl BuiltinDef {
-    pub fn is_readonly_ufcs_on_list(&self) -> bool {
-        self.readonly && self.ufcs_receiver == UfcsReceiverKind::List
-    }
-
-    pub fn is_readonly_ufcs_on_collection(&self) -> bool {
-        self.readonly && self.ufcs_receiver == UfcsReceiverKind::Collection
-    }
-
-    /// Index of the list argument for higher-order builtins (map/filter/fold/any/all).
-    pub fn list_operand_index(&self, has_trailing: bool, arg_count: usize) -> Option<usize> {
-        match self.dispatch {
-            BuiltinDispatch::Map | BuiltinDispatch::Filter | BuiltinDispatch::CallbackList => {
-                if has_trailing {
-                    Some(0)
-                } else if arg_count >= 2 {
-                    Some(1)
-                } else {
-                    None
-                }
-            }
-            BuiltinDispatch::Fold => {
-                if has_trailing && arg_count >= 2 {
-                    Some(1)
-                } else if arg_count >= 3 {
-                    Some(1)
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        }
-    }
 }
 
 #[cfg(test)]

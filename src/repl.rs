@@ -114,10 +114,7 @@ pub fn eval_repl_line(
                 program = Program { stmts: vec![stmt] };
             }
             Err(e) => {
-                eprintln!(
-                    "Parse error at line {}, col {}: {}",
-                    e.line, e.col, e.message
-                );
+                eprintln!("{}", e);
                 return Ok(());
             }
         }

@@ -40,7 +40,7 @@ fn generate_runtime_bitcode_embed() {
 
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=crates/runtime-bc-emit/");
-    println!("cargo:rerun-if-changed=src/codegen/runtime_decl/");
+    println!("cargo:rerun-if-changed=src/backend/codegen/runtime_decl/");
 
     if std::env::var("ACTION_BUILDING_RUNTIME_BC").is_ok() {
         write_embed_none(&embed_rs);
@@ -166,7 +166,8 @@ fn build_host_runtime_staticlib() {
         .map(PathBuf::from)
         .unwrap_or_else(|_| manifest_dir.join("target"));
 
-    let lib_path = target_dir.join(profile).join("libaction_host_rt.a");
+    let host_rt_target = target_dir.join("host_rt_build");
+    let lib_path = host_rt_target.join(profile).join("libaction_host_rt.a");
     let sources = [
         host_rt_manifest.clone(),
         manifest_dir.join("src/runtime_json.rs"),
@@ -180,7 +181,9 @@ fn build_host_runtime_staticlib() {
     let mut cmd = Command::new("cargo");
     cmd.current_dir(&manifest_dir);
     cmd.env("ACTION_BUILDING_HOST_RT", "1");
-    cmd.env("CARGO_TARGET_DIR", &target_dir);
+    // Separate target dir: nested build must not share the outer artifact lock (CI deadlock).
+    let host_rt_target = target_dir.join("host_rt_build");
+    cmd.env("CARGO_TARGET_DIR", &host_rt_target);
     cmd.args(["build", "--manifest-path"])
         .arg(&host_rt_manifest);
     if profile == "release" {
