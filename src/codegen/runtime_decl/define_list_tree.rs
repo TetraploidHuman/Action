@@ -1022,10 +1022,54 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_compare(IntPredicate::EQ, li_idx3, li_len, "is_append")
             .map_err(llvm_err)?;
         let li_append_bb = self.context.append_basic_block(li_fn, "append");
+        let li_prepend_bb = self.context.append_basic_block(li_fn, "prepend");
         let li_split_bb = self.context.append_basic_block(li_fn, "split");
         let _ = self
             .builder
-            .build_conditional_branch(li_is_append, li_append_bb, li_split_bb);
+            .build_conditional_branch(li_is_append, li_append_bb, li_prepend_bb);
+        // Prepend (index==0): concat(singleton(elem), list) — avoids take/drop split
+        self.builder.position_at_end(li_prepend_bb);
+        let li_is_prepend = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, li_idx3, z, "is_prepend")
+            .map_err(llvm_err)?;
+        let li_prepend_body = self.context.append_basic_block(li_fn, "prepend_body");
+        let _ = self
+            .builder
+            .build_conditional_branch(li_is_prepend, li_prepend_body, li_split_bb);
+        self.builder.position_at_end(li_prepend_body);
+        let li_create_fn = self.module.get_function("action_list_create").unwrap();
+        let li_push_fn = self.module.get_function("action_list_push").unwrap();
+        let li_concat_fn = self.module.get_function("action_list_concat").unwrap();
+        let li_pre_empty = self
+            .builder
+            .build_call(li_create_fn, &[z.into()], "pre_empty")
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_struct_value();
+        let li_pre_sing = self
+            .builder
+            .build_call(
+                li_push_fn,
+                &[li_pre_empty.into(), li_elem.into()],
+                "pre_sing",
+            )
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_struct_value();
+        let li_pre_rv = self
+            .builder
+            .build_call(
+                li_concat_fn,
+                &[li_pre_sing.into(), li_list.into()],
+                "pre_rv",
+            )
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic();
+        let _ = self.builder.build_return(Some(&li_pre_rv));
         // Append: just push
         self.builder.position_at_end(li_append_bb);
         let li_push_fn = self.module.get_function("action_list_push").unwrap();
@@ -1036,7 +1080,7 @@ impl<'ctx> CodeGen<'ctx> {
             .try_as_basic_value()
             .unwrap_basic();
         let _ = self.builder.build_return(Some(&li_push_rv));
-        // Split: take + push + drop + concat
+        // Split: take + push + drop + concat (insert_rec path-copy: see define_list_insert_rec)
         self.builder.position_at_end(li_split_bb);
         let li_take_fn = self.module.get_function("action_list_take").unwrap();
         let li_drop_fn = self.module.get_function("action_list_drop").unwrap();

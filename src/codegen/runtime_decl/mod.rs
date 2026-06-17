@@ -446,6 +446,8 @@ impl<'ctx> CodeGen<'ctx> {
         self.define_print()?;
         self.define_str_basic()?;
         self.define_list_core()?;
+        self.define_list_insert_rec()?;
+        self.define_list_iter()?;
         self.define_list_xform()?;
         self.define_str_util()?;
         self.define_hash_table()?;
@@ -458,6 +460,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.define_list_tree()?;
         self.define_math_ms()?;
         self.define_misc()?;
+        self.apply_runtime_fn_attrs();
         Ok(())
     }
 }
@@ -467,6 +470,8 @@ mod define_file_parse;
 mod define_hash_table;
 mod define_list_core;
 mod define_list_extra;
+mod define_list_insert_rec;
+mod define_list_iter;
 mod define_list_tree;
 mod define_list_xform;
 mod define_map;

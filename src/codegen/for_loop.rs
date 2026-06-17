@@ -127,7 +127,12 @@ impl<'ctx> CodeGen<'ctx> {
             } => self.compile_for_iterate(var, iterable, body, *collect),
             ForKind::Condition {
                 condition, body, ..
-            } => self.compile_for_condition(condition, body),
+            } => {
+                if let Some(result) = self.try_compile_for_sequential_list_get(condition, body)? {
+                    return Ok(result);
+                }
+                self.compile_for_condition(condition, body)
+            }
             ForKind::Infinite { body, .. } => self.compile_for_infinite(body),
             ForKind::NestedIterate {
                 bindings,
@@ -320,6 +325,13 @@ impl<'ctx> CodeGen<'ctx> {
             .build_store(idx_alloca, start_val)
             .map_err(llvm_err)?;
 
+        // Sequential get cache for list iteration (for x in lst / walk optimization)
+        let list_get_cache = if input_list_ptr.is_some() {
+            Some(self.alloc_list_get_cache()?)
+        } else {
+            None
+        };
+
         // For list iteration, allocate separate element value storage (fat struct {i64, ptr})
         let val_alloca = if input_list_ptr.is_some() {
             Some(
@@ -364,18 +376,11 @@ impl<'ctx> CodeGen<'ctx> {
         // Loop body
         self.builder.position_at_end(loop_body);
 
-        // For list iteration: load the element at current index via action_list_get (tree-aware)
-        if let (Some(va), Some(list_ptr)) = (val_alloca, input_list_ptr) {
-            let loaded = self.load_list(list_ptr)?;
-            let list_get_cc = self.call_rt("action_list_get", &[loaded.into(), current.into()])?;
-            let fat_elem = list_get_cc
-                .try_as_basic_value()
-                .basic()
-                .ok_or("list_get failed")?;
-            let tag = self
-                .builder
-                .build_extract_value(fat_elem.into_struct_value(), 0, "elem_tag")
-                .map_err(llvm_err)?;
+        // For list iteration: load element via cached sequential walk (O(1) within leaf)
+        if let (Some(va), Some(list_ptr), Some(cache)) =
+            (val_alloca, input_list_ptr, list_get_cache)
+        {
+            let tag = self.list_get_cached_tag(list_ptr, current, cache)?;
             self.builder.build_store(va, tag).map_err(llvm_err)?;
         }
 
@@ -546,6 +551,11 @@ impl<'ctx> CodeGen<'ctx> {
             .build_store(idx_alloca, zero)
             .map_err(llvm_err)?;
 
+        let list_get_cache = match &mode {
+            IterMode::List { .. } => Some(self.alloc_list_get_cache()?),
+            _ => None,
+        };
+
         let item_alloca = self
             .builder
             .build_alloca(i64, "for_idx_item")
@@ -595,20 +605,27 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?;
             }
             IterMode::List { list_ptr, .. } => {
-                let loaded = self.load_list(*list_ptr)?;
-                let list_get_cc =
-                    self.call_rt("action_list_get", &[loaded.into(), current_idx.into()])?;
-                let fat_elem = list_get_cc
-                    .try_as_basic_value()
-                    .basic()
-                    .ok_or("list_get failed")?;
-                let tag = self
-                    .builder
-                    .build_extract_value(fat_elem.into_struct_value(), 0, "elem_tag")
-                    .map_err(llvm_err)?;
-                self.builder
-                    .build_store(item_alloca, tag)
-                    .map_err(llvm_err)?;
+                if let Some(cache) = list_get_cache {
+                    let tag = self.list_get_cached_tag(*list_ptr, current_idx, cache)?;
+                    self.builder
+                        .build_store(item_alloca, tag)
+                        .map_err(llvm_err)?;
+                } else {
+                    let loaded = self.load_list(*list_ptr)?;
+                    let list_get_cc =
+                        self.call_rt("action_list_get", &[loaded.into(), current_idx.into()])?;
+                    let fat_elem = list_get_cc
+                        .try_as_basic_value()
+                        .basic()
+                        .ok_or("list_get failed")?;
+                    let tag = self
+                        .builder
+                        .build_extract_value(fat_elem.into_struct_value(), 0, "elem_tag")
+                        .map_err(llvm_err)?;
+                    self.builder
+                        .build_store(item_alloca, tag)
+                        .map_err(llvm_err)?;
+                }
             }
         }
 
@@ -862,6 +879,224 @@ impl<'ctx> CodeGen<'ctx> {
             Ok(TypedValue::List(list_ptr))
         } else {
             Ok(TypedValue::Unit)
+        }
+    }
+
+    /// Cache alloca for action_list_get_cached: 32 bytes {valid, last_idx, leaf, pos}.
+    fn alloc_list_get_cache(&mut self) -> Result<PointerValue<'ctx>, String> {
+        let i8 = self.context.i8_type();
+        let cache = self
+            .builder
+            .build_alloca(i8.array_type(32), "list_get_cache")
+            .map_err(llvm_err)?;
+        let cache_i8 = self
+            .builder
+            .build_pointer_cast(
+                cache,
+                i8.ptr_type(inkwell::AddressSpace::default()),
+                "cache_i8",
+            )
+            .map_err(llvm_err)?;
+        let zero_i8 = i8.const_int(0, false);
+        self.builder
+            .build_store(cache_i8, zero_i8)
+            .map_err(llvm_err)?;
+        Ok(cache)
+    }
+
+    fn list_get_cached_tag(
+        &mut self,
+        list_ptr: PointerValue<'ctx>,
+        idx: IntValue<'ctx>,
+        cache: PointerValue<'ctx>,
+    ) -> Result<IntValue<'ctx>, String> {
+        let loaded = self.load_list(list_ptr)?;
+        let cc = self.call_rt(
+            "action_list_get_cached",
+            &[loaded.into(), idx.into(), cache.into()],
+        )?;
+        let fat_elem = cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("list_get_cached failed")?;
+        self.builder
+            .build_extract_value(fat_elem.into_struct_value(), 0, "elem_tag")
+            .map_err(llvm_err)
+            .map(|v| v.into_int_value())
+    }
+
+    /// `for idx < end { lst.get(idx); idx = idx + 1 }` — cached sequential walk.
+    fn try_compile_for_sequential_list_get(
+        &mut self,
+        condition: &Expr,
+        body: &Expr,
+    ) -> Result<Option<TypedValue<'ctx>>, String> {
+        let (idx_var, end_expr) = match condition {
+            Expr::Binary(lhs, BinaryOp::Lt, rhs) => match (&**lhs, &**rhs) {
+                (Expr::Ident(v), end) => (v.clone(), end.clone()),
+                _ => return Ok(None),
+            },
+            _ => return Ok(None),
+        };
+        let (list_expr, get_idx_var) = match Self::find_list_get_in_expr(body) {
+            Some(v) => v,
+            None => return Ok(None),
+        };
+        if get_idx_var != idx_var {
+            return Ok(None);
+        }
+        if !Self::body_increments_var(body, &idx_var) {
+            return Ok(None);
+        }
+
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("Cannot compile for outside function")?;
+
+        let i64 = self.i64_ty();
+        let zero = i64.const_int(0, false);
+        let one = i64.const_int(1, false);
+
+        let list_val = self.compile_expr(&list_expr)?;
+        let list_ptr = match &list_val {
+            TypedValue::List(p) => *p,
+            _ => return Ok(None),
+        };
+
+        let end_val = self.compile_expr(&end_expr)?;
+        let end_bound = match end_val {
+            TypedValue::Int(v) => v,
+            _ => return Ok(None),
+        };
+
+        let idx_alloca = self
+            .builder
+            .build_alloca(i64, "seq_idx")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(idx_alloca, zero)
+            .map_err(llvm_err)?;
+        let cache = self.alloc_list_get_cache()?;
+        let tmp_alloca = self
+            .builder
+            .build_alloca(i64, "seq_tmp")
+            .map_err(llvm_err)?;
+
+        let header = self.context.append_basic_block(current_fn, "seq_hdr");
+        let body_bb = self.context.append_basic_block(current_fn, "seq_body");
+        let exit = self.context.append_basic_block(current_fn, "seq_exit");
+
+        let saved_continue = self.continue_target;
+        let saved_break = self.break_target;
+        self.continue_target = Some(header);
+        self.break_target = Some(exit);
+
+        self.builder
+            .build_unconditional_branch(header)
+            .map_err(llvm_err)?;
+        self.builder.position_at_end(header);
+        let cur = self
+            .builder
+            .build_load(i64, idx_alloca, "seq_i")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let cond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, cur, end_bound, "seq_cond")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_conditional_branch(cond, body_bb, exit)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(body_bb);
+        let tag = self.list_get_cached_tag(list_ptr, cur, cache)?;
+        self.builder
+            .build_store(tmp_alloca, tag)
+            .map_err(llvm_err)?;
+        let next = self
+            .builder
+            .build_int_add(cur, one, "seq_next")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(idx_alloca, next)
+            .map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(header)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(exit);
+        self.continue_target = saved_continue;
+        self.break_target = saved_break;
+
+        Ok(Some(TypedValue::Unit))
+    }
+
+    fn find_list_get_in_expr(body: &Expr) -> Option<(Expr, String)> {
+        match body {
+            Expr::Block(stmts) => {
+                for stmt in stmts {
+                    if let Some(v) = Self::find_list_get_in_stmt(stmt) {
+                        return Some(v);
+                    }
+                }
+                None
+            }
+            other => Self::find_list_get_in_expr_inner(other),
+        }
+    }
+
+    fn find_list_get_in_stmt(stmt: &Stmt) -> Option<(Expr, String)> {
+        match stmt {
+            Stmt::Let { value, .. } => Self::find_list_get_in_expr_inner(value),
+            Stmt::Expr { expr, .. } => Self::find_list_get_in_expr_inner(expr),
+            _ => None,
+        }
+    }
+
+    fn find_list_get_in_expr_inner(expr: &Expr) -> Option<(Expr, String)> {
+        match expr {
+            Expr::Call { func, args, .. } => {
+                if let Expr::FieldAccess(obj, method) = &**func {
+                    if method == "get" && args.len() == 1 {
+                        if let Expr::Ident(idx) = &args[0] {
+                            return Some(((*obj.clone()).clone(), idx.clone()));
+                        }
+                    }
+                }
+                None
+            }
+            Expr::Block(stmts) => Self::find_list_get_in_expr(&Expr::Block(stmts.clone())),
+            _ => None,
+        }
+    }
+
+    fn body_increments_var(body: &Expr, var: &str) -> bool {
+        match body {
+            Expr::Block(stmts) => stmts.iter().any(|s| Self::stmt_increments_var(s, var)),
+            Expr::Assign { target, value } => Self::is_var_increment(target, value, var),
+            _ => false,
+        }
+    }
+
+    fn stmt_increments_var(stmt: &Stmt, var: &str) -> bool {
+        match stmt {
+            Stmt::Expr { expr, .. } => match expr {
+                Expr::Assign { target, value } => Self::is_var_increment(target, value, var),
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
+    fn is_var_increment(target: &Expr, value: &Expr, var: &str) -> bool {
+        match (target, value) {
+            (Expr::Ident(t), Expr::Binary(lhs, BinaryOp::Add, rhs)) if t == var => {
+                matches!(&**lhs, Expr::Ident(v) if v == var)
+                    || matches!(&**rhs, Expr::Ident(v) if v == var)
+            }
+            _ => false,
         }
     }
 }
