@@ -68,7 +68,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             #[cfg(not(target_os = "windows"))]
             {
-                let stdin_g = self.module.add_global(ptr, None, "stdin");
+                let stdin_g = self.add_module_global(ptr, "stdin")?;
                 self.builder
                     .build_load(ptr, stdin_g.as_pointer_value(), "stdin_ptr")
                     .map_err(llvm_err)?

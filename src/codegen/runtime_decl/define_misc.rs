@@ -18,14 +18,14 @@ impl<'ctx> CodeGen<'ctx> {
         let i8 = self.context.i8_type();
         let _zero = self.i64_ty().const_int(0, false);
         let _malloc_rc_fn = self.module.get_function("action_malloc_rc").unwrap();
-        let _fmt_lb_ptr = self.make_global_str(".fmt_lb", b"[\0");
-        let _fmt_rb_ptr = self.make_global_str(".fmt_rb", b"]\0");
-        let _fmt_sep_ptr = self.make_global_str(".fmt_sep", b", \0");
+        let _fmt_lb_ptr = self.make_global_str(".fmt_lb", b"[\0")?;
+        let _fmt_rb_ptr = self.make_global_str(".fmt_rb", b"]\0")?;
+        let _fmt_sep_ptr = self.make_global_str(".fmt_sep", b", \0")?;
         let saved_pos = self.builder.get_insert_block();
         let _malloc_rc_fn = self.module.get_function("action_malloc_rc").unwrap();
-        let _fmt_lb_ptr = self.make_global_str(".fmt_lb", b"[\0");
-        let _fmt_rb_ptr = self.make_global_str(".fmt_rb", b"]\0");
-        let _fmt_sep_ptr = self.make_global_str(".fmt_sep", b", \0");
+        let _fmt_lb_ptr = self.make_global_str(".fmt_lb", b"[\0")?;
+        let _fmt_rb_ptr = self.make_global_str(".fmt_rb", b"]\0")?;
+        let _fmt_sep_ptr = self.make_global_str(".fmt_sep", b", \0")?;
 
         let _list_create_fn = self.module.get_function("action_list_create").unwrap();
         let _list_push_fn = self.module.get_function("action_list_push").unwrap();

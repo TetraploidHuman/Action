@@ -20,7 +20,7 @@ impl<'ctx> CodeGen<'ctx> {
         let _list_get_fn = self.module.get_function("action_list_get").unwrap();
         // ---- action_rand_init() ----
         // Simple LCG state: uses a global i64 seed initialized to 1
-        let rand_seed_g = self.module.add_global(i64, None, "action_rand_seed");
+        let rand_seed_g = self.add_module_global(i64, "action_rand_seed")?;
         rand_seed_g.set_initializer(&i64.const_int(123456789, false));
 
         // ---- action_rand_int(i64 min, i64 max) -> i64 ----

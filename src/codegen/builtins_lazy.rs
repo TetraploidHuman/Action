@@ -543,9 +543,7 @@ impl<'ctx> CodeGen<'ctx> {
         let cap_ty = self
             .context
             .struct_type(&[self.ptr_ty().into(), self.ptr_ty().into()], false);
-        let cap_global = self
-            .module
-            .add_global(cap_ty, None, &format!("{}_cap", wrapper_name));
+        let cap_global = self.add_module_global(cap_ty, &format!("{}_cap", wrapper_name))?;
         cap_global.set_initializer(&cap_ty.const_zero());
         let cap_ptr = cap_global.as_pointer_value();
         let c_gep0 = self
@@ -769,9 +767,7 @@ impl<'ctx> CodeGen<'ctx> {
         let cap_ty = self
             .context
             .struct_type(&[self.ptr_ty().into(), self.ptr_ty().into()], false);
-        let cap_global = self
-            .module
-            .add_global(cap_ty, None, &format!("{}_cap", wrapper_name));
+        let cap_global = self.add_module_global(cap_ty, &format!("{}_cap", wrapper_name))?;
         cap_global.set_initializer(&cap_ty.const_zero());
         let cap_ptr = cap_global.as_pointer_value();
         let c_gep0 = self

@@ -6,14 +6,79 @@
 //
 
 use crate::ast::*;
-use inkwell::types::BasicTypeEnum;
-use inkwell::values::PointerValue;
+use inkwell::types::{BasicType, BasicTypeEnum};
+use inkwell::values::{GlobalValue, IntValue, PointerValue};
 use inkwell::IntPredicate;
 
 use super::{llvm_err, CodeGen, Scope, TypedValue, ValKind};
-use inkwell::values::IntValue;
 
 impl<'ctx> CodeGen<'ctx> {
+    /// Park the IR builder in `__cg_anchor` so module-level mutations do not touch
+    /// user/runtime function IR. Prefer [`Self::add_module_global`] over raw `module.add_global`.
+    pub(super) fn detach_builder(&self) -> Result<(), String> {
+        self.position_codegen_anchor()
+    }
+
+    /// Add a module global, temporarily detaching the IR builder from any in-progress block.
+    /// Restores an in-progress (non-terminated) insertion point afterward.
+    pub(super) fn add_module_global<T>(
+        &self,
+        ty: T,
+        name: &str,
+    ) -> Result<GlobalValue<'ctx>, String>
+    where
+        T: BasicType<'ctx>,
+    {
+        let saved_pos = self
+            .builder
+            .get_insert_block()
+            .filter(|bb| bb.get_terminator().is_none());
+        self.detach_builder()?;
+        let global = self.module.add_global(ty, None, name);
+        if let Some(bb) = saved_pos {
+            self.builder.position_at_end(bb);
+        }
+        Ok(global)
+    }
+
+    /// Park the IR builder in a dedicated void function so module-level work
+    /// (e.g. `add_global` for consts) does not corrupt runtime or user IR.
+    pub(super) fn position_codegen_anchor(&self) -> Result<(), String> {
+        let void = self.void_ty();
+        let anchor_fn = if let Some(f) = self.module.get_function("__cg_anchor") {
+            f
+        } else {
+            let f = self
+                .module
+                .add_function("__cg_anchor", void.fn_type(&[], false), None);
+            let entry = self.context.append_basic_block(f, "entry");
+            let park = self.context.append_basic_block(f, "park");
+            self.builder.position_at_end(entry);
+            self.builder
+                .build_unconditional_branch(park)
+                .map_err(llvm_err)?;
+            f
+        };
+        let park = anchor_fn
+            .get_last_basic_block()
+            .ok_or("__cg_anchor missing park block")?;
+        self.builder.position_at_end(park);
+        Ok(())
+    }
+
+    pub(super) fn finalize_codegen_anchor(&self) -> Result<(), String> {
+        if let Some(anchor_fn) = self.module.get_function("__cg_anchor") {
+            if let Some(park) = anchor_fn.get_last_basic_block() {
+                if park.get_terminator().is_none() {
+                    self.builder.position_at_end(park);
+                    self.builder.build_unreachable().map_err(llvm_err)?;
+                }
+            }
+        }
+        self.builder.clear_insertion_position();
+        Ok(())
+    }
+
     pub(super) fn compile_index(
         &mut self,
         obj: &Expr,

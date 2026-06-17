@@ -452,29 +452,29 @@ impl<'ctx> CodeGen<'ctx> {
                         let (global_ptr, ty, kind): (PointerValue, BasicTypeEnum, ValKind) =
                             match lit {
                                 Literal::Int(n) => {
-                                    let g = self.module.add_global(self.i64_ty(), None, name);
+                                    let g = self.add_module_global(self.i64_ty(), name)?;
                                     g.set_initializer(&self.i64_ty().const_int(*n as u64, true));
                                     (g.as_pointer_value(), self.i64_ty().into(), ValKind::Int)
                                 }
                                 Literal::Float(n) => {
-                                    let g = self.module.add_global(self.f64_ty(), None, name);
+                                    let g = self.add_module_global(self.f64_ty(), name)?;
                                     g.set_initializer(&self.f64_ty().const_float(*n));
                                     (g.as_pointer_value(), self.f64_ty().into(), ValKind::Float)
                                 }
                                 Literal::Bool(b) => {
-                                    let g = self.module.add_global(self.bool_ty(), None, name);
+                                    let g = self.add_module_global(self.bool_ty(), name)?;
                                     g.set_initializer(
                                         &self.bool_ty().const_int(if *b { 1 } else { 0 }, false),
                                     );
                                     (g.as_pointer_value(), self.bool_ty().into(), ValKind::Bool)
                                 }
                                 Literal::Char(c) => {
-                                    let g = self.module.add_global(self.i64_ty(), None, name);
+                                    let g = self.add_module_global(self.i64_ty(), name)?;
                                     g.set_initializer(&self.i64_ty().const_int(*c as u64, false));
                                     (g.as_pointer_value(), self.i64_ty().into(), ValKind::Int)
                                 }
                                 Literal::Unit => {
-                                    let g = self.module.add_global(self.i64_ty(), None, name);
+                                    let g = self.add_module_global(self.i64_ty(), name)?;
                                     g.set_initializer(&self.i64_ty().const_int(0, false));
                                     (g.as_pointer_value(), self.i64_ty().into(), ValKind::Unit)
                                 }
@@ -487,11 +487,10 @@ impl<'ctx> CodeGen<'ctx> {
                                         .context
                                         .i8_type()
                                         .array_type(content_bytes.len() as u32);
-                                    let str_data_g = self.module.add_global(
+                                    let str_data_g = self.add_module_global(
                                         arr_ty,
-                                        None,
                                         &format!("__const_str_data_{}", name),
-                                    );
+                                    )?;
                                     let arr_val = self.context.const_string(&content_bytes, false);
                                     str_data_g.set_initializer(&arr_val);
                                     // Create constant fat struct {i64, ptr}
@@ -503,7 +502,7 @@ impl<'ctx> CodeGen<'ctx> {
                                     let fat_struct = self
                                         .context
                                         .const_struct(&[len_val.into(), data_ptr_i8.into()], false);
-                                    let g = self.module.add_global(self.string_type, None, name);
+                                    let g = self.add_module_global(self.string_type, name)?;
                                     g.set_initializer(&fat_struct);
                                     (g.as_pointer_value(), self.string_type.into(), ValKind::Str)
                                 }
@@ -514,7 +513,7 @@ impl<'ctx> CodeGen<'ctx> {
                         let val = self.compile_expr(value)?;
                         if let Some(bv) = val.to_bv() {
                             let ty = bv.get_type();
-                            let g = self.module.add_global(ty, None, name);
+                            let g = self.add_module_global(ty, name)?;
                             g.set_initializer(&bv);
                             self.consts
                                 .insert(name.clone(), (g.as_pointer_value(), ty, val.val_kind()));
@@ -1012,11 +1011,15 @@ impl<'ctx> CodeGen<'ctx> {
         })?;
         let entry = self.context.append_basic_block(function, "entry");
 
-        // Save builder position (skip runtime `action_*` blocks left by define_runtime).
+        // Save builder position only when resuming in-progress codegen (monomorphization).
         let saved_pos = self.builder.get_insert_block().filter(|bb| {
-            !bb.get_parent()
-                .map(|f| f.get_name().to_string_lossy().starts_with("action_"))
-                .unwrap_or(false)
+            let Some(parent) = bb.get_parent() else {
+                return false;
+            };
+            if parent.get_name().to_string_lossy().starts_with("action_") {
+                return false;
+            }
+            bb.get_terminator().is_none()
         });
         self.builder.position_at_end(entry);
 
@@ -1389,6 +1392,8 @@ impl<'ctx> CodeGen<'ctx> {
         // Restore builder position
         if let Some(block) = saved_pos {
             self.builder.position_at_end(block);
+        } else {
+            self.detach_builder()?;
         }
 
         Ok(())

@@ -671,7 +671,7 @@ pub fn load_stdlib() -> Result<Vec<Stmt>, String> {
     let cwd_lib = std::env::current_dir()
         .map_err(|e| format!("Cannot get current dir: {}", e))?
         .join("lib");
-    for file_name in &["math.at"] as &[&str] {
+    for file_name in &["math.at", "json.at"] as &[&str] {
         let path = [&exe_lib, &cwd_lib]
             .iter()
             .map(|d| d.join(file_name))

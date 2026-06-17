@@ -273,7 +273,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(rf_path_s, 1, "path_data")
             .map_err(llvm_err)?
             .into_pointer_value();
-        let rf_mode = self.make_global_str(".rf_mode", b"rb\0");
+        let rf_mode = self.make_global_str(".rf_mode", b"rb\0")?;
         let rf_file = self
             .builder
             .build_call(fopen_fn, &[rf_path_data.into(), rf_mode.into()], "file")
@@ -446,7 +446,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(wf_content, 1, "cdata")
             .map_err(llvm_err)?
             .into_pointer_value();
-        let wf_wmode = self.make_global_str(".wf_mode", b"wb\0");
+        let wf_wmode = self.make_global_str(".wf_mode", b"wb\0")?;
         let wf_file = self
             .builder
             .build_call(fopen_fn, &[wf_pdata.into(), wf_wmode.into()], "file")
@@ -517,7 +517,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(fe_path, 1, "pdata")
             .map_err(llvm_err)?
             .into_pointer_value();
-        let fe_mode = self.make_global_str(".fe_mode", b"r\0");
+        let fe_mode = self.make_global_str(".fe_mode", b"r\0")?;
         let fe_file = self
             .builder
             .build_call(fopen_fn, &[fe_pdata.into(), fe_mode.into()], "file")
@@ -584,7 +584,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(fa_content, 1, "cdata")
             .map_err(llvm_err)?
             .into_pointer_value();
-        let fa_amode = self.make_global_str(".fa_mode", b"a\0");
+        let fa_amode = self.make_global_str(".fa_mode", b"a\0")?;
         let fa_file = self
             .builder
             .build_call(fopen_fn, &[fa_pdata.into(), fa_amode.into()], "file")

@@ -11,6 +11,7 @@ use std::collections::HashMap;
 impl<'ctx> CodeGen<'ctx> {
     pub fn compile(&mut self, program: &Program) -> Result<(), String> {
         self.define_runtime()?;
+        self.detach_builder()?;
 
         // Pass 0: Register type definitions and create LLVM types
         for stmt in &program.stmts {
@@ -247,6 +248,8 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
         }
+
+        self.finalize_codegen_anchor()?;
 
         Ok(())
     }

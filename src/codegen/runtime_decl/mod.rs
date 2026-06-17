@@ -34,13 +34,13 @@ impl<'ctx> CodeGen<'ctx> {
         &self,
         name: &str,
         content: &[u8],
-    ) -> inkwell::values::PointerValue<'ctx> {
+    ) -> Result<inkwell::values::PointerValue<'ctx>, String> {
         let i8 = self.context.i8_type();
         let arr_ty = i8.array_type(content.len() as u32);
-        let global = self.module.add_global(arr_ty, None, name);
+        let global = self.add_module_global(arr_ty, name)?;
         let arr = self.context.const_string(content, false);
         global.set_initializer(&arr);
-        global.as_pointer_value()
+        Ok(global.as_pointer_value())
     }
 
     pub(super) fn define_runtime(&self) -> Result<(), String> {

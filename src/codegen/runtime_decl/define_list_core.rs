@@ -19,13 +19,13 @@ impl<'ctx> CodeGen<'ctx> {
 
         let zero = self.i64_ty().const_int(0, false);
         let _malloc_rc_fn = self.module.get_function("action_malloc_rc").unwrap();
-        let fmt_lb_ptr = self.make_global_str(".fmt_lb", b"[\0");
-        let fmt_rb_ptr = self.make_global_str(".fmt_rb", b"]\0");
-        let fmt_sep_ptr = self.make_global_str(".fmt_sep", b", \0");
+        let fmt_lb_ptr = self.make_global_str(".fmt_lb", b"[\0")?;
+        let fmt_rb_ptr = self.make_global_str(".fmt_rb", b"]\0")?;
+        let fmt_sep_ptr = self.make_global_str(".fmt_sep", b", \0")?;
         let malloc_rc_fn = self.module.get_function("action_malloc_rc").unwrap();
 
         let printf_fn = self.module.get_function("printf").unwrap();
-        let fmt_int_ptr = self.make_global_str(".fmt_int", b"%ld\0");
+        let fmt_int_ptr = self.make_global_str(".fmt_int", b"%ld\0")?;
 
         // ---- action_list_create(i64 cap) -> {ptr, i64, i64} ----
         // Block-based: allocates an empty leaf node (count=0). cap is ignored for compat.

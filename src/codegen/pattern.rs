@@ -476,7 +476,7 @@ impl<'ctx> CodeGen<'ctx> {
                             let arr_ty = self.context.i8_type().array_type(str_bytes.len() as u32);
                             self.str_pat_counter += 1;
                             let gname = format!(".str_pat_{}", self.str_pat_counter);
-                            let global = self.module.add_global(arr_ty, None, &gname);
+                            let global = self.add_module_global(arr_ty, &gname)?;
                             let arr = self.context.const_string(str_bytes, false);
                             global.set_initializer(&arr);
                             let pat_data = global.as_pointer_value();
