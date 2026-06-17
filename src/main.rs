@@ -148,12 +148,7 @@ fn main() {
             }
             Err(errors) => {
                 if let Ok(source) = fs::read_to_string(&file) {
-                    let msg = errors
-                        .iter()
-                        .map(|e| e.to_string())
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    report_error(&source, &file.to_string_lossy(), &msg);
+                    report_compiler_errors(&source, &file.to_string_lossy(), &errors);
                 } else {
                     for e in &errors {
                         eprintln!("Error: {}", e);
@@ -213,6 +208,35 @@ fn line_col_to_offset(source: &str, line: usize, col: usize) -> usize {
     source.len()
 }
 
+/// Report structured compiler errors with span-aware highlighting.
+fn report_compiler_errors(source: &str, path: &str, errors: &[CompilerError]) {
+    for err in errors {
+        if let Some(span) = &err.span {
+            let start = line_col_to_offset(source, span.line, span.col);
+            let len = span.highlight_len();
+            let mut report = Report::build(ReportKind::Error, path, start)
+                .with_message(&err.message)
+                .with_label(
+                    Label::new((path, start..start + len))
+                        .with_message("here")
+                        .with_color(Color::Red),
+                );
+            if let Some(ref help) = err.help {
+                report = report.with_help(help.clone());
+            }
+            report
+                .finish()
+                .eprint((path, Source::from(source)))
+                .unwrap_or_else(|_| eprintln!("Error: {}", err.message));
+        } else {
+            eprintln!("\x1b[1;31merror:\x1b[0m {}", err.message);
+            if let Some(ref help) = err.help {
+                eprintln!("  \x1b[1;36mhelp:\x1b[0m {}", help);
+            }
+        }
+    }
+}
+
 /// Report errors with ariadne for pretty source-context output.
 fn report_error(source: &str, path: &str, error: &str) {
     fn parse_error_line(line: &str) -> Option<(usize, usize, String, Option<String>)> {
@@ -260,10 +284,11 @@ fn report_error(source: &str, path: &str, error: &str) {
 
         if let Some((line_num, col, msg, _)) = parse_error_line(line) {
             let offset = line_col_to_offset(source, line_num, col);
+            let highlight_len = 1usize;
             let mut report = Report::build(ReportKind::Error, path, offset)
                 .with_message(&msg)
                 .with_label(
-                    Label::new((path, offset..offset + 1))
+                    Label::new((path, offset..offset + highlight_len))
                         .with_message("here")
                         .with_color(Color::Red),
                 );

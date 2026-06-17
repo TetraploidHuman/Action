@@ -24,6 +24,15 @@ impl Span {
         self.end = end;
         self
     }
+
+    /// Byte length for diagnostic highlighting (at least 1).
+    pub fn highlight_len(&self) -> usize {
+        if self.end > self.start {
+            self.end - self.start
+        } else {
+            1
+        }
+    }
 }
 
 impl Default for Span {

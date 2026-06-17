@@ -17,3 +17,4 @@ pub mod runtime_json;
 pub mod runtime_threading;
 pub mod test_runner;
 pub mod typecheck;
+pub mod types;

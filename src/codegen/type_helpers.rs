@@ -485,11 +485,7 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// Mangle a function name by appending param types: add(Int,Float) → add_Int_Float
     pub(super) fn mangle_name(name: &str, param_types: &[Type]) -> String {
-        if param_types.is_empty() {
-            return name.to_string();
-        }
-        let parts: Vec<String> = param_types.iter().map(|t| format!("{}", t)).collect();
-        format!("{}_{}", name, parts.join("_"))
+        crate::types::mangle_name(name, param_types)
     }
 
     /// Map a TypedValue to a type name string for overload resolution.

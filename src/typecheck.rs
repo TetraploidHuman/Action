@@ -2,6 +2,7 @@ use crate::ast::*;
 use crate::builtin_registry;
 use crate::error::CompilerError;
 use crate::lexer::Span;
+use crate::types::{infer_type_args, mangle_name, types_compatible, unify};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
@@ -321,7 +322,7 @@ impl TypeChecker {
                     let all_typed = params.iter().all(|p| p.ty.is_some());
                     if all_typed && overloaded_names.contains(name.as_str()) {
                         // Use mangled name as key for overloaded functions
-                        let mangled = Self::mangle_name(
+                        let mangled = mangle_name(
                             name,
                             &params
                                 .iter()
@@ -340,9 +341,7 @@ impl TypeChecker {
                     value,
                     ..
                 } => {
-                    let inferred = self
-                        .infer_expr_type(value)
-                        .unwrap_or(Type::Named("Int".into()));
+                    let inferred = self.try_infer_expr_type(value);
                     let ty = type_ann.clone().unwrap_or(inferred);
                     self.type_env.insert(name.clone(), ty);
                 }
@@ -355,9 +354,7 @@ impl TypeChecker {
                     rest,
                     ..
                 } => {
-                    let value_ty = self
-                        .infer_expr_type(value)
-                        .unwrap_or(Type::Named("Int".into()));
+                    let value_ty = self.try_infer_expr_type(value);
                     let field_types: Vec<Type> = if *is_struct {
                         // Struct destructuring: val {x, y} = point
                         // names are local names, renames maps (field_name, local_name)
@@ -441,9 +438,7 @@ impl TypeChecker {
                     value,
                     ..
                 } => {
-                    let inferred = self
-                        .infer_expr_type(value)
-                        .unwrap_or(Type::Named("Int".into()));
+                    let inferred = self.try_infer_expr_type(value);
                     let ty = type_ann.clone().unwrap_or(inferred);
                     self.type_env.insert(name.clone(), ty);
                 }
@@ -461,18 +456,38 @@ impl TypeChecker {
                     let fn_type = Type::Function(param_tys, Box::new(ret_ty));
                     self.type_env.insert(name.clone(), fn_type);
                 }
+                Stmt::Extension {
+                    type_name, methods, ..
+                } => {
+                    for method in methods {
+                        if let Stmt::Fun {
+                            name,
+                            params,
+                            return_type,
+                            ..
+                        } = method
+                        {
+                            let param_tys: Vec<Type> = params
+                                .iter()
+                                .filter(|p| p.name != "self")
+                                .map(|p| p.ty.clone().unwrap_or(Type::Named("Int".into())))
+                                .collect();
+                            let ret_ty = return_type.clone().unwrap_or(Type::Named("Int".into()));
+                            let fn_type = Type::Function(param_tys, Box::new(ret_ty));
+                            let lookup_key = format!("{}.{}", type_name, name);
+                            self.type_env.insert(lookup_key, fn_type);
+                        }
+                    }
+                }
                 _ => {}
             }
         }
     }
 
-    /// Mangle a function name (mirrors codegen version)
-    fn mangle_name(name: &str, param_types: &[Type]) -> String {
-        if param_types.is_empty() {
-            return name.to_string();
-        }
-        let parts: Vec<String> = param_types.iter().map(|t| format!("{}", t)).collect();
-        format!("{}_{}", name, parts.join("_"))
+    /// Lenient inference for environment building (tolerates forward references).
+    fn try_infer_expr_type(&self, expr: &Expr) -> Type {
+        self.infer_expr_type(expr)
+            .unwrap_or(Type::Named("Int".into()))
     }
 
     /// Run all checks on the program. Returns a list of errors.
@@ -527,7 +542,7 @@ impl TypeChecker {
                             let inferred = self
                                 .infer_expr_type(body)
                                 .unwrap_or(Type::Named("Int".into()));
-                            if !self.types_compatible(declared_ret, &inferred) {
+                            if !types_compatible(declared_ret, &inferred) {
                                 let msg = if let Some(hint) =
                                     Self::check_termination(declared_ret, &inferred)
                                 {
@@ -603,7 +618,7 @@ impl TypeChecker {
                         let inferred = self
                             .infer_expr_type(value)
                             .unwrap_or(Type::Named("Int".into()));
-                        if !self.types_compatible(ann, &inferred) {
+                        if !types_compatible(ann, &inferred) {
                             let msg = if let Some(hint) = Self::check_termination(ann, &inferred) {
                                 hint
                             } else {
@@ -630,7 +645,7 @@ impl TypeChecker {
                         let inferred = self
                             .infer_expr_type(value)
                             .unwrap_or(Type::Named("Int".into()));
-                        if !self.types_compatible(ann, &inferred) {
+                        if !types_compatible(ann, &inferred) {
                             let msg = if let Some(hint) = Self::check_termination(ann, &inferred) {
                                 hint
                             } else {
@@ -1234,14 +1249,11 @@ impl TypeChecker {
                             if matches!(arg, Expr::Lambda { .. }) {
                                 continue;
                             }
-                            arg_tys.push(
-                                self.infer_expr_type(arg)
-                                    .unwrap_or(Type::Named("Int".into())),
-                            );
+                            arg_tys.push(self.try_infer_expr_type(arg));
                             filtered_params.push(param_ty.clone());
                         }
                         if !filtered_params.is_empty() {
-                            if let Err(msg) = self.infer_type_args(&filtered_params, &arg_tys) {
+                            if let Err(msg) = infer_type_args(&filtered_params, &arg_tys) {
                                 return Err(CompilerError::new(format!(
                                     "Cannot infer type arguments for '{}': {}",
                                     name, msg
@@ -1272,7 +1284,7 @@ impl TypeChecker {
                                 continue;
                             }
                             let arg_ty = self.infer_expr_type(arg)?;
-                            if !self.types_compatible(param_ty, &arg_ty) {
+                            if !types_compatible(param_ty, &arg_ty) {
                                 let msg = if let Some(hint) =
                                     Self::check_termination(param_ty, &arg_ty)
                                 {
@@ -1297,6 +1309,65 @@ impl TypeChecker {
                         // handle the actual resolution.
                     }
                 }
+            } else {
+                // Overloaded function: resolve mangled name from argument types
+                let arg_tys: Result<Vec<Type>, CompilerError> = args
+                    .iter()
+                    .filter(|a| !matches!(a, Expr::Lambda { .. }))
+                    .map(|a| self.infer_expr_type(a))
+                    .collect();
+                if let Ok(arg_tys) = arg_tys {
+                    let mangled = mangle_name(name, &arg_tys);
+                    if let Some(Type::Function(param_tys, _ret_ty)) = self.type_env.get(&mangled) {
+                        if args.len() != param_tys.len() {
+                            return Err(CompilerError::new(format!(
+                                "Function '{}' expects {} arguments, but got {}",
+                                name,
+                                param_tys.len(),
+                                args.len()
+                            ))
+                            .with_span(self.current_span));
+                        }
+                        for (i, (arg, param_ty)) in args.iter().zip(param_tys.iter()).enumerate() {
+                            if matches!(arg, Expr::Lambda { .. }) {
+                                continue;
+                            }
+                            let arg_ty = self.infer_expr_type(arg)?;
+                            if !types_compatible(param_ty, &arg_ty) {
+                                return Err(CompilerError::new(format!(
+                                    "Argument {} to '{}' expects '{}' but got '{}'",
+                                    i + 1,
+                                    name,
+                                    param_ty,
+                                    arg_ty
+                                ))
+                                .with_span(self.current_span));
+                            }
+                        }
+                    }
+                }
+            }
+        } else if let Expr::FieldAccess(receiver, method) = func {
+            let recv_type = self.infer_expr_type(receiver)?;
+            let type_name = match recv_type {
+                Type::Named(n) => n,
+                Type::Map(_, _) => "Map".to_string(),
+                Type::Set(_) => "Set".to_string(),
+                Type::Generic(base, _) => format!("{}", base),
+                other => format!("{}", other),
+            };
+            let lookup_key = format!("{}.{}", type_name, method);
+            if let Some(Type::Function(param_tys, _ret_ty)) = self.type_env.get(&lookup_key) {
+                if args.len() != param_tys.len() {
+                    return Err(CompilerError::new(format!(
+                        "Method '{}.{}' expects {} arguments, but got {}",
+                        type_name,
+                        method,
+                        param_tys.len(),
+                        args.len()
+                    ))
+                    .with_span(self.current_span));
+                }
             }
         }
         Ok(())
@@ -1307,10 +1378,13 @@ impl TypeChecker {
             return Ok(());
         }
 
-        // Collect arm types
+        // Collect arm types (with pattern-local bindings for inference)
         let types: Vec<Type> = arms
             .iter()
-            .map(|a| self.infer_expr_type(&a.body))
+            .map(|a| {
+                let locals = self.pattern_local_types(&a.pattern);
+                self.infer_expr_type_with_locals(&a.body, &locals)
+            })
             .collect::<Result<Vec<Type>, _>>()?;
         let first = &types[0];
 
@@ -1323,7 +1397,7 @@ impl TypeChecker {
         }
 
         for (i, t) in types.iter().enumerate().skip(1) {
-            if !self.types_compatible(first, t) {
+            if !types_compatible(first, t) {
                 return Err(CompilerError::new(format!(
                     "When arm type mismatch: arm 1 is '{}' but arm {} is '{}'",
                     first,
@@ -1338,6 +1412,68 @@ impl TypeChecker {
 
     /// Infer the type of an expression (structural, not full HM inference)
     fn infer_expr_type(&self, expr: &Expr) -> Result<Type, CompilerError> {
+        self.infer_expr_type_with_locals(expr, &HashMap::new())
+    }
+
+    fn pattern_local_types(&self, pattern: &Pattern) -> HashMap<String, Type> {
+        let mut locals = HashMap::new();
+        self.collect_pattern_locals(pattern, &mut locals);
+        locals
+    }
+
+    fn collect_pattern_locals(&self, pattern: &Pattern, out: &mut HashMap<String, Type>) {
+        match pattern {
+            Pattern::Variable(name) => {
+                out.entry(name.clone()).or_insert(Type::Named("Int".into()));
+            }
+            Pattern::Constructor {
+                name,
+                args,
+                named_fields,
+            } => {
+                let param_tys: Vec<Type> = self
+                    .registry
+                    .lookup_variant(name)
+                    .map(|(_, v)| {
+                        v.params
+                            .iter()
+                            .map(|p| match p {
+                                EnumVariantParam::Positional(t) => t.clone(),
+                                EnumVariantParam::Named { ty, .. } => ty.clone(),
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                for (arg_pat, ty) in args.iter().zip(param_tys.iter()) {
+                    if let Pattern::Variable(var) = arg_pat {
+                        out.insert(var.clone(), ty.clone());
+                    } else {
+                        self.collect_pattern_locals(arg_pat, out);
+                    }
+                }
+                for (_, p) in named_fields {
+                    self.collect_pattern_locals(p, out);
+                }
+            }
+            Pattern::Or(ps) | Pattern::Tuple(ps) => {
+                for p in ps {
+                    self.collect_pattern_locals(p, out);
+                }
+            }
+            Pattern::Range(_, _)
+            | Pattern::Null
+            | Pattern::Literal(_)
+            | Pattern::IsType(_)
+            | Pattern::Wildcard
+            | Pattern::Expr(_) => {}
+        }
+    }
+
+    fn infer_expr_type_with_locals(
+        &self,
+        expr: &Expr,
+        locals: &HashMap<String, Type>,
+    ) -> Result<Type, CompilerError> {
         match expr {
             Expr::Literal(Literal::String(_)) | Expr::StringInterpolate(_) => {
                 Ok(Type::Named("String".into()))
@@ -1353,8 +1489,8 @@ impl TypeChecker {
             )),
             Expr::SetLiteral(_) => Ok(Type::Set(Box::new(Type::Named("Int".into())))),
             Expr::Binary(lhs, op, rhs) => {
-                let lt = self.infer_expr_type(lhs)?;
-                let rt = self.infer_expr_type(rhs)?;
+                let lt = self.infer_expr_type_with_locals(lhs, locals)?;
+                let rt = self.infer_expr_type_with_locals(rhs, locals)?;
                 if *op == BinaryOp::Add {
                     if matches!(&lt, Type::Named(ref n) if n == "String")
                         || matches!(&rt, Type::Named(ref n) if n == "String")
@@ -1445,7 +1581,7 @@ impl TypeChecker {
                         }
                     }
                 } else if let Expr::FieldAccess(receiver, method) = func.as_ref() {
-                    let recv_type = self.infer_expr_type(receiver)?;
+                    let recv_type = self.infer_expr_type_with_locals(receiver, locals)?;
                     if let Some(kind) = builtin_registry::receiver_kind_from_type(&recv_type) {
                         if let Some(def) = builtin_registry::lookup_ufcs(kind, method) {
                             return Ok(def.return_type.clone());
@@ -1477,11 +1613,14 @@ impl TypeChecker {
                             // UFCS fallback: receiver.method(args) → method(receiver, args)
                             let mut all_args = vec![receiver.as_ref().clone()];
                             all_args.extend(args.iter().cloned());
-                            self.infer_expr_type(&Expr::Call {
-                                func: Box::new(Expr::Ident(method.clone())),
-                                args: all_args,
-                                trailing_lambda: None,
-                            })
+                            self.infer_expr_type_with_locals(
+                                &Expr::Call {
+                                    func: Box::new(Expr::Ident(method.clone())),
+                                    args: all_args,
+                                    trailing_lambda: None,
+                                },
+                                locals,
+                            )
                         }
                     }
                 } else {
@@ -1490,12 +1629,17 @@ impl TypeChecker {
             }
             Expr::When(w) => {
                 let arms = self.when_arms(w);
-                if !arms.is_empty() {
-                    return self.infer_expr_type(&arms[0].body);
+                if let Some(arm) = arms.first() {
+                    let arm_locals = self.pattern_local_types(&arm.pattern);
+                    let merged = locals
+                        .iter()
+                        .chain(arm_locals.iter())
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect();
+                    return self.infer_expr_type_with_locals(&arm.body, &merged);
                 }
-                // OneLine: infer from the first branch body
                 if let WhenKind::OneLine { then_expr, .. } = &w.kind {
-                    return self.infer_expr_type(then_expr);
+                    return self.infer_expr_type_with_locals(then_expr, locals);
                 }
                 Ok(Type::Unit)
             }
@@ -1511,15 +1655,15 @@ impl TypeChecker {
                     ))
                 }
             }
-            Expr::Copy(inner) => self.infer_expr_type(inner),
+            Expr::Copy(inner) => self.infer_expr_type_with_locals(inner, locals),
             Expr::Null => Ok(Type::Nullable(Box::new(Type::Named("Nothing".into())))),
             Expr::OrBlock { nullable, fallback } => {
-                let nullable_ty = self.infer_expr_type(nullable)?;
-                let fallback_ty = self.infer_expr_type(fallback)?;
+                let nullable_ty = self.infer_expr_type_with_locals(nullable, locals)?;
+                let fallback_ty = self.infer_expr_type_with_locals(fallback, locals)?;
                 // Or-block unwraps nullable: T? or { ... } -> T
                 Ok(match nullable_ty {
                     Type::Nullable(inner) => {
-                        if self.types_compatible(&inner, &fallback_ty) {
+                        if types_compatible(&inner, &fallback_ty) {
                             *inner
                         } else {
                             fallback_ty
@@ -1528,19 +1672,22 @@ impl TypeChecker {
                     _ => nullable_ty,
                 })
             }
-            Expr::Unsafe(inner) => self.infer_expr_type(inner),
+            Expr::Unsafe(inner) => self.infer_expr_type_with_locals(inner, locals),
             Expr::Block(stmts) => stmts
                 .last()
                 .map(|s| match s {
-                    Stmt::Expr { expr: e, .. } => self.infer_expr_type(e),
+                    Stmt::Expr { expr: e, .. } => self.infer_expr_type_with_locals(e, locals),
                     Stmt::Return { value: e, .. } => e
                         .as_ref()
-                        .map(|re| self.infer_expr_type(re))
+                        .map(|re| self.infer_expr_type_with_locals(re, locals))
                         .unwrap_or(Ok(Type::Unit)),
                     _ => Ok(Type::Unit),
                 })
                 .unwrap_or(Ok(Type::Unit)),
             Expr::Ident(name) => {
+                if let Some(ty) = locals.get(name) {
+                    return Ok(ty.clone());
+                }
                 if self.registry.lookup_variant(name).is_some() {
                     let enum_name = self
                         .registry
@@ -1557,13 +1704,15 @@ impl TypeChecker {
                         }
                     }
                     Ok(ty.clone())
+                } else if builtin_registry::lookup(name).is_some() {
+                    Ok(builtin_registry::lookup(name).unwrap().return_type.clone())
                 } else {
-                    Ok(Type::Named("Int".into()))
+                    Err(CompilerError::new(format!("Unknown variable: '{}'", name)))
                 }
             }
-            Expr::Lambda { body, .. } => self.infer_expr_type(body),
+            Expr::Lambda { body, .. } => self.infer_expr_type_with_locals(body, locals),
             Expr::Index(obj, _) => {
-                let obj_type = self.infer_expr_type(obj)?;
+                let obj_type = self.infer_expr_type_with_locals(obj, locals)?;
                 match obj_type {
                     // Map/Set indexing returns nullable T? (was Option<T>)
                     Type::Map(_, v) => Ok(Type::Nullable(v.clone())),
@@ -1580,7 +1729,7 @@ impl TypeChecker {
                 }
             }
             Expr::FieldAccess(obj, field) => {
-                let obj_type = self.infer_expr_type(obj)?;
+                let obj_type = self.infer_expr_type_with_locals(obj, locals)?;
                 // If obj is nullable, field access short-circuits to nullable result
                 let (inner_obj_type, is_nullable) = match &obj_type {
                     Type::Nullable(inner) => (inner.as_ref(), true),
@@ -1618,10 +1767,12 @@ impl TypeChecker {
                     Ok(Type::Named("Int".into()))
                 }
             }
-            Expr::Assign { value, .. } => self.infer_expr_type(value),
+            Expr::Assign { value, .. } => self.infer_expr_type_with_locals(value, locals),
             Expr::Unary(op, inner) => match op {
                 UnaryOp::Not => Ok(Type::Named("Bool".into())),
-                UnaryOp::Neg | UnaryOp::BitNot => Ok(self.infer_expr_type(inner)?),
+                UnaryOp::Neg | UnaryOp::BitNot => {
+                    Ok(self.infer_expr_type_with_locals(inner, locals)?)
+                }
             },
             _ => Ok(Type::Named("Int".into())),
         }
@@ -1646,133 +1797,16 @@ impl TypeChecker {
                 if matches!(arg, Expr::Lambda { .. }) {
                     continue;
                 }
-                arg_tys.push(
-                    self.infer_expr_type(arg)
-                        .unwrap_or(Type::Named("Int".into())),
-                );
+                arg_tys.push(self.try_infer_expr_type(arg));
                 filtered_params.push(param_ty.clone());
             }
-            if let Ok(type_map) = self.infer_type_args(&filtered_params, &arg_tys) {
+            if let Ok(type_map) = infer_type_args(&filtered_params, &arg_tys) {
                 if let Some(ret) = return_type {
                     return resolve_type_vars(ret, &type_map);
                 }
             }
         }
         Type::Named("Int".into())
-    }
-
-    /// Unify an expected type (may contain TypeVars) with an actual concrete type,
-    /// accumulating type variable bindings in type_map.
-    fn unify(
-        &self,
-        expected: &Type,
-        actual: &Type,
-        type_map: &mut HashMap<String, Type>,
-    ) -> Result<(), String> {
-        match (expected, actual) {
-            (Type::TypeVar(name), _) => {
-                if let Some(existing) = type_map.get(name) {
-                    if self.types_compatible(existing, actual) {
-                        Ok(())
-                    } else {
-                        Err(format!(
-                            "Conflicting type inference for '{}': {} vs {}",
-                            name, existing, actual
-                        ))
-                    }
-                } else {
-                    type_map.insert(name.clone(), actual.clone());
-                    Ok(())
-                }
-            }
-            (Type::Named(a), Type::Named(b)) => {
-                if a == b {
-                    Ok(())
-                } else {
-                    // Normalize aliases
-                    let norm_a = match a.as_str() {
-                        "Str" => "String",
-                        "Double" => "Float",
-                        o => o,
-                    };
-                    let norm_b = match b.as_str() {
-                        "Str" => "String",
-                        "Double" => "Float",
-                        o => o,
-                    };
-                    if norm_a == norm_b {
-                        Ok(())
-                    } else {
-                        Err(format!("Type mismatch: {} vs {}", a, b))
-                    }
-                }
-            }
-            (Type::Generic(ba, ta), Type::Generic(bb, tb)) => {
-                if ta.len() != tb.len() {
-                    return Err("Generic argument count mismatch".to_string());
-                }
-                self.unify(ba, bb, type_map)?;
-                for (a, b) in ta.iter().zip(tb.iter()) {
-                    self.unify(a, b, type_map)?;
-                }
-                Ok(())
-            }
-            (Type::Nullable(a), Type::Nullable(b)) => self.unify(a, b, type_map),
-            (Type::Function(pa, ra), Type::Function(pb, rb)) => {
-                if pa.len() != pb.len() {
-                    return Err("Function arity mismatch".to_string());
-                }
-                for (a, b) in pa.iter().zip(pb.iter()) {
-                    self.unify(a, b, type_map)?;
-                }
-                self.unify(ra, rb, type_map)
-            }
-            (Type::Struct(fa), Type::Struct(fb)) => {
-                if fa.len() != fb.len() {
-                    return Err("Struct field count mismatch".to_string());
-                }
-                for ((na, ta), (nb, tb)) in fa.iter().zip(fb.iter()) {
-                    if na != nb {
-                        return Err(format!("Struct field name mismatch: {} vs {}", na, nb));
-                    }
-                    self.unify(ta, tb, type_map)?;
-                }
-                Ok(())
-            }
-            (Type::Map(ka, va), Type::Map(kb, vb)) => {
-                self.unify(ka, kb, type_map)?;
-                self.unify(va, vb, type_map)
-            }
-            (Type::Set(ea), Type::Set(eb)) => self.unify(ea, eb, type_map),
-            (Type::Task(ta), Type::Task(tb)) => self.unify(ta, tb, type_map),
-            (Type::Stream(sa), Type::Stream(sb)) => self.unify(sa, sb, type_map),
-            (Type::LazyList(la), Type::LazyList(lb)) => self.unify(la, lb, type_map),
-            (Type::Ptr(pa), Type::Ptr(pb)) => self.unify(pa, pb, type_map),
-            (Type::Unit, Type::Unit) => Ok(()),
-            // Auto-wrap: T can be passed where T? is expected
-            (Type::Nullable(inner), _) if !matches!(actual, Type::Nullable(_)) => {
-                self.unify(inner, actual, type_map)
-            }
-            // Null literal (Nothing) is compatible with any nullable
-            (_, Type::Nullable(inner)) if matches!(inner.as_ref(), Type::Named(n) if n == "Nothing") => {
-                Ok(())
-            }
-            _ => Err(format!("Type mismatch: {} vs {}", expected, actual)),
-        }
-    }
-
-    /// Infer type arguments for a generic function call by unifying parameter types
-    /// with actual argument types.
-    fn infer_type_args(
-        &self,
-        param_tys: &[Type],
-        arg_tys: &[Type],
-    ) -> Result<HashMap<String, Type>, String> {
-        let mut type_map = HashMap::new();
-        for (param_ty, arg_ty) in param_tys.iter().zip(arg_tys.iter()) {
-            self.unify(param_ty, arg_ty, &mut type_map)?;
-        }
-        Ok(type_map)
     }
 
     /// Check for nullable termination violation: T? used where T is expected.
@@ -1792,93 +1826,6 @@ impl TypeChecker {
                 }
             }
             _ => None,
-        }
-    }
-
-    /// Check if two types are structurally compatible
-    fn types_compatible(&self, declared: &Type, inferred: &Type) -> bool {
-        match (declared, inferred) {
-            (Type::Unit, Type::Unit) => true,
-            (Type::Named(a), Type::Named(b)) => {
-                if a == b {
-                    return true;
-                }
-                // Normalize type aliases: Str=String, Double=Float
-                let norm_a = match a.as_str() {
-                    "Str" => "String",
-                    "Double" => "Float",
-                    other => other,
-                };
-                let norm_b = match b.as_str() {
-                    "Str" => "String",
-                    "Double" => "Float",
-                    other => other,
-                };
-                norm_a == norm_b
-            }
-            (Type::Struct(fa), Type::Struct(fb)) => {
-                if fa.len() != fb.len() {
-                    return false;
-                }
-                fa.iter()
-                    .zip(fb.iter())
-                    .all(|((na, ta), (nb, tb))| na == nb && self.types_compatible(ta, tb))
-            }
-            (Type::Map(ka, va), Type::Map(kb, vb)) => {
-                self.types_compatible(ka, kb) && self.types_compatible(va, vb)
-            }
-            (Type::Set(ea), Type::Set(eb)) => self.types_compatible(ea, eb),
-            (Type::Task(ta), Type::Task(tb)) => self.types_compatible(ta, tb),
-            (Type::Stream(sa), Type::Stream(sb)) => self.types_compatible(sa, sb),
-            (Type::LazyList(la), Type::LazyList(lb)) => self.types_compatible(la, lb),
-            (Type::Ptr(pa), Type::Ptr(pb)) => self.types_compatible(pa, pb),
-            (Type::CString, Type::CString) | (Type::FileHandle, Type::FileHandle) => true,
-            (Type::CString, Type::Named(n)) | (Type::Named(n), Type::CString) if n == "CString" => {
-                true
-            }
-            (Type::FileHandle, Type::Named(n)) | (Type::Named(n), Type::FileHandle)
-                if n == "FileHandle" =>
-            {
-                true
-            }
-            (Type::Function(pa, ra), Type::Function(pb, rb)) => {
-                if pa.len() != pb.len() {
-                    return false;
-                }
-                pa.iter()
-                    .zip(pb.iter())
-                    .all(|(a, b)| self.types_compatible(a, b))
-                    && self.types_compatible(ra, rb)
-            }
-            (Type::Generic(ba, ta), Type::Generic(bb, tb)) => {
-                ta.len() == tb.len()
-                    && self.types_compatible(ba, bb)
-                    && ta
-                        .iter()
-                        .zip(tb.iter())
-                        .all(|(a, b)| self.types_compatible(a, b))
-            }
-            // Type variables are compatible with anything (validated by unification at call sites)
-            (Type::TypeVar(_), _) => true,
-            (_, Type::TypeVar(_)) => true,
-            // Nullable<Nothing> (from null literal) is compatible with any nullable
-            // Must check before general Nullable compatibility
-            (_declared, Type::Nullable(inner_inferred)) if matches!(inner_inferred.as_ref(), Type::Named(n) if n == "Nothing") =>
-            {
-                matches!(_declared, Type::Nullable(_))
-            }
-            // T can be used where T? is expected (auto-wrapping non-nullable into nullable)
-            (Type::Nullable(inner_declared), inferred)
-                if !matches!(inferred, Type::Nullable(_)) =>
-            {
-                self.types_compatible(inner_declared, inferred)
-            }
-            // Nullable<T> is compatible with Nullable<U> if T compatible with U
-            (Type::Nullable(ia), Type::Nullable(ib)) => self.types_compatible(ia, ib),
-            // T? cannot be used where T is expected (termination check needed)
-            (_, Type::Nullable(_)) => false,
-            // All other combinations are type mismatches
-            _ => false,
         }
     }
 }
