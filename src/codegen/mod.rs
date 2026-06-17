@@ -203,6 +203,7 @@ impl<'ctx> Scope<'ctx> {
         kind: ValKind,
         flag: PointerValue<'ctx>,
         init_expr: Expr,
+        ast_type: Option<Type>,
     ) {
         self.variables.insert(
             name,
@@ -214,7 +215,7 @@ impl<'ctx> Scope<'ctx> {
                 mutable: false,
                 lazy_flag: Some(flag),
                 lazy_init_expr: Some(init_expr),
-                ast_type: None,
+                ast_type,
                 enum_inner_type: None,
                 enum_data_rc_managed: false,
                 is_closure: false,

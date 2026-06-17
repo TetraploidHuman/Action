@@ -134,9 +134,11 @@ impl<'ctx> CodeGen<'ctx> {
                 body,
                 collect,
             } => self.compile_for_nested_iterate(bindings, body, *collect),
-            ForKind::IterateWithIndex { .. } => {
-                Err("for with index is not yet implemented".to_string())
-            }
+            ForKind::IterateWithIndex {
+                vars,
+                iterable,
+                body,
+            } => self.compile_for_with_index(vars, iterable, body),
         }
     }
 
@@ -455,6 +457,205 @@ impl<'ctx> CodeGen<'ctx> {
         } else {
             Ok(TypedValue::Unit)
         }
+    }
+
+    pub(super) fn compile_for_with_index(
+        &mut self,
+        vars: &[String],
+        iterator: &Expr,
+        body: &Expr,
+    ) -> Result<TypedValue<'ctx>, String> {
+        if vars.len() != 2 {
+            return Err("for with index requires exactly two variables".to_string());
+        }
+        let index_var = &vars[0];
+        let item_var = &vars[1];
+
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("Cannot compile for outside function".to_string())?;
+
+        let i64 = self.i64_ty();
+        let zero = i64.const_int(0, false);
+
+        enum IterMode<'a> {
+            Range {
+                start: IntValue<'a>,
+                count: IntValue<'a>,
+            },
+            List {
+                list_ptr: PointerValue<'a>,
+                len: IntValue<'a>,
+            },
+        }
+
+        let mode = match iterator {
+            Expr::Binary(lhs, BinaryOp::Range, rhs)
+            | Expr::Binary(lhs, BinaryOp::RangeExclusive, rhs) => {
+                let start_v = self.compile_expr(lhs)?;
+                let end_v = self.compile_expr(rhs)?;
+                let (start, end) = match (start_v, end_v) {
+                    (TypedValue::Int(s), TypedValue::Int(e)) => (s, e),
+                    _ => return Err("Range bounds must be integers".to_string()),
+                };
+                let count = self
+                    .builder
+                    .build_int_sub(end, start, "range_count")
+                    .map_err(llvm_err)?;
+                IterMode::Range { start, count }
+            }
+            _ => {
+                let list_val = self.compile_expr(iterator)?;
+                let list_ptr = match &list_val {
+                    TypedValue::List(p) | TypedValue::Set(p) | TypedValue::Map(p) => *p,
+                    TypedValue::Stream(p) => self
+                        .builder
+                        .build_struct_gep(self.stream_type, *p, 1, "for_idx_sl")
+                        .map_err(llvm_err)?,
+                    TypedValue::LazyList(_) => {
+                        let converted = self.convert_lazylist_to_list(&list_val)?;
+                        let alloca = self
+                            .builder
+                            .build_alloca(self.list_type, "for_idx_ll")
+                            .map_err(llvm_err)?;
+                        self.builder
+                            .build_store(alloca, converted)
+                            .map_err(llvm_err)?;
+                        alloca
+                    }
+                    _ => {
+                        return Err(
+                            "for with index supports ranges, lists, sets, maps, streams and lazy lists"
+                                .to_string(),
+                        );
+                    }
+                };
+                let loaded = self.load_list(list_ptr)?;
+                let len = self.list_len_val(loaded)?;
+                IterMode::List { list_ptr, len }
+            }
+        };
+
+        let idx_alloca = self
+            .builder
+            .build_alloca(i64, "for_idx_pos")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(idx_alloca, zero)
+            .map_err(llvm_err)?;
+
+        let item_alloca = self
+            .builder
+            .build_alloca(i64, "for_idx_item")
+            .map_err(llvm_err)?;
+
+        let loop_header = self.context.append_basic_block(current_fn, "for_idx_hdr");
+        let loop_body = self.context.append_basic_block(current_fn, "for_idx_body");
+        let loop_next = self.context.append_basic_block(current_fn, "for_idx_next");
+        let loop_exit = self.context.append_basic_block(current_fn, "for_idx_exit");
+
+        let saved_continue_target = self.continue_target;
+        let saved_break_target = self.break_target;
+        self.continue_target = Some(loop_next);
+        self.break_target = Some(loop_exit);
+
+        self.builder
+            .build_unconditional_branch(loop_header)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(loop_header);
+        let current_idx = self
+            .builder
+            .build_load(i64, idx_alloca, "idx_val")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let bound = match &mode {
+            IterMode::Range { count, .. } => *count,
+            IterMode::List { len, .. } => *len,
+        };
+        let cond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, current_idx, bound, "for_idx_cond")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_conditional_branch(cond, loop_body, loop_exit)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(loop_body);
+        match &mode {
+            IterMode::Range { start, .. } => {
+                let item_val = self
+                    .builder
+                    .build_int_add(*start, current_idx, "range_item")
+                    .map_err(llvm_err)?;
+                self.builder
+                    .build_store(item_alloca, item_val)
+                    .map_err(llvm_err)?;
+            }
+            IterMode::List { list_ptr, .. } => {
+                let loaded = self.load_list(*list_ptr)?;
+                let list_get_cc =
+                    self.call_rt("action_list_get", &[loaded.into(), current_idx.into()])?;
+                let fat_elem = list_get_cc
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("list_get failed")?;
+                let tag = self
+                    .builder
+                    .build_extract_value(fat_elem.into_struct_value(), 0, "elem_tag")
+                    .map_err(llvm_err)?;
+                self.builder
+                    .build_store(item_alloca, tag)
+                    .map_err(llvm_err)?;
+            }
+        }
+
+        let mut saved_scope = Scope::new();
+        std::mem::swap(&mut self.scope, &mut saved_scope);
+        self.scope = Scope::with_parent(saved_scope);
+        self.scope
+            .set(index_var.clone(), idx_alloca, i64.into(), ValKind::Int);
+        self.scope
+            .set(item_var.clone(), item_alloca, i64.into(), ValKind::Int);
+
+        let body_val = self.compile_expr(body)?;
+        self.rc_discard_value(&body_val)?;
+
+        self.builder
+            .build_unconditional_branch(loop_next)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(loop_next);
+        let mut parent = Scope::new();
+        std::mem::swap(&mut self.scope, &mut parent);
+        if let Some(p) = parent.parent {
+            self.scope = *p;
+        }
+
+        let next_idx = self
+            .builder
+            .build_load(i64, idx_alloca, "idx_next")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let one = i64.const_int(1, false);
+        let inc = self
+            .builder
+            .build_int_add(next_idx, one, "idx_inc")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(idx_alloca, inc)
+            .map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(loop_header)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(loop_exit);
+        self.continue_target = saved_continue_target;
+        self.break_target = saved_break_target;
+
+        Ok(TypedValue::Unit)
     }
 
     pub(super) fn compile_for_nested_iterate(

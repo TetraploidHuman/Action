@@ -1966,6 +1966,46 @@ impl Parser {
             }
         }
 
+        // Check for: for index, item in iterable { body }
+        if let TokenKind::Ident(ref first_var) = self.current_kind() {
+            if self.peek2() == TokenKind::Comma {
+                let second_kind = self
+                    .tokens
+                    .get(self.pos + 2)
+                    .map(|t| t.kind.clone())
+                    .unwrap_or(TokenKind::Eof);
+                let after_second = self
+                    .tokens
+                    .get(self.pos + 3)
+                    .map(|t| t.kind.clone())
+                    .unwrap_or(TokenKind::Eof);
+                if matches!(second_kind, TokenKind::Ident(_)) && after_second == TokenKind::In {
+                    let mut vars = vec![first_var.clone()];
+                    self.advance(); // first var
+                    self.expect(TokenKind::Comma)?;
+                    let second = match &self.current_kind() {
+                        TokenKind::Ident(s) => s.clone(),
+                        _ => {
+                            return Err(self
+                                .error("Expected variable name after ',' in for-with-index loop"));
+                        }
+                    };
+                    vars.push(second);
+                    self.advance();
+                    self.expect(TokenKind::In)?;
+                    let iterable = self.parse_expr()?;
+                    let body = self.parse_block_expr()?;
+                    return Ok(Expr::For(Box::new(For {
+                        kind: ForKind::IterateWithIndex {
+                            vars,
+                            iterable: Box::new(iterable),
+                            body: Box::new(body),
+                        },
+                    })));
+                }
+            }
+        }
+
         // Check for: for var in iterable ... (var is an identifier followed by 'in')
         if let TokenKind::Ident(ref var_name) = self.current_kind() {
             if self.peek2() == TokenKind::In {
@@ -2554,6 +2594,22 @@ mod tests {
                     assert_eq!(var, "item");
                 }
                 _ => panic!("Expected iterate"),
+            },
+            _ => panic!("Expected for"),
+        }
+    }
+
+    #[test]
+    fn test_for_with_index() {
+        let prog = parse("for i, v in List[1,2,3] { println(i + v) }").unwrap();
+        match &prog.stmts[0] {
+            Stmt::Expr {
+                expr: Expr::For(f), ..
+            } => match &f.kind {
+                ForKind::IterateWithIndex { vars, .. } => {
+                    assert_eq!(vars, &vec!["i".to_string(), "v".to_string()]);
+                }
+                _ => panic!("Expected IterateWithIndex"),
             },
             _ => panic!("Expected for"),
         }
