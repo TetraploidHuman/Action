@@ -524,7 +524,8 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     pub fn emit_object(&self, path: &std::path::Path) -> Result<(), String> {
-        self.run_aot_module_passes()?;
+        // AOT -O2 optimization is applied by TargetMachine during object emission.
+        // A separate IR PassManager (default<O2>) miscompiled nested loops and large runtime IR.
         self.emit_via_target_machine(path, inkwell::targets::FileType::Object)
     }
 }
