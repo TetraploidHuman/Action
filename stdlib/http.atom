@@ -1,5 +1,14 @@
-// Action HTTP Library
-// Uses system curl for HTTP/HTTPS requests
+// Action HTTP Library (stdlib/http.atom)
+//
+// `httpRequest` is a compiler builtin — call it directly with no import:
+//   val resp = httpRequest("GET", url, headers, body)
+//
+// This module adds convenience wrappers. Import selectively or as a module:
+//   import http.{httpGet, httpPost}
+//   import http
+//   http.httpGet(url)
+//
+// Uses system curl for HTTP/HTTPS requests.
 
 // httpRequest(method: String, url: String, headers: String, body: String) -> String
 // Makes an HTTP request. Returns "STATUS_CODE\nRESPONSE_BODY".

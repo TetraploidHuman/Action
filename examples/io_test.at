@@ -7,27 +7,27 @@ fun main() {
 
     // Test exists (should fail on non-existent file)
     print("exists nofile: ")
-    print(exists("/nonexistent_file_xyz.txt"))
+    print(exists("examples/__no_such_file_xyz__.txt"))
     println("")
 
     // Test deleteFile (delete a temp file)
     print("delete nofile: ")
-    print(deleteFile("/nonexistent_temp.txt"))
+    print(deleteFile("examples/__no_such_temp__.txt"))
     println("")
 
-    // Test appendFile
+    // Test appendFile (relative path — works on Linux and Windows)
     print("append: ")
-    print(appendFile("/tmp/action_test_append.txt", "hello\n"))
+    print(appendFile("examples/_io_append_tmp.txt", "hello\n"))
     println("")
 
     // Verify the appended file exists
     print("appended exists: ")
-    print(exists("/tmp/action_test_append.txt"))
+    print(exists("examples/_io_append_tmp.txt"))
     println("")
 
     // Cleanup
     print("delete test: ")
-    print(deleteFile("/tmp/action_test_append.txt"))
+    print(deleteFile("examples/_io_append_tmp.txt"))
     println("")
 
     println("done")

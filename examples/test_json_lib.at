@@ -1,0 +1,20 @@
+// Test: JSON library round-trip via import json.{jsonParse, jsonGet, jsonStringify}
+import json.{jsonParse, jsonGet, jsonStringify}
+
+fun main() {
+    val src = "{\"msg\":\"hi\",\"n\":7}"
+    val root = jsonParse(src)
+    val back = jsonStringify(root)
+    val root2 = jsonParse(back)
+
+    // Round-trip: field values survive parse → stringify → parse
+    val msg1 = jsonStringify(jsonGet(root, "msg"))
+    val msg2 = jsonStringify(jsonGet(root2, "msg"))
+    val n1 = jsonStringify(jsonGet(root, "n"))
+    val n2 = jsonStringify(jsonGet(root2, "n"))
+
+    println(msg1)
+    println(msg2)
+    println(n1)
+    println(n2)
+}

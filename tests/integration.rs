@@ -700,6 +700,18 @@ fn test_json_error() {
 }
 
 #[test]
+fn test_json_lib() {
+    // JSON library round-trip via import json.{jsonParse, jsonGet, jsonStringify}
+    assert_eq!(run_example("test_json_lib.at"), "\"hi\"\n\"hi\"\n7\n7\n");
+}
+
+#[test]
+fn test_higher_order() {
+    // find, flatMap, sortedBy, partition
+    assert_eq!(run_example("test_higher_order.at"), "15512413");
+}
+
+#[test]
 fn test_smart_cast() {
     assert_eq!(run_example("test_smart_cast.at"), "43920");
 }

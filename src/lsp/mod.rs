@@ -289,7 +289,7 @@ fn load_stdlib_context(
 
     // Try to load stdlib files
     let search_dirs = build_search_dirs(root_uri, workspace_folders);
-    for filename in &["math.at"] {
+    for filename in &["math.at", "json.at"] {
         let source = search_dirs
             .iter()
             .map(|d| d.join(filename))
