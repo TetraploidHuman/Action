@@ -27,6 +27,7 @@ def compare(
     baseline: dict[str, tuple[int, int, int, str]],
     current: dict[str, tuple[int, int, int, str]],
     threshold: float,
+    min_delta_ms: int,
 ) -> list[str]:
     warnings: list[str] = []
     for name, (_, base_avg, _, base_status) in sorted(baseline.items()):
@@ -42,7 +43,8 @@ def compare(
         if base_avg <= 0:
             continue
         ratio = (cur_avg - base_avg) / base_avg
-        if ratio > threshold:
+        delta = cur_avg - base_avg
+        if ratio > threshold and delta >= min_delta_ms:
             pct = ratio * 100.0
             warnings.append(
                 f"{name}: avg {cur_avg} ms vs baseline {base_avg} ms (+{pct:.1f}%)"
@@ -70,6 +72,12 @@ def main() -> int:
         default=0.20,
         help="Max allowed avg slowdown fraction (default: 0.20 = 20%%)",
     )
+    parser.add_argument(
+        "--min-delta-ms",
+        type=int,
+        default=3,
+        help="Also require avg slowdown of at least this many ms (default: 3, filters jitter on micro-benchmarks)",
+    )
     args = parser.parse_args()
 
     baseline_path = Path(args.baseline)
@@ -89,15 +97,18 @@ def main() -> int:
         print(f"error: no benchmark rows in current {current_path}", file=sys.stderr)
         return 2
 
-    regressions = compare(baseline, current, args.threshold)
+    regressions = compare(baseline, current, args.threshold, args.min_delta_ms)
     if not regressions:
         print(
-            f"OK: {len(current)} benchmarks within {args.threshold * 100:.0f}% of "
-            f"baseline ({baseline_path.name})"
+            f"OK: {len(current)} benchmarks within {args.threshold * 100:.0f}% "
+            f"(min +{args.min_delta_ms} ms) of baseline ({baseline_path.name})"
         )
         return 0
 
-    print(f"WARNING: {len(regressions)} benchmark(s) exceeded {args.threshold * 100:.0f}% threshold:")
+    print(
+        f"WARNING: {len(regressions)} benchmark(s) exceeded "
+        f"{args.threshold * 100:.0f}% threshold and +{args.min_delta_ms} ms minimum:"
+    )
     for msg in regressions:
         print(f"  - {msg}")
     return 1
