@@ -689,7 +689,7 @@ impl<'ctx> CodeGen<'ctx> {
             inkwell::types::BasicTypeEnum<'ctx>,
             ValKind,
             PointerValue<'ctx>,
-            Expr,
+            action_frontend::hir::HirExpr,
             Option<FunctionType<'ctx>>,
         )> = if let Some(var) = self.scope.get(name) {
             if let (Some(flag_ptr), Some(init_expr)) = (var.lazy_flag, var.lazy_init_expr.clone()) {
@@ -734,7 +734,7 @@ impl<'ctx> CodeGen<'ctx> {
 
             // Init block: evaluate initializer and store
             self.builder.position_at_end(init_block);
-            let init_val = self.compile_expr(&init_expr)?;
+            let init_val = self.compile_hir_expr(&init_expr)?;
             self.store_typed_value(&init_val, lazy_ptr, lazy_ty)?;
             self.builder
                 .build_store(flag_ptr, self.bool_ty().const_int(1, false))

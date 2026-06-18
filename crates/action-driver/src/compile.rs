@@ -1,10 +1,10 @@
 //! Shared load → compile helpers for CLI and test harnesses.
 
-use crate::backend::CodeGen;
-use crate::frontend::checked::CheckedProgram;
-use crate::frontend::config::ProjectConfig;
-use crate::frontend::error::CompilerError;
-use crate::frontend::loader;
+use action_codegen::CodeGen;
+use action_frontend::checked::CheckedProgram;
+use action_frontend::config::ProjectConfig;
+use action_frontend::error::CompilerError;
+use action_frontend::loader;
 use inkwell::context::Context;
 use std::fs;
 use std::path::Path;
@@ -18,8 +18,15 @@ pub fn format_loader_errors(errors: &[CompilerError]) -> String {
 }
 
 pub fn load_checked(path: &Path, explain: bool) -> Result<CheckedProgram, String> {
+    load_checked_errors(path, explain).map_err(|errors| format_loader_errors(&errors))
+}
+
+pub fn load_checked_errors(
+    path: &Path,
+    explain: bool,
+) -> Result<CheckedProgram, Vec<CompilerError>> {
     let path_buf = path.to_path_buf();
-    loader::load_checked(&path_buf, explain).map_err(|errors| format_loader_errors(&errors))
+    loader::load_checked(&path_buf, explain)
 }
 
 pub fn effective_opt_level(path: &Path, cli_opt: u8) -> u8 {

@@ -70,8 +70,8 @@ struct ScopeVar<'ctx> {
     mutable: bool,
     /// For lazy val: pointer to i1 initialized flag
     lazy_flag: Option<PointerValue<'ctx>>,
-    /// For lazy val: the initializer expression (cloned)
-    lazy_init_expr: Option<Expr>,
+    /// For lazy val: the initializer HIR expression (cloned)
+    lazy_init_expr: Option<action_frontend::hir::HirExpr>,
     /// AST-level type for enum resolution (e.g., Option<Date>)
     ast_type: Option<Type>,
     /// For Enum values: the inner type (Int, Float, Str) to preserve through loads
@@ -195,6 +195,25 @@ impl<'ctx> Scope<'ctx> {
             },
         );
     }
+    fn set_val(
+        &mut self,
+        name: String,
+        ptr: PointerValue<'ctx>,
+        ty: inkwell::types::BasicTypeEnum<'ctx>,
+        kind: ValKind,
+    ) {
+        self.set(name, ptr, ty, kind);
+    }
+    fn set_mutable_val(
+        &mut self,
+        name: String,
+        ptr: PointerValue<'ctx>,
+        ty: inkwell::types::BasicTypeEnum<'ctx>,
+        kind: ValKind,
+        fn_type: Option<FunctionType<'ctx>>,
+    ) {
+        self.set_mutable(name, ptr, ty, kind, fn_type);
+    }
     fn set_lazy(
         &mut self,
         name: String,
@@ -202,7 +221,7 @@ impl<'ctx> Scope<'ctx> {
         ty: inkwell::types::BasicTypeEnum<'ctx>,
         kind: ValKind,
         flag: PointerValue<'ctx>,
-        init_expr: Expr,
+        init_expr: action_frontend::hir::HirExpr,
         ast_type: Option<Type>,
     ) {
         self.variables.insert(

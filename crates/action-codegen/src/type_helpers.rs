@@ -476,7 +476,14 @@ impl<'ctx> CodeGen<'ctx> {
                 nullable_st.fn_type(param_tys, false)
             }
             Some(Type::Generic(base, _)) => match base.as_ref() {
-                Type::Named(n) if n == "Ptr" => self.ptr_ty().fn_type(param_tys, false),
+                Type::Named(n) => match n.as_str() {
+                    "list" | "set" | "map" => self.list_type.fn_type(param_tys, false),
+                    "Task" => self.task_type.fn_type(param_tys, false),
+                    "Stream" => self.ptr_ty().fn_type(param_tys, false),
+                    "LazyList" => self.lazylist_type.fn_type(param_tys, false),
+                    "Ptr" => self.ptr_ty().fn_type(param_tys, false),
+                    _ => self.string_type.fn_type(param_tys, false),
+                },
                 _ => self.string_type.fn_type(param_tys, false),
             },
             _ => self.string_type.fn_type(param_tys, false),

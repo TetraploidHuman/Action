@@ -1,0 +1,85 @@
+// Deep concat tree performance benchmark
+// Exercises the ConcatNode (height == -1) path through repeated appends
+// which creates deeply nested concat trees.
+
+fun gen_deep(n: Int) {
+    var lst = List[0]
+    var i = 1
+    for i <= n {
+        lst = lst.append(i)
+        i = i + 1
+    }
+    lst
+}
+
+fun gen_deep_concat(n: Int) {
+    var lst = List[0]
+    var i = 1
+    for i <= n {
+        lst = concat(lst, List[i])
+        i = i + 1
+    }
+    lst
+}
+
+fun main() {
+    // Build list through repeated append (creates concat tree)
+    println("Building deep list via append...")
+    val lst = gen_deep(1000)
+    println(lst.len()) // should be 1001
+
+    // Build via explicit concat with singleton lists
+    println("Building deep list via concat...")
+    val lst2 = gen_deep_concat(500)
+    println(lst2.len()) // should be 501
+
+    // Operations on deep concat tree
+    println("Testing operations on deep concat tree...")
+
+    // take (should not crash on concat nodes)
+    val taken = lst.take(5)
+    println(taken.len()) // 5
+
+    // fold on deep tree
+    val sum = fold(0, lst) { acc, x -> acc + x }
+    println(sum) // 0+1+...+1000 = 500500
+
+    // map on deep tree
+    val doubled = map(lst) { it * 2 }
+    println(doubled.len()) // 1001
+
+    // filter on deep tree
+    val evens = filter(lst) { it % 2 == 0 }
+    println(evens.len()) // 501 (0,2,4,...,1000)
+
+    // insert into deep tree
+    val ins = lst.insert(500, 9999)
+    println(ins.len()) // 1002
+
+    // remove from deep tree
+    val rem = lst.remove(0)
+    println(rem.len()) // 1000
+
+    // Map+filter chain on deep tree
+    val chained = map(filter(map(lst) { it * 10 }) { it > 5000 }) { it }
+    println(chained.len()) // 500 (501-1000)
+
+    // fold over mapped result
+    val mapped_sum = fold(0, map(lst) { it * 2 }) { acc, x -> acc + x }
+    println(mapped_sum) // 2*(0+1+...+1000) = 1001000
+
+    // Test with larger depth
+    println("Testing larger depth (10000)...")
+    val big = gen_deep(10000)
+    println(big.len()) // 10001
+    val first3 = big.take(3)
+    println(fold(0, first3) { acc, x -> acc + x }) // 0+1+2 = 3
+
+    // Nested chain on concat tree
+    println("Testing nested chains on concat tree...")
+    val deep_concat = gen_deep_concat(200)
+    println(deep_concat.len()) // 201
+    val mf = filter(map(deep_concat) { it * 3 }) { it % 2 == 0 }
+    println(fold(0, mf) { acc, x -> acc + x })
+    // 0*3 + 2*3 + 4*3 + ... + 200*3 = 3 * (0+2+4+...+200) = 3 * 10100 = 30300
+}

@@ -7,6 +7,7 @@ name = "action"
 version = "0.5.2"
 dependencies = [
  "action-codegen",
+ "action-driver",
  "action-frontend",
  "action-span",
  "ariadne",
@@ -27,6 +28,17 @@ dependencies = [
  "action-frontend",
  "inkwell",
  "llvm-sys",
+]
+
+[[package]]
+name = "action-driver"
+version = "0.5.2"
+dependencies = [
+ "action-codegen",
+ "action-frontend",
+ "action-span",
+ "inkwell",
+ "serde_json",
 ]
 
 [[package]]

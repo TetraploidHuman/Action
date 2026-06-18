@@ -3,7 +3,7 @@
 use action_frontend::ast::*;
 use inkwell::basic_block::BasicBlock;
 use inkwell::types::BasicTypeEnum;
-use inkwell::values::{IntValue, PointerValue};
+use inkwell::values::{BasicValueEnum, IntValue, PointerValue};
 use inkwell::IntPredicate;
 
 use super::{llvm_err, CodeGen, Scope, TypedValue, ValKind};
@@ -883,7 +883,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Cache alloca for action_list_get_cached: 32 bytes {valid, last_idx, leaf, pos}.
-    fn alloc_list_get_cache(&mut self) -> Result<PointerValue<'ctx>, String> {
+    pub(super) fn alloc_list_get_cache(&mut self) -> Result<PointerValue<'ctx>, String> {
         let i8 = self.context.i8_type();
         let cache = self
             .builder
@@ -923,6 +923,23 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(fat_elem.into_struct_value(), 0, "elem_tag")
             .map_err(llvm_err)
             .map(|v| v.into_int_value())
+    }
+
+    /// Like list_get_cached_tag but returns the full fat struct {tag, data}.
+    pub(super) fn list_get_cached_fat(
+        &mut self,
+        list_ptr: PointerValue<'ctx>,
+        idx: IntValue<'ctx>,
+        cache: PointerValue<'ctx>,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let loaded = self.load_list(list_ptr)?;
+        let cc = self.call_rt(
+            "action_list_get_cached",
+            &[loaded.into(), idx.into(), cache.into()],
+        )?;
+        cc.try_as_basic_value()
+            .basic()
+            .ok_or_else(|| "list_get_cached_fat failed".to_string())
     }
 
     /// `for idx < end { lst.get(idx); idx = idx + 1 }` — cached sequential walk.
@@ -1098,5 +1115,68 @@ impl<'ctx> CodeGen<'ctx> {
             }
             _ => false,
         }
+    }
+
+    /// Compile a cached sequential for-each loop over a list.
+    ///
+    /// Creates header/body/exit blocks and calls `f` for each element with
+    /// the list pointer, current index, cache pointer, and the element fat struct.
+    /// Uses `action_list_get_cached` so sequential access stays O(1) within a leaf.
+    ///
+    /// Returns the exit basic block (after the loop) and the index variable alloca.
+    pub(super) fn compile_list_foreach_cached<F>(
+        &mut self,
+        list_ptr: PointerValue<'ctx>,
+        input_len: IntValue<'ctx>,
+        current_fn: inkwell::values::FunctionValue<'ctx>,
+        mut f: F,
+    ) -> Result<(inkwell::basic_block::BasicBlock<'ctx>, PointerValue<'ctx>), String>
+    where
+        F: FnMut(
+            &mut Self,            // CodeGen
+            IntValue<'ctx>,       // current index
+            PointerValue<'ctx>,   // list_ptr
+            PointerValue<'ctx>,   // cache pointer
+            BasicValueEnum<'ctx>, // elem fat struct
+        ) -> Result<(), String>,
+    {
+        let i64 = self.i64_ty();
+        let zero = i64.const_int(0, false);
+        let one = i64.const_int(1, false);
+
+        let i_a = self.builder.build_alloca(i64, "fe_i").map_err(llvm_err)?;
+        self.builder.build_store(i_a, zero).map_err(llvm_err)?;
+        let cache = self.alloc_list_get_cache()?;
+
+        let hdr = self.context.append_basic_block(current_fn, "fe_hdr");
+        let bdy = self.context.append_basic_block(current_fn, "fe_bdy");
+        let ext = self.context.append_basic_block(current_fn, "fe_ext");
+
+        let _ = self.builder.build_unconditional_branch(hdr);
+        self.builder.position_at_end(hdr);
+        let iv = self
+            .builder
+            .build_load(i64, i_a, "fe_iv")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let cond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, iv, input_len, "fe_cond")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_conditional_branch(cond, bdy, ext);
+
+        self.builder.position_at_end(bdy);
+        let elem_val = self.list_get_cached_fat(list_ptr, iv, cache)?;
+        f(self, iv, list_ptr, cache, elem_val)?;
+
+        let ni = self
+            .builder
+            .build_int_add(iv, one, "fe_ni")
+            .map_err(llvm_err)?;
+        self.builder.build_store(i_a, ni).map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(hdr);
+
+        self.builder.position_at_end(ext);
+        Ok((ext, i_a))
     }
 }

@@ -1,9 +1,10 @@
 //! HIR-native codegen: compile from typed IR without reading `CheckedProgram::program`.
 
-use super::{llvm_err, CodeGen, TypedValue};
+use super::{llvm_err, CodeGen, TypedValue, ValKind};
 use action_frontend::ast::*;
 use action_frontend::hir::*;
 use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
+use inkwell::IntPredicate;
 use std::collections::HashMap;
 
 impl<'ctx> CodeGen<'ctx> {
@@ -99,7 +100,7 @@ impl<'ctx> CodeGen<'ctx> {
                 } else {
                     return_type.clone().or_else(|| {
                         if all_typed {
-                            self.infer_return_type(&body.as_expr())
+                            Some(body.ty.clone())
                         } else {
                             None
                         }
@@ -140,7 +141,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .collect();
                         let ret_type = return_type.clone().or_else(|| {
                             if params.iter().all(|p| p.ty.is_some()) {
-                                self.infer_return_type(&fn_body.as_expr())
+                                Some(fn_body.ty.clone())
                             } else {
                                 None
                             }
@@ -176,7 +177,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .collect();
                         let ret_type = return_type.clone().or_else(|| {
                             if params.iter().all(|p| p.ty.is_some()) {
-                                self.infer_return_type(&body.as_expr())
+                                Some(body.ty.clone())
                             } else {
                                 None
                             }
@@ -281,10 +282,66 @@ impl<'ctx> CodeGen<'ctx> {
                     ty,
                     kind,
                     flag,
-                    value.as_expr(),
+                    value.clone(),
                     ast_type,
                 );
                 let _ = mutable;
+            }
+            HirStmt::Let {
+                name,
+                type_ann,
+                value,
+                mutable,
+                lazy_init: false,
+                ..
+            } => {
+                let raw_val = self.compile_hir_expr(value)?;
+                let (ty, kind) = if let Some(ann) = type_ann {
+                    (
+                        self.ast_type_to_basic_type(ann),
+                        self.param_val_kind(Some(ann)),
+                    )
+                } else {
+                    (raw_val.get_type_for_alloca(self), raw_val.val_kind())
+                };
+                let alloca = self.builder.build_alloca(ty, name).map_err(llvm_err)?;
+                self.store_typed_value(&raw_val, alloca, ty)?;
+                if *mutable {
+                    self.scope
+                        .set_mutable_val(name.clone(), alloca, ty, kind, None);
+                } else {
+                    self.scope.set_val(name.clone(), alloca, ty, kind);
+                }
+            }
+            HirStmt::Expr { expr, .. } => {
+                self.compile_hir_expr(expr)?;
+            }
+            HirStmt::Return { value: Some(v), .. } => {
+                let val = self.compile_hir_expr(v)?;
+                let _ = self.compile_return_value(val);
+            }
+            HirStmt::Return { value: None, .. } => {
+                let _ = self.compile_return_void();
+            }
+            HirStmt::Destructure {
+                mutable,
+                names,
+                renames,
+                rest,
+                is_list,
+                is_struct,
+                value,
+                ..
+            } => {
+                let _ = self.compile_destructure(
+                    *mutable,
+                    names,
+                    renames,
+                    rest,
+                    *is_list,
+                    *is_struct,
+                    &value.as_expr(),
+                );
             }
             _ => self.compile_stmt(&stmt.as_stmt())?,
         }
@@ -296,40 +353,12 @@ impl<'ctx> CodeGen<'ctx> {
             HirExprKind::Literal(lit) => self.compile_literal(lit),
             HirExprKind::Ident(name) => self.compile_ident(name),
             HirExprKind::Null => self.compile_null(),
-            HirExprKind::Continue => {
-                if let Some(target) = self.continue_target {
-                    self.builder
-                        .build_unconditional_branch(target)
-                        .map_err(llvm_err)?;
-                    Ok(TypedValue::Unit)
-                } else {
-                    Err("continue outside loop".to_string())
-                }
-            }
-            HirExprKind::Break => {
-                if let Some(target) = self.break_target {
-                    self.builder
-                        .build_unconditional_branch(target)
-                        .map_err(llvm_err)?;
-                    Ok(TypedValue::Unit)
-                } else {
-                    Err("break outside loop".to_string())
-                }
-            }
+            HirExprKind::Continue => self.compile_hir_continue(),
+            HirExprKind::Break => self.compile_hir_break(),
             HirExprKind::FunctionRef(name) => self.compile_function_ref(name),
             HirExprKind::Block(stmts) => self.compile_hir_block(stmts, &expr.ty),
-            HirExprKind::Binary(lhs, op, rhs) => {
-                if matches!(
-                    op,
-                    BinaryOp::And | BinaryOp::Or | BinaryOp::Is | BinaryOp::In
-                ) {
-                    return self.compile_binary(&lhs.as_expr(), *op, &rhs.as_expr());
-                }
-                let left = self.compile_hir_expr(lhs)?;
-                let right = self.compile_hir_expr(rhs)?;
-                self.compile_binary_values(*op, &left, &right, &expr.ty)
-            }
-            HirExprKind::Unary(op, inner) => self.compile_unary(*op, &inner.as_expr()),
+            HirExprKind::Binary(lhs, op, rhs) => self.compile_hir_binary(lhs, *op, rhs, &expr.ty),
+            HirExprKind::Unary(op, inner) => self.compile_hir_unary(*op, inner),
             HirExprKind::Call {
                 func,
                 args,
@@ -337,54 +366,18 @@ impl<'ctx> CodeGen<'ctx> {
             } => self.compile_hir_call(func, args, trailing_lambda.as_ref()),
             HirExprKind::When(w) => self.compile_when(&w.to_when()),
             HirExprKind::For(f) => self.compile_for(&f.to_for()),
-            HirExprKind::Assign { target, value } => {
-                self.compile_assign(&target.as_expr(), &value.as_expr())
-            }
-            HirExprKind::StringInterpolate(parts) => {
-                let ast_parts: Vec<StringPart> = parts
-                    .iter()
-                    .map(|p| match p {
-                        HirStringPart::Literal(s) => StringPart::Literal(s.clone()),
-                        HirStringPart::Expr(e) => StringPart::Expr(Box::new(e.as_expr())),
-                    })
-                    .collect();
-                self.compile_string_interp(&ast_parts)
-            }
-            HirExprKind::FieldAccess(obj, field) => {
-                self.compile_field_access(&obj.as_expr(), field)
-            }
-            HirExprKind::StructLiteral(fields) => {
-                let ast_fields: Vec<(String, Expr)> = fields
-                    .iter()
-                    .map(|(n, e)| (n.clone(), e.as_expr()))
-                    .collect();
-                self.compile_struct_lit(&ast_fields)
-            }
-            HirExprKind::MapLiteral(entries) => {
-                let ast_entries: Vec<(Expr, Expr)> = entries
-                    .iter()
-                    .map(|(k, v)| (k.as_expr(), v.as_expr()))
-                    .collect();
-                self.compile_map_lit(&ast_entries)
-            }
-            HirExprKind::SetLiteral(elements) => {
-                let ast_elems: Vec<Expr> = elements.iter().map(HirExpr::as_expr).collect();
-                self.compile_set_lit(&ast_elems)
-            }
-            HirExprKind::Lambda { params, body, .. } => {
-                self.compile_lambda(params, &body.as_expr())
-            }
-            HirExprKind::Index(obj, idx) => self.compile_index(&obj.as_expr(), &idx.as_expr()),
-            HirExprKind::Range(start, end) => self.compile_range(&start.as_expr(), &end.as_expr()),
-            HirExprKind::Tuple(items) => {
-                let ast_items: Vec<(Option<String>, Expr)> = items
-                    .iter()
-                    .map(|(n, e)| (n.clone(), e.as_expr()))
-                    .collect();
-                self.compile_tuple(&ast_items)
-            }
+            HirExprKind::Assign { target, value } => self.compile_hir_assign(target, value),
+            HirExprKind::StringInterpolate(parts) => self.compile_hir_string_interp(parts),
+            HirExprKind::FieldAccess(obj, field) => self.compile_hir_field_access(obj, field),
+            HirExprKind::StructLiteral(fields) => self.compile_hir_struct_lit(fields),
+            HirExprKind::MapLiteral(entries) => self.compile_hir_map_lit(entries),
+            HirExprKind::SetLiteral(elements) => self.compile_hir_set_lit(elements),
+            HirExprKind::Lambda { params, body, .. } => self.compile_hir_lambda(params, body),
+            HirExprKind::Index(obj, idx) => self.compile_hir_index(obj, idx),
+            HirExprKind::Range(start, end) => self.compile_hir_range(start, end),
+            HirExprKind::Tuple(items) => self.compile_hir_tuple(items),
             HirExprKind::OrBlock { nullable, fallback } => {
-                self.compile_or_block(&nullable.as_expr(), &fallback.as_expr())
+                self.compile_hir_or_block(nullable, fallback)
             }
             HirExprKind::Copy(inner) => {
                 let val = self.compile_hir_expr(inner)?;
@@ -392,6 +385,160 @@ impl<'ctx> CodeGen<'ctx> {
             }
             HirExprKind::Unsafe(inner) => self.compile_hir_expr(inner),
         }
+    }
+
+    fn compile_hir_continue(&mut self) -> Result<TypedValue<'ctx>, String> {
+        if let Some(target) = self.continue_target {
+            self.builder
+                .build_unconditional_branch(target)
+                .map_err(llvm_err)?;
+            Ok(TypedValue::Unit)
+        } else {
+            Err("continue outside loop".to_string())
+        }
+    }
+
+    fn compile_hir_break(&mut self) -> Result<TypedValue<'ctx>, String> {
+        if let Some(target) = self.break_target {
+            self.builder
+                .build_unconditional_branch(target)
+                .map_err(llvm_err)?;
+            Ok(TypedValue::Unit)
+        } else {
+            Err("break outside loop".to_string())
+        }
+    }
+
+    fn compile_hir_binary(
+        &mut self,
+        lhs: &HirExpr,
+        op: BinaryOp,
+        rhs: &HirExpr,
+        result_ty: &Type,
+    ) -> Result<TypedValue<'ctx>, String> {
+        if matches!(
+            op,
+            BinaryOp::And | BinaryOp::Or | BinaryOp::Is | BinaryOp::In
+        ) {
+            return self.compile_binary(&lhs.as_expr(), op, &rhs.as_expr());
+        }
+        let left = self.compile_hir_expr(lhs)?;
+        let right = self.compile_hir_expr(rhs)?;
+        self.compile_binary_values(op, &left, &right, result_ty)
+    }
+
+    fn compile_hir_unary(
+        &mut self,
+        op: UnaryOp,
+        inner: &HirExpr,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let val = self.compile_hir_expr(inner)?;
+        self.compile_unary_values(op, val)
+    }
+
+    fn compile_hir_assign(
+        &mut self,
+        target: &HirExpr,
+        value: &HirExpr,
+    ) -> Result<TypedValue<'ctx>, String> {
+        self.compile_assign(&target.as_expr(), &value.as_expr())
+    }
+
+    fn compile_hir_field_access(
+        &mut self,
+        obj: &HirExpr,
+        field: &str,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let obj_val = self.compile_hir_expr(obj)?;
+        self.compile_field_access_value(obj_val, field)
+    }
+
+    fn compile_hir_lambda(
+        &mut self,
+        params: &[String],
+        body: &HirExpr,
+    ) -> Result<TypedValue<'ctx>, String> {
+        self.compile_lambda(params, &body.as_expr())
+    }
+
+    fn compile_hir_index(
+        &mut self,
+        obj: &HirExpr,
+        idx: &HirExpr,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let obj_val = self.compile_hir_expr(obj)?;
+        let idx_val = self.compile_hir_expr(idx)?;
+        self.compile_index_values(obj_val, idx_val)
+    }
+
+    fn compile_hir_range(
+        &mut self,
+        start: &HirExpr,
+        end: &HirExpr,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let start_val = self.compile_hir_expr(start)?;
+        let end_val = self.compile_hir_expr(end)?;
+        self.compile_range_values(start_val, end_val)
+    }
+
+    fn compile_hir_struct_lit(
+        &mut self,
+        fields: &[(String, HirExpr)],
+    ) -> Result<TypedValue<'ctx>, String> {
+        let ast_fields: Vec<(String, Expr)> = fields
+            .iter()
+            .map(|(n, e)| (n.clone(), e.as_expr()))
+            .collect();
+        self.compile_struct_lit(&ast_fields)
+    }
+
+    fn compile_hir_map_lit(
+        &mut self,
+        entries: &[(HirExpr, HirExpr)],
+    ) -> Result<TypedValue<'ctx>, String> {
+        let ast_entries: Vec<(Expr, Expr)> = entries
+            .iter()
+            .map(|(k, v)| (k.as_expr(), v.as_expr()))
+            .collect();
+        self.compile_map_lit(&ast_entries)
+    }
+
+    fn compile_hir_set_lit(&mut self, elements: &[HirExpr]) -> Result<TypedValue<'ctx>, String> {
+        let ast_elems: Vec<Expr> = elements.iter().map(|e| e.as_expr()).collect();
+        self.compile_set_lit(&ast_elems)
+    }
+
+    fn compile_hir_tuple(
+        &mut self,
+        items: &[(Option<String>, HirExpr)],
+    ) -> Result<TypedValue<'ctx>, String> {
+        let ast_items: Vec<(Option<String>, Expr)> = items
+            .iter()
+            .map(|(n, e)| (n.clone(), e.as_expr()))
+            .collect();
+        self.compile_tuple(&ast_items)
+    }
+
+    fn compile_hir_or_block(
+        &mut self,
+        nullable: &HirExpr,
+        fallback: &HirExpr,
+    ) -> Result<TypedValue<'ctx>, String> {
+        self.compile_or_block(&nullable.as_expr(), &fallback.as_expr())
+    }
+
+    fn compile_hir_string_interp(
+        &mut self,
+        parts: &[HirStringPart],
+    ) -> Result<TypedValue<'ctx>, String> {
+        let ast_parts: Vec<StringPart> = parts
+            .iter()
+            .map(|p| match p {
+                HirStringPart::Literal(s) => StringPart::Literal(s.clone()),
+                HirStringPart::Expr(e) => StringPart::Expr(Box::new(e.as_expr())),
+            })
+            .collect();
+        self.compile_string_interp(&ast_parts)
     }
 
     fn compile_hir_block(
@@ -625,5 +772,361 @@ impl<'ctx> CodeGen<'ctx> {
             }
             _ => Err("copy not supported for this type".to_string()),
         }
+    }
+
+    // ---- HIR-native helper methods ----
+
+    /// Emit scope cleanup and return the given value.
+    fn compile_return_value(&mut self, val: TypedValue<'ctx>) -> Result<(), String> {
+        if self.is_scope_variable(&val) {
+            self.rc_inc_typed_value(&val)?;
+        }
+        self.emit_scope_cleanup()?;
+        if let Some(bv) = val.to_bv() {
+            let _ = self.builder.build_return(Some(&bv));
+            return Ok(());
+        }
+        match &val {
+            TypedValue::Str(ptr) => {
+                let sv = self.load_string(*ptr)?;
+                let _ = self.builder.build_return(Some(&sv));
+            }
+            TypedValue::Enum(ptr, ty, ..) => {
+                let bt: BasicTypeEnum = (*ty).into();
+                let loaded = self
+                    .builder
+                    .build_load(bt, *ptr, "ret_enum")
+                    .map_err(llvm_err)?;
+                let _ = self.builder.build_return(Some(&loaded));
+            }
+            TypedValue::Struct(ptr, ty) => {
+                let bt: BasicTypeEnum = (*ty).into();
+                let loaded = self
+                    .builder
+                    .build_load(bt, *ptr, "ret_struct")
+                    .map_err(llvm_err)?;
+                let _ = self.builder.build_return(Some(&loaded));
+            }
+            TypedValue::Stream(ptr) => {
+                let list_field = self
+                    .builder
+                    .build_struct_gep(self.stream_type, *ptr, 1, "ret_sl2")
+                    .map_err(llvm_err)?;
+                let sv = self
+                    .builder
+                    .build_load(self.list_type, list_field, "ret_sv2")
+                    .map_err(llvm_err)?;
+                let _ = self.builder.build_return(Some(&sv));
+            }
+            TypedValue::Task(ptr) => {
+                let sv = self
+                    .builder
+                    .build_load(self.task_type, *ptr, "ret_task")
+                    .map_err(llvm_err)?;
+                let _ = self.builder.build_return(Some(&sv));
+            }
+            TypedValue::List(ptr) | TypedValue::Map(ptr) | TypedValue::Set(ptr) => {
+                let sv = self.load_list(*ptr)?;
+                let _ = self.builder.build_return(Some(&sv));
+            }
+            TypedValue::LazyList(ptr) => {
+                let ll_val = self
+                    .builder
+                    .build_load(self.lazylist_type, *ptr, "ret_ll")
+                    .map_err(llvm_err)?;
+                let _ = self.builder.build_return(Some(&ll_val));
+            }
+            TypedValue::Nullable(ptr, ty) => {
+                let bt: BasicTypeEnum = (*ty).into();
+                let loaded = self
+                    .builder
+                    .build_load(bt, *ptr, "ret_nullable")
+                    .map_err(llvm_err)?;
+                let _ = self.builder.build_return(Some(&loaded));
+            }
+            _ => {
+                let _ = self.builder.build_return(None);
+            }
+        }
+        Ok(())
+    }
+
+    /// Emit scope cleanup and return void.
+    fn compile_return_void(&mut self) -> Result<(), String> {
+        self.emit_scope_cleanup()?;
+        let _ = self.builder.build_return(None);
+        Ok(())
+    }
+
+    /// Compile destructuring assignment from HIR values.
+    fn compile_destructure(
+        &mut self,
+        mutable: bool,
+        names: &[String],
+        _renames: &[(String, String)],
+        rest: &Option<String>,
+        is_list: bool,
+        _is_struct: bool,
+        value_expr: &Expr,
+    ) -> Result<(), String> {
+        let val = self.compile_expr(value_expr)?;
+        if is_list {
+            let list_ptr = match val {
+                TypedValue::List(ptr) => ptr,
+                _ => return Err("List destructuring requires a list value".to_string()),
+            };
+            let list_val = self.load_list(list_ptr)?;
+            let data = self
+                .builder
+                .build_extract_value(list_val, 0, "data")
+                .map_err(llvm_err)?
+                .into_pointer_value();
+            let len = self
+                .builder
+                .build_extract_value(list_val, 1, "len")
+                .map_err(llvm_err)?
+                .into_int_value();
+            let data_str = self
+                .builder
+                .build_pointer_cast(data, self.ptr_ty(), "data_str")
+                .map_err(llvm_err)?;
+            for (i, name) in names.iter().enumerate() {
+                let idx = self.i64_ty().const_int(i as u64, false);
+                let elem_ptr = unsafe {
+                    self.builder
+                        .build_gep(self.string_type, data_str, &[idx], "delem_ptr")
+                }
+                .map_err(llvm_err)?;
+                let loaded = self
+                    .builder
+                    .build_load(self.string_type, elem_ptr, "delem")
+                    .map_err(llvm_err)?;
+                let ss = loaded.into_struct_value();
+                let tag = self
+                    .builder
+                    .build_extract_value(ss, 0, "tag")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                let tag_ty = tag.get_type();
+                let alloca = self.builder.build_alloca(tag_ty, name).map_err(llvm_err)?;
+                self.builder.build_store(alloca, tag).map_err(llvm_err)?;
+                if mutable {
+                    self.scope
+                        .set_mutable(name.clone(), alloca, tag_ty.into(), ValKind::Int, None);
+                } else {
+                    self.scope
+                        .set(name.clone(), alloca, tag_ty.into(), ValKind::Int);
+                }
+            }
+            if let Some(rest_name) = rest {
+                let start_idx = names.len() as u64;
+                let _new_len = self
+                    .builder
+                    .build_int_sub(len, self.i64_ty().const_int(start_idx, false), "rest_len")
+                    .map_err(llvm_err)?;
+                let cap = self.i64_ty().const_int(4, false);
+                let new_list_cc = self.call_rt("action_list_create", &[cap.into()])?;
+                let new_list_bv = new_list_cc
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("rest list create fail")?;
+                let rest_alloca = self
+                    .builder
+                    .build_alloca(self.list_type, rest_name)
+                    .map_err(llvm_err)?;
+                self.builder
+                    .build_store(rest_alloca, new_list_bv)
+                    .map_err(llvm_err)?;
+                let current_fn = self
+                    .builder
+                    .get_insert_block()
+                    .unwrap()
+                    .get_parent()
+                    .unwrap();
+                let i64 = self.i64_ty();
+                let i_a = self.builder.build_alloca(i64, "ri").map_err(llvm_err)?;
+                self.builder
+                    .build_store(i_a, i64.const_int(start_idx, false))
+                    .map_err(llvm_err)?;
+                let rest_hdr = self.context.append_basic_block(current_fn, "rest_hdr");
+                let rest_bdy = self.context.append_basic_block(current_fn, "rest_bdy");
+                let rest_ext = self.context.append_basic_block(current_fn, "rest_ext");
+                let _ = self.builder.build_unconditional_branch(rest_hdr);
+                self.builder.position_at_end(rest_hdr);
+                let cur = self
+                    .builder
+                    .build_load(i64, i_a, "rc")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                let cond = self
+                    .builder
+                    .build_int_compare(IntPredicate::SLT, cur, len, "rc")
+                    .map_err(llvm_err)?;
+                let _ = self
+                    .builder
+                    .build_conditional_branch(cond, rest_bdy, rest_ext);
+                self.builder.position_at_end(rest_bdy);
+                let elem = self.call_rt("action_list_get", &[list_val.into(), cur.into()])?;
+                let elem_bv = elem.try_as_basic_value().basic().ok_or("rest get fail")?;
+                let rest_loaded = self.load_list(rest_alloca)?;
+                let _ = self.call_rt("action_list_push", &[rest_loaded.into(), elem_bv.into()])?;
+                let nxt = self
+                    .builder
+                    .build_int_add(cur, i64.const_int(1, false), "rn")
+                    .map_err(llvm_err)?;
+                self.builder.build_store(i_a, nxt).map_err(llvm_err)?;
+                let _ = self.builder.build_unconditional_branch(rest_hdr);
+                self.builder.position_at_end(rest_ext);
+            }
+        } else {
+            return Err("Only list destructuring is supported in HIR codegen".to_string());
+        }
+        Ok(())
+    }
+
+    /// Compile a unary operation on an already-compiled value.
+    fn compile_unary_values(
+        &mut self,
+        op: UnaryOp,
+        val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        match op {
+            UnaryOp::Neg => match val {
+                TypedValue::Int(v) => Ok(TypedValue::Int(
+                    self.builder.build_int_neg(v, "neg").map_err(llvm_err)?,
+                )),
+                TypedValue::Float(v) => Ok(TypedValue::Float(
+                    self.builder.build_float_neg(v, "neg").map_err(llvm_err)?,
+                )),
+                _ => Err("Cannot negate this type".to_string()),
+            },
+            UnaryOp::Not => match val {
+                TypedValue::Bool(v) => Ok(TypedValue::Bool(
+                    self.builder.build_not(v, "not").map_err(llvm_err)?,
+                )),
+                _ => Err("'not' requires boolean operand".to_string()),
+            },
+            UnaryOp::BitNot => match val {
+                TypedValue::Int(v) => Ok(TypedValue::Int(
+                    self.builder.build_not(v, "bitnot").map_err(llvm_err)?,
+                )),
+                _ => Err("'~' requires integer operand".to_string()),
+            },
+        }
+    }
+
+    /// Compile field access on an already-compiled value.
+    fn compile_field_access_value(
+        &mut self,
+        obj_val: TypedValue<'ctx>,
+        field: &str,
+    ) -> Result<TypedValue<'ctx>, String> {
+        // Struct field access: load the struct and extract by field name
+        if let TypedValue::Struct(ptr, struct_ty) = &obj_val {
+            let bt: BasicTypeEnum = (*struct_ty).into();
+            let loaded = self
+                .builder
+                .build_load(bt, *ptr, "struct_ld")
+                .map_err(llvm_err)?
+                .into_struct_value();
+
+            // Try numeric index for tuple access: .0, .1, etc.
+            if let Ok(idx) = field.parse::<usize>() {
+                let field_val = self
+                    .builder
+                    .build_extract_value(loaded, idx as u32, field)
+                    .map_err(llvm_err)?;
+                return self.bv_to_typed(field_val);
+            }
+
+            let field_names = self.lookup_struct_field_names(*struct_ty);
+            let idx = field_names
+                .iter()
+                .position(|n| n == field)
+                .ok_or_else(|| format!("Field '{}' not found on struct", field))?;
+            let field_val = self
+                .builder
+                .build_extract_value(loaded, idx as u32, field)
+                .map_err(llvm_err)?;
+            return self.bv_to_typed(field_val);
+        }
+
+        // Delegate to compile_field_access_on_typed_value for other types
+        let val_bt = obj_val.get_type_for_alloca(self);
+        self.compile_field_access_on_typed_value(&obj_val, field, val_bt)
+    }
+
+    /// Compile index access on already-compiled values.
+    fn compile_index_values(
+        &mut self,
+        obj_val: TypedValue<'ctx>,
+        idx_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let idx_int = match &idx_val {
+            TypedValue::Int(v) => *v,
+            _ => return Err("Index must be an integer".to_string()),
+        };
+        match &obj_val {
+            TypedValue::List(ptr) | TypedValue::Map(ptr) | TypedValue::Set(ptr) => {
+                let loaded = self.load_list(*ptr)?;
+                let cc = self.call_rt("action_list_get", &[loaded.into(), idx_int.into()])?;
+                let bv = cc.try_as_basic_value().basic().ok_or("list_get failed")?;
+                let alloca = self
+                    .builder
+                    .build_alloca(self.string_type, "index_res")
+                    .map_err(llvm_err)?;
+                self.builder.build_store(alloca, bv).map_err(llvm_err)?;
+                Ok(TypedValue::Str(alloca))
+            }
+            _ => {
+                let idx_expr_val = action_frontend::ast::Literal::Int(
+                    idx_int.get_zero_extended_constant().unwrap_or(0) as i64,
+                );
+                let fake_obj = Expr::Ident("it".to_string());
+                let fake_idx = Expr::Literal(idx_expr_val);
+                self.compile_index(&fake_obj, &fake_idx)
+            }
+        }
+    }
+
+    /// Compile range creation from already-compiled start/end values.
+    fn compile_range_values(
+        &mut self,
+        start_val: TypedValue<'ctx>,
+        end_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let start_int = match start_val {
+            TypedValue::Int(v) => v,
+            _ => return Err("Range start must be integer".to_string()),
+        };
+        let end_int = match end_val {
+            TypedValue::Int(v) => v,
+            _ => return Err("Range end must be integer".to_string()),
+        };
+        let range_ty = self.range_type;
+        let alloca = self
+            .builder
+            .build_alloca(range_ty, "range")
+            .map_err(llvm_err)?;
+        let sptr = self
+            .builder
+            .build_struct_gep(range_ty, alloca, 0, "r_start")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(sptr, start_int)
+            .map_err(llvm_err)?;
+        let eptr = self
+            .builder
+            .build_struct_gep(range_ty, alloca, 1, "r_end")
+            .map_err(llvm_err)?;
+        self.builder.build_store(eptr, end_int).map_err(llvm_err)?;
+        let iptr = self
+            .builder
+            .build_struct_gep(range_ty, alloca, 2, "r_inc")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(iptr, self.i64_ty().const_int(1, false))
+            .map_err(llvm_err)?;
+        Ok(TypedValue::Struct(alloca, range_ty))
     }
 }

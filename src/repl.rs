@@ -1,8 +1,6 @@
 use crate::ast::*;
-use crate::checked::CheckedProgram;
-use crate::lexer::Span;
-use crate::loader::register_types;
-use crate::typecheck::TypeChecker;
+use crate::error;
+use action_span::Span;
 use inkwell::context::Context;
 use inkwell::targets::{InitializationConfig, Target};
 use std::io::{self, Write};
@@ -36,7 +34,6 @@ pub fn run_repl(opt: u8, profile: bool, target: &str) -> Result<(), String> {
         }
 
         let trimmed = line_buf.trim_end();
-
         if trimmed == ":quit" || trimmed == ":q" {
             if !multiline.is_empty() {
                 eval_repl_line(&context, &multiline, opt, profile, target)?;
@@ -61,11 +58,10 @@ pub fn run_repl(opt: u8, profile: bool, target: &str) -> Result<(), String> {
             let _ = eval_repl_line(&context, trimmed, opt, profile, target);
         }
     }
-
     Ok(())
 }
 
-/// Evaluate a single REPL line: parse, compile, JIT execute
+/// Evaluate a single REPL line via CheckedProgram
 pub fn eval_repl_line(
     context: &Context,
     input: &str,
@@ -82,15 +78,13 @@ pub fn eval_repl_line(
     let tokens = lexer.tokenize();
     let lexer_errors = lexer.take_errors();
     if !lexer_errors.is_empty() {
-        for e in &lexer_errors {
-            eprintln!("{}", e);
-        }
+        let error_strs: Vec<String> = lexer_errors.iter().map(|e| e.to_string()).collect();
+        error::report_compiler_errors(input, "<repl>", &error_strs);
         return Ok(());
     }
 
     let mut parser = crate::parser::Parser::new(tokens);
     let program: Program;
-
     if let Ok(expr) = parser.parse_expr() {
         let print_call = Expr::Call {
             func: Box::new(Expr::Ident("println".to_string())),
@@ -122,18 +116,16 @@ pub fn eval_repl_line(
         }
     }
 
-    let registry = register_types(&program);
-    let mut checker = TypeChecker::new(registry.clone());
+    let registry = crate::loader::register_types(&program);
+    let mut checker = crate::typecheck::TypeChecker::new(registry.clone());
     let errors = checker.check(&program);
     if !errors.is_empty() {
-        for e in &errors {
-            eprintln!("Type error: {}", e.message);
-        }
+        let error_strs: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
+        error::report_compiler_errors(input, "<repl>", &error_strs);
         return Ok(());
     }
 
-    let checked = CheckedProgram::new(program, registry, &checker);
-
+    let checked = crate::checked::CheckedProgram::new(program, registry, &checker);
     let target_opt = if target == "native" {
         None
     } else {
@@ -153,16 +145,12 @@ pub fn eval_repl_line(
 
     if profile {
         let ir = cg.print_ir();
-        let malloc_count = ir.matches("call ptr @action_malloc_rc").count();
-        let inc_count = ir.matches("call void @action_rc_inc").count();
-        let dec_count = ir.matches("call void @action_rc_dec").count();
-        let total = malloc_count + inc_count + dec_count;
-        if total > 0 {
-            eprintln!(
-                "[profile] operations: {} (malloc_rc: {} rc_inc: {} rc_dec: {})",
-                total, malloc_count, inc_count, dec_count
-            );
-        }
+        eprintln!(
+            "[profile] malloc_rc:{} rc_inc:{} rc_dec:{}",
+            ir.matches("call ptr @action_malloc_rc").count(),
+            ir.matches("call void @action_rc_inc").count(),
+            ir.matches("call void @action_rc_dec").count()
+        );
     }
 
     match cg.run_jit() {
@@ -175,6 +163,5 @@ pub fn eval_repl_line(
             eprintln!("JIT error: {}", e);
         }
     }
-
     Ok(())
 }

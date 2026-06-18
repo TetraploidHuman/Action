@@ -1,0 +1,58 @@
+// UFCS chain regression test
+// Verifies that method chains on bound variables don't cause SIGSEGV
+//
+// Known issue: lst.remove(0).len() caused SIGSEGV before due to
+// rc_free_method_receiver + AST re-evaluation in UFCS fallback path.
+// The fix: read-only methods like len/isEmpty on TypedValue::List
+// must use the already-compiled receiver, not re-compile from AST.
+
+fun main() {
+    // ---- Core regression: remove then len (was SIGSEGV) ----
+    val lst = List[1, 2, 3]
+    println(lst.remove(0).len()) // 2
+
+    // ---- remove then isEmpty ----
+    println(List[1].remove(0).isEmpty()) // true
+
+    // ---- remove(0).len() on single element ----
+    println(List[1].remove(0).len()) // 0
+
+    // ---- len on bound variable ----
+    println(lst.len()) // 3
+
+    // ---- Chain: map then fold ----
+    val doubled = map(lst) { it * 2 }
+    val sum1 = fold(0, doubled) { acc, x -> acc + x }
+    println(sum1) // 2+4+6 = 12
+
+    // ---- Chain: filter then fold ----
+    val gt2 = filter(lst) { it > 2 }
+    println(gt2.len()) // 1
+    val sum2 = fold(0, gt2) { acc, x -> acc + x }
+    println(sum2) // 3
+
+    // ---- map chain ----
+    val mapped = map(lst) { it + 10 }
+    println(mapped.get(0)) // 11
+    println(mapped.get(1)) // 12
+
+    // ---- take chain ----
+    val taken = lst.take(2)
+    println(taken.len()) // 2
+    println(taken.get(0)) // 1
+    println(taken.get(1)) // 2
+
+    // ---- len on literal ----
+    println(List[10, 20, 30].len()) // 3
+
+    // ---- map on literal ----
+    val doubled_literal = map(List[1, 2, 3]) { it * 2 }
+    println(doubled_literal.get(0)) // 2
+    println(doubled_literal.get(2)) // 6
+
+    // ---- fold after take ----
+    val take_sum = fold(0, lst.take(2)) { acc, x -> acc + x }
+    println(take_sum) // 1+2 = 3
+
+    println(999) // sentinel
+}

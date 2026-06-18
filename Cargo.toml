@@ -4,6 +4,7 @@ members = [
     "crates/action-span",
     "crates/action-frontend",
     "crates/action-codegen",
+    "crates/action-driver",
     "crates/host-rt",
     "crates/runtime-bc-emit",
 ]
@@ -26,6 +27,7 @@ path = "src/main.rs"
 action-span = { path = "crates/action-span" }
 action-frontend = { path = "crates/action-frontend" }
 action-codegen = { path = "crates/action-codegen" }
+action-driver = { path = "crates/action-driver" }
 inkwell = { version = "0.9", features = ["llvm21-1"] }
 llvm-sys = { version = "211" }
 ariadne = "0.4"

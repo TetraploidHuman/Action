@@ -213,7 +213,26 @@ jobs:
         run: |
           nix-shell --run 'export PATH=$(echo "$PATH" | tr ":" "\n" | grep -v ".cargo/bin" | tr "\n" ":"); cargo clippy -- -W clippy::all'
 
+  # ── Build action-frontend standalone (no LLVM dependency) ────
+  build-frontend:
+    name: Frontend standalone build
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Verify nix-shell
+        run: |
+          test -f shell.nix || { echo "::error::shell.nix not found"; exit 1; }
+          nix-shell --run "echo 'LLVM:' && llvm-config --version"
+      - name: Build action-frontend (no LLVM)
+        run: |
+          nix-shell --run "cargo build -p action-frontend --target x86_64-unknown-linux-gnu"
+      - name: Check action-frontend tests
+        run: |
+          nix-shell --run "cargo test -p action-frontend --target x86_64-unknown-linux-gnu"
+
   # ── Integration tests (semantic / example coverage) ───────────
+  # Includes: bench_concat_depth, test_cow_properties, test_ufcs_chain, and ~140+ other tests.
   integration:
     name: Integration (${{ matrix.name }})
     runs-on: ${{ matrix.os }}

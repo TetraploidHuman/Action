@@ -1,0 +1,12 @@
+[package]
+name = "action-driver"
+version = "0.5.2"
+edition = "2021"
+publish = false
+
+[dependencies]
+action-span = { path = "../action-span" }
+action-frontend = { path = "../action-frontend" }
+action-codegen = { path = "../action-codegen" }
+inkwell = { version = "0.9", features = ["llvm21-1"] }
+serde_json = { version = "1.0", optional = true }

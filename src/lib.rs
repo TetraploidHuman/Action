@@ -1,10 +1,11 @@
 // Action Language Compiler — library crate (facade)
 //
 // Layered layout (see doc/ARCHITECTURE.md):
-//   action-span     — source locations
-//   action-frontend — lex / parse / typecheck / load
-//   action-codegen  — LLVM codegen + runtime IR
-//   action (root)   — CLI, LSP, REPL + backward-compatible re-exports
+//   action-span       — source locations
+//   action-frontend   — lex / parse / typecheck / load
+//   action-codegen    — LLVM codegen + runtime IR
+//   action-driver     — compile orchestration (load → compile → emit)
+//   action (root)     — CLI, LSP, REPL + backward-compatible re-exports
 
 pub mod backend;
 

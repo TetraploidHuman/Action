@@ -1,0 +1,39 @@
+// List CoW property test: shared bindings must not observe mutations on siblings.
+fun main() {
+    val base = List[10, 20, 30]
+    var a = base
+    var b = base
+    a = a.append(40)
+
+    println(a.len())
+    println(b.len())
+    println(base.len())
+    println(base.get(0))
+    println(b.get(2))
+
+    b = b.remove(1)
+    println(b.len())
+    println(a.len())
+    println(base.len())
+    println(base.get(1))
+
+    var c = base
+    var d = c
+    c = c.insert(1, 99)
+    println(c.len())
+    println(d.len())
+    println(base.get(1))
+
+    var chain = List[1, 2, 3]
+    var s1 = chain
+    var s2 = chain
+    var s3 = chain
+    s1 = s1.append(11)
+    s2 = s2.append(22)
+    s3 = s3.append(33)
+    println(chain.len())
+    println(s1.get(3))
+    println(s2.get(3))
+    println(s3.get(3))
+    println("CoW property ok")
+}

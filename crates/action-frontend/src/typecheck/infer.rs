@@ -149,7 +149,7 @@ impl TypeChecker {
                         "Stream" => Ok(Type::Stream(Box::new(Type::Named("Int".into())))),
                         "is_done" | "is_cancelled" => Ok(Type::Named("Bool".into())),
                         "withTimeout" => Ok(Type::Nullable(Box::new(Type::Named("Int".into())))),
-                        "coroutineScope" => Ok(Type::Named("list".into())),
+                        "__list" | "coroutineScope" => Ok(Type::Named("list".into())),
                         "find" | "findIndex" | "reduce" => {
                             Ok(Type::Nullable(Box::new(Type::Named("Int".into()))))
                         }

@@ -5,27 +5,32 @@
 ## 分层概览
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  Driver（二进制层）                                          │
-│  main.rs · repl.rs · test_runner.rs · lsp/                  │
-│  编排：load → compile → run / emit / diagnose               │
-└───────────────────────────┬─────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│  Binary Layer（main binary）                                     │
+│  main.rs · repl.rs · test_runner.rs · lsp/                      │
+│  编排：load → compile → run / emit / diagnose                    │
+└───────────────────────────┬──────────────────────────────────────┘
                             │
-        ┌───────────────────┴───────────────────┐
-        ▼                                       ▼
-┌───────────────────┐                 ┌───────────────────┐
-│  frontend/        │                 │  backend/         │
-│  无 LLVM 依赖      │                 │  codegen/         │
-│                   │    AST +        │  inkwell + runtime│
-│  lexer parser     │  TypeRegistry   │  JIT / AOT        │
-│  ast types        │ ──────────────► │                   │
-│  typecheck loader │                 │                   │
-│  builtin fmt      │                 │                   │
-└─────────┬─────────┘                 └───────────────────┘
+┌───────────────────────────▼──────────────────────────────────────┐
+│  action-driver crate（编排层）                                    │
+│  compile_checked · load_checked · emit_hir · effective_opt_level │
+│  依赖 frontend + codegen，无二进制耦合                             │
+└──────────┬─────────────────────────────────────┬─────────────────┘
+           │                                     │
+           ▼                                     ▼
+┌───────────────────┐                 ┌──────────────────────┐
+│  action-frontend  │                 │  action-codegen      │
+│  无 LLVM 依赖      │                 │  inkwell + runtime   │
+│                   │    AST +        │  JIT / AOT           │
+│  lexer parser     │  TypeRegistry   │                      │
+│  ast types        │ ──────────────► │                      │
+│  typecheck loader │                 │                      │
+│  builtin fmt      │                 │                      │
+└─────────┬─────────┘                 └──────────────────────┘
           │
           ▼
 ┌───────────────────┐
-│  span.rs          │  源码位置（零依赖，lexer/ast/error 共用）
+│  action-span      │  源码位置（零依赖，lexer/ast/error 共用）
 └───────────────────┘
 ```
 
@@ -75,9 +80,8 @@ src/
     mod.rs
     codegen/              # 原 src/codegen/（LLVM IR + runtime_decl）
 
-  driver/                  # CLI / test_runner 共用编排
-    mod.rs
-    compile.rs              # load_checked · compile_checked · emit_hir
+  driver/                  # Bridge: re-exports from action-driver crate
+    mod.rs                  #   → action_driver::{compile_checked, load_checked, emit_hir, ...}
 
   lsp/                    # 语言服务（依赖 frontend，暂不迁入 frontend/）
   repl.rs
@@ -86,6 +90,14 @@ src/
   http_runtime.rs         # AOT/JIT host 符号
   runtime_json.rs
   runtime_threading.rs
+
+crates/
+  action-span/            # Span 类型（零依赖）
+  action-frontend/        # 前端：lex → parse → typecheck → HIR
+  action-codegen/         # 后端：LLVM IR + runtime_decl + JIT/AOT
+  action-driver/          # 编排：load_checked · compile_checked · emit_hir（依赖 frontend + codegen）
+  host-rt/                # AOT host runtime（libaction_host_rt.a）
+  runtime-bc-emit/        # 运行时 bitcode 发射工具
 ```
 
 ## 依赖规则
@@ -95,6 +107,7 @@ src/
 | `span` | std | 其它 crate 模块 |
 | `frontend/*` | `span`, `frontend` 内部, `toml`, `ariadne` | `backend`, `inkwell` |
 | `backend/codegen` | `frontend`（经 `crate::ast` 等 re-export）, `inkwell` | — |
+| `driver` (bridge) | `action-driver` crate | `frontend` / `backend` 直接依赖 |
 | `lsp` / `repl` | `frontend`, `backend` | — |
 | `main` | 全部 | — |
 
@@ -147,7 +160,9 @@ pub use span::Span;
 | R5c | `--emit hir` CLI；examples HIR golden 测试 | ✅ |
 | R5d | Codegen reads HIR directly (`compile_hir`); REPL via `compile_checked` | ✅ |
 | R6 | Cargo workspace：`action-frontend` / `action-codegen` 独立 crate | ✅ |
-| R7 | LSP/REPL 统一走 `FrontendSession` | ✅（LSP 已接入；REPL 用 `compile_checked`） |
+| R6b | driver 独立 crate (`action-driver`)：`compile_checked` / `load_checked` / `emit_hir` | ✅ |
+| R5e | 去掉 HIR bridge，`compile_hir_expr/stmt` 原生 dispatch；`infer_return_type` 替换为 `body.ty` | ✅ |
+| R7 | REPL 使用 `error::report_compiler_errors` 诊断路径，消除 regex re-parse | ✅（LSP 已接入；REPL 用 `compile_checked`） |
 
 ## 性能优化（P2）
 
@@ -156,6 +171,19 @@ pub use span::Span;
 | ConcatNode balance | `depth > 32` 时 flatten；修复 `cc_small_merge` 双 leaf 判定 | ✅ |
 | Map Robin-Hood | 40B entry + probe distance；insert/get/rehash | ✅ |
 | Lambda mono | map/filter btree walk；fold/any/all 单态化 | ✅ |
+| Fused map+filter | 单遍组合 `map(f) |> filter(g)` 避免中间 ListNode 分配 | 🔄 |
+| `list_get_cached` helper | 对 `map(lst) { it.f }` 等场景缓存 `get` 遍历位置 | 🔄 |
+
+## 语义测试覆盖（P0）
+
+| 类别 | 说明 | 覆盖 |
+|------|------|------|
+| List/Map CoW | 写时复制语义、共享引用隔离、`rc == 1` 原地更新 | ✅ |
+| Nullable 类型 | `T?` 传播、智能转换、Elvis、`or {}`、方法链自动短路 | ✅ |
+| 方法链 / UFCS | `lst.remove(0).len()` 无 SIGSEGV，receiver 不被 double-eval | ✅ |
+| Concat 树操作 | append/insert/remove/take/flatten 在深度 concat 树上正确 | ✅ |
+| TCO（尾调用） | 递归深度 > 5000 不栈溢出 | ✅ |
+| 泛型函数 | 类型参数推断、多态函数调用 | ✅ |
 
 ## 测试纪律
 
@@ -166,7 +194,7 @@ nix-shell --run 'cargo test --release --test integration -- --test-threads=1'
 ./target/release/action run examples/bench_cow.at   # 预期 11
 ```
 
-集成测试 **140 项** 为语义权威；重构不得降低通过数（除非修复既有 bug 并更新测试）。
+集成测试 **140+ 项**（含 `bench_concat_depth`、`test_cow_properties`、`test_ufcs_chain` 等）为语义权威；重构不得降低通过数（除非修复既有 bug 并更新测试）。
 
 ## 与自举的关系
 

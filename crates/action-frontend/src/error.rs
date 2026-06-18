@@ -115,31 +115,76 @@ pub fn line_col_to_offset(source: &str, line: usize, col: usize) -> usize {
     source.len()
 }
 
-/// Report structured compiler errors with span-aware highlighting.
-pub fn report_compiler_errors(source: &str, path: &str, errors: &[CompilerError]) {
-    for err in errors {
-        if let Some(span) = &err.span {
-            let start = line_col_to_offset(source, span.line, span.col);
-            let len = span.highlight_len();
-            let mut report = Report::build(ReportKind::Error, path, start)
-                .with_message(&err.message)
+/// Report compiler errors with span-aware highlighting.
+///
+/// Accepts errors as string slices — each error string may be in
+/// "Error at line X, col Y: message" format (produced by `CompilerError`'s
+/// `Display` impl) or a plain error message.
+pub fn report_compiler_errors(source: &str, path: &str, errors: &[impl AsRef<str>]) {
+    for err_str in errors {
+        let err_str = err_str.as_ref();
+        let lines: Vec<&str> = err_str.lines().collect();
+        let main_line = lines.first().copied().unwrap_or("");
+        let help = if lines.len() > 1 && lines[1].trim().starts_with("help: ") {
+            Some(
+                lines[1]
+                    .trim()
+                    .strip_prefix("help: ")
+                    .unwrap_or("")
+                    .to_string(),
+            )
+        } else {
+            None
+        };
+
+        if let Some((line, col, msg)) = parse_error_line(main_line) {
+            let offset = line_col_to_offset(source, line, col);
+            let highlight_len = 1usize;
+            let mut report = Report::build(ReportKind::Error, path, offset)
+                .with_message(&msg)
                 .with_label(
-                    Label::new((path, start..start + len))
+                    Label::new((path, offset..offset + highlight_len))
                         .with_message("here")
                         .with_color(Color::Red),
                 );
-            if let Some(ref help) = err.help {
+            if let Some(ref help) = help {
                 report = report.with_help(help.clone());
             }
             report
                 .finish()
                 .eprint((path, Source::from(source)))
-                .unwrap_or_else(|_| eprintln!("Error: {}", err.message));
+                .unwrap_or_else(|_| eprintln!("Error: {}", main_line));
         } else {
-            eprintln!("\x1b[1;31merror:\x1b[0m {}", err.message);
-            if let Some(ref help) = err.help {
+            eprintln!("\x1b[1;31merror:\x1b[0m {}", main_line);
+            if let Some(ref help) = help {
                 eprintln!("  \x1b[1;36mhelp:\x1b[0m {}", help);
             }
         }
     }
+}
+
+/// Extract (line, col, message) from an error string formatted as
+/// "Error at line X, col Y: message" or "Parse error at line X, col Y: message".
+fn parse_error_line(line: &str) -> Option<(usize, usize, String)> {
+    if let Some(rest) = line.strip_prefix("Error at line ") {
+        let parts: Vec<&str> = rest.splitn(2, ", col ").collect();
+        if parts.len() == 2 {
+            let line_num: usize = parts[0].parse().ok()?;
+            let col_parts: Vec<&str> = parts[1].splitn(2, ": ").collect();
+            let col: usize = col_parts[0].parse().ok()?;
+            let msg = col_parts.get(1).unwrap_or(&"error").to_string();
+            return Some((line_num, col, msg));
+        }
+    }
+    if let Some(rest) = line.strip_prefix("Parse error at line ") {
+        let parts: Vec<&str> = rest.splitn(2, ", col ").collect();
+        if parts.len() == 2 {
+            let line_num: usize = parts[0].parse().ok()?;
+            let col_parts: Vec<&str> = parts[1].splitn(2, ": ").collect();
+            let col: usize = col_parts[0].parse().ok()?;
+            let msg = col_parts.get(1).unwrap_or(&"parse error").to_string();
+            return Some((line_num, col, msg));
+        }
+    }
+    None
 }

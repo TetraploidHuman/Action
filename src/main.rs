@@ -1,7 +1,6 @@
 use action::driver;
 use action::error;
 use action::*;
-use ariadne::{Color, Label, Report, ReportKind, Source};
 use clap::{Parser as ClapParser, Subcommand};
 use inkwell::context::Context;
 use std::fs;
@@ -136,7 +135,7 @@ fn main() {
         } => {
             if let Err(e) = run_file(&file, opt, check, emit, explain, profile, &target) {
                 if let Ok(source) = fs::read_to_string(&file) {
-                    report_error(&source, &file.to_string_lossy(), &e);
+                    error::report_compiler_errors(&source, &file.to_string_lossy(), &[e.as_str()]);
                 } else {
                     eprintln!("Error: {}", e);
                 }
@@ -152,7 +151,7 @@ fn main() {
         } => {
             if let Err(e) = build_file(&file, output, opt, emit, &target) {
                 if let Ok(source) = fs::read_to_string(&file) {
-                    report_error(&source, &file.to_string_lossy(), &e);
+                    error::report_compiler_errors(&source, &file.to_string_lossy(), &[e.as_str()]);
                 } else {
                     eprintln!("Error: {}", e);
                 }
@@ -180,7 +179,8 @@ fn main() {
             }
             Err(errors) => {
                 if let Ok(source) = fs::read_to_string(&file) {
-                    error::report_compiler_errors(&source, &file.to_string_lossy(), &errors);
+                    let error_strs: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
+                    error::report_compiler_errors(&source, &file.to_string_lossy(), &error_strs);
                 } else {
                     for e in &errors {
                         eprintln!("Error: {}", e);
@@ -222,98 +222,11 @@ fn main() {
         } => {
             if let Err(e) = test_runner::run_test_file(&file, opt, profile, &target) {
                 if let Ok(source) = fs::read_to_string(&file) {
-                    report_error(&source, &file.to_string_lossy(), &e);
+                    error::report_compiler_errors(&source, &file.to_string_lossy(), &[e.as_str()]);
                 } else {
                     eprintln!("Error: {}", e);
                 }
                 std::process::exit(1);
-            }
-        }
-    }
-}
-
-/// Report errors with ariadne for pretty source-context output.
-fn report_error(source: &str, path: &str, error: &str) {
-    fn parse_error_line(line: &str) -> Option<(usize, usize, String, Option<String>)> {
-        if let Some(rest) = line.strip_prefix("Error at line ") {
-            let parts: Vec<&str> = rest.splitn(2, ", col ").collect();
-            if parts.len() == 2 {
-                let line_num: usize = parts[0].parse().ok()?;
-                let col_parts: Vec<&str> = parts[1].splitn(2, ": ").collect();
-                let col: usize = col_parts[0].parse().ok()?;
-                let msg = col_parts.get(1).unwrap_or(&"error").to_string();
-                return Some((line_num, col, msg, None));
-            }
-        }
-        if let Some(rest) = line.strip_prefix("Parse error at line ") {
-            let parts: Vec<&str> = rest.splitn(2, ", col ").collect();
-            if parts.len() == 2 {
-                let line_num: usize = parts[0].parse().ok()?;
-                let col_parts: Vec<&str> = parts[1].splitn(2, ": ").collect();
-                let col: usize = col_parts[0].parse().ok()?;
-                let msg = col_parts.get(1).unwrap_or(&"parse error").to_string();
-                return Some((line_num, col, msg, None));
-            }
-        }
-        None
-    }
-
-    let lines: Vec<&str> = error.lines().collect();
-    let mut i = 0;
-    let mut has_ariadne_output = false;
-
-    while i < lines.len() {
-        let line = lines[i];
-        let mut help_text: Option<String> = None;
-
-        if i + 1 < lines.len() && lines[i + 1].trim().starts_with("help: ") {
-            help_text = Some(
-                lines[i + 1]
-                    .trim()
-                    .strip_prefix("help: ")
-                    .unwrap_or("")
-                    .to_string(),
-            );
-            i += 1;
-        }
-
-        if let Some((line_num, col, msg, _)) = parse_error_line(line) {
-            let offset = error::line_col_to_offset(source, line_num, col);
-            let highlight_len = 1usize;
-            let mut report = Report::build(ReportKind::Error, path, offset)
-                .with_message(&msg)
-                .with_label(
-                    Label::new((path, offset..offset + highlight_len))
-                        .with_message("here")
-                        .with_color(Color::Red),
-                );
-            if let Some(ref help) = help_text {
-                report = report.with_help(help.clone());
-            }
-            report
-                .finish()
-                .eprint((path, Source::from(source)))
-                .unwrap_or_else(|_| eprintln!("Error: {}", line));
-            has_ariadne_output = true;
-        } else {
-            if !has_ariadne_output {
-                eprintln!("\x1b[1;31merror:\x1b[0m {}", line);
-                if let Some(ref help) = help_text {
-                    eprintln!("  \x1b[1;36mhelp:\x1b[0m {}", help);
-                }
-            }
-        }
-        i += 1;
-    }
-
-    if !has_ariadne_output
-        && error
-            .lines()
-            .all(|l| !l.starts_with("Error at line") && !l.starts_with("Parse error at line"))
-    {
-        for line in error.lines() {
-            if !line.trim().starts_with("help: ") {
-                eprintln!("\x1b[1;31merror:\x1b[0m {}", line);
             }
         }
     }
@@ -524,7 +437,8 @@ fn fmt_file(path: &PathBuf, check: bool, tab_size: u8, insert_spaces: bool) -> R
     let tokens = lexer.tokenize();
     let lexer_errors = lexer.take_errors();
     if !lexer_errors.is_empty() {
-        error::report_compiler_errors(&source, &path.to_string_lossy(), &lexer_errors);
+        let error_strs: Vec<String> = lexer_errors.iter().map(|e| e.to_string()).collect();
+        error::report_compiler_errors(&source, &path.to_string_lossy(), &error_strs);
         return Err(1);
     }
 

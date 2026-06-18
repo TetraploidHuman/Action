@@ -1030,6 +1030,59 @@ fn test_cow_semantics() {
     assert!(out.contains("All CoW tests passed"));
 }
 
+// ---- Deep concat tree benchmark ----
+
+#[test]
+fn test_bench_concat_depth() {
+    let out = run_example("bench_concat_depth.at");
+    assert!(
+        out.contains("1001"),
+        "Expected 1001 (lst len) in output, got: {}",
+        out
+    );
+    assert!(
+        out.contains("500500"),
+        "Expected 500500 (sum) in output, got: {}",
+        out
+    );
+    assert!(
+        out.contains("30300"),
+        "Expected 30300 (nested chain fold) in output, got: {}",
+        out
+    );
+}
+
+// ---- CoW property tests ----
+
+#[test]
+fn test_cow_properties() {
+    // CoW property tests should end with 999 sentinel
+    let out = run_example("test_cow_properties.at");
+    assert!(
+        out.contains("999"),
+        "Expected sentinel 999 in output, got: {}",
+        out
+    );
+    assert!(out.contains("5"), "Expected len=5 in output");
+}
+
+// ---- UFCS chain regression test ----
+
+#[test]
+fn test_ufcs_chain() {
+    // UFCS chain: lst.remove(0).len() should return 2 without SIGSEGV
+    let out = run_example("test_ufcs_chain.at");
+    assert!(
+        out.contains("999"),
+        "Expected sentinel 999 in output, got: {}",
+        out
+    );
+    assert!(
+        out.contains("2"),
+        "Expected lst.remove(0).len() == 2 in output"
+    );
+}
+
 // ---- Example coverage (Phase 2) ----
 
 #[test]

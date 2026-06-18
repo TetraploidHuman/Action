@@ -19,15 +19,15 @@ impl<'ctx> CodeGen<'ctx> {
                 ..
             } => {
                 if *lazy_init {
-                    // Lazy val: defer evaluation to first access
-                    let (ty, kind, ast_type) = if let Some(ann) = type_ann {
+                    // Lazy val via old AST path: evaluate eagerly since
+                    // HIR-native compilation handles true lazy initialization.
+                    let (ty, kind, _ast_type) = if let Some(ann) = type_ann {
                         (
                             self.ast_type_to_basic_type(ann),
                             self.param_val_kind(Some(ann)),
                             Some(ann.clone()),
                         )
                     } else {
-                        // AST-only type inference — do not evaluate the initializer here
                         let inferred = self.infer_expr_type(value);
                         (
                             self.ast_type_to_basic_type(&inferred),
@@ -35,23 +35,14 @@ impl<'ctx> CodeGen<'ctx> {
                             Some(inferred),
                         )
                     };
+                    let raw_val = self.compile_expr(value)?;
                     let alloca = self.builder.build_alloca(ty, name).map_err(llvm_err)?;
-                    let flag = self
-                        .builder
-                        .build_alloca(self.bool_ty(), &format!("{}_lazy_flag", name))
-                        .map_err(llvm_err)?;
-                    self.builder
-                        .build_store(flag, self.bool_ty().const_int(0, false))
-                        .map_err(llvm_err)?;
-                    self.scope.set_lazy(
-                        name.clone(),
-                        alloca,
-                        ty,
-                        kind,
-                        flag,
-                        value.clone(),
-                        ast_type,
-                    );
+                    self.store_typed_value(&raw_val, alloca, ty)?;
+                    if *mutable {
+                        self.scope.set_mutable(name.clone(), alloca, ty, kind, None);
+                    } else {
+                        self.scope.set(name.clone(), alloca, ty, kind);
+                    }
                 } else {
                     let raw_val = self.compile_expr(value)?;
                     let (ty, kind) = if let Some(ann) = type_ann {
@@ -1372,6 +1363,23 @@ impl<'ctx> CodeGen<'ctx> {
                                 if ret_ty.is_struct_type() {
                                     let zero = ret_ty.into_struct_type().const_zero();
                                     let _ = self.builder.build_return(Some(&zero));
+                                } else if ret_ty.is_int_type() {
+                                    // IntTypes use const_zero for their particular bit width
+                                    let zero = match ret_ty {
+                                        BasicTypeEnum::IntType(it) => it.const_zero(),
+                                        _ => self.i64_ty().const_int(0, false),
+                                    };
+                                    let _ = self.builder.build_return(Some(&zero));
+                                } else if ret_ty.is_float_type() {
+                                    let zero = match ret_ty {
+                                        BasicTypeEnum::FloatType(ft) => ft.const_zero(),
+                                        _ => self.f64_ty().const_zero(),
+                                    };
+                                    let _ = self.builder.build_return(Some(&zero));
+                                } else if ret_ty.is_pointer_type() {
+                                    let _ = self
+                                        .builder
+                                        .build_return(Some(&self.ptr_ty().const_null()));
                                 } else {
                                     let _ = self.builder.build_return(None);
                                 }

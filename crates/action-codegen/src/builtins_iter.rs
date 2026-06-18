@@ -63,27 +63,132 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::List(result_alloca))
     }
 
+    /// Check if an expression is a `map(...)` call and return (map_fn_expr, inner_list_expr).
+    /// Handles both `map(fn, list)` and `map(list) { fn }` syntax.
+    fn extract_map_call_args(expr: &Expr) -> Option<(&Expr, &Expr)> {
+        match expr {
+            Expr::Call {
+                func,
+                args,
+                trailing_lambda,
+            } => {
+                // func must be Ident("map")
+                if let Expr::Ident(name) = func.as_ref() {
+                    if name != "map" {
+                        return None;
+                    }
+                } else {
+                    return None;
+                }
+                match trailing_lambda {
+                    Some(lam) => {
+                        // map(list) { fn } → (fn, list)
+                        if args.len() == 1 {
+                            Some((lam.as_ref(), &args[0]))
+                        } else {
+                            None
+                        }
+                    }
+                    None => {
+                        // map(fn, list) → (fn, list)
+                        if args.len() == 2 {
+                            Some((&args[0], &args[1]))
+                        } else {
+                            None
+                        }
+                    }
+                }
+            }
+            _ => None,
+        }
+    }
+
     pub(super) fn builtin_filter(
         &mut self,
         args: &[Expr],
         trailing: &Option<Box<Expr>>,
     ) -> Result<TypedValue<'ctx>, String> {
-        let (fn_ptr, list_val) = if let Some(lam) = trailing {
+        // Fused map+filter optimization: if the list argument is `map(...)`,
+        // fuse map and filter into a single tree walk instead of creating an
+        // intermediate list.
+        let list_expr: &Expr = if let Some(_lam) = trailing {
             if args.len() != 1 {
                 return Err("filter with trailing lambda expects 1 argument (list)".to_string());
             }
-            let lv = self.compile_expr(&args[0])?;
-            let fv = self.compile_expr(lam)?;
-            (fv, lv)
+            &args[0]
         } else if args.len() == 2 {
-            let fv = self.compile_expr(&args[0])?;
-            let lv = self.compile_expr(&args[1])?;
-            (fv, lv)
+            &args[1]
         } else {
             return Err("filter expects 2 arguments (fn, list)".to_string());
         };
 
-        if let Some(result) = self.try_builtin_filter_direct(fn_ptr, list_val)? {
+        // Check if list_expr is a map call — extract map fn and inner list
+        if let Some((map_fn_expr, inner_list_expr)) = Self::extract_map_call_args(list_expr) {
+            // Compile filter fn, map fn, and inner list
+            let filter_fn_val = if let Some(lam) = trailing {
+                self.compile_expr(lam)?
+            } else {
+                self.compile_expr(&args[0])?
+            };
+            let map_fn_val = self.compile_expr(map_fn_expr)?;
+            let inner_list_val = self.compile_expr(inner_list_expr)?;
+
+            // NOTE: Do NOT call try_builtin_filter_direct here — it would
+            // filter on the inner list values directly, skipping the map step.
+            // The fused path must always use the fused runtime function.
+
+            let filter_fn_ptr = match filter_fn_val {
+                TypedValue::Fn(p, _) => p,
+                TypedValue::Closure { fn_ptr, .. } => fn_ptr,
+                _ => return Err("filter: first argument must be a function".to_string()),
+            };
+            let map_fn_ptr = match map_fn_val {
+                TypedValue::Fn(p, _) => p,
+                TypedValue::Closure { fn_ptr, .. } => fn_ptr,
+                _ => return Err("fused map+filter: map function required".to_string()),
+            };
+            let inner_list_ptr = match inner_list_val {
+                TypedValue::List(p) => p,
+                _ => return Err("fused map+filter: list required".to_string()),
+            };
+
+            let inner_list_struct = self.load_list(inner_list_ptr)?;
+            let result_alloca = self
+                .builder
+                .build_alloca(self.list_type, "mf_result")
+                .map_err(llvm_err)?;
+
+            let mf_cc = self.call_rt(
+                "action_list_map_filter_walk",
+                &[
+                    inner_list_struct.into(),
+                    map_fn_ptr.into(),
+                    filter_fn_ptr.into(),
+                ],
+            )?;
+            let result_bv = mf_cc
+                .try_as_basic_value()
+                .basic()
+                .ok_or("map_filter_walk failed")?;
+            self.builder
+                .build_store(result_alloca, result_bv)
+                .map_err(llvm_err)?;
+
+            return Ok(TypedValue::List(result_alloca));
+        }
+
+        // Standard filter path
+        let (fn_ptr, list_val) = if let Some(lam) = trailing {
+            let lv = self.compile_expr(&args[0])?;
+            let fv = self.compile_expr(lam)?;
+            (fv, lv)
+        } else {
+            let fv = self.compile_expr(&args[0])?;
+            let lv = self.compile_expr(&args[1])?;
+            (fv, lv)
+        };
+
+        if let Some(result) = self.try_builtin_filter_direct(fn_ptr.clone(), list_val.clone())? {
             return Ok(result);
         }
 
@@ -343,6 +448,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(i_a, i64.const_int(0, false))
             .map_err(llvm_err)?;
+        let get_cache = self.alloc_list_get_cache()?;
         let hdr = self.context.append_basic_block(current_fn, "find_hdr");
         let bdy = self.context.append_basic_block(current_fn, "find_bdy");
         let found_bb = self.context.append_basic_block(current_fn, "find_found");
@@ -360,9 +466,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self.builder.build_conditional_branch(cond, bdy, ext);
         self.builder.position_at_end(bdy);
-        let input_list = self.load_list(list_ptr)?;
-        let elem = self.call_rt("action_list_get", &[input_list.into(), iv.into()])?;
-        let elem_val = elem.try_as_basic_value().basic().ok_or("list_get failed")?;
+        let elem_val = self.list_get_cached_fat(list_ptr, iv, get_cache)?;
         let elem_tag = self
             .builder
             .build_extract_value(elem_val.into_struct_value(), 0, "et")
@@ -433,6 +537,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(i_a, i64.const_int(0, false))
             .map_err(llvm_err)?;
+        let get_cache = self.alloc_list_get_cache()?;
         let hdr = self.context.append_basic_block(current_fn, "fi_hdr");
         let bdy = self.context.append_basic_block(current_fn, "fi_bdy");
         let ext = self.context.append_basic_block(current_fn, "fi_ext");
@@ -449,9 +554,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self.builder.build_conditional_branch(cond, bdy, ext);
         self.builder.position_at_end(bdy);
-        let input_list = self.load_list(list_ptr)?;
-        let elem = self.call_rt("action_list_get", &[input_list.into(), iv.into()])?;
-        let elem_val = elem.try_as_basic_value().basic().ok_or("list_get failed")?;
+        let elem_val = self.list_get_cached_fat(list_ptr, iv, get_cache)?;
         let elem_tag = self
             .builder
             .build_extract_value(elem_val.into_struct_value(), 0, "et")
@@ -532,6 +635,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let i_a = self.builder.build_alloca(i64, "i").map_err(llvm_err)?;
         self.builder.build_store(i_a, one).map_err(llvm_err)?;
+        let get_cache = self.alloc_list_get_cache()?;
         // Init: load first element into acc
         let init_bb = self.context.append_basic_block(current_fn, "reduce_init");
         let loop_hdr = self.context.append_basic_block(current_fn, "reduce_hdr");
@@ -569,9 +673,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_conditional_branch(cond, loop_bdy, loop_ext);
         self.builder.position_at_end(loop_bdy);
-        let input_list = self.load_list(list_ptr)?;
-        let elem = self.call_rt("action_list_get", &[input_list.into(), iv.into()])?;
-        let elem_val = elem.try_as_basic_value().basic().ok_or("list_get failed")?;
+        let elem_val = self.list_get_cached_fat(list_ptr, iv, get_cache)?;
         let elem_tag = self
             .builder
             .build_extract_value(elem_val.into_struct_value(), 0, "et")
@@ -679,6 +781,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_sub(input_len, one, "start_i")
             .map_err(llvm_err)?;
         self.builder.build_store(i_a, start_i).map_err(llvm_err)?;
+        let get_cache = self.alloc_list_get_cache()?;
         let hdr = self.context.append_basic_block(current_fn, "fr_hdr");
         let bdy = self.context.append_basic_block(current_fn, "fr_bdy");
         let ext = self.context.append_basic_block(current_fn, "fr_ext");
@@ -695,9 +798,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self.builder.build_conditional_branch(cond, bdy, ext);
         self.builder.position_at_end(bdy);
-        let input_list = self.load_list(list_ptr)?;
-        let elem = self.call_rt("action_list_get", &[input_list.into(), iv.into()])?;
-        let elem_val = elem.try_as_basic_value().basic().ok_or("list_get failed")?;
+        let elem_val = self.list_get_cached_fat(list_ptr, iv, get_cache)?;
         let elem_tag = self
             .builder
             .build_extract_value(elem_val.into_struct_value(), 0, "et")
@@ -769,6 +870,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(i_a, i64.const_int(0, false))
             .map_err(llvm_err)?;
+        let get_cache = self.alloc_list_get_cache()?;
         let hdr = self.context.append_basic_block(current_fn, "tw_hdr");
         let bdy = self.context.append_basic_block(current_fn, "tw_bdy");
         let ext = self.context.append_basic_block(current_fn, "tw_ext");
@@ -785,9 +887,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self.builder.build_conditional_branch(cond, bdy, ext);
         self.builder.position_at_end(bdy);
-        let input_list = self.load_list(list_ptr)?;
-        let elem = self.call_rt("action_list_get", &[input_list.into(), iv.into()])?;
-        let elem_val = elem.try_as_basic_value().basic().ok_or("list_get failed")?;
+        let elem_val = self.list_get_cached_fat(list_ptr, iv, get_cache)?;
         let elem_tag = self
             .builder
             .build_extract_value(elem_val.into_struct_value(), 0, "et")
@@ -870,6 +970,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(i_a, i64.const_int(0, false))
             .map_err(llvm_err)?;
+        let get_cache = self.alloc_list_get_cache()?;
         let hdr = self.context.append_basic_block(current_fn, "dw_hdr");
         let bdy = self.context.append_basic_block(current_fn, "dw_bdy");
         let ext = self.context.append_basic_block(current_fn, "dw_ext");
@@ -886,9 +987,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self.builder.build_conditional_branch(cond, bdy, ext);
         self.builder.position_at_end(bdy);
-        let input_list = self.load_list(list_ptr)?;
-        let elem = self.call_rt("action_list_get", &[input_list.into(), iv.into()])?;
-        let elem_val = elem.try_as_basic_value().basic().ok_or("list_get failed")?;
+        let elem_val = self.list_get_cached_fat(list_ptr, iv, get_cache)?;
         let elem_tag = self
             .builder
             .build_extract_value(elem_val.into_struct_value(), 0, "et")
@@ -1006,6 +1105,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(i_a, i64.const_int(0, false))
             .map_err(llvm_err)?;
+        let get_cache = self.alloc_list_get_cache()?;
         // Create two result lists
         let cap = i64.const_int(4, false);
         let left_cc = self.call_rt("action_list_create", &[cap.into()])?;
@@ -1048,9 +1148,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self.builder.build_conditional_branch(cond, bdy, ext);
         self.builder.position_at_end(bdy);
-        let input_list = self.load_list(list_ptr)?;
-        let elem = self.call_rt("action_list_get", &[input_list.into(), iv.into()])?;
-        let elem_val = elem.try_as_basic_value().basic().ok_or("list_get failed")?;
+        let elem_val = self.list_get_cached_fat(list_ptr, iv, get_cache)?;
         let elem_tag = self
             .builder
             .build_extract_value(elem_val.into_struct_value(), 0, "et")
@@ -1154,6 +1252,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(cnt_a, i64.const_int(0, false))
             .map_err(llvm_err)?;
+        let get_cache = self.alloc_list_get_cache()?;
         let hdr = self.context.append_basic_block(current_fn, "cnt_hdr");
         let bdy = self.context.append_basic_block(current_fn, "cnt_bdy");
         let ext = self.context.append_basic_block(current_fn, "cnt_ext");
@@ -1170,9 +1269,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self.builder.build_conditional_branch(cond, bdy, ext);
         self.builder.position_at_end(bdy);
-        let input_list = self.load_list(list_ptr)?;
-        let elem = self.call_rt("action_list_get", &[input_list.into(), iv.into()])?;
-        let elem_val = elem.try_as_basic_value().basic().ok_or("list_get failed")?;
+        let elem_val = self.list_get_cached_fat(list_ptr, iv, get_cache)?;
         let elem_tag = self
             .builder
             .build_extract_value(elem_val.into_struct_value(), 0, "et")
