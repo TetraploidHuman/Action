@@ -159,7 +159,11 @@ fn main() {
                 std::process::exit(1);
             }
         }
-        Commands::Check { file, explain, emit } => match loader::load_checked(&file, explain) {
+        Commands::Check {
+            file,
+            explain,
+            emit,
+        } => match loader::load_checked(&file, explain) {
             Ok(checked) => {
                 if let Some(ref fmt) = emit {
                     if fmt == "hir" {
@@ -168,10 +172,7 @@ fn main() {
                             std::process::exit(1);
                         }
                     } else {
-                        eprintln!(
-                            "Unknown emit format: {}. Supported for check: hir",
-                            fmt
-                        );
+                        eprintln!("Unknown emit format: {}. Supported for check: hir", fmt);
                         std::process::exit(1);
                     }
                 }
@@ -351,7 +352,7 @@ fn run_file(
     }
 
     let context = Context::create();
-    let mut cg = driver::compile_checked(&context, "main", &checked, opt, target)?;
+    let cg = driver::compile_checked(&context, "main", &checked, opt, target)?;
 
     let is_cross = target != "native";
     let is_exe = emit.as_deref() == Some("exe");

@@ -1,27 +1,27 @@
-// Action Language Compiler — library crate
+// Action Language Compiler — library crate (facade)
 //
 // Layered layout (see doc/ARCHITECTURE.md):
-//   span       — source locations (no deps)
-//   frontend   — lex / parse / typecheck / load
-//   backend    — LLVM codegen + runtime IR
-//   driver     — CLI, LSP, REPL (main binary)
-
-pub mod span;
+//   action-span     — source locations
+//   action-frontend — lex / parse / typecheck / load
+//   action-codegen  — LLVM codegen + runtime IR
+//   action (root)   — CLI, LSP, REPL + backward-compatible re-exports
 
 pub mod backend;
-pub mod frontend;
+
+pub use action_frontend as frontend;
+pub use action_span as span;
 
 // ── Backward-compatible re-exports (existing `crate::lexer` paths) ────────────
-pub use backend::codegen;
-pub use backend::CodeGen;
-pub use frontend::{
+pub use action_codegen as codegen;
+pub use action_codegen::CodeGen;
+pub use action_frontend::{
     ast, builtin, checked, config, error, fmt, hir, lexer, loader, parser, registry, session,
     typecheck, types,
 };
-pub use span::Span;
+pub use action_span::Span;
 
 // Legacy alias: typecheck + codegen both used `builtin_registry`
-pub use frontend::builtin as builtin_registry;
+pub use action_frontend::builtin as builtin_registry;
 
 pub mod driver;
 pub mod http_runtime;

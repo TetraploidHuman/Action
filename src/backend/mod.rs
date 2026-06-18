@@ -1,7 +1,5 @@
-//! LLVM codegen, JIT/AOT, and embedded runtime IR.
-//!
-//! Depends on `frontend` only through public crate re-exports (`ast`, `typecheck`, …).
+//! LLVM codegen facade — implementation lives in `action-codegen`.
 
-pub mod codegen;
+pub use action_codegen as codegen;
 
-pub use codegen::CodeGen;
+pub use action_codegen::CodeGen;

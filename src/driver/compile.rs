@@ -58,8 +58,7 @@ pub fn emit_hir(checked: &CheckedProgram, src_path: &Path, to_stdout: bool) -> R
         println!("{}", json);
     } else {
         let out = src_path.with_extension("hir.json");
-        fs::write(&out, json)
-            .map_err(|e| format!("Cannot write to '{}': {}", out.display(), e))?;
+        fs::write(&out, json).map_err(|e| format!("Cannot write to '{}': {}", out.display(), e))?;
         println!("HIR written to: {}", out.display());
     }
     Ok(())

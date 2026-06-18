@@ -1,4 +1,5 @@
 use crate::ast::*;
+use crate::checked::CheckedProgram;
 use crate::lexer::Span;
 use crate::loader::register_types;
 use crate::typecheck::TypeChecker;
@@ -131,14 +132,16 @@ pub fn eval_repl_line(
         return Ok(());
     }
 
+    let checked = CheckedProgram::new(program, registry, &checker);
+
     let target_opt = if target == "native" {
         None
     } else {
         Some(target.to_string())
     };
-    let mut cg = crate::codegen::CodeGen::new(context, "repl", registry, target_opt);
+    let mut cg = crate::codegen::CodeGen::new(context, "repl", checked.registry.clone(), target_opt);
     cg.set_opt_level(opt);
-    if let Err(e) = cg.compile(&program) {
+    if let Err(e) = cg.compile_checked(&checked) {
         eprintln!("Compile error: {}", e);
         return Ok(());
     }

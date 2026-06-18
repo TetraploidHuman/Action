@@ -1,0 +1,15 @@
+[package]
+name = "action-frontend"
+version = "0.5.2"
+edition = "2021"
+publish = false
+
+[dependencies]
+action-span = { path = "../action-span" }
+ariadne = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+toml = "1.0"
+serde_json = "1.0"
+
+[dev-dependencies]
+proptest = "1.4"

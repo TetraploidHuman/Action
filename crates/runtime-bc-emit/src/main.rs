@@ -1,7 +1,7 @@
 //! Build-time helper: emit LLVM bitcode for the Action runtime module.
 //! Built as a separate crate so action's build.rs can invoke it without deadlocking.
 
-use action::codegen::CodeGen;
+use action_codegen::CodeGen;
 use std::env;
 use std::fs;
 use std::path::Path;

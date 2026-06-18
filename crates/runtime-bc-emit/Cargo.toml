@@ -9,4 +9,4 @@ name = "runtime-bc-emit"
 path = "src/main.rs"
 
 [dependencies]
-action = { path = "../.." }
+action-codegen = { path = "../action-codegen" }

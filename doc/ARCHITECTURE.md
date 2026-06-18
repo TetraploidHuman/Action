@@ -123,8 +123,8 @@ pub use span::Span;
 1. **`loader::load_checked(path)`** / **`load_program`**  
    读文件 → lex → parse → 注入 stdlib/builtins → resolve imports → typecheck → **`lower_program` → HIR**
 
-2. **`CodeGen::compile_checked(checked)`**（或 `compile(program)` 直连 AST）  
-   release 直接用 `checked.program`；`debug_assert!` 验证 HIR round-trip → 链接 runtime → LLVM Module
+2. **`CodeGen::compile_checked(checked)`** → **`compile_hir(&checked.hir)`**  
+   Release codegen reads HIR directly (typed expressions carry `ty`); `compile(&Program)` is test-only. Link runtime → LLVM Module
 
 3. **执行 / 发射**  
    - JIT：`run_jit()`  
@@ -145,8 +145,17 @@ pub use span::Span;
 | R5 | 引入 HIR（`frontend/hir/`）作为 AST→codegen 边界 | ✅ |
 | R5b | release 跳过 HIR round-trip；`driver/` 统一编排 | ✅ |
 | R5c | `--emit hir` CLI；examples HIR golden 测试 | ✅ |
-| R6 | Cargo workspace：`action-frontend` / `action-codegen` 独立 crate | 待做 |
-| R7 | LSP/REPL 统一走 `FrontendSession` | ✅（LSP 已接入；REPL 用 `register_types`） |
+| R5d | Codegen reads HIR directly (`compile_hir`); REPL via `compile_checked` | ✅ |
+| R6 | Cargo workspace：`action-frontend` / `action-codegen` 独立 crate | ✅ |
+| R7 | LSP/REPL 统一走 `FrontendSession` | ✅（LSP 已接入；REPL 用 `compile_checked`） |
+
+## 性能优化（P2）
+
+| 项 | 说明 | 状态 |
+|----|------|------|
+| ConcatNode balance | `depth > 32` 时 flatten；修复 `cc_small_merge` 双 leaf 判定 | ✅ |
+| Map Robin-Hood | 40B entry + probe distance；insert/get/rehash | ✅ |
+| Lambda mono | map/filter btree walk；fold/any/all 单态化 | ✅ |
 
 ## 测试纪律
 
