@@ -4,7 +4,6 @@ pub mod position;
 pub mod project;
 pub mod symbols;
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 use lsp_server::{Connection, Message, Notification, Request, Response};
@@ -14,10 +13,7 @@ use lsp_types::{
     TextDocumentSyncKind,
 };
 
-use crate::ast::Type;
-use crate::lexer::Lexer;
-use crate::parser::Parser;
-use crate::typecheck::{TypeChecker, TypeRegistry};
+use crate::session::FrontendSession;
 
 use self::handlers::ServerState;
 use self::project::Project;
@@ -90,11 +86,11 @@ pub fn start_lsp() -> Result<(), Box<dyn std::error::Error>> {
         .flatten();
 
     // Load stdlib
-    let (stdlib_registry, stdlib_type_env) =
-        load_stdlib_context(root_uri.as_ref(), workspace_folders.as_deref());
-
     let search_dirs = build_search_dirs(root_uri.as_ref(), workspace_folders.as_deref());
-    let project = Project::new(stdlib_registry, stdlib_type_env, search_dirs);
+    let (stdlib_registry, stdlib_type_env) = FrontendSession::load_stdlib_context(&search_dirs);
+    let session = FrontendSession::with_context(search_dirs, stdlib_registry, stdlib_type_env)
+        .expect("stdlib load should not fail after context build");
+    let project = Project::new(session);
     let mut state = ServerState::new(project);
 
     // Main loop
@@ -272,54 +268,4 @@ fn build_search_dirs(
     }
 
     dirs
-}
-
-/// Pre-load stdlib modules and build a combined TypeRegistry + type_env.
-/// Searches the given directories for stdlib files.
-fn load_stdlib_context(
-    root_uri: Option<&lsp_types::Url>,
-    workspace_folders: Option<&[lsp_types::WorkspaceFolder]>,
-) -> (TypeRegistry, HashMap<String, Type>) {
-    let mut registry = TypeRegistry::new();
-
-    // Always register built-in types
-    builtin_types_for_lsp(&mut registry);
-
-    let mut type_env: HashMap<String, Type> = HashMap::new();
-
-    // Try to load stdlib files
-    let search_dirs = build_search_dirs(root_uri, workspace_folders);
-    for filename in &["math.at", "json.at"] {
-        let source = search_dirs
-            .iter()
-            .map(|d| d.join(filename))
-            .find(|p| p.exists())
-            .and_then(|p| std::fs::read_to_string(&p).ok());
-        if let Some(source) = source {
-            let mut lexer = Lexer::new(&source);
-            let tokens = lexer.tokenize();
-            let mut parser = Parser::new(tokens);
-            let (stmts, _errors) = parser.parse_program_recover();
-
-            for stmt in &stmts {
-                let _ = registry.register(stmt);
-            }
-
-            let program = crate::ast::Program { stmts };
-            let mut checker = TypeChecker::new(registry.clone());
-            checker.seed_type_env(&type_env);
-            let _ = checker.check(&program);
-            for (k, v) in checker.type_env() {
-                type_env.entry(k.clone()).or_insert_with(|| v.clone());
-            }
-            registry = checker.registry_ref().clone();
-        }
-    }
-
-    (registry, type_env)
-}
-
-fn builtin_types_for_lsp(_registry: &mut TypeRegistry) {
-    // Built-in types are now registered elsewhere; keep this function as a hook
-    // for future LSP-specific type registrations.
 }

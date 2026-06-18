@@ -5,6 +5,7 @@ use lsp_types::Url;
 
 use crate::ast::Type;
 use crate::lexer::{Span, TokenKind};
+use crate::session::FrontendSession;
 use crate::typecheck::TypeRegistry;
 
 use super::document::Document;
@@ -46,28 +47,37 @@ pub struct SymbolLocation {
 /// Project-level state: manages multiple documents and cross-file features
 pub struct Project {
     pub documents: HashMap<Url, Document>,
-    pub stdlib_registry: TypeRegistry,
-    pub stdlib_type_env: HashMap<String, Type>,
+    pub session: FrontendSession,
     pub symbol_index: HashMap<String, Vec<SymbolLocation>>,
-    /// Directories to search for standard library files.
-    /// Populated from workspace roots, CWD, and exe-relative paths.
-    #[allow(dead_code)]
-    pub search_dirs: Vec<PathBuf>,
 }
 
 impl Project {
-    pub fn new(
+    pub fn new(session: FrontendSession) -> Self {
+        Project {
+            documents: HashMap::new(),
+            session,
+            symbol_index: HashMap::new(),
+        }
+    }
+
+    /// Backward-compatible constructor.
+    pub fn with_stdlib(
         stdlib_registry: TypeRegistry,
         stdlib_type_env: HashMap<String, Type>,
         search_dirs: Vec<PathBuf>,
     ) -> Self {
-        Project {
-            documents: HashMap::new(),
-            stdlib_registry,
-            stdlib_type_env,
-            symbol_index: HashMap::new(),
+        let session = FrontendSession::with_context(
             search_dirs,
-        }
+            stdlib_registry.clone(),
+            stdlib_type_env.clone(),
+        )
+        .unwrap_or_else(|_| FrontendSession {
+            stdlib_stmts: Vec::new(),
+            search_dirs: Vec::new(),
+            base_registry: stdlib_registry,
+            base_type_env: stdlib_type_env,
+        });
+        Self::new(session)
     }
 
     /// Add or update a document, recheck it, and refresh the symbol index
@@ -78,7 +88,7 @@ impl Project {
         version: i32,
     ) -> Vec<lsp_types::Diagnostic> {
         let mut doc = Document::new(uri.clone(), source, version);
-        doc.recheck(&self.stdlib_registry, &self.stdlib_type_env);
+        doc.recheck_with_session(&self.session);
         let diagnostics = doc.get_diagnostics();
         self.update_symbol_index(uri, &doc);
         self.documents.insert(uri.clone(), doc);
@@ -209,7 +219,7 @@ mod tests {
     use std::collections::HashMap;
 
     fn empty_project() -> Project {
-        Project::new(TypeRegistry::new(), HashMap::new(), Vec::new())
+        Project::with_stdlib(TypeRegistry::new(), HashMap::new(), Vec::new())
     }
 
     #[test]

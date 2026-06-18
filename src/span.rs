@@ -1,7 +1,7 @@
 //! Source location spans — shared by lexer, AST, and diagnostics (no other deps).
 
 /// Byte range and line/column in source text.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Span {
     pub start: usize,
     pub end: usize,

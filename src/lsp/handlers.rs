@@ -81,7 +81,7 @@ pub fn handle_hover(state: &ServerState, params: HoverParams) -> Option<Hover> {
     let type_str = doc
         .type_env
         .get(&name)
-        .or_else(|| state.project.stdlib_type_env.get(&name))
+        .or_else(|| state.project.session.base_type_env.get(&name))
         .map(|t| format!("```action\n{}: {}\n```", name, t))
         .unwrap_or_else(|| format!("```action\n{}\n```", name));
 
@@ -171,8 +171,8 @@ pub fn handle_completion(
         &doc.source,
         &pos,
         &doc.type_env,
-        &state.project.stdlib_type_env,
-        &state.project.stdlib_registry,
+        &state.project.session.base_type_env,
+        &state.project.session.base_registry,
         &prefix,
     ) {
         return Some(CompletionResponse::Array(member_items));
@@ -313,7 +313,7 @@ pub fn handle_signature_help(
     let func_type = doc
         .type_env
         .get(&func_name)
-        .or_else(|| state.project.stdlib_type_env.get(&func_name));
+        .or_else(|| state.project.session.base_type_env.get(&func_name));
 
     match func_type {
         Some(Type::Function(param_types, ret_type)) => {
@@ -1510,7 +1510,7 @@ mod tests {
     use std::collections::HashMap;
 
     fn make_state(source: &str) -> ServerState {
-        let proj = Project::new(TypeRegistry::new(), HashMap::new(), Vec::new());
+        let proj = Project::with_stdlib(TypeRegistry::new(), HashMap::new(), Vec::new());
         let mut state = ServerState::new(proj);
         let uri = Url::parse("file:///test.at").unwrap();
         let params = DidOpenTextDocumentParams {
@@ -1535,7 +1535,7 @@ mod tests {
 
     #[test]
     fn test_handle_did_open() {
-        let mut state = state_with_proj(Project::new(
+        let mut state = state_with_proj(Project::with_stdlib(
             TypeRegistry::new(),
             HashMap::new(),
             Vec::new(),

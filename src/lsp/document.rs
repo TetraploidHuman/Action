@@ -5,8 +5,8 @@ use lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString, Position, Range,
 use crate::ast::*;
 use crate::error::CompilerError;
 use crate::lexer::{Lexer, Span, Token};
-use crate::parser::{ParseError, Parser};
-use crate::typecheck::{TypeChecker, TypeRegistry};
+use crate::parser::ParseError;
+use crate::session::FrontendSession;
 
 use super::position;
 
@@ -34,54 +34,52 @@ impl Document {
             type_errors: Vec::new(),
             definition_map: HashMap::new(),
         };
-        doc.recheck(&TypeRegistry::new(), &HashMap::new());
+        doc.recheck_with_session(&empty_session());
         doc
     }
+}
 
-    /// Re-lex, re-parse, and re-type-check. Merges stdlib context.
-    pub fn recheck(
-        &mut self,
-        stdlib_registry: &TypeRegistry,
-        stdlib_type_env: &HashMap<String, Type>,
-    ) {
-        // 1. Tokenize
+fn empty_session() -> FrontendSession {
+    FrontendSession {
+        stdlib_stmts: Vec::new(),
+        search_dirs: Vec::new(),
+        base_registry: crate::typecheck::TypeRegistry::new(),
+        base_type_env: HashMap::new(),
+    }
+}
+
+impl Document {
+    /// Re-lex, re-parse, and re-type-check via shared frontend session.
+    pub fn recheck_with_session(&mut self, session: &FrontendSession) {
         let mut lexer = Lexer::new(&self.source);
         self.tokens = lexer.tokenize();
 
-        // 2. Parse with error recovery
-        let mut parser = Parser::new(self.tokens.clone());
-        let (stmts, parse_errors) = parser.parse_program_recover();
-        self.ast = stmts;
-        self.parse_errors = parse_errors;
-
-        // 3. Build definition map from successfully parsed statements
+        let result = session.compile_recover_buffer(&self.source);
+        self.ast = result.stmts;
+        self.parse_errors = result.parse_errors;
         self.definition_map = build_definition_map(&self.ast);
+        self.type_errors = result.type_errors;
+        self.type_env = result.type_env;
+    }
 
-        // 4. Type check (only if we got some valid statements)
-        if self.ast.is_empty() {
-            self.type_env.clear();
-            self.type_errors.clear();
-            return;
-        }
-
-        let program = Program {
-            stmts: self.ast.clone(),
-        };
-
-        // Build combined registry: stdlib + user types
-        let mut registry = stdlib_registry.clone();
-        for stmt in &program.stmts {
-            let _ = registry.register(stmt);
-        }
-
-        let mut checker = TypeChecker::new(registry);
-        checker.seed_type_env(stdlib_type_env);
-        self.type_errors = checker.check(&program);
-        self.type_env = checker
-            .type_env()
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
+    #[allow(dead_code)]
+    pub fn recheck(
+        &mut self,
+        stdlib_registry: &crate::typecheck::TypeRegistry,
+        stdlib_type_env: &HashMap<String, Type>,
+    ) {
+        let session = FrontendSession::with_context(
+            Vec::new(),
+            stdlib_registry.clone(),
+            stdlib_type_env.clone(),
+        )
+        .unwrap_or_else(|_| FrontendSession {
+            stdlib_stmts: Vec::new(),
+            search_dirs: Vec::new(),
+            base_registry: stdlib_registry.clone(),
+            base_type_env: stdlib_type_env.clone(),
+        });
+        self.recheck_with_session(&session);
     }
 
     /// Get all diagnostics (parse errors + type errors) as LSP diagnostics
@@ -180,6 +178,7 @@ fn build_definition_map(stmts: &[Stmt]) -> HashMap<String, Span> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::typecheck::TypeRegistry;
     use lsp_types::Url;
     use std::collections::HashMap;
 

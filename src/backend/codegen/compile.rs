@@ -10,6 +10,23 @@ use std::collections::HashMap;
 
 impl<'ctx> CodeGen<'ctx> {
     pub fn compile(&mut self, program: &Program) -> Result<(), String> {
+        self.compile_inner(program)
+    }
+
+    /// Compile from a type-checked bundle via HIR round-trip (dual-track transition).
+    pub fn compile_checked(
+        &mut self,
+        checked: &crate::frontend::checked::CheckedProgram,
+    ) -> Result<(), String> {
+        debug_assert!(
+            checked.verify_hir_round_trip(),
+            "HIR must round-trip to AST before codegen"
+        );
+        let program = checked.hir.to_program();
+        self.compile_inner(&program)
+    }
+
+    fn compile_inner(&mut self, program: &Program) -> Result<(), String> {
         self.define_runtime()?;
         self.detach_builder()?;
 

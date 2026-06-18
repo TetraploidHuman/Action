@@ -12,7 +12,7 @@ pub fn run_test_file(path: &PathBuf, opt: u8, profile: bool, target: &str) -> Re
         .map(|c| c.effective_opt_level(opt))
         .unwrap_or(opt);
 
-    let (program, registry) = loader::load_program(path, false).map_err(|errors| {
+    let checked = loader::load_checked(path, false).map_err(|errors| {
         errors
             .iter()
             .map(|e| e.to_string())
@@ -20,7 +20,8 @@ pub fn run_test_file(path: &PathBuf, opt: u8, profile: bool, target: &str) -> Re
             .join("\n")
     })?;
 
-    let test_names: Vec<String> = program
+    let test_names: Vec<String> = checked
+        .program
         .stmts
         .iter()
         .filter_map(|stmt| {
@@ -56,9 +57,14 @@ pub fn run_test_file(path: &PathBuf, opt: u8, profile: bool, target: &str) -> Re
     } else {
         Some(target.to_string())
     };
-    let mut cg = crate::codegen::CodeGen::new(&context, "test_runner", registry, target_opt);
+    let mut cg = crate::codegen::CodeGen::new(
+        &context,
+        "test_runner",
+        checked.registry.clone(),
+        target_opt,
+    );
     cg.set_opt_level(opt);
-    cg.compile(&program)?;
+    cg.compile_checked(&checked)?;
     cg.verify()?;
 
     if profile {

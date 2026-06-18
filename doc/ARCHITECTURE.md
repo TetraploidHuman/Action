@@ -40,10 +40,30 @@ src/
     mod.rs
     ast.rs
     lexer.rs
-    parser.rs
     types.rs              # unify / mangle / types_compatible
-    typecheck.rs          # TypeChecker + TypeRegistry
-    loader.rs             # load_program 主编排
+    registry.rs             # TypeRegistry · StructInfo · EnumInfo
+    exhaustive.rs           # when 穷尽性检查
+    session.rs              # FrontendSession（loader / LSP 共用）
+    typecheck/              # TypeChecker + infer / check_stmt
+      mod.rs
+      infer.rs
+      check_stmt.rs
+    loader/
+      mod.rs
+      resolve.rs
+      stdlib.rs
+    parser/
+      mod.rs
+      expr.rs
+      stmt.rs
+      type_parse.rs
+      pattern.rs
+    hir/                    # typed IR (HIR) — bootstrap boundary
+      mod.rs
+      nodes.rs
+      lower.rs
+      to_ast.rs
+    checked.rs              # CheckedProgram { ast, registry, hir }
     error.rs              # CompilerError + ariadne 报告
     fmt.rs
     config.rs             # atom.toml
@@ -89,17 +109,18 @@ pub use span::Span;
 
 新代码应优先使用：
 
+- `action::frontend::session::FrontendSession`
 - `action::frontend::loader::load_program`
 - `action::backend::CodeGen`
 - `action::span::Span`
 
 ## 编译流水线
 
-1. **`loader::load_program(path, explain)`**  
-   读文件 → lex → parse → 注入 stdlib/builtins → resolve imports → typecheck → `(Program, TypeRegistry)`
+1. **`loader::load_checked(path)`** / **`load_program`**  
+   读文件 → lex → parse → 注入 stdlib/builtins → resolve imports → typecheck → **`lower_program` → HIR**
 
-2. **`CodeGen::new` + `compile(program)`**  
-   链接 runtime bitcode → 两遍编译（声明 / 函数体）→ LLVM Module
+2. **`CodeGen::compile_checked(checked)`**（或 `compile(program)` 直连 AST）  
+   HIR round-trip → 链接 runtime bitcode → 两遍编译 → LLVM Module
 
 3. **执行**  
    - JIT：`run_jit()`  
@@ -112,10 +133,13 @@ pub use span::Span;
 | R1 | `frontend/` + `backend/` 目录 + `span` 提取 | ✅ |
 | R2 | `builtin` 迁入 frontend；`BuiltinDispatch` 拆至 `backend/codegen/builtin_dispatch.rs` | ✅ |
 | R3 | `ParseError` 携带 `Span`；`load_program` 用 `to_compiler_error()` | ✅ |
-| R4 | `TypeRegistry` 从 `typecheck.rs` 拆至 `frontend/registry.rs` | 待做 |
-| R5 | 引入 HIR（`frontend/hir/`）作为 AST→codegen 边界 | 待做 |
+| R4 | `TypeRegistry` 从 `typecheck.rs` 拆至 `frontend/registry.rs` | ✅ |
+| R4b | `typecheck` 拆为 `infer` / `check_stmt`；`exhaustive.rs` | ✅ |
+| R4c | `parser.rs` 拆为 `expr` / `stmt` / `type_parse` / `pattern` | ✅ |
+| R4d | `loader` 拆为 `resolve` / `stdlib` | ✅ |
+| R5 | 引入 HIR（`frontend/hir/`）作为 AST→codegen 边界 | ✅（双轨：`compile_checked` + round-trip） |
 | R6 | Cargo workspace：`action-frontend` / `action-codegen` 独立 crate | 待做 |
-| R7 | LSP 统一走 `loader`（或 frontend API） | 待做 |
+| R7 | LSP/REPL 统一走 `FrontendSession` | ✅（LSP 已接入；REPL 用 `register_types`） |
 
 ## 测试纪律
 

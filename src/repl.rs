@@ -1,6 +1,7 @@
 use crate::ast::*;
 use crate::lexer::Span;
-use crate::typecheck::{TypeChecker, TypeRegistry};
+use crate::loader::register_types;
+use crate::typecheck::TypeChecker;
 use inkwell::context::Context;
 use inkwell::targets::{InitializationConfig, Target};
 use std::io::{self, Write};
@@ -120,11 +121,7 @@ pub fn eval_repl_line(
         }
     }
 
-    let mut registry = TypeRegistry::new();
-    for stmt in &program.stmts {
-        let _ = registry.register(stmt);
-    }
-
+    let registry = register_types(&program);
     let mut checker = TypeChecker::new(registry.clone());
     let errors = checker.check(&program);
     if !errors.is_empty() {

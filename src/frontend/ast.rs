@@ -4,7 +4,7 @@ use std::fmt;
 
 // ---- Types as written in source code ----
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[allow(dead_code)]
 pub enum Type {
     /// Named type: Int, String, MyType, List[Int]
@@ -129,7 +129,7 @@ pub fn resolve_type_vars(ty: &Type, type_map: &HashMap<String, Type>) -> Type {
 
 // ---- Literals ----
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Literal {
     Int(i64),
     Float(f64),
@@ -154,7 +154,7 @@ impl fmt::Display for Literal {
 
 // ---- Operators ----
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum BinaryOp {
     // Arithmetic
     Add,
@@ -220,7 +220,7 @@ impl fmt::Display for BinaryOp {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum UnaryOp {
     Neg,
     Not,
@@ -672,7 +672,7 @@ impl fmt::Display for For {
 
 // ---- Statements ----
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Param {
     pub name: String,
     pub ty: Option<Type>,
@@ -801,13 +801,13 @@ impl Stmt {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EnumVariant {
     pub name: String,
     pub params: Vec<EnumVariantParam>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum EnumVariantParam {
     /// Positional parameter: Some(T)
     Positional(Type),
@@ -815,7 +815,7 @@ pub enum EnumVariantParam {
     Named { name: String, ty: Type },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ExportItem {
     Function(String),
     Constant(String),

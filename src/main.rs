@@ -316,7 +316,7 @@ fn run_file(
         .map(|c| c.effective_opt_level(opt))
         .unwrap_or(opt);
 
-    let (program, registry) = loader::load_program(path, explain).map_err(|errors| {
+    let checked = loader::load_checked(path, explain).map_err(|errors| {
         errors
             .iter()
             .map(|e| e.to_string())
@@ -338,9 +338,9 @@ fn run_file(
     } else {
         Some(target.to_string())
     };
-    let mut cg = codegen::CodeGen::new(&context, "main", registry, target_opt);
+    let mut cg = codegen::CodeGen::new(&context, "main", checked.registry.clone(), target_opt);
     cg.set_opt_level(opt);
-    cg.compile(&program)?;
+    cg.compile_checked(&checked)?;
     cg.verify()?;
 
     let is_cross = target != "native";
@@ -396,7 +396,7 @@ fn build_file(
         .map(|c| c.effective_opt_level(opt))
         .unwrap_or(opt);
 
-    let (program, registry) = loader::load_program(path, false).map_err(|errors| {
+    let checked = loader::load_checked(path, false).map_err(|errors| {
         errors
             .iter()
             .map(|e| e.to_string())
@@ -410,9 +410,9 @@ fn build_file(
     } else {
         Some(target.to_string())
     };
-    let mut cg = codegen::CodeGen::new(&context, "main", registry, target_opt);
+    let mut cg = codegen::CodeGen::new(&context, "main", checked.registry.clone(), target_opt);
     cg.set_opt_level(opt);
-    cg.compile(&program)?;
+    cg.compile_checked(&checked)?;
     cg.verify()?;
 
     if let Some(ref fmt) = emit {
