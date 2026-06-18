@@ -43,9 +43,7 @@ mod tests {
 
     #[test]
     fn hir_round_trip_arith() {
-        let (program, hir) = check_and_lower(
-            "fun main() {\n  val x = 1 + 2\n  println(x * 3)\n}",
-        );
+        let (program, hir) = check_and_lower("fun main() {\n  val x = 1 + 2\n  println(x * 3)\n}");
         assert_eq!(hir.to_program(), program);
     }
 
