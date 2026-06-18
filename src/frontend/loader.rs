@@ -76,9 +76,9 @@ fn parse_source_file(path: &Path) -> Result<Vec<Stmt>, String> {
         return Err(format!("Lexer error in {}: {}", file_name, lexer_errors[0]));
     }
     let mut parser = crate::parser::Parser::new(tokens);
-    let program = parser.parse_program().map_err(|e| {
-        format!("Parse error in {}: {}", file_name, e)
-    })?;
+    let program = parser
+        .parse_program()
+        .map_err(|e| format!("Parse error in {}: {}", file_name, e))?;
     Ok(program.stmts)
 }
 
@@ -171,9 +171,9 @@ fn load_module(module_name: &str, search_dirs: &[PathBuf]) -> Result<Vec<Stmt>, 
                     return Err(format!("Lexer error in {}: {}", file_name, first));
                 }
                 let mut parser = crate::parser::Parser::new(tokens);
-                let program = parser.parse_program().map_err(|e| {
-                    format!("Parse error in {}: {}", file_name, e)
-                })?;
+                let program = parser
+                    .parse_program()
+                    .map_err(|e| format!("Parse error in {}: {}", file_name, e))?;
                 return Ok(program.stmts);
             }
         }
@@ -735,7 +735,9 @@ pub fn load_program(
     }
 
     let mut parser = crate::parser::Parser::new(tokens);
-    let mut program = parser.parse_program().map_err(|e| vec![e.to_compiler_error()])?;
+    let mut program = parser
+        .parse_program()
+        .map_err(|e| vec![e.to_compiler_error()])?;
 
     let builtins_types = builtin_types(&program);
     let stdlib = load_stdlib().map_err(|e| vec![CompilerError::new(e)])?;

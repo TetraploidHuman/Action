@@ -1,8 +1,8 @@
 // Submodule: builtins_call
 
+use super::builtin_dispatch::BuiltinDispatch;
 use crate::ast::*;
 use crate::builtin_registry::{self, UfcsReceiverKind};
-use super::builtin_dispatch::BuiltinDispatch;
 use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
 use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum, PointerValue};
 use inkwell::IntPredicate;
@@ -61,8 +61,11 @@ impl<'ctx> CodeGen<'ctx> {
                 match BuiltinDispatch::for_builtin(def) {
                     BuiltinDispatch::Print => return self.builtin_print(name, args),
                     BuiltinDispatch::Map | BuiltinDispatch::Filter | BuiltinDispatch::Fold => {
-                        let list_arg_idx =
-                            BuiltinDispatch::list_operand_index(def, trailing.is_some(), args.len());
+                        let list_arg_idx = BuiltinDispatch::list_operand_index(
+                            def,
+                            trailing.is_some(),
+                            args.len(),
+                        );
                         let is_list_op = list_arg_idx.map_or(false, |idx| {
                             idx < args.len()
                                 && matches!(self.compile_expr(&args[idx]), Ok(TypedValue::List(_)))
@@ -77,8 +80,11 @@ impl<'ctx> CodeGen<'ctx> {
                         }
                     }
                     BuiltinDispatch::CallbackList => {
-                        let list_arg_idx =
-                            BuiltinDispatch::list_operand_index(def, trailing.is_some(), args.len());
+                        let list_arg_idx = BuiltinDispatch::list_operand_index(
+                            def,
+                            trailing.is_some(),
+                            args.len(),
+                        );
                         let is_list_op = list_arg_idx.map_or(false, |idx| {
                             idx < args.len()
                                 && matches!(self.compile_expr(&args[idx]), Ok(TypedValue::List(_)))

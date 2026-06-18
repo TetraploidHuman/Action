@@ -8,16 +8,14 @@
 
 pub mod span;
 
-pub mod frontend;
 pub mod backend;
+pub mod frontend;
 
 // ── Backward-compatible re-exports (existing `crate::lexer` paths) ────────────
-pub use span::Span;
-pub use frontend::{
-    ast, builtin, config, error, fmt, lexer, loader, parser, typecheck, types,
-};
 pub use backend::codegen;
 pub use backend::CodeGen;
+pub use frontend::{ast, builtin, config, error, fmt, lexer, loader, parser, typecheck, types};
+pub use span::Span;
 
 // Legacy alias: typecheck + codegen both used `builtin_registry`
 pub use frontend::builtin as builtin_registry;
