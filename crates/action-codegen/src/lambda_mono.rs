@@ -303,13 +303,7 @@ impl<'ctx> CodeGen<'ctx> {
         let rec_fn = self.module.add_function(
             &rec_name,
             void.fn_type(
-                &[
-                    ptr.into(),
-                    i64.into(),
-                    ptr.into(),
-                    ptr.into(),
-                    ptr.into(),
-                ],
+                &[ptr.into(), i64.into(), ptr.into(), ptr.into(), ptr.into()],
                 false,
             ),
             None,
@@ -545,8 +539,12 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_pointer_cast(new_buf, ptr, "new_buf_i8")
             .map_err(llvm_err)?;
-        self.builder.build_store(new_buf_i8, zero).map_err(llvm_err)?;
-        self.builder.build_store(r_buf_p, new_buf).map_err(llvm_err)?;
+        self.builder
+            .build_store(new_buf_i8, zero)
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(r_buf_p, new_buf)
+            .map_err(llvm_err)?;
         self.builder
             .build_store(r_buf_pos_p, zero)
             .map_err(llvm_err)?;
@@ -691,7 +689,10 @@ impl<'ctx> CodeGen<'ctx> {
             .build_alloca(self.list_type, "acc")
             .map_err(llvm_err)?;
         let buf_p = self.builder.build_alloca(ptr, "buf_p").map_err(llvm_err)?;
-        let buf_pos_p = self.builder.build_alloca(i64, "buf_pos").map_err(llvm_err)?;
+        let buf_pos_p = self
+            .builder
+            .build_alloca(i64, "buf_pos")
+            .map_err(llvm_err)?;
         let init = self
             .builder
             .build_call(create_fn, &[len.into()], "init")
@@ -714,7 +715,9 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(buf_init_i8, zero)
             .map_err(llvm_err)?;
-        self.builder.build_store(buf_p, buf_init).map_err(llvm_err)?;
+        self.builder
+            .build_store(buf_p, buf_init)
+            .map_err(llvm_err)?;
         self.builder
             .build_store(buf_pos_p, zero)
             .map_err(llvm_err)?;
@@ -808,13 +811,7 @@ impl<'ctx> CodeGen<'ctx> {
         let rec_fn = self.module.add_function(
             &rec_name,
             void.fn_type(
-                &[
-                    ptr.into(),
-                    i64.into(),
-                    ptr.into(),
-                    ptr.into(),
-                    ptr.into(),
-                ],
+                &[ptr.into(), i64.into(), ptr.into(), ptr.into(), ptr.into()],
                 false,
             ),
             None,
@@ -1054,8 +1051,12 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_pointer_cast(new_buf, ptr, "new_buf_i8")
             .map_err(llvm_err)?;
-        self.builder.build_store(new_buf_i8, zero).map_err(llvm_err)?;
-        self.builder.build_store(r_buf_p, new_buf).map_err(llvm_err)?;
+        self.builder
+            .build_store(new_buf_i8, zero)
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(r_buf_p, new_buf)
+            .map_err(llvm_err)?;
         self.builder
             .build_store(r_buf_pos_p, zero)
             .map_err(llvm_err)?;
@@ -1203,7 +1204,10 @@ impl<'ctx> CodeGen<'ctx> {
             .build_alloca(self.list_type, "acc")
             .map_err(llvm_err)?;
         let buf_p = self.builder.build_alloca(ptr, "buf_p").map_err(llvm_err)?;
-        let buf_pos_p = self.builder.build_alloca(i64, "buf_pos").map_err(llvm_err)?;
+        let buf_pos_p = self
+            .builder
+            .build_alloca(i64, "buf_pos")
+            .map_err(llvm_err)?;
         let init = self
             .builder
             .build_call(create_fn, &[len.into()], "init")
@@ -1226,7 +1230,9 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(buf_init_i8, zero)
             .map_err(llvm_err)?;
-        self.builder.build_store(buf_p, buf_init).map_err(llvm_err)?;
+        self.builder
+            .build_store(buf_p, buf_init)
+            .map_err(llvm_err)?;
         self.builder
             .build_store(buf_pos_p, zero)
             .map_err(llvm_err)?;
@@ -1385,11 +1391,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
         let _ = self
             .builder
-            .build_call(
-                rec_fn,
-                &[left_node.into(), left_h.into(), r_acc.into()],
-                "",
-            )
+            .build_call(rec_fn, &[left_node.into(), left_h.into(), r_acc.into()], "")
             .map_err(llvm_err)?;
         let _ = self
             .builder
@@ -1899,11 +1901,9 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(r_false);
         let _ = self.builder.build_return(Some(&false_val));
 
-        let walk_fn = self.module.add_function(
-            name,
-            b1.fn_type(&[self.list_type.into()], false),
-            None,
-        );
+        let walk_fn =
+            self.module
+                .add_function(name, b1.fn_type(&[self.list_type.into()], false), None);
         let w_entry = self.context.append_basic_block(walk_fn, "entry");
         let w_walk = self.context.append_basic_block(walk_fn, "walk");
 
@@ -2223,11 +2223,9 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(r_false);
         let _ = self.builder.build_return(Some(&false_val));
 
-        let walk_fn = self.module.add_function(
-            name,
-            b1.fn_type(&[self.list_type.into()], false),
-            None,
-        );
+        let walk_fn =
+            self.module
+                .add_function(name, b1.fn_type(&[self.list_type.into()], false), None);
         let w_entry = self.context.append_basic_block(walk_fn, "entry");
         let w_walk = self.context.append_basic_block(walk_fn, "walk");
 

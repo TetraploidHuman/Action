@@ -69,8 +69,7 @@ impl<'ctx> CodeGen<'ctx> {
             } = stmt
             {
                 if !type_params.is_empty() {
-                    self.generic_fun_defs
-                        .insert(name.clone(), stmt.as_stmt());
+                    self.generic_fun_defs.insert(name.clone(), stmt.as_stmt());
                     continue;
                 }
                 let param_types: Vec<Type> = params
@@ -320,7 +319,10 @@ impl<'ctx> CodeGen<'ctx> {
             HirExprKind::FunctionRef(name) => self.compile_function_ref(name),
             HirExprKind::Block(stmts) => self.compile_hir_block(stmts, &expr.ty),
             HirExprKind::Binary(lhs, op, rhs) => {
-                if matches!(op, BinaryOp::And | BinaryOp::Or | BinaryOp::Is | BinaryOp::In) {
+                if matches!(
+                    op,
+                    BinaryOp::And | BinaryOp::Or | BinaryOp::Is | BinaryOp::In
+                ) {
                     return self.compile_binary(&lhs.as_expr(), *op, &rhs.as_expr());
                 }
                 let left = self.compile_hir_expr(lhs)?;
@@ -443,20 +445,36 @@ impl<'ctx> CodeGen<'ctx> {
             BinaryOp::Pow => self.bin_pow(left, right),
             BinaryOp::Eq => self.compare_eq(left, right),
             BinaryOp::Neq => self.compare_neq(left, right),
-            BinaryOp::Lt => {
-                self.compare(inkwell::IntPredicate::SLT, inkwell::FloatPredicate::OLT, left, right)
+            BinaryOp::Lt => self.compare(
+                inkwell::IntPredicate::SLT,
+                inkwell::FloatPredicate::OLT,
+                left,
+                right,
+            ),
+            BinaryOp::Gt => self.compare(
+                inkwell::IntPredicate::SGT,
+                inkwell::FloatPredicate::OGT,
+                left,
+                right,
+            ),
+            BinaryOp::Lte => self.compare(
+                inkwell::IntPredicate::SLE,
+                inkwell::FloatPredicate::OLE,
+                left,
+                right,
+            ),
+            BinaryOp::Gte => self.compare(
+                inkwell::IntPredicate::SGE,
+                inkwell::FloatPredicate::OGE,
+                left,
+                right,
+            ),
+            BinaryOp::BitAnd => {
+                self.bin_bitwise(left, right, "and", |b, l, r| b.build_and(l, r, "and"))
             }
-            BinaryOp::Gt => {
-                self.compare(inkwell::IntPredicate::SGT, inkwell::FloatPredicate::OGT, left, right)
+            BinaryOp::BitOr => {
+                self.bin_bitwise(left, right, "or", |b, l, r| b.build_or(l, r, "or"))
             }
-            BinaryOp::Lte => {
-                self.compare(inkwell::IntPredicate::SLE, inkwell::FloatPredicate::OLE, left, right)
-            }
-            BinaryOp::Gte => {
-                self.compare(inkwell::IntPredicate::SGE, inkwell::FloatPredicate::OGE, left, right)
-            }
-            BinaryOp::BitAnd => self.bin_bitwise(left, right, "and", |b, l, r| b.build_and(l, r, "and")),
-            BinaryOp::BitOr => self.bin_bitwise(left, right, "or", |b, l, r| b.build_or(l, r, "or")),
             BinaryOp::BitXor => {
                 self.bin_bitwise(left, right, "xor", |b, l, r| b.build_xor(l, r, "xor"))
             }

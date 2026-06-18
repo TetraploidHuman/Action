@@ -3769,9 +3769,7 @@ impl<'ctx> CodeGen<'ctx> {
         let cc_balance_chk = self.context.append_basic_block(concat_fn, "balance_chk");
         let cc_return_lazy = self.context.append_basic_block(concat_fn, "return_lazy");
         let cc_flatten_bal = self.context.append_basic_block(concat_fn, "flatten_bal");
-        let _ = self
-            .builder
-            .build_unconditional_branch(cc_balance_chk);
+        let _ = self.builder.build_unconditional_branch(cc_balance_chk);
 
         self.builder.position_at_end(cc_balance_chk);
         let max_concat_depth = i64.const_int(32, false);
@@ -3779,11 +3777,9 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(IntPredicate::SGT, new_depth, max_concat_depth, "needs_bal")
             .map_err(llvm_err)?;
-        let _ = self.builder.build_conditional_branch(
-            needs_balance,
-            cc_flatten_bal,
-            cc_return_lazy,
-        );
+        let _ =
+            self.builder
+                .build_conditional_branch(needs_balance, cc_flatten_bal, cc_return_lazy);
 
         self.builder.position_at_end(cc_return_lazy);
         let _ = self.builder.build_return(Some(&lc_r3));

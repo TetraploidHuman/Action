@@ -738,9 +738,9 @@ pub(crate) use self::gep_cursor::GepCursor;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use action_frontend::checked::CheckedProgram;
     use action_frontend::lexer::Lexer;
     use action_frontend::parser::Parser;
-    use action_frontend::checked::CheckedProgram;
     use action_frontend::typecheck::TypeChecker;
     use action_frontend::typecheck::TypeRegistry;
     use std::collections::HashMap;
@@ -787,7 +787,8 @@ mod tests {
             .lock()
             .unwrap_or_else(|poison| poison.into_inner());
         let mut cg = CodeGen::new(&guard, "test", registry, None);
-        cg.compile_checked(&checked).expect("Compilation should succeed");
+        cg.compile_checked(&checked)
+            .expect("Compilation should succeed");
         cg.print_ir()
     }
 
