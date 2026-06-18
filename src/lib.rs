@@ -23,6 +23,7 @@ pub use span::Span;
 // Legacy alias: typecheck + codegen both used `builtin_registry`
 pub use frontend::builtin as builtin_registry;
 
+pub mod driver;
 pub mod http_runtime;
 pub mod lsp;
 pub mod repl;

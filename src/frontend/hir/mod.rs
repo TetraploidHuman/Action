@@ -62,4 +62,25 @@ mod tests {
         );
         assert_eq!(hir.to_program(), program);
     }
+
+    #[test]
+    fn hir_round_trip_examples() {
+        let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        for rel in [
+            "examples/bench_cow.at",
+            "examples/map_filter.at",
+            "examples/hello.at",
+        ] {
+            let path = manifest.join(rel);
+            let checked = crate::frontend::loader::load_checked(&path, false)
+                .unwrap_or_else(|e| panic!("load {} failed: {:?}", rel, e));
+            assert!(
+                checked.verify_hir_round_trip(),
+                "HIR round-trip failed for {}",
+                rel
+            );
+            let json = checked.hir_json_pretty().expect("hir json");
+            assert!(json.contains("main"), "missing main in HIR for {}", rel);
+        }
+    }
 }

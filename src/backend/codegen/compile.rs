@@ -13,7 +13,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.compile_inner(program)
     }
 
-    /// Compile from a type-checked bundle via HIR round-trip (dual-track transition).
+    /// Compile from a type-checked bundle (AST path; HIR verified in debug builds).
     pub fn compile_checked(
         &mut self,
         checked: &crate::frontend::checked::CheckedProgram,
@@ -22,8 +22,7 @@ impl<'ctx> CodeGen<'ctx> {
             checked.verify_hir_round_trip(),
             "HIR must round-trip to AST before codegen"
         );
-        let program = checked.hir.to_program();
-        self.compile_inner(&program)
+        self.compile_inner(&checked.program)
     }
 
     fn compile_inner(&mut self, program: &Program) -> Result<(), String> {

@@ -28,4 +28,9 @@ impl CheckedProgram {
     pub fn verify_hir_round_trip(&self) -> bool {
         self.hir.to_program() == self.program
     }
+
+    /// Serialize HIR as pretty JSON (bootstrap / `--emit hir`).
+    pub fn hir_json_pretty(&self) -> Result<String, serde_json::Error> {
+        self.hir.to_json_pretty()
+    }
 }

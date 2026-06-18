@@ -75,6 +75,10 @@ src/
     mod.rs
     codegen/              # 原 src/codegen/（LLVM IR + runtime_decl）
 
+  driver/                  # CLI / test_runner 共用编排
+    mod.rs
+    compile.rs              # load_checked · compile_checked · emit_hir
+
   lsp/                    # 语言服务（依赖 frontend，暂不迁入 frontend/）
   repl.rs
   test_runner.rs
@@ -120,11 +124,12 @@ pub use span::Span;
    读文件 → lex → parse → 注入 stdlib/builtins → resolve imports → typecheck → **`lower_program` → HIR**
 
 2. **`CodeGen::compile_checked(checked)`**（或 `compile(program)` 直连 AST）  
-   HIR round-trip → 链接 runtime bitcode → 两遍编译 → LLVM Module
+   release 直接用 `checked.program`；`debug_assert!` 验证 HIR round-trip → 链接 runtime → LLVM Module
 
-3. **执行**  
+3. **执行 / 发射**  
    - JIT：`run_jit()`  
-   - AOT：`emit_object` / `--emit exe` + `libaction_host_rt.a`
+   - AOT：`emit_object` / `--emit exe` + `libaction_host_rt.a`  
+   - 自举调试：`action check --emit hir` / `action run --emit hir` → `<file>.hir.json`
 
 ## 重构阶段（进行中）
 
@@ -137,7 +142,9 @@ pub use span::Span;
 | R4b | `typecheck` 拆为 `infer` / `check_stmt`；`exhaustive.rs` | ✅ |
 | R4c | `parser.rs` 拆为 `expr` / `stmt` / `type_parse` / `pattern` | ✅ |
 | R4d | `loader` 拆为 `resolve` / `stdlib` | ✅ |
-| R5 | 引入 HIR（`frontend/hir/`）作为 AST→codegen 边界 | ✅（双轨：`compile_checked` + round-trip） |
+| R5 | 引入 HIR（`frontend/hir/`）作为 AST→codegen 边界 | ✅ |
+| R5b | release 跳过 HIR round-trip；`driver/` 统一编排 | ✅ |
+| R5c | `--emit hir` CLI；examples HIR golden 测试 | ✅ |
 | R6 | Cargo workspace：`action-frontend` / `action-codegen` 独立 crate | 待做 |
 | R7 | LSP/REPL 统一走 `FrontendSession` | ✅（LSP 已接入；REPL 用 `register_types`） |
 

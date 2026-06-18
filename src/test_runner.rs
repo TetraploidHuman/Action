@@ -1,24 +1,14 @@
 use crate::ast::*;
-use crate::loader;
+use crate::driver;
 use inkwell::context::Context;
 use inkwell::targets::{InitializationConfig, Target};
 use std::path::PathBuf;
 
 /// Run test functions from a source file
 pub fn run_test_file(path: &PathBuf, opt: u8, profile: bool, target: &str) -> Result<(), String> {
-    let config = crate::config::ProjectConfig::find_and_load(path);
-    let opt = config
-        .as_ref()
-        .map(|c| c.effective_opt_level(opt))
-        .unwrap_or(opt);
+    let opt = driver::effective_opt_level(path, opt);
 
-    let checked = loader::load_checked(path, false).map_err(|errors| {
-        errors
-            .iter()
-            .map(|e| e.to_string())
-            .collect::<Vec<_>>()
-            .join("\n")
-    })?;
+    let checked = driver::load_checked(path, false)?;
 
     let test_names: Vec<String> = checked
         .program
@@ -52,20 +42,7 @@ pub fn run_test_file(path: &PathBuf, opt: u8, profile: bool, target: &str) -> Re
     Target::initialize_aarch64(&InitializationConfig::default());
 
     let context = Context::create();
-    let target_opt = if target == "native" {
-        None
-    } else {
-        Some(target.to_string())
-    };
-    let mut cg = crate::codegen::CodeGen::new(
-        &context,
-        "test_runner",
-        checked.registry.clone(),
-        target_opt,
-    );
-    cg.set_opt_level(opt);
-    cg.compile_checked(&checked)?;
-    cg.verify()?;
+    let cg = driver::compile_checked(&context, "test_runner", &checked, opt, target)?;
 
     if profile {
         let ir = cg.print_ir();

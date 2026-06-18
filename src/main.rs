@@ -1,5 +1,5 @@
-use action::config::ProjectConfig;
-use action::error::{self, CompilerError};
+use action::driver;
+use action::error;
 use action::*;
 use ariadne::{Color, Label, Report, ReportKind, Source};
 use clap::{Parser as ClapParser, Subcommand};
@@ -26,7 +26,7 @@ enum Commands {
         /// Type-check only (don't run)
         #[arg(long)]
         check: bool,
-        /// Emit format: ir, bc, asm, obj (writes to file; ir prints to stdout)
+        /// Emit format: ir, bc, asm, obj, hir (hir writes JSON; ir prints to stdout)
         #[arg(long, value_name = "FORMAT")]
         emit: Option<String>,
         /// Enable verbose error messages with suggestions
@@ -49,7 +49,7 @@ enum Commands {
         /// Optimization level (0-3)
         #[arg(short = 'O', long, default_value = "0")]
         opt: u8,
-        /// Emit format: ir, bc, asm, obj
+        /// Emit format: ir, bc, asm, obj, hir
         #[arg(long, value_name = "FORMAT")]
         emit: Option<String>,
         /// Target platform: native, linux-x64, linux-arm64, windows-x64, wasm
@@ -63,6 +63,9 @@ enum Commands {
         /// Enable verbose error messages with suggestions
         #[arg(long)]
         explain: bool,
+        /// Emit HIR JSON to `<file>.hir.json`
+        #[arg(long, value_name = "FORMAT")]
+        emit: Option<String>,
     },
     /// Format an Action source file (indentation)
     Fmt {
@@ -156,8 +159,22 @@ fn main() {
                 std::process::exit(1);
             }
         }
-        Commands::Check { file, explain } => match check_file(&file, explain) {
-            Ok(()) => {
+        Commands::Check { file, explain, emit } => match loader::load_checked(&file, explain) {
+            Ok(checked) => {
+                if let Some(ref fmt) = emit {
+                    if fmt == "hir" {
+                        if let Err(e) = driver::emit_hir(&checked, &file, false) {
+                            eprintln!("Error: {}", e);
+                            std::process::exit(1);
+                        }
+                    } else {
+                        eprintln!(
+                            "Unknown emit format: {}. Supported for check: hir",
+                            fmt
+                        );
+                        std::process::exit(1);
+                    }
+                }
                 println!("Type checking passed. No errors found.");
             }
             Err(errors) => {
@@ -310,19 +327,20 @@ fn run_file(
     profile: bool,
     target: &str,
 ) -> Result<(), String> {
-    let config = ProjectConfig::find_and_load(path);
-    let opt = config
-        .as_ref()
-        .map(|c| c.effective_opt_level(opt))
-        .unwrap_or(opt);
+    let opt = driver::effective_opt_level(path, opt);
 
-    let checked = loader::load_checked(path, explain).map_err(|errors| {
-        errors
-            .iter()
-            .map(|e| e.to_string())
-            .collect::<Vec<_>>()
-            .join("\n")
-    })?;
+    let checked = driver::load_checked(path, explain)?;
+
+    if emit.as_deref() == Some("hir") {
+        driver::emit_hir(&checked, path, false)?;
+        if check {
+            println!(
+                "Type checking passed for '{}'. No errors found.",
+                path.display()
+            );
+        }
+        return Ok(());
+    }
 
     if check {
         println!(
@@ -333,15 +351,7 @@ fn run_file(
     }
 
     let context = Context::create();
-    let target_opt = if target == "native" {
-        None
-    } else {
-        Some(target.to_string())
-    };
-    let mut cg = codegen::CodeGen::new(&context, "main", checked.registry.clone(), target_opt);
-    cg.set_opt_level(opt);
-    cg.compile_checked(&checked)?;
-    cg.verify()?;
+    let mut cg = driver::compile_checked(&context, "main", &checked, opt, target)?;
 
     let is_cross = target != "native";
     let is_exe = emit.as_deref() == Some("exe");
@@ -390,30 +400,16 @@ fn build_file(
     emit: Option<String>,
     target: &str,
 ) -> Result<(), String> {
-    let config = ProjectConfig::find_and_load(path);
-    let opt = config
-        .as_ref()
-        .map(|c| c.effective_opt_level(opt))
-        .unwrap_or(opt);
+    let opt = driver::effective_opt_level(path, opt);
 
-    let checked = loader::load_checked(path, false).map_err(|errors| {
-        errors
-            .iter()
-            .map(|e| e.to_string())
-            .collect::<Vec<_>>()
-            .join("\n")
-    })?;
+    let checked = driver::load_checked(path, false)?;
+
+    if emit.as_deref() == Some("hir") {
+        return driver::emit_hir(&checked, path, false);
+    }
 
     let context = Context::create();
-    let target_opt = if target == "native" {
-        None
-    } else {
-        Some(target.to_string())
-    };
-    let mut cg = codegen::CodeGen::new(&context, "main", checked.registry.clone(), target_opt);
-    cg.set_opt_level(opt);
-    cg.compile_checked(&checked)?;
-    cg.verify()?;
+    let cg = driver::compile_checked(&context, "main", &checked, opt, target)?;
 
     if let Some(ref fmt) = emit {
         emit_output(&cg, path, fmt, target)?;
@@ -493,7 +489,7 @@ fn emit_output(
         }
         other => {
             return Err(format!(
-                "Unknown emit format: {}. Supported: ir, bc, asm, obj, exe",
+                "Unknown emit format: {}. Supported: ir, bc, asm, obj, exe, hir",
                 other
             ))
         }
@@ -515,10 +511,6 @@ fn find_aot_host_staticlib() -> Option<String> {
         }
     }
     None
-}
-
-fn check_file(path: &PathBuf, explain: bool) -> Result<(), Vec<CompilerError>> {
-    loader::load_program(path, explain).map(|_| ())
 }
 
 fn fmt_file(path: &PathBuf, check: bool, tab_size: u8, insert_spaces: bool) -> Result<(), i32> {
