@@ -1,0 +1,33 @@
+# Action Language Benchmark Results
+# 2026-06-19 21:25:26 | binary: /home/miaox99/Action/target/release/action | mode: run | opt: -O0 | warmup: 1 | iterations: 5
+# benchmark          min(ms)  avg(ms)  max(ms)  status
+bench_all                                   176      182      186  PASS
+bench_cmp                                   116      120      123  PASS
+bench_concat_depth                          138      142      143  PASS
+bench_cow                                   114      116      117  PASS
+bench_enum                                  114      117      121  PASS
+bench_for_chain                             134      153      168  PASS
+bench_for_collect                           126      129      132  PASS
+bench_for_list                              120      126      135  PASS
+bench_for_method                            122      130      135  PASS
+bench_for_nested                            118      120      122  PASS
+bench_for_range                             121      123      128  PASS
+bench_funcall                               125      127      128  PASS
+bench_insert100                             172      175      180  PASS
+bench_insert10                              122      131      140  PASS
+bench_insert2                               120      122      124  PASS
+bench_insert50                              142      145      149  PASS
+bench_lambda                                119      121      126  PASS
+bench_map_10k                               118      121      125  PASS
+bench_map                                   119      123      128  PASS
+bench_math                                  120      121      123  PASS
+bench_set_10k                               126      130      141  PASS
+bench_set                                   120      126      129  PASS
+bench_step1                                 115      123      144  PASS
+bench_step2                                 112      116      121  PASS
+bench_step3                                 118      123      130  PASS
+bench_step4                                 115      118      121  PASS
+bench_step5                                 115      122      131  PASS
+bench_step6                                 177      181      188  PASS
+bench_string                                117      122      127  PASS
+bench_when                                  112      115      118  PASS
