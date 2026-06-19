@@ -3,6 +3,7 @@
 // a new named function is generated with type vars substituted.
 
 use action_frontend::ast::*;
+use action_frontend::hir::HirStmt;
 use std::collections::HashMap;
 
 use super::llvm_err;
@@ -35,16 +36,16 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    /// Generic call with unified CallArg path (no HIR→AST round-trip).
+    /// Generic call with unified CallArg path (HIR-native; no AST round-trip).
     pub(super) fn compile_generic_call_from_call_args(
         &mut self,
-        stmt: &Stmt,
+        stmt: &HirStmt,
         name: &str,
         args: &[super::call_arg::CallArg<'_>],
         trailing: Option<super::call_arg::CallArg<'_>>,
     ) -> Result<TypedValue<'ctx>, String> {
         use super::call_arg::CallArg;
-        let Stmt::Fun {
+        let HirStmt::Fun {
             params,
             type_params,
             ..
@@ -90,7 +91,7 @@ impl<'ctx> CodeGen<'ctx> {
             .collect::<Result<Vec<_>, String>>()?;
         let mangled_name = format!("{}_{}", name, type_suffix.join("_"));
 
-        self.compile_monomorphized_fn(stmt, &mangled_name, &type_map)?;
+        self.compile_monomorphized_fn_hir(stmt, &mangled_name, &type_map)?;
 
         let fn_val = self
             .module
@@ -123,9 +124,9 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// Generate a monomorphized version of a generic function with concrete types.
     /// No-op when this instantiation was already compiled (or is being compiled).
-    pub(super) fn compile_monomorphized_fn(
+    pub(super) fn compile_monomorphized_fn_hir(
         &mut self,
-        stmt: &Stmt,
+        stmt: &HirStmt,
         mangled_name: &str,
         type_map: &HashMap<String, Type>,
     ) -> Result<(), String> {
@@ -133,7 +134,7 @@ impl<'ctx> CodeGen<'ctx> {
             return Ok(());
         }
 
-        let Stmt::Fun {
+        let HirStmt::Fun {
             params,
             return_type,
             body,
@@ -165,7 +166,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.module.add_function(mangled_name, fn_type, None);
 
         // Compile the body with resolved types
-        self.compile_fun_def(
+        self.compile_fun_def_hir(
             mangled_name,
             mangled_name,
             &resolved_params,

@@ -3,7 +3,7 @@
 use super::{llvm_err, CodeGen, TypedValue};
 use action_frontend::ast::*;
 use action_frontend::hir::*;
-use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
+use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
 use inkwell::IntPredicate;
 use std::collections::HashMap;
 
@@ -19,7 +19,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Pass 0: Register type definitions and create LLVM types
         for stmt in &hir.stmts {
-            self.registry.register(&stmt.as_stmt())?;
+            self.registry.register_hir(stmt)?;
             match stmt {
                 HirStmt::TypeAlias {
                     name, definition, ..
@@ -70,7 +70,7 @@ impl<'ctx> CodeGen<'ctx> {
             } = stmt
             {
                 if !type_params.is_empty() {
-                    self.generic_fun_defs.insert(name.clone(), stmt.as_stmt());
+                    self.generic_fun_defs.insert(name.clone(), stmt.clone());
                     continue;
                 }
                 let param_types: Vec<Type> = params
@@ -249,7 +249,7 @@ impl<'ctx> CodeGen<'ctx> {
             HirStmt::Let {
                 lazy_init: false, ..
             } => {
-                self.compile_stmt(&stmt.as_stmt())?;
+                self.compile_hir_let(stmt)?;
             }
             HirStmt::Let {
                 name,
@@ -386,9 +386,8 @@ impl<'ctx> CodeGen<'ctx> {
             }
             HirStmt::TypeAlias { .. } | HirStmt::Enum { .. } | HirStmt::Import { .. } => {}
             HirStmt::Export { stmt, .. } => self.compile_hir_stmt(stmt)?,
-            HirStmt::External { .. } | HirStmt::ExternalType { .. } => {
-                self.compile_stmt(&stmt.as_stmt())?;
-            }
+            HirStmt::External { .. } => self.compile_hir_external(stmt)?,
+            HirStmt::ExternalType { .. } => self.compile_hir_external_type(stmt)?,
         }
         Ok(())
     }
@@ -685,6 +684,158 @@ impl<'ctx> CodeGen<'ctx> {
         self.compile_call_hir(func, args, trailing_lambda)
     }
 
+    fn compile_hir_let(&mut self, stmt: &HirStmt) -> Result<(), String> {
+        let HirStmt::Let {
+            name,
+            type_ann,
+            value,
+            mutable,
+            ..
+        } = stmt
+        else {
+            return Err("compile_hir_let expects Let".to_string());
+        };
+
+        let raw_val = self.compile_hir_expr(value)?;
+        let (ty, kind) = if let Some(ann) = type_ann {
+            (
+                self.ast_type_to_basic_type(ann),
+                self.param_val_kind(Some(ann)),
+            )
+        } else {
+            (raw_val.get_type_for_alloca(self), raw_val.val_kind())
+        };
+        let val = if let Some(Type::Nullable(inner)) = type_ann {
+            if let TypedValue::Nullable(_null_ptr, null_bt) = raw_val {
+                let declared_bt = self.ast_type_to_basic_type(
+                    type_ann
+                        .as_ref()
+                        .ok_or_else(|| "Missing type annotation".to_string())?,
+                );
+                if null_bt == declared_bt {
+                    raw_val
+                } else {
+                    let inner_bt = self.ast_type_to_basic_type(inner);
+                    let name_hint = format!("Nullable<{}>", inner);
+                    let nty = self.get_nullable_type(inner_bt, &name_hint);
+                    let alloca = self
+                        .builder
+                        .build_alloca(nty, "null_retype")
+                        .map_err(llvm_err)?;
+                    let undef = nty.get_undef();
+                    let with_flag = self
+                        .builder
+                        .build_insert_value(
+                            undef,
+                            self.null_flag_ty().const_int(1, false),
+                            0,
+                            "null_rf",
+                        )
+                        .map_err(llvm_err)?;
+                    self.builder
+                        .build_store(alloca, with_flag)
+                        .map_err(llvm_err)?;
+                    TypedValue::Nullable(alloca, nty.into())
+                }
+            } else {
+                let inner_bt = self.ast_type_to_basic_type(inner);
+                let name_hint = format!("Nullable<{}>", inner);
+                let nty = self.get_nullable_type(inner_bt, &name_hint);
+                self.wrap_in_nullable(&raw_val, nty)?
+            }
+        } else {
+            raw_val
+        };
+        let alloca = self.builder.build_alloca(ty, name).map_err(llvm_err)?;
+        self.store_typed_value(&val, alloca, ty)?;
+        self.rc_inc_typed_value(&val)?;
+        if self.block_did_rc_inc {
+            self.rc_dec_typed_value(&val)?;
+        }
+        let fn_type = match &val {
+            TypedValue::Fn(_, ft) => Some(*ft),
+            TypedValue::Closure { .. } => None,
+            _ => None,
+        };
+        let ast_type = type_ann.clone().or_else(|| {
+            if matches!(kind, super::ValKind::Enum) {
+                let inferred = &value.ty;
+                if matches!(inferred, Type::Named(_) | Type::Generic(_, _)) {
+                    Some(inferred.clone())
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        });
+        if *mutable {
+            self.scope
+                .set_mutable(name.clone(), alloca, ty, kind, fn_type);
+        } else if let Some(at) = ast_type {
+            self.scope
+                .set_with_ast_type(name.clone(), alloca, ty, kind, fn_type, at);
+        } else {
+            self.scope
+                .set_with_fn_type(name.clone(), alloca, ty, kind, fn_type);
+        }
+        if let TypedValue::Enum(_, _, inner_type, rc_managed) = &val {
+            self.scope.set_enum_inner_type(name, *inner_type);
+            self.scope.set_enum_data_rc_managed(name, *rc_managed);
+        }
+        if let TypedValue::Closure {
+            fn_ptr,
+            actual_fn_type,
+            closure_ptr: _,
+            closure_ty,
+            alloca: _,
+        } = &val
+        {
+            self.scope
+                .set_closure_info(name, *closure_ty, *fn_ptr, *actual_fn_type);
+        }
+        Ok(())
+    }
+
+    fn compile_hir_external(&mut self, stmt: &HirStmt) -> Result<(), String> {
+        let HirStmt::External {
+            name,
+            params,
+            return_type,
+            ..
+        } = stmt
+        else {
+            return Err("compile_hir_external expects External".to_string());
+        };
+        let param_types: Vec<inkwell::types::BasicMetadataTypeEnum<'ctx>> = params
+            .iter()
+            .map(|p| {
+                let bt = self.ast_type_to_basic_type(
+                    p.ty.as_ref().unwrap_or(&Type::Named("Int".to_string())),
+                );
+                bt.into()
+            })
+            .collect();
+        let fn_type = match return_type {
+            Some(rt) => {
+                let ret_bt = self.ast_type_to_basic_type(rt);
+                ret_bt.fn_type(&param_types, false)
+            }
+            None => self.void_ty().fn_type(&param_types, false),
+        };
+        self.module.add_function(name, fn_type, None);
+        Ok(())
+    }
+
+    fn compile_hir_external_type(&mut self, stmt: &HirStmt) -> Result<(), String> {
+        let HirStmt::ExternalType { name, .. } = stmt else {
+            return Err("compile_hir_external_type expects ExternalType".to_string());
+        };
+        let opaque_ty = self.context.opaque_struct_type(name);
+        self.named_structs.insert(name.clone(), opaque_ty);
+        Ok(())
+    }
+
     fn compile_destructure_hir(
         &mut self,
         mutable: bool,
@@ -695,22 +846,6 @@ impl<'ctx> CodeGen<'ctx> {
         is_struct: bool,
         value: &HirExpr,
     ) -> Result<(), String> {
-        let _ = (renames,);
-        if !is_list {
-            return self.compile_stmt(
-                &HirStmt::Destructure {
-                    mutable,
-                    names: names.to_vec(),
-                    renames: renames.to_vec(),
-                    rest: rest.clone(),
-                    is_list,
-                    is_struct,
-                    value: value.clone(),
-                    span: value.span,
-                }
-                .as_stmt(),
-            );
-        }
         let val = self.compile_hir_expr(value)?;
         if is_list {
             let list_ptr = match val {
@@ -822,8 +957,93 @@ impl<'ctx> CodeGen<'ctx> {
                 self.builder.position_at_end(rest_ext);
                 let _ = rest_name;
             }
+        } else if is_struct {
+            match val {
+                TypedValue::Struct(alloca, struct_ty) => {
+                    let bt: BasicTypeEnum = struct_ty.into();
+                    let loaded = self
+                        .builder
+                        .build_load(bt, alloca, "destr_struct")
+                        .map_err(llvm_err)?
+                        .into_struct_value();
+                    let field_names: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
+                    let field_indices: Vec<usize> = if let Some((key, _)) = self
+                        .anon_structs
+                        .iter()
+                        .find(|(k, _)| k.as_slice() == field_names)
+                    {
+                        (0..key.len()).collect()
+                    } else {
+                        (0..names.len()).collect()
+                    };
+                    for (i, name) in names.iter().enumerate() {
+                        let field_idx = field_indices[i] as u32;
+                        let field = self
+                            .builder
+                            .build_extract_value(loaded, field_idx, &format!("f{}", i))
+                            .map_err(llvm_err)?;
+                        let field_ty = field.get_type();
+                        let local_name = renames
+                            .iter()
+                            .find(|(fld, _)| fld == name)
+                            .map(|(_, local)| local.clone())
+                            .unwrap_or_else(|| name.clone());
+                        let field_alloca = self
+                            .builder
+                            .build_alloca(field_ty, &local_name)
+                            .map_err(llvm_err)?;
+                        self.builder
+                            .build_store(field_alloca, field)
+                            .map_err(llvm_err)?;
+                        let kind = self.bv_kind(&field);
+                        if mutable {
+                            self.scope
+                                .set_mutable(local_name, field_alloca, field_ty, kind, None);
+                        } else {
+                            self.scope.set(local_name, field_alloca, field_ty, kind);
+                        }
+                    }
+                }
+                _ => return Err("Struct destructuring requires a struct value".to_string()),
+            }
         } else {
-            return Err("Only list destructuring is supported in HIR codegen".to_string());
+            match val {
+                TypedValue::Struct(alloca, struct_ty) => {
+                    let bt: BasicTypeEnum = struct_ty.into();
+                    let loaded = self
+                        .builder
+                        .build_load(bt, alloca, "destr_tuple")
+                        .map_err(llvm_err)?
+                        .into_struct_value();
+                    for (i, name) in names.iter().enumerate() {
+                        let field = self
+                            .builder
+                            .build_extract_value(loaded, i as u32, &format!("f{}", i))
+                            .map_err(llvm_err)?;
+                        let field_ty = field.get_type();
+                        let field_alloca = self
+                            .builder
+                            .build_alloca(field_ty, name)
+                            .map_err(llvm_err)?;
+                        self.builder
+                            .build_store(field_alloca, field)
+                            .map_err(llvm_err)?;
+                        let kind = self.bv_kind(&field);
+                        if mutable {
+                            self.scope.set_mutable(
+                                name.clone(),
+                                field_alloca,
+                                field_ty,
+                                kind,
+                                None,
+                            );
+                        } else {
+                            self.scope.set(name.clone(), field_alloca, field_ty, kind);
+                        }
+                    }
+                }
+                _ => return Err("Destructuring requires a tuple value".to_string()),
+            }
         }
         Ok(())
     }

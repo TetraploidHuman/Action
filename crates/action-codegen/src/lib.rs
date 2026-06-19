@@ -475,7 +475,7 @@ pub struct CodeGen<'ctx> {
     pub(crate) not_null_set: HashSet<String>,
     /// Generic function definitions with type_params, indexed by name.
     /// Used for monomorphization at call sites.
-    pub(crate) generic_fun_defs: HashMap<String, Stmt>,
+    pub(crate) generic_fun_defs: HashMap<String, action_frontend::hir::HirStmt>,
     /// Monomorphized LLVM function names already compiled (or in progress).
     pub(crate) monomorphized_fns: HashSet<String>,
     /// LLVM function name → AST return type (Pass 1), for call-site List/Map/Set tagging.

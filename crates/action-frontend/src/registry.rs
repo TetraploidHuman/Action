@@ -1,4 +1,5 @@
 use crate::ast::*;
+use crate::hir::HirStmt;
 use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
@@ -87,6 +88,67 @@ impl TypeRegistry {
             }
             Stmt::ExternalType { name, .. } => {
                 // Register as opaque struct (no fields)
+                self.structs.insert(
+                    name.clone(),
+                    StructInfo {
+                        name: name.clone(),
+                        fields: vec![],
+                        field_index: HashMap::new(),
+                    },
+                );
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Register type definitions from a HIR statement (codegen Pass 0).
+    pub fn register_hir(&mut self, stmt: &HirStmt) -> Result<(), String> {
+        match stmt {
+            HirStmt::TypeAlias {
+                name, definition, ..
+            } => {
+                if let Type::Struct(fields) = definition {
+                    let mut field_index = HashMap::new();
+                    for (i, (fname, _)) in fields.iter().enumerate() {
+                        field_index.insert(fname.clone(), i);
+                    }
+                    self.structs.insert(
+                        name.clone(),
+                        StructInfo {
+                            name: name.clone(),
+                            fields: fields.clone(),
+                            field_index,
+                        },
+                    );
+                }
+                self.type_aliases.insert(name.clone(), definition.clone());
+            }
+            HirStmt::Enum {
+                name,
+                type_params,
+                variants,
+                ..
+            } => {
+                let mut enum_variants = Vec::new();
+                for (i, v) in variants.iter().enumerate() {
+                    self.variant_to_enum.insert(v.name.clone(), name.clone());
+                    enum_variants.push(EnumVariantInfo {
+                        name: v.name.clone(),
+                        tag: i as u32,
+                        params: v.params.clone(),
+                    });
+                }
+                self.enums.insert(
+                    name.clone(),
+                    EnumInfo {
+                        name: name.clone(),
+                        type_params: type_params.clone(),
+                        variants: enum_variants,
+                    },
+                );
+            }
+            HirStmt::ExternalType { name, .. } => {
                 self.structs.insert(
                     name.clone(),
                     StructInfo {

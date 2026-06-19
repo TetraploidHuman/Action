@@ -27,6 +27,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.compile_hir(&checked.hir)
     }
 
+    #[cfg(test)]
     fn compile_inner(&mut self, program: &Program) -> Result<(), String> {
         self.define_runtime()?;
         self.detach_builder()?;
@@ -83,9 +84,8 @@ impl<'ctx> CodeGen<'ctx> {
                 ..
             } = stmt
             {
-                // Skip generic functions — they are monomorphized on demand
+                // Skip generic functions — monomorphized on demand via HIR call path
                 if !type_params.is_empty() {
-                    self.generic_fun_defs.insert(name.clone(), stmt.clone());
                     continue;
                 }
                 let param_types: Vec<Type> = params
