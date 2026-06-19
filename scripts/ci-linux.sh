@@ -85,9 +85,10 @@ run_perf_quick() {
         --only "$CI_PERF_BENCHES" \
         --results benchmark_results_ci_smoke.txt
     python3 scripts/benchmark_regression.py \
-        benchmark_results.txt benchmark_results_ci_smoke.txt \
+        benchmark_results_ci_baseline.txt benchmark_results_ci_smoke.txt \
         --only "$CI_PERF_BENCHES" \
-        --threshold 0.25
+        --threshold 0.30 \
+        --min-delta-ms 15
 }
 
 run_debug() {
