@@ -138,7 +138,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    /// Fused filter+map: filter tree walk then map tree walk (no index loops).
+    /// Fused filter+map: single B-tree walk (filter then map on survivors).
     pub(super) fn fused_filter_map(
         &mut self,
         filter_fn_expr: &Expr,
@@ -182,23 +182,14 @@ impl<'ctx> CodeGen<'ctx> {
             _ => return Err("fused filter+map: list required".to_string()),
         };
         let list_struct = self.load_list(list_ptr)?;
-        let filtered_cc = self.call_rt(
-            "action_list_filter_walk",
-            &[list_struct.into(), filter_fn_ptr.into()],
+        let result_cc = self.call_rt(
+            "action_list_filter_map_walk",
+            &[list_struct.into(), filter_fn_ptr.into(), map_fn_ptr.into()],
         )?;
-        let filtered_bv = filtered_cc
+        let result_bv = result_cc
             .try_as_basic_value()
             .basic()
-            .ok_or("filter_walk failed")?;
-        let filtered_struct = filtered_bv.into_struct_value();
-        let mapped_cc = self.call_rt(
-            "action_list_map_walk",
-            &[filtered_struct.into(), map_fn_ptr.into()],
-        )?;
-        let result_bv = mapped_cc
-            .try_as_basic_value()
-            .basic()
-            .ok_or("map_walk failed")?;
+            .ok_or("filter_map_walk failed")?;
         let res_a = self
             .builder
             .build_alloca(self.list_type, "fm_res")

@@ -1131,69 +1131,6 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    /// Compile a cached sequential for-each loop over a list.
-    ///
-    /// Creates header/body/exit blocks and calls `f` for each element with
-    /// the list pointer, current index, cache pointer, and the element fat struct.
-    /// Uses `action_list_get_cached` so sequential access stays O(1) within a leaf.
-    ///
-    /// Returns the exit basic block (after the loop) and the index variable alloca.
-    pub(super) fn compile_list_foreach_cached<F>(
-        &mut self,
-        list_ptr: PointerValue<'ctx>,
-        input_len: IntValue<'ctx>,
-        current_fn: inkwell::values::FunctionValue<'ctx>,
-        mut f: F,
-    ) -> Result<(inkwell::basic_block::BasicBlock<'ctx>, PointerValue<'ctx>), String>
-    where
-        F: FnMut(
-            &mut Self,            // CodeGen
-            IntValue<'ctx>,       // current index
-            PointerValue<'ctx>,   // list_ptr
-            PointerValue<'ctx>,   // cache pointer
-            BasicValueEnum<'ctx>, // elem fat struct
-        ) -> Result<(), String>,
-    {
-        let i64 = self.i64_ty();
-        let zero = i64.const_int(0, false);
-        let one = i64.const_int(1, false);
-
-        let i_a = self.builder.build_alloca(i64, "fe_i").map_err(llvm_err)?;
-        self.builder.build_store(i_a, zero).map_err(llvm_err)?;
-        let cache = self.alloc_list_get_cache()?;
-
-        let hdr = self.context.append_basic_block(current_fn, "fe_hdr");
-        let bdy = self.context.append_basic_block(current_fn, "fe_bdy");
-        let ext = self.context.append_basic_block(current_fn, "fe_ext");
-
-        let _ = self.builder.build_unconditional_branch(hdr);
-        self.builder.position_at_end(hdr);
-        let iv = self
-            .builder
-            .build_load(i64, i_a, "fe_iv")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let cond = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, iv, input_len, "fe_cond")
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_conditional_branch(cond, bdy, ext);
-
-        self.builder.position_at_end(bdy);
-        let elem_val = self.list_get_cached_fat(list_ptr, iv, cache)?;
-        f(self, iv, list_ptr, cache, elem_val)?;
-
-        let ni = self
-            .builder
-            .build_int_add(iv, one, "fe_ni")
-            .map_err(llvm_err)?;
-        self.builder.build_store(i_a, ni).map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(hdr);
-
-        self.builder.position_at_end(ext);
-        Ok((ext, i_a))
-    }
-
     pub(super) fn compile_hir_for(
         &mut self,
         f: &action_frontend::hir::HirFor,
