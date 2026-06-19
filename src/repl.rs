@@ -140,12 +140,8 @@ pub fn eval_repl_line(
     } else {
         Some(target.to_string())
     };
-    let mut cg = crate::codegen::CodeGen::new(
-        context,
-        "repl",
-        checked.registry.clone(),
-        target_opt,
-    );
+    let mut cg =
+        crate::codegen::CodeGen::new(context, "repl", checked.registry.clone(), target_opt);
     cg.set_opt_level(opt);
     if let Err(e) = cg.compile_checked(&checked) {
         eprintln!("Compile error: {}", e);

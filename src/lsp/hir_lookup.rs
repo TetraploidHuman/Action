@@ -23,7 +23,10 @@ fn find_hir_expr_at_offset(stmts: &[HirStmt], offset: usize) -> Option<&HirExpr>
     best
 }
 
-fn pick_smaller_span<'a>(current: Option<&'a HirExpr>, candidate: &'a HirExpr) -> Option<&'a HirExpr> {
+fn pick_smaller_span<'a>(
+    current: Option<&'a HirExpr>,
+    candidate: &'a HirExpr,
+) -> Option<&'a HirExpr> {
     match current {
         None => Some(candidate),
         Some(prev) => {
@@ -45,7 +48,9 @@ fn find_hir_expr_in_stmt(stmt: &HirStmt, offset: usize) -> Option<&HirExpr> {
         HirStmt::Let { value, .. }
         | HirStmt::Destructure { value, .. }
         | HirStmt::Expr { expr: value, .. } => find_hir_expr_at(value, offset),
-        HirStmt::Return { value: Some(value), .. } => find_hir_expr_at(value, offset),
+        HirStmt::Return {
+            value: Some(value), ..
+        } => find_hir_expr_at(value, offset),
         HirStmt::Fun { body, .. } => find_hir_expr_at(body, offset),
         HirStmt::Const { value, .. } => find_hir_expr_at(value, offset),
         HirStmt::Module { body, .. } => find_hir_expr_at_offset(body, offset),
