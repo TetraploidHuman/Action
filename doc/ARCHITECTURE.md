@@ -172,8 +172,8 @@ pub use span::Span;
 | ConcatNode balance | `depth > 32` 时 flatten；修复 `cc_small_merge` 双 leaf 判定 | ✅ |
 | Map Robin-Hood | 40B entry + probe distance；insert/get/rehash | ✅ |
 | Lambda mono | map/filter btree walk；fold/any/all 单态化 | ✅ |
-| Fused map+filter | 单遍组合 `map(f) |> filter(g)` 避免中间 ListNode 分配 | 🔄 |
-| `list_get_cached` helper | 对 `map(lst) { it.f }` 等场景缓存 `get` 遍历位置 | 🔄 |
+| Fused map+filter | 单遍组合 `filter(map(lst){f}){g}` 避免中间 ListNode 分配 | ✅ AOT `-O2`（2026-06-19）：`bench_concat_depth` 15–16 ms；IR 调用 `action_list_map_filter_walk`（3 处）；语义输出 chained len **500**、nested fold **30300**。UFCS `.map{}.filter{}` 仍走 lambda mono，未融合 |
+| `list_get_cached` helper | 序贯 `get` 缓存 leaf/pos，避免重复 B-tree  descent | ✅ 运行时已定义；`builtins_iter` 序贯遍历（find/fold/any/all 等 7 路径）与 `for_loop` 已接入；fused walk 与 lambda mono 使用运行时 B-tree walk，不经 codegen 缓存 |
 
 ## 语义测试覆盖（P0）
 

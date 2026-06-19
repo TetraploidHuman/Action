@@ -59,6 +59,7 @@ cd ~/Action && nix-shell --run "python3 scripts/perf_report.py"
 | 函数 | bench_funcall, bench_lambda |
 | 字符串 / 数学 | bench_string, bench_math |
 | CoW | bench_cow |
+| 深度 concat / fused map+filter | bench_concat_depth（1000 元素 append 树 + `filter(map(lst){f}){g}` 融合链；集成测试 `test_bench_concat_depth`） |
 | insert 梯度 | bench_insert2/10/50/100；bisect 调试见 `examples/_dev/bench_insert_bisect*` |
 
 ## 测量说明
@@ -89,7 +90,8 @@ nix-shell --run "python3 scripts/perf_report.py"
 | bench_all | 19 | 19 | 20 |
 | bench_cow | 5 | 5 | 6 |
 | bench_insert100 | 17 | 18 | 19 |
+| bench_concat_depth | 15 | 16 | 16 |
 
-**说明**：`bench_map_10k` / `bench_set_10k` 用于 1 万元素级 Map/Set 压力；与 `bench_map` / `bench_set`（小规模 smoke）互补。对比优化前后请固定 `--mode` 与 `--opt`。
+**说明**：`bench_map_10k` / `bench_set_10k` 用于 1 万元素级 Map/Set 压力；与 `bench_map` / `bench_set`（小规模 smoke）互补。`bench_concat_depth` 覆盖深度 ConcatNode 与 **fused map+filter**（`filter(map(lst){f}){g}` → 单遍 `action_list_map_filter_walk`）；语义用例见 `examples/map_filter.at`（输出 `210215`）。对比优化前后请固定 `--mode` 与 `--opt`。
 
 性能改动须保持语言语义（见 `.cursor/rules/preserve-language-semantics.mdc`）。
