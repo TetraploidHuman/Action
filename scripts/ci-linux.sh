@@ -63,7 +63,7 @@ run_debug() {
     "$ACTION" run examples/hello.at
 }
 
-# Single compile pass: build → test → clippy → frontend (push CI default).
+# Push CI: build once, test, frontend (clippy runs in lint.yml).
 run_core() {
     verify_env
     cargo build --target "$TARGET"
@@ -74,8 +74,6 @@ run_core() {
     PROPTEST_CASES="${PROPTEST_CASES:-50}" \
         cargo test --lib --target "$TARGET" -- --test-threads=1
     cargo test --test integration --target "$TARGET" -- --test-threads=1
-    nix_clippy_path
-    cargo clippy --target "$TARGET" -- -W clippy::all
     cargo build -p action-frontend --target "$TARGET"
     cargo test -p action-frontend --target "$TARGET"
 }

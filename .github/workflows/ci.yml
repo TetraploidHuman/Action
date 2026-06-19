@@ -7,7 +7,6 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Cancel superseded runs on the same branch (avoid queue + wasted compiles).
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -17,23 +16,23 @@ env:
   LLVM_TAG: llvmorg-21.1.8
   ACTION_FORCE_LINK: true
   LINUX_TARGET: x86_64-unknown-linux-gnu
-  # Persistent target on self-hosted: skip slow GitHub cache upload/download.
-  CARGO_TARGET_DIR: /home/miaox99/桌面/Runner/ci-target
 
 jobs:
-  # One Linux job, one nix-shell, one compile tree — avoids 4-way CPU contention.
   linux:
     name: Linux CI
     runs-on: [self-hosted, linux]
     env:
+      CARGO_TARGET_DIR: /home/miaox99/桌面/Runner/ci-target
       CARGO_INCREMENTAL: 1
+      CARGO_BUILD_JOBS: 16
+      RUSTFLAGS: -C debuginfo=0
     steps:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ env.LINUX_TARGET }}
-          components: rustfmt, clippy
+          components: rustfmt
 
       - name: Ensure persistent target dir
         run: mkdir -p "$CARGO_TARGET_DIR"
@@ -41,7 +40,7 @@ jobs:
       - name: Format check
         run: cargo fmt -- --check
 
-      - name: Core CI (single nix-shell, single compile pass)
+      - name: Core CI (single nix-shell)
         env:
           PROPTEST_CASES: '50'
         run: nix-shell --run "bash scripts/ci-linux.sh core"
@@ -119,42 +118,31 @@ jobs:
       - name: Build
         run: cargo build --target ${{ env.TARGET }}
 
-      - name: Check examples/hello.at
-        shell: bash
-        run: |
-          ACTION="target/${{ env.TARGET }}/debug/action.exe"
-          "$ACTION" check examples/hello.at
-
-      - name: Run examples/hello.at
-        shell: bash
-        run: |
-          ACTION="target/${{ env.TARGET }}/debug/action.exe"
-          OUTPUT="$("$ACTION" run examples/hello.at 2>&1)"
-          echo "$OUTPUT"
-          if ! echo "$OUTPUT" | grep -qi "hello"; then
-            echo "::warning::'hello.at' run output did not contain expected output"
-          fi
-
-      - name: LSP smoke test
-        shell: bash
-        run: |
-          ACTION="target/${{ env.TARGET }}/debug/action.exe"
-          timeout 5 "$ACTION" lsp < /dev/null 2>&1 || true
-
-      - name: Test lib
+      - name: Smoke & tests
+        shell: pwsh
         env:
           PROPTEST_CASES: '50'
-        run: cargo test --lib --target ${{ env.TARGET }} -- --test-threads=1
-
-      - name: Integration tests
-        run: cargo test --test integration --target ${{ env.TARGET }} -- --test-threads=1
+        run: |
+          $Action = Join-Path $PWD "target/$env:TARGET/debug/action.exe"
+          if (-not (Test-Path $Action)) { throw "missing binary: $Action" }
+          & $Action check examples/hello.at
+          $out = & $Action run examples/hello.at 2>&1 | Out-String
+          Write-Host $out
+          if ($out -notmatch 'hello') { Write-Warning "hello.at output unexpected" }
+          try { '{}' | & $Action lsp 2>&1 | Out-Null } catch { Write-Host "lsp smoke: $_" }
+          cargo test --lib --target $env:TARGET -- --test-threads=1
+          cargo test --test integration --target $env:TARGET -- --test-threads=1
 
       - name: Debug run output
         if: failure()
         shell: pwsh
         run: |
-          $action = "target/${{ env.TARGET }}/debug/action.exe"
-          & $action run examples/hello.at *>&1 | Tee-Object -FilePath action_run_output.txt
+          $action = Join-Path $PWD "target/$env:TARGET/debug/action.exe"
+          if (Test-Path $action) {
+            & $action run examples/hello.at *>&1 | Tee-Object -FilePath action_run_output.txt
+          } else {
+            "binary missing: $action" | Tee-Object -FilePath action_run_output.txt
+          }
 
       - name: Upload run output
         if: failure()

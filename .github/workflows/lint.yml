@@ -1,0 +1,31 @@
+name: Lint
+
+on:
+  schedule:
+    - cron: '0 17 * * *' # daily 01:00 CST
+  workflow_dispatch:
+
+env:
+  LINUX_TARGET: x86_64-unknown-linux-gnu
+
+jobs:
+  linux-clippy:
+    name: Linux Clippy
+    runs-on: [self-hosted, linux]
+    env:
+      CARGO_TARGET_DIR: /home/miaox99/桌面/Runner/ci-target
+      CARGO_INCREMENTAL: 1
+      CARGO_BUILD_JOBS: 16
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.LINUX_TARGET }}
+          components: clippy
+
+      - name: Ensure persistent target dir
+        run: mkdir -p "$CARGO_TARGET_DIR"
+
+      - name: Clippy
+        run: nix-shell --run "bash scripts/ci-linux.sh clippy"
