@@ -1563,6 +1563,17 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::List(result_alloca))
     }
 
+    pub(super) fn fused_map_take_while(
+        &mut self,
+        map_fn_expr: &Expr,
+        inner_list_expr: &Expr,
+        take_while_fn_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let map_fn_val = self.compile_expr(map_fn_expr)?;
+        let inner_list_val = self.compile_expr(inner_list_expr)?;
+        self.fused_map_take_while_values(map_fn_val, inner_list_val, take_while_fn_val)
+    }
+
     pub(super) fn fused_map_take_while_hir(
         &mut self,
         map_fn_expr: &action_frontend::hir::HirExpr,
@@ -1571,6 +1582,15 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<TypedValue<'ctx>, String> {
         let map_fn_val = self.compile_hir_expr(map_fn_expr)?;
         let inner_list_val = self.compile_hir_expr(inner_list_expr)?;
+        self.fused_map_take_while_values(map_fn_val, inner_list_val, take_while_fn_val)
+    }
+
+    fn fused_map_take_while_values(
+        &mut self,
+        map_fn_val: TypedValue<'ctx>,
+        inner_list_val: TypedValue<'ctx>,
+        take_while_fn_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
         let map_fn_ptr = match map_fn_val {
             TypedValue::Fn(p, _) => p,
             TypedValue::Closure { fn_ptr, .. } => fn_ptr,

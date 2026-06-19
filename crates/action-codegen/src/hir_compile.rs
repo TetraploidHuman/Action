@@ -1,6 +1,6 @@
 //! HIR-native codegen: compile from typed IR without reading `CheckedProgram::program`.
 
-use super::{llvm_err, CodeGen, TypedValue, ValKind};
+use super::{llvm_err, CodeGen, TypedValue};
 use action_frontend::ast::*;
 use action_frontend::hir::*;
 use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};

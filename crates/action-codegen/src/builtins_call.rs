@@ -85,6 +85,19 @@ impl<'ctx> CodeGen<'ctx> {
                     );
                 }
             }
+            if method == "takeWhile" {
+                if let Some((map_fn_expr, inner_list_expr)) = Self::extract_map_call_args(receiver)
+                {
+                    let tw_fn_val = if let Some(lam) = trailing {
+                        self.compile_expr(lam)?
+                    } else if args.len() == 1 {
+                        self.compile_expr(&args[0])?
+                    } else {
+                        return Err("takeWhile with trailing lambda expects 0 args".to_string());
+                    };
+                    return self.fused_map_take_while(map_fn_expr, inner_list_expr, tw_fn_val);
+                }
+            }
 
             return self.compile_ufcs_method(
                 CallArg::ast(receiver.as_ref()),

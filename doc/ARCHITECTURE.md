@@ -161,7 +161,7 @@ pub use span::Span;
 | R5d | Codegen reads HIR directly (`compile_hir`); REPL via `compile_checked` | ✅ |
 | R6 | Cargo workspace：`action-frontend` / `action-codegen` 独立 crate | ✅ |
 | R6b | driver 独立 crate (`action-driver`)：`compile_checked` / `load_checked` / `emit_hir` | ✅ |
-| R5e | 去掉 HIR bridge：`compile_hir_call`/`assign`/`lambda`/`for` 原生；`compile(&Program)` 仅 test | ✅ |
+| R5e | 去掉 HIR bridge：`compile_hir_call`/`assign`/`lambda`/`for` 原生；`CallArg` + `dispatch_named_call`/`ufcs.rs`；codegen **零** `as_expr()` | ✅ |
 | R7 | REPL/LSP 统一 `FrontendSession` + `CompilerError` 诊断；消除 regex re-parse | ✅ |
 | P1 | `Expr { kind: ExprKind, span: Span }` 结构迁移；parser/typecheck/codegen/LSP 全路径 | ✅ |
 
