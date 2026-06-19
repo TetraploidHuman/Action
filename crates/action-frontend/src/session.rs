@@ -281,7 +281,7 @@ impl FrontendSession {
         };
 
         RecoverResult {
-            stmts: program.stmts,
+            stmts: user_stmts,
             registry,
             type_env,
             type_errors,
