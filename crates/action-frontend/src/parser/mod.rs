@@ -642,34 +642,48 @@ mod tests {
         assert!(result.is_err());
     }
 
+    /// Run on a thread with 8 MiB stack (default ~2 MiB overflows on deep parse tests in CI).
+    fn with_parse_test_stack(f: impl FnOnce() + Send + 'static) {
+        std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(f)
+            .expect("spawn parse test thread")
+            .join()
+            .expect("parse test thread");
+    }
+
     #[test]
     fn test_parse_deeply_nested_blocks() {
-        // Build deeply nested blocks: {{{{...}}}}
-        let depth = 100;
-        let open = "{".repeat(depth);
-        let close = "}".repeat(depth);
-        let source = format!("val x = {}42{}", open, close);
-        let mut parser = crate::parser::Parser::new(crate::lexer::Lexer::new(&source).tokenize());
-        let result = parser.parse_program();
-        assert!(
-            result.is_ok(),
-            "deeply nested blocks should parse: {:?}",
-            result.err()
-        );
+        with_parse_test_stack(|| {
+            // Build deeply nested blocks: {{{{...}}}}
+            let depth = 100;
+            let open = "{".repeat(depth);
+            let close = "}".repeat(depth);
+            let source = format!("val x = {}42{}", open, close);
+            let mut parser = crate::parser::Parser::new(crate::lexer::Lexer::new(&source).tokenize());
+            let result = parser.parse_program();
+            assert!(
+                result.is_ok(),
+                "deeply nested blocks should parse: {:?}",
+                result.err()
+            );
+        });
     }
 
     #[test]
     fn test_parse_deeply_nested_binary_expr() {
-        // Build deeply nested: 1 + 1 + 1 + ... (100 times)
-        let expr = (0..100).map(|_| "1 +").collect::<String>() + "1";
-        let source = format!("val x = {}", expr);
-        let mut parser = crate::parser::Parser::new(crate::lexer::Lexer::new(&source).tokenize());
-        let result = parser.parse_program();
-        assert!(
-            result.is_ok(),
-            "deeply nested binary expr should parse: {:?}",
-            result.err()
-        );
+        with_parse_test_stack(|| {
+            // Build deeply nested: 1 + 1 + 1 + ... (100 times)
+            let expr = (0..100).map(|_| "1 +").collect::<String>() + "1";
+            let source = format!("val x = {}", expr);
+            let mut parser = crate::parser::Parser::new(crate::lexer::Lexer::new(&source).tokenize());
+            let result = parser.parse_program();
+            assert!(
+                result.is_ok(),
+                "deeply nested binary expr should parse: {:?}",
+                result.err()
+            );
+        });
     }
 
     #[test]
