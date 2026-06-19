@@ -1006,6 +1006,103 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::LazyList(result_alloca))
     }
 
+    /// LazyList take_count sentinel: takeWhile mode (filter_fn holds predicate; stop on first false).
+    const LAZY_TAKE_WHILE_TC: i64 = -2;
+
+    /// Store takeWhile predicate on a LazyList without materializing (deferred in `toList`).
+    pub(super) fn lazy_take_while_impl(
+        &mut self,
+        pred_fn_ptr: inkwell::values::PointerValue<'ctx>,
+        ll_ptr: inkwell::values::PointerValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let ll_sv = self
+            .builder
+            .build_load(self.lazylist_type, ll_ptr, "ltw_ll")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let head_val = self
+            .builder
+            .build_extract_value(ll_sv, 0, "ltw_head")
+            .map_err(llvm_err)?;
+        let step_fn = self
+            .builder
+            .build_extract_value(ll_sv, 1, "ltw_sf")
+            .map_err(llvm_err)?;
+        let state_val = self
+            .builder
+            .build_extract_value(ll_sv, 2, "ltw_st")
+            .map_err(llvm_err)?;
+        let map_fn = self
+            .builder
+            .build_extract_value(ll_sv, 4, "ltw_map")
+            .map_err(llvm_err)?;
+        let take_while_tc = self
+            .i64_ty()
+            .const_int(Self::LAZY_TAKE_WHILE_TC as u64, true);
+        let result_alloca = self
+            .builder
+            .build_alloca(self.lazylist_type, "ltw_lazy")
+            .map_err(llvm_err)?;
+        let v0 = self
+            .builder
+            .build_insert_value(ll_sv, head_val, 0, "ltw_v0")
+            .map_err(llvm_err)?;
+        let v1 = self
+            .builder
+            .build_insert_value(v0, step_fn, 1, "ltw_v1")
+            .map_err(llvm_err)?;
+        let v2 = self
+            .builder
+            .build_insert_value(v1, state_val, 2, "ltw_v2")
+            .map_err(llvm_err)?;
+        let v3 = self
+            .builder
+            .build_insert_value(v2, take_while_tc, 3, "ltw_v3")
+            .map_err(llvm_err)?;
+        let v4 = self
+            .builder
+            .build_insert_value(v3, map_fn, 4, "ltw_v4")
+            .map_err(llvm_err)?;
+        let v5 = self
+            .builder
+            .build_insert_value(v4, pred_fn_ptr, 5, "ltw_v5")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(result_alloca, v5)
+            .map_err(llvm_err)?;
+        Ok(TypedValue::LazyList(result_alloca))
+    }
+
+    /// Fused lazy `.filter{}.map{}`: compose deferred filter+map without eager materialization.
+    pub(super) fn fused_lazy_filter_map_hir(
+        &mut self,
+        filter_fn: &action_frontend::hir::HirExpr,
+        inner: &action_frontend::hir::HirExpr,
+        map_fn_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let filter_ptr = match self.compile_hir_expr(filter_fn)? {
+            TypedValue::Fn(p, _) => p,
+            TypedValue::Closure { fn_ptr, .. } => fn_ptr,
+            _ => return Err("lazy filter+map: filter function required".to_string()),
+        };
+        let map_ptr = match map_fn_val {
+            TypedValue::Fn(p, _) => p,
+            TypedValue::Closure { fn_ptr, .. } => fn_ptr,
+            _ => return Err("lazy filter+map: map function required".to_string()),
+        };
+        let inner_val = self.compile_hir_expr(inner)?;
+        let ll_ptr = match inner_val {
+            TypedValue::LazyList(p) => p,
+            _ => return Err("lazy filter+map: LazyList receiver required".to_string()),
+        };
+        let filtered = self.lazy_filter_impl(filter_ptr, ll_ptr)?;
+        let filtered_ptr = match filtered {
+            TypedValue::LazyList(p) => p,
+            _ => return Err("lazy filter+map: filter did not return LazyList".to_string()),
+        };
+        self.lazy_map_impl(map_ptr, filtered_ptr)
+    }
+
     pub(super) fn builtin_lazy_take_while_values(
         &mut self,
         fn_val: TypedValue<'ctx>,
@@ -1015,6 +1112,9 @@ impl<'ctx> CodeGen<'ctx> {
             TypedValue::Fn(p, _) => (p, fn_val),
             _ => return Err("lazyTakeWhile: first argument must be a function".to_string()),
         };
+        if let TypedValue::LazyList(ll_ptr) = lazy_val {
+            return self.lazy_take_while_impl(fn_ptr, ll_ptr);
+        }
         let lazy_ptr = self.ensure_list_ptr(&lazy_val, "ltw")?;
         let list = self.load_list(lazy_ptr)?;
         let len = self

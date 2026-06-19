@@ -223,6 +223,10 @@ impl<'ctx> CodeGen<'ctx> {
                 } else {
                     return Err("map with trailing lambda expects 0 args".to_string());
                 };
+                let inner_val = self.compile_hir_expr(inner)?;
+                if matches!(inner_val, TypedValue::LazyList(_)) {
+                    return self.fused_lazy_filter_map_hir(filter_fn, inner, map_fn);
+                }
                 return self.fused_filter_map_hir(filter_fn, inner, map_fn);
             }
         }

@@ -229,6 +229,7 @@ impl<'ctx> CodeGen<'ctx> {
         let zero = self.i64_ty().const_int(0, false);
         let one = self.i64_ty().const_int(1, false);
         let neg_one = self.i64_ty().const_int((-1_i64) as u64, true);
+        let neg_two = self.i64_ty().const_int((-2_i64) as u64, true);
 
         let has_step = self
             .builder
@@ -261,9 +262,19 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(IntPredicate::EQ, take_count_val, neg_one, "tc_neg1")
             .map_err(llvm_err)?;
+        let tc_is_take_while = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, take_count_val, neg_two, "tc_tw")
+            .map_err(llvm_err)?;
         let tc_or_inf = self
             .builder
-            .build_or(tc_gt_zero, tc_is_neg1, "tc_or_inf")
+            .build_or(
+                self.builder
+                    .build_or(tc_gt_zero, tc_is_neg1, "tc_pos_or_inf")
+                    .map_err(llvm_err)?,
+                tc_is_take_while,
+                "tc_or_inf",
+            )
             .map_err(llvm_err)?;
         let should_generate = self
             .builder
@@ -648,9 +659,15 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(loop_hdr);
 
-        // ---- elem_fail_bb: skip this element, try next ----
+        // ---- elem_fail_bb: skip (filter) or stop (takeWhile) ----
         self.builder.position_at_end(elem_fail_bb);
-        let _ = self.builder.build_unconditional_branch(loop_body);
+        let tw_stop = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, take_count_val, neg_two, "tw_stop")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(tw_stop, loop_exit, loop_body);
 
         // ---- loop_exit ----
         self.builder.position_at_end(loop_exit);
