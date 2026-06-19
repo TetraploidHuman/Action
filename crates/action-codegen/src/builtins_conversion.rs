@@ -1,7 +1,5 @@
 // Submodule: builtins_conversion
 
-use action_frontend::ast::*;
-
 use super::call_arg::CallArg;
 use super::{llvm_err, CodeGen, TypedValue};
 
@@ -20,12 +18,6 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<TypedValue<'ctx>, String> {
         let val = self.compile_call_arg(arg)?;
         self.builtin_to_lazy_list_value(val)
-    }
-
-    /// toList(lazy_or_set) - convert a LazyList or Set to a List
-    pub(super) fn builtin_to_list(&mut self, expr: &Expr) -> Result<TypedValue<'ctx>, String> {
-        let val = self.compile_expr(expr)?;
-        self.builtin_to_list_value(val)
     }
 
     pub(super) fn builtin_to_list_value(
@@ -58,12 +50,6 @@ impl<'ctx> CodeGen<'ctx> {
             TypedValue::List(_) => Ok(val),
             _ => Err("toList: argument must be a LazyList or Set".to_string()),
         }
-    }
-
-    /// toLazyList(list) - convert a List to a LazyList
-    pub(super) fn builtin_to_lazy_list(&mut self, expr: &Expr) -> Result<TypedValue<'ctx>, String> {
-        let val = self.compile_expr(expr)?;
-        self.builtin_to_lazy_list_value(val)
     }
 
     pub(super) fn builtin_to_lazy_list_value(

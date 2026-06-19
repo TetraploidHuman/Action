@@ -3,8 +3,7 @@
 use super::builtin_dispatch::BuiltinDispatch;
 use super::call_arg::CallArg;
 use action_frontend::builtin::UfcsReceiverKind;
-use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
-use inkwell::values::{BasicMetadataValueEnum, BasicValueEnum, PointerValue};
+use inkwell::values::BasicMetadataValueEnum;
 use inkwell::IntPredicate;
 
 use super::{llvm_err, CodeGen, TypedValue};

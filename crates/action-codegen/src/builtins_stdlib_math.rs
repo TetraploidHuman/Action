@@ -4,7 +4,6 @@
 //
 // Submodule: builtins_stdlib
 
-use action_frontend::ast::*;
 use inkwell::FloatPredicate;
 use inkwell::IntPredicate;
 

@@ -1,6 +1,5 @@
 // Submodule: builtins_lazy
 
-use action_frontend::ast::*;
 use inkwell::types::BasicTypeEnum;
 use inkwell::IntPredicate;
 
@@ -76,17 +75,6 @@ impl<'ctx> CodeGen<'ctx> {
         self.builtin_lazy_zip_values(v1, v2)
     }
 
-    /// lazyTake(n, lazy_list) - limit lazy list to first n elements (lazy: just updates take_count)
-    pub(super) fn builtin_lazy_take(
-        &mut self,
-        n_expr: &Expr,
-        lazy_expr: &Expr,
-    ) -> Result<TypedValue<'ctx>, String> {
-        let n_val = self.compile_expr(n_expr)?;
-        let lazy_val = self.compile_expr(lazy_expr)?;
-        self.builtin_lazy_take_values(n_val, lazy_val)
-    }
-
     pub(super) fn builtin_lazy_take_values(
         &mut self,
         n_val: TypedValue<'ctx>,
@@ -160,17 +148,6 @@ impl<'ctx> CodeGen<'ctx> {
             .build_store(result_alloca, v5)
             .map_err(llvm_err)?;
         Ok(TypedValue::LazyList(result_alloca))
-    }
-
-    /// lazyDrop(n, lazy_list) - drop first n elements (truly lazy: advances state without materializing list)
-    pub(super) fn builtin_lazy_drop(
-        &mut self,
-        n_expr: &Expr,
-        lazy_expr: &Expr,
-    ) -> Result<TypedValue<'ctx>, String> {
-        let n_val = self.compile_expr(n_expr)?;
-        let lazy_val = self.compile_expr(lazy_expr)?;
-        self.builtin_lazy_drop_values(n_val, lazy_val)
     }
 
     pub(super) fn builtin_lazy_drop_values(
@@ -526,18 +503,6 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::LazyList(result_ptr))
     }
 
-    /// lazyMap(fn, lazy_list) - truly lazy: creates a wrapper step function composing map with the original step fn.
-    /// Falls back to eager evaluation for list-backed lazy lists (from toLazyList).
-    pub(super) fn builtin_lazy_map(
-        &mut self,
-        fn_expr: &Expr,
-        lazy_expr: &Expr,
-    ) -> Result<TypedValue<'ctx>, String> {
-        let fn_val = self.compile_expr(fn_expr)?;
-        let lazy_val = self.compile_expr(lazy_expr)?;
-        self.builtin_lazy_map_values(fn_val, lazy_val)
-    }
-
     pub(super) fn builtin_lazy_map_values(
         &mut self,
         fn_val: TypedValue<'ctx>,
@@ -756,17 +721,6 @@ impl<'ctx> CodeGen<'ctx> {
             .build_store(result_alloca, v5)
             .map_err(llvm_err)?;
         Ok(TypedValue::LazyList(result_alloca))
-    }
-
-    /// lazyFilter(fn, lazy_list) - truly lazy: stores filter_fn in LazyList for deferred application during toList()
-    pub(super) fn builtin_lazy_filter(
-        &mut self,
-        fn_expr: &Expr,
-        lazy_expr: &Expr,
-    ) -> Result<TypedValue<'ctx>, String> {
-        let fn_val = self.compile_expr(fn_expr)?;
-        let lazy_val = self.compile_expr(lazy_expr)?;
-        self.builtin_lazy_filter_values(fn_val, lazy_val)
     }
 
     pub(super) fn builtin_lazy_filter_values(
@@ -1052,17 +1006,6 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::LazyList(result_alloca))
     }
 
-    /// lazyTakeWhile(fn, lazy_list) - take elements while predicate is true
-    pub(super) fn builtin_lazy_take_while(
-        &mut self,
-        fn_expr: &Expr,
-        lazy_expr: &Expr,
-    ) -> Result<TypedValue<'ctx>, String> {
-        let fn_val = self.compile_expr(fn_expr)?;
-        let lazy_val = self.compile_expr(lazy_expr)?;
-        self.builtin_lazy_take_while_values(fn_val, lazy_val)
-    }
-
     pub(super) fn builtin_lazy_take_while_values(
         &mut self,
         fn_val: TypedValue<'ctx>,
@@ -1186,15 +1129,6 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.builder.position_at_end(loop_ext);
         Ok(TypedValue::List(result_alloca))
-    }
-
-    /// lazyHead(lazy_list) - return first element as Some, or None if empty
-    pub(super) fn builtin_lazy_head(
-        &mut self,
-        lazy_expr: &Expr,
-    ) -> Result<TypedValue<'ctx>, String> {
-        let lazy_val = self.compile_expr(lazy_expr)?;
-        self.builtin_lazy_head_value(lazy_val)
     }
 
     pub(super) fn builtin_lazy_head_value(
@@ -1334,17 +1268,6 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.builder.position_at_end(merge_block);
         Ok(TypedValue::Nullable(result_alloca, null_bt))
-    }
-
-    /// lazy.zip(lazy1, lazy2) - zip two lazy lists eagerly, return as List
-    pub(super) fn builtin_lazy_zip(
-        &mut self,
-        lazy1_expr: &Expr,
-        lazy2_expr: &Expr,
-    ) -> Result<TypedValue<'ctx>, String> {
-        let v1 = self.compile_expr(lazy1_expr)?;
-        let v2 = self.compile_expr(lazy2_expr)?;
-        self.builtin_lazy_zip_values(v1, v2)
     }
 
     pub(super) fn builtin_lazy_zip_values(

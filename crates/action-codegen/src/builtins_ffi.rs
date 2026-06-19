@@ -1,6 +1,5 @@
 // Submodule: builtins_ffi
 
-use action_frontend::ast::*;
 use inkwell::values::BasicValue;
 use inkwell::IntPredicate;
 
@@ -38,12 +37,6 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<TypedValue<'ctx>, String> {
         let val = self.compile_call_arg(arg)?;
         self.builtin_deref_value(val)
-    }
-
-    /// toCString(str) -> CString: allocate a null-terminated copy of the string
-    pub(super) fn builtin_to_cstring(&mut self, expr: &Expr) -> Result<TypedValue<'ctx>, String> {
-        let val = self.compile_expr(expr)?;
-        self.builtin_to_cstring_value(val)
     }
 
     pub(super) fn builtin_to_cstring_value(
@@ -92,12 +85,6 @@ impl<'ctx> CodeGen<'ctx> {
             }
             _ => Err("toCString: argument must be a String".to_string()),
         }
-    }
-
-    /// fromCString(cstr) -> String: read a null-terminated C string
-    pub(super) fn builtin_from_cstring(&mut self, expr: &Expr) -> Result<TypedValue<'ctx>, String> {
-        let val = self.compile_expr(expr)?;
-        self.builtin_from_cstring_value(val)
     }
 
     pub(super) fn builtin_from_cstring_value(
@@ -211,12 +198,6 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    /// isNull(ptr) -> Bool: check if a Ptr or CString is null
-    pub(super) fn builtin_is_null(&mut self, expr: &Expr) -> Result<TypedValue<'ctx>, String> {
-        let val = self.compile_expr(expr)?;
-        self.builtin_is_null_value(val)
-    }
-
     pub(super) fn builtin_is_null_value(
         &mut self,
         val: TypedValue<'ctx>,
@@ -238,12 +219,6 @@ impl<'ctx> CodeGen<'ctx> {
             }
             _ => Err("isNull: argument must be a Ptr, CString, or FileHandle".to_string()),
         }
-    }
-
-    /// deref(ptr) -> T: dereference a typed pointer (unsafe)
-    pub(super) fn builtin_deref(&mut self, expr: &Expr) -> Result<TypedValue<'ctx>, String> {
-        let val = self.compile_expr(expr)?;
-        self.builtin_deref_value(val)
     }
 
     pub(super) fn builtin_deref_value(
@@ -277,22 +252,6 @@ impl<'ctx> CodeGen<'ctx> {
         let url_val = self.compile_call_arg(b)?;
         let headers_val = self.compile_call_arg(c)?;
         let body_val = self.compile_call_arg(d)?;
-        self.builtin_http_request_values(method_val, url_val, headers_val, body_val)
-    }
-
-    /// httpRequest(method: String, url: String, headers: String, body: String) -> String
-    /// Converts each String arg to CString, calls action_http_request, returns result as String.
-    pub(super) fn builtin_http_request(
-        &mut self,
-        method: &Expr,
-        url: &Expr,
-        headers: &Expr,
-        body: &Expr,
-    ) -> Result<TypedValue<'ctx>, String> {
-        let method_val = self.compile_expr(method)?;
-        let url_val = self.compile_expr(url)?;
-        let headers_val = self.compile_expr(headers)?;
-        let body_val = self.compile_expr(body)?;
         self.builtin_http_request_values(method_val, url_val, headers_val, body_val)
     }
 

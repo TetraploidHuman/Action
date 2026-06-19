@@ -1,6 +1,5 @@
 // Submodule: builtins_stdlib
 
-use action_frontend::ast::*;
 use inkwell::IntPredicate;
 
 use super::call_arg::CallArg;

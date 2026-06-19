@@ -1438,7 +1438,7 @@ impl<'ctx> CodeGen<'ctx> {
         &action_frontend::hir::HirExpr,
         &action_frontend::hir::HirExpr,
     )> {
-        use action_frontend::hir::{HirExpr, HirExprKind};
+        use action_frontend::hir::HirExprKind;
         let HirExprKind::Call {
             func,
             args,
@@ -1877,101 +1877,6 @@ impl<'ctx> CodeGen<'ctx> {
             .basic()
             .ok_or("flatMap call failed")?
             .into_struct_value())
-    }
-
-    pub(super) fn builtin_map_hir(
-        &mut self,
-        args: &[action_frontend::hir::HirExpr],
-        trailing: Option<&Box<action_frontend::hir::HirExpr>>,
-    ) -> Result<TypedValue<'ctx>, String> {
-        let (fn_ptr, list_val) = if let Some(lam) = trailing {
-            if args.len() != 1 {
-                return Err("map with trailing lambda expects 1 argument (list)".to_string());
-            }
-            let lv = self.compile_hir_expr(&args[0])?;
-            let fv = self.compile_hir_expr(lam)?;
-            (fv, lv)
-        } else if args.len() == 2 {
-            let fv = self.compile_hir_expr(&args[0])?;
-            let lv = self.compile_hir_expr(&args[1])?;
-            (fv, lv)
-        } else {
-            return Err("map expects 2 arguments (fn, list)".to_string());
-        };
-        if let Some(result) = self.try_builtin_map_direct(fn_ptr.clone(), list_val.clone())? {
-            return Ok(result);
-        }
-        let fn_ptr = match fn_ptr {
-            TypedValue::Fn(p, _) => p,
-            TypedValue::Closure { fn_ptr, .. } => fn_ptr,
-            _ => return Err("map: first argument must be a function".to_string()),
-        };
-        let list_ptr = match list_val {
-            TypedValue::List(p) => p,
-            _ => return Err("map: second argument must be a list".to_string()),
-        };
-        let list_struct = self.load_list(list_ptr)?;
-        let result_alloca = self
-            .builder
-            .build_alloca(self.list_type, "map_result")
-            .map_err(llvm_err)?;
-        let map_cc = self.call_rt("action_list_map_walk", &[list_struct.into(), fn_ptr.into()])?;
-        let result_bv = map_cc
-            .try_as_basic_value()
-            .basic()
-            .ok_or("map_walk failed")?;
-        self.builder
-            .build_store(result_alloca, result_bv)
-            .map_err(llvm_err)?;
-        Ok(TypedValue::List(result_alloca))
-    }
-
-    pub(super) fn builtin_filter_hir(
-        &mut self,
-        args: &[action_frontend::hir::HirExpr],
-        trailing: Option<&Box<action_frontend::hir::HirExpr>>,
-    ) -> Result<TypedValue<'ctx>, String> {
-        let list_expr = if trailing.is_some() {
-            if args.len() != 1 {
-                return Err("filter with trailing lambda expects 1 argument (list)".to_string());
-            }
-            &args[0]
-        } else if args.len() == 2 {
-            &args[1]
-        } else {
-            return Err("filter expects 2 arguments (fn, list)".to_string());
-        };
-        if let Some((map_fn, inner)) = Self::extract_map_call_args_hir(list_expr) {
-            let filter_fn = if let Some(lam) = trailing {
-                self.compile_hir_expr(lam)?
-            } else {
-                self.compile_hir_expr(&args[0])?
-            };
-            return self.fused_map_filter_hir(map_fn, inner, filter_fn);
-        }
-        if let Some((flat_fn, inner)) = Self::extract_flatmap_call_args_hir(list_expr) {
-            let filter_fn = if let Some(lam) = trailing {
-                self.compile_hir_expr(lam)?
-            } else {
-                self.compile_hir_expr(&args[0])?
-            };
-            return self.fused_flatmap_filter_hir(flat_fn, inner, filter_fn);
-        }
-        self.builtin_filter(
-            &Self::call_args_from_hir(args),
-            Self::trailing_call_arg_hir(trailing),
-        )
-    }
-
-    pub(super) fn builtin_fold_hir(
-        &mut self,
-        args: &[action_frontend::hir::HirExpr],
-        trailing: Option<&Box<action_frontend::hir::HirExpr>>,
-    ) -> Result<TypedValue<'ctx>, String> {
-        self.builtin_fold(
-            &Self::call_args_from_hir(args),
-            Self::trailing_call_arg_hir(trailing),
-        )
     }
 
     /// Callback-based map functions: mapFilter, mapMapValues, mapFold
