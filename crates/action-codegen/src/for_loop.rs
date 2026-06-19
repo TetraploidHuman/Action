@@ -1,12 +1,96 @@
 // Submodule: for_loop
 
 use action_frontend::ast::*;
+use action_frontend::hir::{HirExpr, HirExprKind};
 use inkwell::basic_block::BasicBlock;
 use inkwell::types::BasicTypeEnum;
 use inkwell::values::{BasicValueEnum, IntValue, PointerValue};
 use inkwell::IntPredicate;
 
 use super::{llvm_err, CodeGen, Scope, TypedValue, ValKind};
+
+enum ForExprSrc<'a> {
+    Ast(&'a Expr),
+    Hir(&'a HirExpr),
+}
+
+impl<'a> ForExprSrc<'a> {
+    fn compile<'ctx>(&self, gen: &mut CodeGen<'ctx>) -> Result<TypedValue<'ctx>, String> {
+        match self {
+            ForExprSrc::Ast(e) => gen.compile_expr(e),
+            ForExprSrc::Hir(h) => gen.compile_hir_expr(h),
+        }
+    }
+
+    fn range_start_end<'ctx>(
+        &self,
+        gen: &mut CodeGen<'ctx>,
+    ) -> Result<Option<(IntValue<'ctx>, IntValue<'ctx>)>, String> {
+        match self {
+            ForExprSrc::Ast(e) => match &e.kind {
+                ExprKind::Binary(lhs, BinaryOp::Range, rhs)
+                | ExprKind::Binary(lhs, BinaryOp::RangeExclusive, rhs) => {
+                    let start_v = gen.compile_expr(lhs)?;
+                    let end_v = gen.compile_expr(rhs)?;
+                    match (start_v, end_v) {
+                        (TypedValue::Int(s), TypedValue::Int(e)) => Ok(Some((s, e))),
+                        _ => Err("Range bounds must be integers".to_string()),
+                    }
+                }
+                _ => Ok(None),
+            },
+            ForExprSrc::Hir(h) => match &h.kind {
+                HirExprKind::Binary(lhs, BinaryOp::Range, rhs)
+                | HirExprKind::Binary(lhs, BinaryOp::RangeExclusive, rhs)
+                | HirExprKind::Range(lhs, rhs) => {
+                    let start_v = ForExprSrc::Hir(lhs).compile(gen)?;
+                    let end_v = ForExprSrc::Hir(rhs).compile(gen)?;
+                    match (start_v, end_v) {
+                        (TypedValue::Int(s), TypedValue::Int(e)) => Ok(Some((s, e))),
+                        _ => Err("Range bounds must be integers".to_string()),
+                    }
+                }
+                _ => Ok(None),
+            },
+        }
+    }
+
+    fn compile_list_iterable<'ctx>(
+        &self,
+        gen: &mut CodeGen<'ctx>,
+    ) -> Result<(IntValue<'ctx>, IntValue<'ctx>, PointerValue<'ctx>), String> {
+        let i64 = gen.i64_ty();
+        let list_val = self.compile(gen)?;
+        let list_ptr = match &list_val {
+            TypedValue::List(p) | TypedValue::Set(p) | TypedValue::Map(p) => *p,
+            TypedValue::Stream(p) => gen
+                .builder
+                .build_struct_gep(gen.stream_type, *p, 1, "for_sl")
+                .map_err(llvm_err)?,
+            TypedValue::LazyList(_) => {
+                let converted = gen.convert_lazylist_to_list(&list_val)?;
+                let alloca = gen
+                    .builder
+                    .build_alloca(gen.list_type, "ll_to_list")
+                    .map_err(llvm_err)?;
+                gen.builder
+                    .build_store(alloca, converted)
+                    .map_err(llvm_err)?;
+                alloca
+            }
+            _ => {
+                return Err(
+                    "Only range iterators (1..10), lists, sets, maps, streams and lazy lists are supported for for expressions"
+                        .to_string(),
+                );
+            }
+        };
+        let loaded = gen.load_list(list_ptr)?;
+        let len = gen.list_len_val(loaded)?;
+        let zero = i64.const_int(0, false);
+        Ok((zero, len, list_ptr))
+    }
+}
 
 impl<'ctx> CodeGen<'ctx> {
     pub(super) fn store_value_to_alloca(
@@ -124,7 +208,12 @@ impl<'ctx> CodeGen<'ctx> {
                 body,
                 collect,
                 ..
-            } => self.compile_for_iterate(var, iterable, body, *collect),
+            } => self.compile_for_iterate(
+                var,
+                ForExprSrc::Ast(iterable),
+                ForExprSrc::Ast(body),
+                *collect,
+            ),
             ForKind::Condition {
                 condition, body, ..
             } => {
@@ -138,12 +227,23 @@ impl<'ctx> CodeGen<'ctx> {
                 bindings,
                 body,
                 collect,
-            } => self.compile_for_nested_iterate(bindings, body, *collect),
+            } => self.compile_for_nested_iterate(
+                &bindings
+                    .iter()
+                    .map(|(n, e)| (n.clone(), ForExprSrc::Ast(e)))
+                    .collect::<Vec<_>>(),
+                ForExprSrc::Ast(body),
+                *collect,
+            ),
             ForKind::IterateWithIndex {
                 vars,
                 iterable,
                 body,
-            } => self.compile_for_with_index(vars, iterable, body),
+            } => self.compile_for_with_index(
+                vars,
+                ForExprSrc::Ast(iterable),
+                ForExprSrc::Ast(body),
+            ),
         }
     }
 
@@ -230,8 +330,8 @@ impl<'ctx> CodeGen<'ctx> {
     pub(super) fn compile_for_iterate(
         &mut self,
         variable: &str,
-        iterator: &Expr,
-        body: &Box<Expr>,
+        iterator: ForExprSrc<'_>,
+        body: ForExprSrc<'_>,
         collect: bool,
     ) -> Result<TypedValue<'ctx>, String> {
         let current_fn = self
@@ -243,40 +343,13 @@ impl<'ctx> CodeGen<'ctx> {
         let i64 = self.i64_ty();
 
         // Determine iteration kind: range or list
-        let (start_val, end_val, input_list_ptr) = match &iterator.kind {
-            ExprKind::Binary(lhs, BinaryOp::Range, rhs)
-            | ExprKind::Binary(lhs, BinaryOp::RangeExclusive, rhs) => {
-                let start_v = self.compile_expr(lhs)?;
-                let end_v = self.compile_expr(rhs)?;
-                let (s, e) = match (start_v, end_v) {
-                    (TypedValue::Int(s), TypedValue::Int(e)) => (s, e),
-                    _ => return Err("Range bounds must be integers".to_string()),
-                };
+        let (start_val, end_val, input_list_ptr) =
+            if let Some((s, e)) = iterator.range_start_end(self)? {
                 (s, e, None)
-            }
-            _ => {
-                // Try as a list expression (shorthand for [list] { body })
-                let list_val = self.compile_expr(iterator)?;
-                let list_ptr = match &list_val {
-                    TypedValue::List(p) | TypedValue::Set(p) | TypedValue::Map(p) => *p,
-                    TypedValue::Stream(p) => {
-                        self.builder.build_struct_gep(self.stream_type, *p, 1, "for_sl").map_err(llvm_err)?
-                    }
-                    TypedValue::LazyList(_) => {
-                        // Convert LazyList to List for iteration
-                        let converted = self.convert_lazylist_to_list(&list_val)?;
-                        let alloca = self.builder.build_alloca(self.list_type, "ll_to_list").map_err(llvm_err)?;
-                        self.builder.build_store(alloca, converted).map_err(llvm_err)?;
-                        alloca
-                    }
-                    _ => return Err("Only range iterators (1..10), lists, sets, maps, streams and lazy lists are supported for for expressions".to_string()),
-                };
-                let loaded = self.load_list(list_ptr)?;
-                let len = self.list_len_val(loaded)?;
-                let zero = i64.const_int(0, false);
+            } else {
+                let (zero, len, list_ptr) = iterator.compile_list_iterable(self)?;
                 (zero, len, Some(list_ptr))
-            }
-        };
+            };
 
         // Create result list if collecting
         let result_list = if collect {
@@ -397,7 +470,7 @@ impl<'ctx> CodeGen<'ctx> {
         };
 
         // Compile body
-        let body_val = self.compile_expr(body)?;
+        let body_val = body.compile(self)?;
 
         // Collect result if needed
         if let Some(list_ptr) = result_list {
@@ -467,8 +540,8 @@ impl<'ctx> CodeGen<'ctx> {
     pub(super) fn compile_for_with_index(
         &mut self,
         vars: &[String],
-        iterator: &Expr,
-        body: &Expr,
+        iterator: ForExprSrc<'_>,
+        body: ForExprSrc<'_>,
     ) -> Result<TypedValue<'ctx>, String> {
         if vars.len() != 2 {
             return Err("for with index requires exactly two variables".to_string());
@@ -496,51 +569,15 @@ impl<'ctx> CodeGen<'ctx> {
             },
         }
 
-        let mode = match &iterator.kind {
-            ExprKind::Binary(lhs, BinaryOp::Range, rhs)
-            | ExprKind::Binary(lhs, BinaryOp::RangeExclusive, rhs) => {
-                let start_v = self.compile_expr(lhs)?;
-                let end_v = self.compile_expr(rhs)?;
-                let (start, end) = match (start_v, end_v) {
-                    (TypedValue::Int(s), TypedValue::Int(e)) => (s, e),
-                    _ => return Err("Range bounds must be integers".to_string()),
-                };
-                let count = self
-                    .builder
-                    .build_int_sub(end, start, "range_count")
-                    .map_err(llvm_err)?;
-                IterMode::Range { start, count }
-            }
-            _ => {
-                let list_val = self.compile_expr(iterator)?;
-                let list_ptr = match &list_val {
-                    TypedValue::List(p) | TypedValue::Set(p) | TypedValue::Map(p) => *p,
-                    TypedValue::Stream(p) => self
-                        .builder
-                        .build_struct_gep(self.stream_type, *p, 1, "for_idx_sl")
-                        .map_err(llvm_err)?,
-                    TypedValue::LazyList(_) => {
-                        let converted = self.convert_lazylist_to_list(&list_val)?;
-                        let alloca = self
-                            .builder
-                            .build_alloca(self.list_type, "for_idx_ll")
-                            .map_err(llvm_err)?;
-                        self.builder
-                            .build_store(alloca, converted)
-                            .map_err(llvm_err)?;
-                        alloca
-                    }
-                    _ => {
-                        return Err(
-                            "for with index supports ranges, lists, sets, maps, streams and lazy lists"
-                                .to_string(),
-                        );
-                    }
-                };
-                let loaded = self.load_list(list_ptr)?;
-                let len = self.list_len_val(loaded)?;
-                IterMode::List { list_ptr, len }
-            }
+        let mode = if let Some((start, end)) = iterator.range_start_end(self)? {
+            let count = self
+                .builder
+                .build_int_sub(end, start, "range_count")
+                .map_err(llvm_err)?;
+            IterMode::Range { start, count }
+        } else {
+            let (_, len, list_ptr) = iterator.compile_list_iterable(self)?;
+            IterMode::List { list_ptr, len }
         };
 
         let idx_alloca = self
@@ -637,7 +674,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.scope
             .set(item_var.clone(), item_alloca, i64.into(), ValKind::Int);
 
-        let body_val = self.compile_expr(body)?;
+        let body_val = body.compile(self)?;
         self.rc_discard_value(&body_val)?;
 
         self.builder
@@ -677,8 +714,8 @@ impl<'ctx> CodeGen<'ctx> {
 
     pub(super) fn compile_for_nested_iterate(
         &mut self,
-        bindings: &[(String, Expr)],
-        body: &Expr,
+        bindings: &[(String, ForExprSrc<'_>)],
+        body: ForExprSrc<'_>,
         collect: bool,
     ) -> Result<TypedValue<'ctx>, String> {
         let current_fn = self
@@ -694,35 +731,11 @@ impl<'ctx> CodeGen<'ctx> {
         // Pre-allocate all loop counters and bounds: (idx_alloca, start_val, end_val)
         let mut loops: Vec<(PointerValue, IntValue, IntValue)> = Vec::new();
         for (i, (_var, iterable)) in bindings.iter().enumerate() {
-            let (start, end) = match &iterable.kind {
-                ExprKind::Binary(lhs, BinaryOp::Range, rhs)
-                | ExprKind::Binary(lhs, BinaryOp::RangeExclusive, rhs) => {
-                    let s = self.compile_expr(lhs)?;
-                    let e = self.compile_expr(rhs)?;
-                    match (s, e) {
-                        (TypedValue::Int(s), TypedValue::Int(e)) => (s, e),
-                        _ => return Err("Range bounds must be integers".to_string()),
-                    }
-                }
-                _ => {
-                    let list_val = self.compile_expr(iterable)?;
-                    let list_ptr = match &list_val {
-                        TypedValue::List(p) | TypedValue::Set(p) | TypedValue::Map(p) => *p,
-                        TypedValue::Stream(p) => {
-                            self.builder.build_struct_gep(self.stream_type, *p, 1, "nested_for_sl").map_err(llvm_err)?
-                        }
-                        TypedValue::LazyList(_) => {
-                            let converted = self.convert_lazylist_to_list(&list_val)?;
-                            let alloca = self.builder.build_alloca(self.list_type, "nested_ll_to_list").map_err(llvm_err)?;
-                            self.builder.build_store(alloca, converted).map_err(llvm_err)?;
-                            alloca
-                        }
-                        _ => return Err("Only ranges, lists, sets, maps, streams and lazy lists are supported in nested for".to_string()),
-                    };
-                    let loaded = self.load_list(list_ptr)?;
-                    let len = self.list_len_val(loaded)?;
-                    (i64.const_int(0, false), len)
-                }
+            let (start, end) = if let Some((s, e)) = iterable.range_start_end(self)? {
+                (s, e)
+            } else {
+                let (zero, len, _list_ptr) = iterable.compile_list_iterable(self)?;
+                (zero, len)
             };
             let idx = self
                 .builder
@@ -839,7 +852,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         // Compile body
-        let body_val = self.compile_expr(body)?;
+        let body_val = body.compile(self)?;
 
         // Collect result
         if let Some(list_ptr) = result_list {
@@ -1302,34 +1315,42 @@ impl<'ctx> CodeGen<'ctx> {
     fn compile_for_iterate_hir(
         &mut self,
         variable: &str,
-        iterator: &action_frontend::hir::HirExpr,
-        body: &action_frontend::hir::HirExpr,
+        iterator: &HirExpr,
+        body: &HirExpr,
         collect: bool,
     ) -> Result<TypedValue<'ctx>, String> {
-        let body_box = Box::new(body.as_expr());
-        self.compile_for_iterate(variable, &iterator.as_expr(), &body_box, collect)
+        self.compile_for_iterate(
+            variable,
+            ForExprSrc::Hir(iterator),
+            ForExprSrc::Hir(body),
+            collect,
+        )
     }
 
     fn compile_for_with_index_hir(
         &mut self,
         vars: &[String],
-        iterator: &action_frontend::hir::HirExpr,
-        body: &action_frontend::hir::HirExpr,
+        iterator: &HirExpr,
+        body: &HirExpr,
     ) -> Result<TypedValue<'ctx>, String> {
-        self.compile_for_with_index(vars, &iterator.as_expr(), &body.as_expr())
+        self.compile_for_with_index(
+            vars,
+            ForExprSrc::Hir(iterator),
+            ForExprSrc::Hir(body),
+        )
     }
 
     fn compile_for_nested_iterate_hir(
         &mut self,
-        bindings: &[(String, action_frontend::hir::HirExpr)],
-        body: &action_frontend::hir::HirExpr,
+        bindings: &[(String, HirExpr)],
+        body: &HirExpr,
         collect: bool,
     ) -> Result<TypedValue<'ctx>, String> {
-        let ast_bindings: Vec<(String, Expr)> = bindings
+        let hir_bindings: Vec<(String, ForExprSrc<'_>)> = bindings
             .iter()
-            .map(|(n, e)| (n.clone(), e.as_expr()))
+            .map(|(n, e)| (n.clone(), ForExprSrc::Hir(e)))
             .collect();
-        self.compile_for_nested_iterate(&ast_bindings, &body.as_expr(), collect)
+        self.compile_for_nested_iterate(&hir_bindings, ForExprSrc::Hir(body), collect)
     }
 
     fn try_compile_for_sequential_list_get_hir(

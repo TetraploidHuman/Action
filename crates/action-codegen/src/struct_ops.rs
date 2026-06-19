@@ -175,6 +175,79 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    pub(super) fn compile_string_interp_hir(
+        &mut self,
+        parts: &[action_frontend::hir::HirStringPart],
+    ) -> Result<TypedValue<'ctx>, String> {
+        use action_frontend::hir::HirStringPart;
+        let mut result: Option<PointerValue<'ctx>> = None;
+        for p in parts {
+            let str_ptr = match p {
+                HirStringPart::Literal(s) => {
+                    let tv = self.compile_string_literal(s)?;
+                    match tv {
+                        TypedValue::Str(ptr) => Some(ptr),
+                        _ => None,
+                    }
+                }
+                HirStringPart::Expr(expr) => {
+                    let val = self.compile_hir_expr(expr)?;
+                    self.value_to_string_ptr(&val)?
+                }
+            };
+
+            if let Some(ptr) = str_ptr {
+                result = match result {
+                    None => Some(ptr),
+                    Some(acc) => {
+                        let cc = self.call_rt_with_2str("action_string_concat", acc, ptr)?;
+                        if !self.is_scope_variable(&TypedValue::Str(acc)) {
+                            let old_str = self.load_string(acc)?;
+                            let old_data = self
+                                .builder
+                                .build_extract_value(old_str, 1, "old_data")
+                                .map_err(llvm_err)?
+                                .into_pointer_value();
+                            self.rc_inc(old_data)?;
+                            self.rc_dec(old_data)?;
+                        }
+                        if !self.is_scope_variable(&TypedValue::Str(ptr)) {
+                            let part_str = self.load_string(ptr)?;
+                            let part_data = self
+                                .builder
+                                .build_extract_value(part_str, 1, "part_data")
+                                .map_err(llvm_err)?
+                                .into_pointer_value();
+                            self.rc_inc(part_data)?;
+                            self.rc_dec(part_data)?;
+                        }
+                        match cc.try_as_basic_value().basic() {
+                            Some(bv) => {
+                                let alloca = self
+                                    .builder
+                                    .build_alloca(self.string_type, "interp")
+                                    .map_err(llvm_err)?;
+                                self.builder.build_store(alloca, bv).map_err(llvm_err)?;
+                                Some(alloca)
+                            }
+                            None => Some(acc),
+                        }
+                    }
+                };
+            }
+        }
+        match result {
+            Some(ptr) => Ok(TypedValue::Str(ptr)),
+            None => {
+                let g = self
+                    .builder
+                    .build_global_string_ptr("", "empty")
+                    .map_err(llvm_err)?;
+                Ok(TypedValue::Str(g.as_pointer_value()))
+            }
+        }
+    }
+
     /// Convert a typed value to a string pointer (for string interpolation)
     pub(super) fn value_to_string_ptr(
         &mut self,
@@ -451,26 +524,30 @@ impl<'ctx> CodeGen<'ctx> {
         fields: &[(String, Expr)],
     ) -> Result<TypedValue<'ctx>, String> {
         let field_names: Vec<String> = fields.iter().map(|(n, _)| n.clone()).collect();
-
-        // Compile all field expressions first so we can determine their types
-        let mut field_vals: Vec<TypedValue> = Vec::new();
-        for (_, expr) in fields.iter() {
+        let mut field_vals = Vec::with_capacity(fields.len());
+        for (_, expr) in fields {
             field_vals.push(self.compile_expr(expr)?);
         }
+        self.compile_struct_lit_values(&field_names, field_vals)
+    }
 
-        // Determine struct type from registry (named) or from actual field types (anonymous)
+    pub(super) fn compile_struct_lit_values(
+        &mut self,
+        field_names: &[String],
+        field_vals: Vec<TypedValue<'ctx>>,
+    ) -> Result<TypedValue<'ctx>, String> {
         let struct_ty = if let Some(info) = self.registry.find_struct_by_fields(&field_names) {
             *self
                 .named_structs
                 .get(&info.name)
                 .ok_or_else(|| format!("Struct '{}' not in LLVM type map", info.name))?
-        } else if let Some(ct) = self.anon_structs.get(&field_names) {
+        } else if let Some(ct) = self.anon_structs.get(field_names) {
             *ct
         } else {
             let field_tys: Vec<BasicTypeEnum> =
                 field_vals.iter().map(|v| v.get_value_type(self)).collect();
             let anon_ty = self.context.struct_type(&field_tys, false);
-            self.anon_structs.insert(field_names, anon_ty);
+            self.anon_structs.insert(field_names.to_vec(), anon_ty);
             anon_ty
         };
 
@@ -556,12 +633,22 @@ impl<'ctx> CodeGen<'ctx> {
         if exprs.is_empty() {
             return Ok(TypedValue::Unit);
         }
-        // First compile all field values
-        let mut values: Vec<TypedValue<'ctx>> = Vec::new();
-        let mut field_names: Vec<String> = Vec::new();
+        let mut compiled = Vec::with_capacity(exprs.len());
         for (name_opt, expr) in exprs {
-            let val = self.compile_expr(expr)?;
-            values.push(val);
+            compiled.push((name_opt.clone(), self.compile_expr(expr)?));
+        }
+        self.compile_tuple_values(&compiled)
+    }
+
+    pub(super) fn compile_tuple_values(
+        &mut self,
+        items: &[(Option<String>, TypedValue<'ctx>)],
+    ) -> Result<TypedValue<'ctx>, String> {
+        if items.is_empty() {
+            return Ok(TypedValue::Unit);
+        }
+        let mut field_names: Vec<String> = Vec::new();
+        for (name_opt, _) in items {
             if let Some(name) = name_opt {
                 field_names.push(name.clone());
             } else {
@@ -569,10 +656,9 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
 
-        // Convert each value to BasicValueEnum and collect the *actual* LLVM types
         let mut field_tys: Vec<BasicTypeEnum> = Vec::new();
         let mut field_bvs: Vec<BasicValueEnum> = Vec::new();
-        for val in &values {
+        for (_, val) in items {
             let bv: BasicValueEnum = match val {
                 TypedValue::Str(ptr) => {
                     let loaded = self.load_string(*ptr)?;

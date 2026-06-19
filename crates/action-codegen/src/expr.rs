@@ -203,13 +203,31 @@ impl<'ctx> CodeGen<'ctx> {
         params: &[String],
         body: &Expr,
     ) -> Result<TypedValue<'ctx>, String> {
+        self.compile_lambda_impl(params, body, |this| this.compile_expr(body))
+    }
+
+    pub(super) fn compile_lambda_hir(
+        &mut self,
+        params: &[String],
+        body: &action_frontend::hir::HirExpr,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let free_var_body = body.as_expr();
+        self.compile_lambda_impl(params, &free_var_body, |this| this.compile_hir_expr(body))
+    }
+
+    fn compile_lambda_impl(
+        &mut self,
+        params: &[String],
+        free_var_body: &Expr,
+        compile_body: impl FnOnce(&mut Self) -> Result<TypedValue<'ctx>, String>,
+    ) -> Result<TypedValue<'ctx>, String> {
         self.lambda_count += 1;
         let lambda_name = format!(".lambda_{}", self.lambda_count);
 
         // ---- Free variable analysis ----
         let mut free_vars: Vec<String> = vec![];
         let mut bound: Vec<String> = vec![];
-        collect_free_vars(body, params, &mut bound, &mut free_vars);
+        collect_free_vars(free_var_body, params, &mut bound, &mut free_vars);
         // Only variables that exist in the parent scope can be captured.
         // Builtins (enum constructors like Some/None/Ok/Err, pi, e, etc.)
         // are resolved at compile time and must not be treated as captures.
@@ -312,7 +330,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         // ---- Compile body ----
-        let result = self.compile_expr(body)?;
+        let result = compile_body(self)?;
 
         // ---- Build return ----
         let current_block = self
@@ -1384,6 +1402,102 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::Bool(phi.as_basic_value().into_int_value()))
     }
 
+    /// Short-circuit AND on HIR expressions.
+    pub(super) fn compile_and_hir(
+        &mut self,
+        lhs: &action_frontend::hir::HirExpr,
+        rhs: &action_frontend::hir::HirExpr,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let left = self.compile_hir_expr(lhs)?;
+        let left_bool = match left {
+            TypedValue::Bool(b) => b,
+            _ => return Err("&& requires boolean operands".to_string()),
+        };
+
+        let entry_block = self
+            .builder
+            .get_insert_block()
+            .ok_or_else(|| "No insert block")?;
+        let current_fn = entry_block
+            .get_parent()
+            .expect("CodeGen must have a parent function in the current block");
+        let rhs_block = self.context.append_basic_block(current_fn, "and_rhs");
+        let merge_block = self.context.append_basic_block(current_fn, "and_merge");
+        let b1 = self.bool_ty();
+        let false_val = b1.const_int(0, false);
+
+        self.builder
+            .build_conditional_branch(left_bool, rhs_block, merge_block)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(rhs_block);
+        let right = self.compile_hir_expr(rhs)?;
+        let right_bool = match right {
+            TypedValue::Bool(b) => b,
+            _ => return Err("&& requires boolean operands".to_string()),
+        };
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(merge_block);
+        let phi = self.builder.build_phi(b1, "and_res").map_err(llvm_err)?;
+        phi.add_incoming(&[
+            (&false_val as &dyn inkwell::values::BasicValue, entry_block),
+            (&right_bool, rhs_block),
+        ]);
+
+        Ok(TypedValue::Bool(phi.as_basic_value().into_int_value()))
+    }
+
+    /// Short-circuit OR on HIR expressions.
+    pub(super) fn compile_or_hir(
+        &mut self,
+        lhs: &action_frontend::hir::HirExpr,
+        rhs: &action_frontend::hir::HirExpr,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let left = self.compile_hir_expr(lhs)?;
+        let left_bool = match left {
+            TypedValue::Bool(b) => b,
+            _ => return Err("|| requires boolean operands".to_string()),
+        };
+
+        let entry_block = self
+            .builder
+            .get_insert_block()
+            .ok_or_else(|| "No insert block")?;
+        let current_fn = entry_block
+            .get_parent()
+            .expect("CodeGen must have a parent function in the current block");
+        let rhs_block = self.context.append_basic_block(current_fn, "or_rhs");
+        let merge_block = self.context.append_basic_block(current_fn, "or_merge");
+        let b1 = self.bool_ty();
+        let true_val = b1.const_int(1, false);
+
+        self.builder
+            .build_conditional_branch(left_bool, merge_block, rhs_block)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(rhs_block);
+        let right = self.compile_hir_expr(rhs)?;
+        let right_bool = match right {
+            TypedValue::Bool(b) => b,
+            _ => return Err("|| requires boolean operands".to_string()),
+        };
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(merge_block);
+        let phi = self.builder.build_phi(b1, "or_res").map_err(llvm_err)?;
+        phi.add_incoming(&[
+            (&true_val as &dyn inkwell::values::BasicValue, entry_block),
+            (&right_bool, rhs_block),
+        ]);
+
+        Ok(TypedValue::Bool(phi.as_basic_value().into_int_value()))
+    }
+
     pub(super) fn bin_add(
         &mut self,
         l: &TypedValue<'ctx>,
@@ -1910,6 +2024,157 @@ impl<'ctx> CodeGen<'ctx> {
             // Compile lhs for side effects, return true
             let _ = self.compile_expr(lhs)?;
             Ok(TypedValue::Bool(self.bool_ty().const_int(1, false)))
+        }
+    }
+
+    /// `is` operator on HIR expressions.
+    pub(super) fn bin_is_hir(
+        &mut self,
+        lhs: &action_frontend::hir::HirExpr,
+        rhs: &action_frontend::hir::HirExpr,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let type_name = match &rhs.kind {
+            action_frontend::hir::HirExprKind::Ident(name) => name.clone(),
+            _ => return Err("'is' operator requires a type name on the right".into()),
+        };
+
+        if let Some((enum_info, variant_info)) = self.registry.lookup_variant(&type_name) {
+            let variant_idx = enum_info
+                .variants
+                .iter()
+                .position(|v| v.name == variant_info.name)
+                .unwrap_or(0) as u64;
+
+            let val = self.compile_hir_expr(lhs)?;
+            match val {
+                TypedValue::Enum(ptr, enum_ty, ..) => {
+                    let loaded = self
+                        .builder
+                        .build_load(enum_ty, ptr, "is_ld")
+                        .map_err(llvm_err)?;
+                    let tag = self
+                        .builder
+                        .build_extract_value(loaded.into_struct_value(), 0, "tag")
+                        .map_err(llvm_err)?;
+                    let cmp = self
+                        .builder
+                        .build_int_compare(
+                            IntPredicate::EQ,
+                            tag.into_int_value(),
+                            self.i64_ty().const_int(variant_idx, false),
+                            "is_match",
+                        )
+                        .map_err(llvm_err)?;
+                    Ok(TypedValue::Bool(cmp))
+                }
+                _ => Ok(TypedValue::Bool(self.bool_ty().const_int(0, false))),
+            }
+        } else {
+            let _ = self.compile_hir_expr(lhs)?;
+            Ok(TypedValue::Bool(self.bool_ty().const_int(1, false)))
+        }
+    }
+
+    /// `in` operator on HIR expressions.
+    pub(super) fn bin_in_hir(
+        &mut self,
+        lhs: &action_frontend::hir::HirExpr,
+        rhs: &action_frontend::hir::HirExpr,
+    ) -> Result<TypedValue<'ctx>, String> {
+        use action_frontend::hir::HirExprKind;
+        let value = self.compile_hir_expr(lhs)?;
+        match &rhs.kind {
+            HirExprKind::Range(start, end) => {
+                let start_v = self.compile_hir_expr(start)?;
+                let end_v = self.compile_hir_expr(end)?;
+                let (start_int, end_int, val_int) = match (start_v, end_v, value) {
+                    (TypedValue::Int(s), TypedValue::Int(e), TypedValue::Int(v)) => (s, e, v),
+                    _ => return Err("Range bounds and value must be integers".into()),
+                };
+                let ge_start = self
+                    .builder
+                    .build_int_compare(IntPredicate::SGE, val_int, start_int, "in_ge")
+                    .map_err(llvm_err)?;
+                let lt_end = self
+                    .builder
+                    .build_int_compare(IntPredicate::SLT, val_int, end_int, "in_lt")
+                    .map_err(llvm_err)?;
+                Ok(TypedValue::Bool(
+                    self.builder
+                        .build_and(ge_start, lt_end, "in_range")
+                        .map_err(llvm_err)?,
+                ))
+            }
+            HirExprKind::Binary(start, BinaryOp::RangeExclusive, end) => {
+                let start_v = self.compile_hir_expr(start)?;
+                let end_v = self.compile_hir_expr(end)?;
+                let (start_int, end_int, val_int) = match (start_v, end_v, value) {
+                    (TypedValue::Int(s), TypedValue::Int(e), TypedValue::Int(v)) => (s, e, v),
+                    _ => return Err("Range bounds and value must be integers".into()),
+                };
+                let ge_start = self
+                    .builder
+                    .build_int_compare(IntPredicate::SGE, val_int, start_int, "in_ge")
+                    .map_err(llvm_err)?;
+                let lt_end = self
+                    .builder
+                    .build_int_compare(IntPredicate::SLT, val_int, end_int, "in_lt")
+                    .map_err(llvm_err)?;
+                Ok(TypedValue::Bool(
+                    self.builder
+                        .build_and(ge_start, lt_end, "in_range_excl")
+                        .map_err(llvm_err)?,
+                ))
+            }
+            _ => {
+                let collection = self.compile_hir_expr(rhs)?;
+                match collection {
+                    TypedValue::List(ptr) | TypedValue::Set(ptr) | TypedValue::LazyList(ptr) => {
+                        let elem_fat = self.to_fat_struct(&value)?;
+                        let list_val = self.load_list(ptr)?;
+                        let cc = self
+                            .call_rt("action_list_contains", &[list_val.into(), elem_fat.into()])?;
+                        Ok(TypedValue::Bool(
+                            cc.try_as_basic_value()
+                                .basic()
+                                .ok_or("list_contains failed")?
+                                .into_int_value(),
+                        ))
+                    }
+                    TypedValue::Stream(ptr) => {
+                        let elem_fat = self.to_fat_struct(&value)?;
+                        let list_field = self
+                            .builder
+                            .build_struct_gep(self.stream_type, ptr, 1, "in_strm_lf")
+                            .map_err(llvm_err)?;
+                        let list_val = self
+                            .builder
+                            .build_load(self.list_type, list_field, "in_strm_lv")
+                            .map_err(llvm_err)?;
+                        let cc = self
+                            .call_rt("action_list_contains", &[list_val.into(), elem_fat.into()])?;
+                        Ok(TypedValue::Bool(
+                            cc.try_as_basic_value()
+                                .basic()
+                                .ok_or("list_contains failed")?
+                                .into_int_value(),
+                        ))
+                    }
+                    TypedValue::Map(ptr) => {
+                        let key_fat = self.to_fat_struct(&value)?;
+                        let map_val = self.load_list(ptr)?;
+                        let cc =
+                            self.call_rt("action_map_contains", &[map_val.into(), key_fat.into()])?;
+                        Ok(TypedValue::Bool(
+                            cc.try_as_basic_value()
+                                .basic()
+                                .ok_or("map_contains failed")?
+                                .into_int_value(),
+                        ))
+                    }
+                    _ => Err("'in' operator requires a range or collection on the right".into()),
+                }
+            }
         }
     }
 

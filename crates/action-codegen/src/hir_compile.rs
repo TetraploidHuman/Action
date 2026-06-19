@@ -465,7 +465,13 @@ impl<'ctx> CodeGen<'ctx> {
             op,
             BinaryOp::And | BinaryOp::Or | BinaryOp::Is | BinaryOp::In
         ) {
-            return self.compile_binary(&lhs.as_expr(), op, &rhs.as_expr());
+            return match op {
+                BinaryOp::And => self.compile_and_hir(lhs, rhs),
+                BinaryOp::Or => self.compile_or_hir(lhs, rhs),
+                BinaryOp::Is => self.bin_is_hir(lhs, rhs),
+                BinaryOp::In => self.bin_in_hir(lhs, rhs),
+                _ => unreachable!(),
+            };
         }
         let left = self.compile_hir_expr(lhs)?;
         let right = self.compile_hir_expr(rhs)?;
@@ -486,7 +492,7 @@ impl<'ctx> CodeGen<'ctx> {
         target: &HirExpr,
         value: &HirExpr,
     ) -> Result<TypedValue<'ctx>, String> {
-        self.compile_assign(&target.as_expr(), &value.as_expr())
+        self.compile_assign_hir(target, value)
     }
 
     fn compile_hir_field_access(
@@ -503,7 +509,7 @@ impl<'ctx> CodeGen<'ctx> {
         params: &[String],
         body: &HirExpr,
     ) -> Result<TypedValue<'ctx>, String> {
-        self.compile_lambda(params, &body.as_expr())
+        self.compile_lambda_hir(params, body)
     }
 
     fn compile_hir_index(
@@ -530,38 +536,44 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         fields: &[(String, HirExpr)],
     ) -> Result<TypedValue<'ctx>, String> {
-        let ast_fields: Vec<(String, Expr)> = fields
-            .iter()
-            .map(|(n, e)| (n.clone(), e.as_expr()))
-            .collect();
-        self.compile_struct_lit(&ast_fields)
+        let names: Vec<String> = fields.iter().map(|(n, _)| n.clone()).collect();
+        let mut vals = Vec::with_capacity(fields.len());
+        for (_, e) in fields {
+            vals.push(self.compile_hir_expr(e)?);
+        }
+        self.compile_struct_lit_values(&names, vals)
     }
 
     fn compile_hir_map_lit(
         &mut self,
         entries: &[(HirExpr, HirExpr)],
     ) -> Result<TypedValue<'ctx>, String> {
-        let ast_entries: Vec<(Expr, Expr)> = entries
-            .iter()
-            .map(|(k, v)| (k.as_expr(), v.as_expr()))
-            .collect();
-        self.compile_map_lit(&ast_entries)
+        let mut keys = Vec::with_capacity(entries.len());
+        let mut vals = Vec::with_capacity(entries.len());
+        for (k, v) in entries {
+            keys.push(self.compile_hir_expr(k)?);
+            vals.push(self.compile_hir_expr(v)?);
+        }
+        self.compile_map_lit_values(&keys, &vals)
     }
 
     fn compile_hir_set_lit(&mut self, elements: &[HirExpr]) -> Result<TypedValue<'ctx>, String> {
-        let ast_elems: Vec<Expr> = elements.iter().map(|e| e.as_expr()).collect();
-        self.compile_set_lit(&ast_elems)
+        let mut vals = Vec::with_capacity(elements.len());
+        for e in elements {
+            vals.push(self.compile_hir_expr(e)?);
+        }
+        self.compile_set_lit_values(&vals)
     }
 
     fn compile_hir_tuple(
         &mut self,
         items: &[(Option<String>, HirExpr)],
     ) -> Result<TypedValue<'ctx>, String> {
-        let ast_items: Vec<(Option<String>, Expr)> = items
-            .iter()
-            .map(|(n, e)| (n.clone(), e.as_expr()))
-            .collect();
-        self.compile_tuple(&ast_items)
+        let mut compiled = Vec::with_capacity(items.len());
+        for (n, e) in items {
+            compiled.push((n.clone(), self.compile_hir_expr(e)?));
+        }
+        self.compile_tuple_values(&compiled)
     }
 
     fn compile_hir_or_block(
@@ -569,21 +581,14 @@ impl<'ctx> CodeGen<'ctx> {
         nullable: &HirExpr,
         fallback: &HirExpr,
     ) -> Result<TypedValue<'ctx>, String> {
-        self.compile_or_block(&nullable.as_expr(), &fallback.as_expr())
+        self.compile_or_block_hir(nullable, fallback)
     }
 
     fn compile_hir_string_interp(
         &mut self,
         parts: &[HirStringPart],
     ) -> Result<TypedValue<'ctx>, String> {
-        let ast_parts: Vec<StringPart> = parts
-            .iter()
-            .map(|p| match p {
-                HirStringPart::Literal(s) => StringPart::Literal(s.clone()),
-                HirStringPart::Expr(e) => StringPart::Expr(Box::new(e.as_expr())),
-            })
-            .collect();
-        self.compile_string_interp(&ast_parts)
+        self.compile_string_interp_hir(parts)
     }
 
     fn compile_hir_block(

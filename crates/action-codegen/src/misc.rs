@@ -633,6 +633,41 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<TypedValue<'ctx>, String> {
         match &target.kind {
             ExprKind::Ident(name) => {
+                let v = self.compile_expr(value)?;
+                self.assign_mutable_ident(name, v)
+            }
+            _ => {
+                let v = self.compile_expr(value)?;
+                self.rc_inc_typed_value(&v)?;
+                self.compile_assign_field(target, &v)
+            }
+        }
+    }
+
+    pub(super) fn compile_assign_hir(
+        &mut self,
+        target: &action_frontend::hir::HirExpr,
+        value: &action_frontend::hir::HirExpr,
+    ) -> Result<TypedValue<'ctx>, String> {
+        use action_frontend::hir::HirExprKind;
+        match &target.kind {
+            HirExprKind::Ident(name) => {
+                let v = self.compile_hir_expr(value)?;
+                self.assign_mutable_ident(name, v)
+            }
+            _ => {
+                let v = self.compile_hir_expr(value)?;
+                self.rc_inc_typed_value(&v)?;
+                self.compile_assign_field(&target.as_expr(), &v)
+            }
+        }
+    }
+
+    fn assign_mutable_ident(
+        &mut self,
+        name: &str,
+        v: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
                 let (var_ptr, var_kind, var_ty, var_rc_managed, var_is_closure) = {
                     let var = self
                         .scope
@@ -664,7 +699,6 @@ impl<'ctx> CodeGen<'ctx> {
                 } else {
                     None
                 };
-                let v = self.compile_expr(value)?;
                 // Skip rc_dec/rc_inc when in-place update reuses the same heap pointer.
                 let skip_rc_transfer = match (&old_list, &old_str, &v) {
                     (
@@ -878,13 +912,6 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                 }
                 Ok(v)
-            }
-            _ => {
-                let v = self.compile_expr(value)?;
-                self.rc_inc_typed_value(&v)?;
-                self.compile_assign_field(target, &v)
-            }
-        }
     }
 
     fn compile_assign_field(

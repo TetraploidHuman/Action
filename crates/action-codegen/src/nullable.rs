@@ -340,6 +340,26 @@ impl<'ctx> CodeGen<'ctx> {
         fallback: &Expr,
     ) -> Result<TypedValue<'ctx>, String> {
         let cond_val = self.compile_expr(nullable)?;
+        self.compile_or_block_from_cond(cond_val, |cg| cg.compile_expr(fallback))
+    }
+
+    pub(super) fn compile_or_block_hir(
+        &mut self,
+        nullable: &action_frontend::hir::HirExpr,
+        fallback: &action_frontend::hir::HirExpr,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let cond_val = self.compile_hir_expr(nullable)?;
+        self.compile_or_block_from_cond(cond_val, |cg| cg.compile_hir_expr(fallback))
+    }
+
+    fn compile_or_block_from_cond<F>(
+        &mut self,
+        cond_val: TypedValue<'ctx>,
+        compile_fallback: F,
+    ) -> Result<TypedValue<'ctx>, String>
+    where
+        F: FnOnce(&mut Self) -> Result<TypedValue<'ctx>, String>,
+    {
         let (cond_ptr, cond_ty) = match &cond_val {
             TypedValue::Nullable(p, t) => (*p, *t),
             _ => return Ok(cond_val), // not nullable, just return as-is
@@ -382,7 +402,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Null path: evaluate and return fallback
         self.builder.position_at_end(null_block);
-        let default_val = self.compile_expr(fallback)?;
+        let default_val = compile_fallback(self)?;
         let default_is_nullable = matches!(&default_val, TypedValue::Nullable(..));
         // When the default is nullable, the result is also nullable so the PHI
         // type is the full nullable struct. Otherwise use the inner type of the

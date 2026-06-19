@@ -23,7 +23,23 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         entries: &[(Expr, Expr)],
     ) -> Result<TypedValue<'ctx>, String> {
-        let cap = self.i64_ty().const_int((entries.len() + 4) as u64, false);
+        let mut keys = Vec::with_capacity(entries.len());
+        let mut vals = Vec::with_capacity(entries.len());
+        for (k, v) in entries {
+            keys.push(self.compile_expr(k)?);
+            vals.push(self.compile_expr(v)?);
+        }
+        self.compile_map_lit_values(&keys, &vals)
+    }
+
+    pub(super) fn compile_map_lit_values(
+        &mut self,
+        keys: &[TypedValue<'ctx>],
+        vals: &[TypedValue<'ctx>],
+    ) -> Result<TypedValue<'ctx>, String> {
+        let cap = self
+            .i64_ty()
+            .const_int((keys.len() + 4) as u64, false);
         let cc = self.call_rt("action_map_create", &[cap.into()])?;
         let map_bv = cc.try_as_basic_value().basic().ok_or("map_create failed")?;
         let alloca = self
@@ -32,11 +48,9 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         self.builder.build_store(alloca, map_bv).map_err(llvm_err)?;
 
-        for (key_expr, val_expr) in entries {
-            let key_val = self.compile_expr(key_expr)?;
-            let val_val = self.compile_expr(val_expr)?;
-            let key_fat = self.to_fat_struct(&key_val)?;
-            let val_fat = self.to_fat_struct(&val_val)?;
+        for (key_val, val_val) in keys.iter().zip(vals.iter()) {
+            let key_fat = self.to_fat_struct(key_val)?;
+            let val_fat = self.to_fat_struct(val_val)?;
             let map_loaded = self.load_list(alloca)?;
             let cc = match self.call_rt(
                 "action_map_insert",
@@ -44,8 +58,8 @@ impl<'ctx> CodeGen<'ctx> {
             ) {
                 Ok(v) => v,
                 Err(e) => {
-                    let _ = self.rc_free_intermediate(&val_val);
-                    let _ = self.rc_free_intermediate(&key_val);
+                    let _ = self.rc_free_intermediate(val_val);
+                    let _ = self.rc_free_intermediate(key_val);
                     return Err(e);
                 }
             };
@@ -61,6 +75,17 @@ impl<'ctx> CodeGen<'ctx> {
     pub(super) fn compile_set_lit(
         &mut self,
         elements: &[Expr],
+    ) -> Result<TypedValue<'ctx>, String> {
+        let mut vals = Vec::with_capacity(elements.len());
+        for e in elements {
+            vals.push(self.compile_expr(e)?);
+        }
+        self.compile_set_lit_values(&vals)
+    }
+
+    pub(super) fn compile_set_lit_values(
+        &mut self,
+        elements: &[TypedValue<'ctx>],
     ) -> Result<TypedValue<'ctx>, String> {
         // Set uses the same layout as map but with 2-i64 entries instead of 4-i64
         // For simplicity, use map layout but store elements as keys with null values
@@ -86,9 +111,8 @@ impl<'ctx> CodeGen<'ctx> {
             r2.as_basic_value_enum()
         };
 
-        for elem_expr in elements {
-            let elem_val = self.compile_expr(elem_expr)?;
-            let elem_fat = self.to_fat_struct(&elem_val)?;
+        for elem_val in elements {
+            let elem_fat = self.to_fat_struct(elem_val)?;
             let set_loaded = self.load_list(alloca)?;
             let cc = match self.call_rt(
                 "action_map_insert",
@@ -96,7 +120,7 @@ impl<'ctx> CodeGen<'ctx> {
             ) {
                 Ok(v) => v,
                 Err(e) => {
-                    let _ = self.rc_free_intermediate(&elem_val);
+                    let _ = self.rc_free_intermediate(elem_val);
                     return Err(e);
                 }
             };
