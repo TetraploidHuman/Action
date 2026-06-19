@@ -1,9 +1,22 @@
 //! Unified call-argument source for AST and HIR codegen paths.
 
-use action_frontend::ast::{Expr, ExprKind};
+use action_frontend::ast::{Expr, ExprKind, Type};
 use action_frontend::hir::{HirExpr, HirExprKind};
 
 use super::{CodeGen, TypedValue};
+
+/// Synthetic HIR ident for lambda bodies (curry / nullable UFCS).
+pub(super) fn synthetic_hir_ident(name: impl Into<String>) -> HirExpr {
+    HirExpr {
+        ty: Type::Named("Int".into()),
+        span: default_hir_span(),
+        kind: HirExprKind::Ident(name.into()),
+    }
+}
+
+fn default_hir_span() -> action_frontend::lexer::Span {
+    action_frontend::lexer::Span::default()
+}
 
 /// A call argument compiled from either AST or HIR.
 #[derive(Clone, Copy)]
@@ -174,8 +187,8 @@ impl<'ctx> CodeGen<'ctx> {
                 Self::collect_call_arg_free_vars(a, params, bound, free);
             },
             |this| {
-                let b_ident = ExprKind::Ident("b".to_string()).into();
-                this.compile_synthetic_call_call_args(f, &[a, CallArg::ast(&b_ident)], None)
+                let b_ident = synthetic_hir_ident("b");
+                this.compile_synthetic_call_call_args(f, &[a, CallArg::hir(&b_ident)], None)
             },
         )
     }

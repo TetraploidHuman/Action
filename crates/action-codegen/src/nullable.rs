@@ -242,8 +242,8 @@ impl<'ctx> CodeGen<'ctx> {
         // If dispatch fails (e.g., inner type is generic i64 from a null literal
         // that lacks concrete type info), use Int(0) as a fallback result.
         // The null path will always be taken at runtime in that case anyway.
-        let syn_ident = Expr::from(ExprKind::Ident(synthetic_name.clone()));
-        let syn_recv = CallArg::ast(&syn_ident);
+        let syn_ident = super::call_arg::synthetic_hir_ident(synthetic_name.clone());
+        let syn_recv = CallArg::hir(&syn_ident);
         let method_result = match self.compile_ufcs_method(syn_recv, method, args, trailing) {
             Ok(v) => v,
             Err(_) => TypedValue::Int(self.i64_ty().const_int(0, false)),
