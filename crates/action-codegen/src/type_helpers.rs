@@ -4,6 +4,7 @@
 //
 
 use action_frontend::ast::*;
+use action_frontend::hir::{HirExpr, HirExprKind};
 use inkwell::types::{BasicTypeEnum, StructType};
 use inkwell::values::{BasicValue, BasicValueEnum};
 
@@ -416,6 +417,87 @@ impl<'ctx> CodeGen<'ctx> {
                 .first()
                 .map(|a| self.infer_expr_type(&a.body))
                 .unwrap_or(Type::Unit),
+        }
+    }
+
+    /// Infer expression type at codegen time from HIR, using scope for idents.
+    /// HIR `expr.ty` can be stale for prelude/stdlib idents (e.g. param `x` tagged as
+    /// `list` during lowering); scope matches the AST `infer_expr_type` behavior.
+    pub(super) fn infer_hir_expr_type(&self, expr: &HirExpr) -> Type {
+        match &expr.kind {
+            HirExprKind::Ident(name) => {
+                if let Some(sv) = self.scope.get(name) {
+                    if let Some(ref ast_type) = sv.ast_type {
+                        return ast_type.clone();
+                    }
+                    match sv.kind {
+                        ValKind::Enum => {
+                            for enum_name in self.enum_types.keys() {
+                                if sv.ty == (*self.enum_types.get(enum_name).unwrap()).into() {
+                                    return Type::Named(enum_name.clone());
+                                }
+                            }
+                            Type::Named("Int".into())
+                        }
+                        ValKind::Str => Type::Named("String".into()),
+                        ValKind::List => Type::Named("list".into()),
+                        ValKind::Map => Type::Named("map".into()),
+                        ValKind::Set => Type::Named("set".into()),
+                        ValKind::Fn => Type::Named("Int".into()),
+                        _ => Type::Named("Int".into()),
+                    }
+                } else if self.registry.lookup_variant(name).is_some() {
+                    let enum_name = self
+                        .registry
+                        .variant_to_enum
+                        .get(name)
+                        .cloned()
+                        .unwrap_or_default();
+                    Type::Named(enum_name)
+                } else {
+                    expr.ty.clone()
+                }
+            }
+            HirExprKind::Literal(lit) => match lit {
+                Literal::String(_) => Type::Named("String".into()),
+                Literal::Int(_) => Type::Named("Int".into()),
+                Literal::Float(_) => Type::Named("Float".into()),
+                Literal::Bool(_) => Type::Named("Bool".into()),
+                Literal::Char(_) => Type::Named("Char".into()),
+                Literal::Unit => Type::Unit,
+            },
+            HirExprKind::Unary(_, inner) => self.infer_hir_expr_type(inner),
+            HirExprKind::Binary(lhs, op, _) if *op == BinaryOp::Add => {
+                if matches!(
+                    self.infer_hir_expr_type(lhs),
+                    Type::Named(ref n) if n == "String"
+                ) {
+                    Type::Named("String".into())
+                } else {
+                    Type::Named("Int".into())
+                }
+            }
+            HirExprKind::Null => Type::Nullable(Box::new(Type::Named("Nothing".into()))),
+            HirExprKind::Block(stmts) => stmts
+                .last()
+                .and_then(|s| match s {
+                    action_frontend::hir::HirStmt::Expr { expr, .. } => {
+                        Some(self.infer_hir_expr_type(expr))
+                    }
+                    _ => None,
+                })
+                .unwrap_or(Type::Unit),
+            HirExprKind::When(w) => self.infer_when_type(&w.to_when().kind),
+            HirExprKind::Continue | HirExprKind::Break => Type::Unit,
+            HirExprKind::For(_) => Type::Unit,
+            HirExprKind::OrBlock { nullable, fallback } => {
+                let cond_ty = self.infer_hir_expr_type(nullable);
+                match cond_ty {
+                    Type::Nullable(inner) => *inner,
+                    _ => self.infer_hir_expr_type(fallback),
+                }
+            }
+            _ => expr.ty.clone(),
         }
     }
 

@@ -1,6 +1,7 @@
 // Submodule: pattern
 
 use action_frontend::ast::*;
+use action_frontend::hir::HirExprKind;
 use inkwell::types::BasicTypeEnum;
 use inkwell::values::{IntValue, PointerValue};
 use inkwell::FloatPredicate;
@@ -1276,7 +1277,7 @@ impl<'ctx> CodeGen<'ctx> {
         let matched_type = value.ty.clone();
         let result_type = arms
             .first()
-            .map(|a| a.body.ty.clone())
+            .map(|a| self.infer_hir_expr_type(&a.body))
             .unwrap_or_else(|| Type::Named("Int".into()));
         let result_ty = self.ast_type_to_basic_type(&result_type);
 
@@ -1349,18 +1350,40 @@ impl<'ctx> CodeGen<'ctx> {
             }
 
             self.builder.position_at_end(body_block);
+            let smart_var: Option<String> = match (&value.kind, &arm.pattern) {
+                (HirExprKind::Ident(_), Pattern::Null) => None,
+                (HirExprKind::Ident(name), _) => Some(name.clone()),
+                _ => None,
+            };
+            if let Some(ref var) = smart_var {
+                self.not_null_set.insert(var.clone());
+            }
             let mut saved_scope = Scope::new();
             std::mem::swap(&mut self.scope, &mut saved_scope);
             self.scope = Scope::with_parent(saved_scope);
             self.bind_pattern_vars(&arm.pattern, Some(&matched_val), Some(&matched_type))?;
-            let body_val = self.compile_hir_expr(&hir_arm.body)?;
+            let body_val = if let HirExprKind::Lambda { params, body, .. } = &hir_arm.body.kind {
+                if params.is_empty() {
+                    self.compile_hir_expr(body)?
+                } else {
+                    self.compile_hir_expr(&hir_arm.body)?
+                }
+            } else {
+                self.compile_hir_expr(&hir_arm.body)?
+            };
+            if let Some(ref var) = smart_var {
+                self.not_null_set.remove(var);
+            }
             if result_enum_info.is_none() {
                 if let TypedValue::Enum(_, _, inner, rc) = &body_val {
                     result_enum_info = Some((*inner, *rc));
                 }
             }
-            self.store_branch_result(&body_val, result_alloca, &result_type)?;
+            if self.is_scope_variable(&body_val) {
+                self.rc_inc_typed_value(&body_val)?;
+            }
             self.emit_scope_cleanup()?;
+            self.store_branch_result(&body_val, result_alloca, &result_type)?;
             let mut parent = Scope::new();
             std::mem::swap(&mut self.scope, &mut parent);
             if let Some(p) = parent.parent {
@@ -1404,7 +1427,7 @@ impl<'ctx> CodeGen<'ctx> {
         let merge_block = self.context.append_basic_block(current_fn, "chain_merge");
         let result_type = hir_arms
             .first()
-            .map(|a| a.body.ty.clone())
+            .map(|a| self.infer_hir_expr_type(&a.body))
             .unwrap_or_else(|| Type::Named("Int".into()));
         let result_ty = self.ast_type_to_basic_type(&result_type);
 
@@ -1539,12 +1562,12 @@ impl<'ctx> CodeGen<'ctx> {
         );
 
         let then_inferred = if !then_diverges {
-            then_expr.ty.clone()
+            self.infer_hir_expr_type(then_expr)
         } else {
             Type::Named("Int".into())
         };
         let else_inferred = if !else_diverges {
-            else_expr.ty.clone()
+            self.infer_hir_expr_type(else_expr)
         } else {
             then_inferred.clone()
         };

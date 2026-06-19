@@ -638,11 +638,22 @@ impl<'ctx> CodeGen<'ctx> {
         args: &[HirExpr],
         trailing_lambda: Option<&Box<HirExpr>>,
     ) -> Result<TypedValue<'ctx>, String> {
-        self.compile_call(
-            &func.as_expr(),
-            &args.iter().map(HirExpr::as_expr).collect::<Vec<_>>(),
-            &trailing_lambda.map(|b| Box::new(b.as_expr())),
-        )
+        let ast_args: Vec<Expr> = args.iter().map(HirExpr::as_expr).collect();
+        let ast_trailing = trailing_lambda.map(|b| Box::new(b.as_expr()));
+        match &func.kind {
+            HirExprKind::Ident(name) => {
+                let ast_func = ExprKind::Ident(name.clone()).into();
+                self.compile_call(&ast_func, &ast_args, &ast_trailing)
+            }
+            HirExprKind::FieldAccess(obj, field) => {
+                let ast_func = ExprKind::FieldAccess(Box::new(obj.as_expr()), field.clone()).into();
+                self.compile_call(&ast_func, &ast_args, &ast_trailing)
+            }
+            _ => {
+                let target = self.compile_hir_expr(func)?;
+                self.compile_indirect_call(target, &ast_args, &ast_trailing)
+            }
+        }
     }
 
     fn compile_destructure_hir(

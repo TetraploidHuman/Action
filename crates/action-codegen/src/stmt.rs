@@ -16,7 +16,7 @@ impl<'a> FunBody<'a> {
     fn compile<'ctx>(&self, cg: &mut CodeGen<'ctx>) -> Result<TypedValue<'ctx>, String> {
         match self {
             FunBody::Ast(e) => cg.compile_expr(e),
-            FunBody::Hir(e) => cg.compile_expr(&e.as_expr()),
+            FunBody::Hir(e) => cg.compile_hir_expr(e),
         }
     }
 }
