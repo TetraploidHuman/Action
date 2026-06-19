@@ -9,6 +9,7 @@ WARMUP="${ACTION_BENCH_WARMUP:-1}"
 MODE="${ACTION_BENCH_MODE:-run}"   # run | aot
 OPT="${ACTION_BENCH_OPT:-0}"
 RESULTS_FILE="benchmark_results.txt"
+BENCH_ONLY="${ACTION_BENCH_ONLY:-}"
 LIST_ONLY=false; BUILD=false; PROFILE=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -25,6 +26,8 @@ while [[ $# -gt 0 ]]; do
         --list|-l)       LIST_ONLY=true;       shift   ;;
         --build|-b)      BUILD=true;           shift   ;;
         --profile|-p)    PROFILE=true;         shift   ;;
+        --only)          BENCH_ONLY="$2";      shift 2 ;;
+        --only=*)        BENCH_ONLY="${1#*=}"; shift   ;;
         --help|-h)
             cat <<'EOF'
 Action Language benchmark suite
@@ -40,6 +43,7 @@ Options:
   --no-warmup          Disable warmup
   --results FILE       Output file (default: benchmark_results.txt)
   -b, --build          cargo build --release before benchmarking
+  --only LIST            Comma-separated bench names (e.g. bench_cow,bench_all)
   -l, --list           List benchmark programs
   -p, --profile        Pass --profile to action run (run mode only)
   -h, --help           Show this help
@@ -52,8 +56,15 @@ EOF
     esac
 done
 find_action_bin() {
-    local b="$SRC_DIR/target/release/action"; [[ -x "$b" ]] && { echo "$b"; return 0; }
-    b="$SRC_DIR/target/debug/action"; [[ -x "$b" ]] && { echo "$b"; return 0; }
+    local root="$SRC_DIR/target"
+    if [[ -n "${CARGO_TARGET_DIR:-}" ]]; then
+        root="$CARGO_TARGET_DIR"
+        if [[ -n "${TARGET:-}" ]]; then
+            root="$root/$TARGET"
+        fi
+    fi
+    local b="$root/release/action"; [[ -x "$b" ]] && { echo "$b"; return 0; }
+    b="$root/debug/action"; [[ -x "$b" ]] && { echo "$b"; return 0; }
     echo ""; return 1
 }
 bench_exe_path() {
@@ -87,6 +98,20 @@ if [[ -z "$ACTION_BIN" ]]; then
     ACTION_BIN="$(find_action_bin)"
 fi
 mapfile -t BENCH_FILES < <(ls "$SRC_DIR/examples"/bench_*.at 2>/dev/null | sort)
+if [[ -n "$BENCH_ONLY" ]]; then
+    IFS=',' read -ra ONLY_NAMES <<< "$BENCH_ONLY"
+    filtered=()
+    for bench_file in "${BENCH_FILES[@]}"; do
+        name="$(basename "$bench_file" .at)"
+        for want in "${ONLY_NAMES[@]}"; do
+            if [[ "$name" == "$want" ]]; then
+                filtered+=("$bench_file")
+                break
+            fi
+        done
+    done
+    BENCH_FILES=("${filtered[@]}")
+fi
 $LIST_ONLY && { echo -e "${BOLD}bench programs (${#BENCH_FILES[@]}):${NC}"; for f in "${BENCH_FILES[@]}"; do echo "  $(basename "$f")"; done; exit 0; }
 echo -e "${BOLD}==============================================${NC}"
 echo -e "${BOLD}  Action Language — 性能测试套件${NC}"
@@ -145,3 +170,5 @@ echo ""; echo -e "${BOLD}━━━━━━━━━━━━━━━━━━�
 echo -e "  TOTAL: ${TOTAL}  |  ${GREEN}PASS: ${PASS}${NC}  |  ${RED}FAIL: ${FAIL}${NC}"
 echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""; echo -e "${GREEN}results: ${BOLD}$RESULTS_PATH${NC}"
+[[ "$FAIL" -gt 0 ]] && exit 1
+exit 0

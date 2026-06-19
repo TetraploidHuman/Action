@@ -43,6 +43,7 @@ jobs:
       - name: Core CI (single nix-shell)
         env:
           PROPTEST_CASES: '50'
+          TARGET: ${{ env.LINUX_TARGET }}
         run: nix-shell --run "bash scripts/ci-linux.sh core"
 
       - name: Debug run output

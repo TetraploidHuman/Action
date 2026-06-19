@@ -58,12 +58,44 @@ run_benchmark() {
     ./benchmark.sh --mode aot --opt 2 --iterations 3 --results benchmark_results_aot_o2_ci.txt
 }
 
+CI_PERF_BENCHES="${CI_PERF_BENCHES:-bench_cow,bench_all,bench_concat_depth,bench_insert100}"
+
+run_perf_smoke_debug() {
+    echo "=== perf smoke (debug JIT) ==="
+    local out
+    out=$("$ACTION" run examples/bench_cow.at 2>&1) || return 1
+    echo "$out" | tail -1 | grep -qx '11' || {
+        echo "bench_cow: expected 11, got: $out" >&2
+        return 1
+    }
+    local b
+    for b in bench_all bench_concat_depth bench_insert100; do
+        "$ACTION" run "examples/${b}.at" >/dev/null || {
+            echo "perf smoke failed: ${b}" >&2
+            return 1
+        }
+    done
+}
+
+run_perf_quick() {
+    echo "=== perf quick (release JIT, subset) ==="
+    cargo build --release --target "$TARGET"
+    export TARGET
+    ./benchmark.sh --no-warmup --iterations 1 \
+        --only "$CI_PERF_BENCHES" \
+        --results benchmark_results_ci_smoke.txt
+    python3 scripts/benchmark_regression.py \
+        benchmark_results.txt benchmark_results_ci_smoke.txt \
+        --only "$CI_PERF_BENCHES" \
+        --threshold 0.25
+}
+
 run_debug() {
     verify_env
     "$ACTION" run examples/hello.at
 }
 
-# Push CI: build once, test, frontend (clippy runs in lint.yml).
+# Push CI: build once, test, frontend, lite perf (clippy in lint.yml).
 run_core() {
     verify_env
     cargo build --target "$TARGET"
@@ -74,8 +106,10 @@ run_core() {
     PROPTEST_CASES="${PROPTEST_CASES:-50}" \
         cargo test --lib --target "$TARGET" -- --test-threads=1
     cargo test --test integration --target "$TARGET" -- --test-threads=1
+    run_perf_smoke_debug
     cargo build -p action-frontend --target "$TARGET"
     cargo test -p action-frontend --target "$TARGET"
+    run_perf_quick
 }
 
 usage() {

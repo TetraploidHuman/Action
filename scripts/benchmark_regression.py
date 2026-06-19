@@ -78,6 +78,11 @@ def main() -> int:
         default=3,
         help="Also require avg slowdown of at least this many ms (default: 3, filters jitter on micro-benchmarks)",
     )
+    parser.add_argument(
+        "--only",
+        default="",
+        help="Comma-separated benchmark names to compare (default: all in baseline)",
+    )
     args = parser.parse_args()
 
     baseline_path = Path(args.baseline)
@@ -96,6 +101,12 @@ def main() -> int:
     if not current:
         print(f"error: no benchmark rows in current {current_path}", file=sys.stderr)
         return 2
+
+    only_set: set[str] | None = None
+    if args.only.strip():
+        only_set = {s.strip() for s in args.only.split(",") if s.strip()}
+        baseline = {k: v for k, v in baseline.items() if k in only_set}
+        current = {k: v for k, v in current.items() if k in only_set}
 
     regressions = compare(baseline, current, args.threshold, args.min_delta_ms)
     if not regressions:
