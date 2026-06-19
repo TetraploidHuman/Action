@@ -1,16 +1,24 @@
 #!/usr/bin/env bash
 # CI helpers executed inside nix-shell (LLVM + nix Rust on PATH).
 # Usage: nix-shell --run "bash scripts/ci-linux.sh <command>"
+#
+# Optional: CARGO_TARGET_DIR (persistent self-hosted cache) overrides ./target.
 set -euo pipefail
 
 TARGET="${TARGET:-x86_64-unknown-linux-gnu}"
-ACTION="./target/${TARGET}/debug/action"
-RELEASE_ACTION="./target/${TARGET}/release/action"
+if [[ -n "${CARGO_TARGET_DIR:-}" ]]; then
+    BIN_ROOT="${CARGO_TARGET_DIR}/${TARGET}"
+else
+    BIN_ROOT="./target/${TARGET}"
+fi
+ACTION="${BIN_ROOT}/debug/action"
+RELEASE_ACTION="${BIN_ROOT}/release/action"
 
 verify_env() {
     test -f shell.nix
     echo "LLVM: $(llvm-config --version)"
     echo "Rust: $(rustc --version)"
+    echo "CARGO_TARGET_DIR: ${CARGO_TARGET_DIR:-./target (default)}"
 }
 
 nix_clippy_path() {
@@ -55,11 +63,21 @@ run_debug() {
     "$ACTION" run examples/hello.at
 }
 
-# Legacy entry (local smoke).
+# Single compile pass: build → test → clippy → frontend (push CI default).
 run_core() {
-    run_test
-    run_clippy
-    run_frontend
+    verify_env
+    cargo build --target "$TARGET"
+    "$ACTION" check examples/hello.at
+    "$ACTION" run examples/hello.at
+    echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"capabilities":{}}}' \
+        | timeout 5 "$ACTION" lsp 2>&1 || true
+    PROPTEST_CASES="${PROPTEST_CASES:-50}" \
+        cargo test --lib --target "$TARGET" -- --test-threads=1
+    cargo test --test integration --target "$TARGET" -- --test-threads=1
+    nix_clippy_path
+    cargo clippy --target "$TARGET" -- -W clippy::all
+    cargo build -p action-frontend --target "$TARGET"
+    cargo test -p action-frontend --target "$TARGET"
 }
 
 usage() {

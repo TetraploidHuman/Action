@@ -1,0 +1,39 @@
+name: Benchmark
+
+on:
+  schedule:
+    - cron: '0 18 * * *' # daily 02:00 CST (UTC 18:00)
+  workflow_dispatch:
+
+env:
+  LINUX_TARGET: x86_64-unknown-linux-gnu
+  CARGO_TARGET_DIR: /home/miaox99/桌面/Runner/ci-target
+
+jobs:
+  linux-benchmark:
+    name: Linux Benchmark
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.LINUX_TARGET }}
+
+      - name: Ensure persistent target dir
+        run: mkdir -p "$CARGO_TARGET_DIR"
+
+      - name: Benchmark
+        run: nix-shell --run "bash scripts/ci-linux.sh benchmark"
+
+      - name: Check AOT benchmark regression
+        continue-on-error: true
+        run: python3 scripts/benchmark_regression.py benchmark_results_aot_o2.txt benchmark_results_aot_o2_ci.txt
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ github.run_id }}
+          path: |
+            benchmark_results.txt
+            benchmark_results_aot_o2_ci.txt

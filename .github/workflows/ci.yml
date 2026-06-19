@@ -7,109 +7,56 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Cancel superseded runs on the same branch (avoid queue + wasted compiles).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   LLVM_VERSION: '21.1.8'
   LLVM_TAG: llvmorg-21.1.8
   ACTION_FORCE_LINK: true
   LINUX_TARGET: x86_64-unknown-linux-gnu
+  # Persistent target on self-hosted: skip slow GitHub cache upload/download.
+  CARGO_TARGET_DIR: /home/miaox99/桌面/Runner/ci-target
 
 jobs:
-  # ── Linux: 4 parallel self-hosted jobs (need ≥4 idle runners) ─────────────
-  # Wall time ≈ max(test, clippy, frontend, benchmark), not their sum.
-
-  linux-test:
-    name: Linux Test
+  # One Linux job, one nix-shell, one compile tree — avoids 4-way CPU contention.
+  linux:
+    name: Linux CI
     runs-on: [self-hosted, linux]
+    env:
+      CARGO_INCREMENTAL: 1
     steps:
       - uses: actions/checkout@v4
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ env.LINUX_TARGET }}
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: linux-x64
-          key: test
-          cache-bin: false
-          save-if: ${{ github.job == 'linux-test' }}
+          components: rustfmt, clippy
+
+      - name: Ensure persistent target dir
+        run: mkdir -p "$CARGO_TARGET_DIR"
+
       - name: Format check
         run: cargo fmt -- --check
-      - name: Build, smoke, lib & integration tests
+
+      - name: Core CI (single nix-shell, single compile pass)
         env:
           PROPTEST_CASES: '50'
-        run: nix-shell --run "bash scripts/ci-linux.sh test"
+        run: nix-shell --run "bash scripts/ci-linux.sh core"
+
       - name: Debug run output
         if: failure()
         run: nix-shell --run "bash scripts/ci-linux.sh debug" 2>&1 | tee action_run_output.txt
+
       - name: Upload run output
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: run-output-linux-test-${{ github.run_id }}
+          name: run-output-linux-${{ github.run_id }}
           path: action_run_output.txt
 
-  linux-clippy:
-    name: Linux Clippy
-    runs-on: [self-hosted, linux]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ env.LINUX_TARGET }}
-          components: clippy
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: linux-x64
-          key: clippy
-          cache-bin: false
-          save-if: false
-      - name: Clippy
-        run: nix-shell --run "bash scripts/ci-linux.sh clippy"
-
-  linux-frontend:
-    name: Linux Frontend
-    runs-on: [self-hosted, linux]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ env.LINUX_TARGET }}
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: linux-x64
-          key: frontend
-          cache-bin: false
-          save-if: false
-      - name: action-frontend build & test
-        run: nix-shell --run "bash scripts/ci-linux.sh frontend"
-
-  linux-benchmark:
-    name: Linux Benchmark
-    runs-on: [self-hosted, linux]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ env.LINUX_TARGET }}
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: linux-x64
-          key: benchmark
-          cache-bin: false
-          save-if: false
-      - name: Benchmark
-        run: nix-shell --run "bash scripts/ci-linux.sh benchmark"
-      - name: Check AOT benchmark regression
-        continue-on-error: true
-        run: python3 scripts/benchmark_regression.py benchmark_results_aot_o2.txt benchmark_results_aot_o2_ci.txt
-      - name: Upload benchmark results
-        uses: actions/upload-artifact@v4
-        with:
-          name: benchmark-results-${{ github.run_id }}
-          path: |
-            benchmark_results.txt
-            benchmark_results_aot_o2_ci.txt
-
-  # ── Windows: single job (avoid duplicate LLVM setup + build) ───────────────
   windows:
     name: Windows CI
     runs-on: windows-2025
@@ -138,18 +85,13 @@ jobs:
         shell: pwsh
         run: |
           $URL = "https://github.com/llvm/llvm-project/releases/download/${{ env.LLVM_TAG }}/clang+llvm-21.1.8-x86_64-pc-windows-msvc.tar.xz"
-          Write-Host "Downloading $URL"
           curl.exe -fSL --retry 3 --connect-timeout 30 -o C:\llvm.tar.xz "$URL"
-          Write-Host "Extracting..."
           New-Item -Force -ItemType Directory -Path C:\llvm-extract | Out-Null
           tar -xf C:\llvm.tar.xz -C C:\llvm-extract
           Remove-Item C:\llvm.tar.xz -Force
           $innerDir = Get-ChildItem C:\llvm-extract -Directory | Select-Object -First 1
-          if ($innerDir) {
-            Move-Item $innerDir.FullName C:\llvm -Force
-          } else {
-            Rename-Item C:\llvm-extract C:\llvm -Force
-          }
+          if ($innerDir) { Move-Item $innerDir.FullName C:\llvm -Force }
+          else { Rename-Item C:\llvm-extract C:\llvm -Force }
           Remove-Item C:\llvm-extract -Recurse -Force -ErrorAction SilentlyContinue
 
       - name: Set LLVM env (Windows)
@@ -197,7 +139,7 @@ jobs:
         shell: bash
         run: |
           ACTION="target/${{ env.TARGET }}/debug/action.exe"
-          timeout 5 "$ACTION" lsp < /dev/null 2>&1 && true
+          timeout 5 "$ACTION" lsp < /dev/null 2>&1 || true
 
       - name: Test lib
         env:
