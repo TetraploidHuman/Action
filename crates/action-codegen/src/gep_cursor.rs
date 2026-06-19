@@ -46,6 +46,7 @@ pub struct GepCursor<'ctx> {
     last_offset: u64,
 }
 
+#[allow(dead_code)]
 impl<'ctx> GepCursor<'ctx> {
     /// Create a new GEP cursor anchored at `base_ptr`.
     pub fn new(base_ptr: PointerValue<'ctx>) -> Self {

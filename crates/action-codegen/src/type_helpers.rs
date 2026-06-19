@@ -260,6 +260,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Guess the return type from the function body expression when no annotation is provided.
+    #[cfg(test)]
     pub(super) fn infer_return_type(&self, body: &Expr) -> Option<Type> {
         match &body.kind {
             ExprKind::Block(stmts) => stmts.last().and_then(|s| match s {

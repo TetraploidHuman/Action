@@ -71,6 +71,7 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(cg.module.write_bitcode_to_memory().as_slice().to_vec())
     }
 
+    #[allow(dead_code)]
     fn link_runtime_bitcode(&self, bitcode: &[u8]) -> Result<(), String> {
         link_runtime_bitcode_into(&self.module, self.context, bitcode)
     }

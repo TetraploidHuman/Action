@@ -34,10 +34,6 @@ impl BuiltinDispatch {
         Self::for_name(def.name)
     }
 
-    pub fn is_readonly_ufcs_on_list(def: &BuiltinDef) -> bool {
-        def.readonly && def.ufcs_receiver == UfcsReceiverKind::List
-    }
-
     pub fn is_readonly_ufcs_on_collection(def: &BuiltinDef) -> bool {
         def.readonly && def.ufcs_receiver == UfcsReceiverKind::Collection
     }

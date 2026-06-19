@@ -33,7 +33,7 @@ impl std::fmt::Display for ParseError {
 
 /// Pratt parsing precedence levels
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum Precedence {
+pub(crate) enum Precedence {
     Lowest,
     Assignment,
     To,

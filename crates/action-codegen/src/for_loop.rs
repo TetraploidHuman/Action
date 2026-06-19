@@ -9,7 +9,7 @@ use inkwell::IntPredicate;
 
 use super::{llvm_err, CodeGen, Scope, TypedValue, ValKind};
 
-enum ForExprSrc<'a> {
+pub(super) enum ForExprSrc<'a> {
     Ast(&'a Expr),
     Hir(&'a HirExpr),
 }
@@ -904,7 +904,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_pointer_cast(
                 cache,
-                i8.ptr_type(inkwell::AddressSpace::default()),
+                self.context.ptr_type(inkwell::AddressSpace::default()),
                 "cache_i8",
             )
             .map_err(llvm_err)?;
@@ -1324,7 +1324,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     fn find_list_get_in_hir(body: &HirExpr) -> Option<(HirExpr, String)> {
-        use action_frontend::hir::{HirExprKind, HirStmt};
+        use action_frontend::hir::HirExprKind;
         match &body.kind {
             HirExprKind::Block(stmts) => {
                 for stmt in stmts {
@@ -1362,7 +1362,7 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 None
             }
-            HirExprKind::Block(stmts) => Self::find_list_get_in_hir(expr),
+            HirExprKind::Block(_) => Self::find_list_get_in_hir(expr),
             _ => None,
         }
     }

@@ -444,7 +444,6 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_conditional_branch(lt_di_cond, lt_h0_dec_body, lt_h0_dec_done);
         self.builder.position_at_end(lt_h0_dec_body);
-        let lt_rc_dec_fn = self.module.get_function("action_rc_dec").unwrap();
         let lt_eb = unsafe {
             self.builder
                 .build_gep(i8, lt_leaf_i8, &[i64.const_int(8, false)], "eb")
@@ -552,7 +551,6 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_conditional_branch(lt_ci_cond, lt_h0_ci_body, lt_h0_ci_done);
         self.builder.position_at_end(lt_h0_ci_body);
-        let lt_rc_inc_fn = self.module.get_function("action_rc_inc").unwrap();
         let lt_nl_i8 = self
             .builder
             .build_pointer_cast(lt_new_leaf, ptr, "nl_i8")

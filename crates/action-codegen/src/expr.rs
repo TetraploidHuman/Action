@@ -2777,7 +2777,7 @@ pub(super) fn collect_free_vars_hir(
     bound: &mut Vec<String>,
     free: &mut Vec<String>,
 ) {
-    use action_frontend::hir::{HirExprKind, HirForKind, HirPattern, HirStringPart, HirWhenKind};
+    use action_frontend::hir::{HirExprKind, HirStringPart};
     match &expr.kind {
         HirExprKind::Ident(name) => {
             if !params.contains(name) && !bound.contains(name) && !free.contains(name) {

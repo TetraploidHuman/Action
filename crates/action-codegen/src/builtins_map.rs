@@ -1,6 +1,5 @@
 // Submodule: builtins_map
 
-use inkwell::values::BasicValue;
 use inkwell::IntPredicate;
 
 use super::call_arg::CallArg;

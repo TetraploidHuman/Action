@@ -2132,7 +2132,6 @@ impl<'ctx> CodeGen<'ctx> {
         // Uses memcpy+rc_inc when accumulator's last leaf has room; falls back to per-element push.
         let pl_fn = self.module.get_function("action_list_push_leaf").unwrap();
         let pl_memcpy_fn = self.module.get_function("memcpy").unwrap();
-        let pl_rc_inc_fn = self.module.get_function("action_rc_inc").unwrap();
         let pl_push_fn = self.module.get_function("action_list_push").unwrap();
         let string_ty = self.string_type;
         let leaf_ty = self.leaf_type;

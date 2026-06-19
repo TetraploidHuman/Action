@@ -195,6 +195,7 @@ impl<'ctx> Scope<'ctx> {
             },
         );
     }
+    #[allow(dead_code)]
     fn set_val(
         &mut self,
         name: String,
@@ -204,6 +205,7 @@ impl<'ctx> Scope<'ctx> {
     ) {
         self.set(name, ptr, ty, kind);
     }
+    #[allow(dead_code)]
     fn set_mutable_val(
         &mut self,
         name: String,
@@ -404,6 +406,7 @@ pub struct CodeGen<'ctx> {
     /// Child entry in internal node: {ptr child, i64 subtree_total}
     pub(crate) child_entry_type: StructType<'ctx>,
     /// List iterator cursor: {ptr leaf, i64 pos, ptr internal, i64 leaf_count, i64 child_idx}
+    #[allow(dead_code)]
     pub(crate) cursor_type: StructType<'ctx>,
     /// ConcatNode: {i64 depth, i64 total_len, list_type left, list_type right}
     /// height = -1 is the sentinel; node_ptr points to this heap-allocated struct

@@ -6301,7 +6301,6 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self.builder.build_return(Some(&mtw_res));
 
         // ---- action_list_find_walk_rec(ptr node, i64 height, ptr fn, ptr acc, ptr buf_p, ptr buf_pos_p) -> void ----
-        let fw_leaf_sz = self.leaf_type.size_of().ok_or("leaf size")?;
         let fd_find_rec_fn = self.module.add_function(
             "action_list_find_walk_rec",
             void.fn_type(
