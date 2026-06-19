@@ -668,250 +668,242 @@ impl<'ctx> CodeGen<'ctx> {
         name: &str,
         v: TypedValue<'ctx>,
     ) -> Result<TypedValue<'ctx>, String> {
-                let (var_ptr, var_kind, var_ty, var_rc_managed, var_is_closure) = {
-                    let var = self
-                        .scope
-                        .get(name)
-                        .ok_or_else(|| format!("Undefined variable: {}", name))?;
-                    if !var.mutable {
-                        return Err(format!(
-                            "Cannot assign to immutable variable '{}' (use 'var' instead of 'val')",
-                            name
-                        ));
-                    }
-                    (
-                        var.ptr,
-                        var.kind,
-                        var.ty,
-                        var.enum_data_rc_managed,
-                        var.is_closure,
-                    )
-                };
-                // Snapshot old heap value before RHS — self-assignments like `m = m.insert(...)`
-                // read the variable during RHS; dec must happen after RHS using the snapshot.
-                let old_list = if matches!(var_kind, ValKind::List | ValKind::Map | ValKind::Set) {
-                    Some(self.load_list(var_ptr)?)
-                } else {
-                    None
-                };
-                let old_str = if var_kind == ValKind::Str {
-                    Some(self.load_string(var_ptr)?)
-                } else {
-                    None
-                };
-                // Skip rc_dec/rc_inc when in-place update reuses the same heap pointer.
-                let skip_rc_transfer = match (&old_list, &old_str, &v) {
-                    (
-                        Some(old),
-                        _,
-                        TypedValue::List(np) | TypedValue::Map(np) | TypedValue::Set(np),
-                    ) => {
-                        let new_loaded = self.load_list(*np)?;
-                        let old_data = self
-                            .builder
-                            .build_extract_value(*old, 0, "cmp_od")
-                            .map_err(llvm_err)?
-                            .into_pointer_value();
-                        let new_data = self
-                            .builder
-                            .build_extract_value(new_loaded, 0, "cmp_nd")
-                            .map_err(llvm_err)?
-                            .into_pointer_value();
-                        self.builder
-                            .build_int_compare(
-                                inkwell::IntPredicate::EQ,
-                                self.builder
-                                    .build_ptr_to_int(old_data, self.i64_ty(), "odi")
-                                    .map_err(llvm_err)?,
-                                self.builder
-                                    .build_ptr_to_int(new_data, self.i64_ty(), "ndi")
-                                    .map_err(llvm_err)?,
-                                "same_ptr",
-                            )
-                            .map_err(llvm_err)?
-                    }
-                    (_, Some(old), TypedValue::Str(sp)) => {
-                        let new_loaded = self.load_string(*sp)?;
-                        let old_data = self
-                            .builder
-                            .build_extract_value(*old, 1, "cmp_os")
-                            .map_err(llvm_err)?
-                            .into_pointer_value();
-                        let new_data = self
-                            .builder
-                            .build_extract_value(new_loaded, 1, "cmp_ns")
-                            .map_err(llvm_err)?
-                            .into_pointer_value();
-                        self.builder
-                            .build_int_compare(
-                                inkwell::IntPredicate::EQ,
-                                self.builder
-                                    .build_ptr_to_int(old_data, self.i64_ty(), "osi")
-                                    .map_err(llvm_err)?,
-                                self.builder
-                                    .build_ptr_to_int(new_data, self.i64_ty(), "nsi")
-                                    .map_err(llvm_err)?,
-                                "same_sptr",
-                            )
-                            .map_err(llvm_err)?
-                    }
-                    _ => self.context.bool_type().const_int(0, false).into(),
-                };
-                let fn_val = self
+        let (var_ptr, var_kind, var_ty, var_rc_managed, var_is_closure) = {
+            let var = self
+                .scope
+                .get(name)
+                .ok_or_else(|| format!("Undefined variable: {}", name))?;
+            if !var.mutable {
+                return Err(format!(
+                    "Cannot assign to immutable variable '{}' (use 'var' instead of 'val')",
+                    name
+                ));
+            }
+            (
+                var.ptr,
+                var.kind,
+                var.ty,
+                var.enum_data_rc_managed,
+                var.is_closure,
+            )
+        };
+        // Snapshot old heap value before RHS — self-assignments like `m = m.insert(...)`
+        // read the variable during RHS; dec must happen after RHS using the snapshot.
+        let old_list = if matches!(var_kind, ValKind::List | ValKind::Map | ValKind::Set) {
+            Some(self.load_list(var_ptr)?)
+        } else {
+            None
+        };
+        let old_str = if var_kind == ValKind::Str {
+            Some(self.load_string(var_ptr)?)
+        } else {
+            None
+        };
+        // Skip rc_dec/rc_inc when in-place update reuses the same heap pointer.
+        let skip_rc_transfer = match (&old_list, &old_str, &v) {
+            (Some(old), _, TypedValue::List(np) | TypedValue::Map(np) | TypedValue::Set(np)) => {
+                let new_loaded = self.load_list(*np)?;
+                let old_data = self
                     .builder
-                    .get_insert_block()
-                    .and_then(|b| b.get_parent())
-                    .ok_or("not in fn")?;
-                let do_rc_bb = self.context.append_basic_block(fn_val, "asg_rc");
-                let skip_rc_bb = self.context.append_basic_block(fn_val, "asg_skip_rc");
-                let after_rc_bb = self.context.append_basic_block(fn_val, "asg_after_rc");
+                    .build_extract_value(*old, 0, "cmp_od")
+                    .map_err(llvm_err)?
+                    .into_pointer_value();
+                let new_data = self
+                    .builder
+                    .build_extract_value(new_loaded, 0, "cmp_nd")
+                    .map_err(llvm_err)?
+                    .into_pointer_value();
                 self.builder
-                    .build_conditional_branch(skip_rc_transfer, skip_rc_bb, do_rc_bb)
-                    .map_err(llvm_err)?;
-                self.builder.position_at_end(do_rc_bb);
-                if var_is_closure {
-                    let cap_ptr = self
-                        .builder
-                        .build_load(self.ptr_ty(), var_ptr, "fn_dec_ptr")
-                        .map_err(llvm_err)?
-                        .into_pointer_value();
-                    self.rc_dec(cap_ptr)?;
-                } else if let Some(old) = old_list {
-                    match var_kind {
-                        ValKind::List => {
-                            let data_ptr = self
-                                .builder
-                                .build_extract_value(old, 0, "old_data")
-                                .map_err(llvm_err)?
-                                .into_pointer_value();
-                            let height = self
-                                .builder
-                                .build_extract_value(old, 2, "old_h")
-                                .map_err(llvm_err)?
-                                .into_int_value();
-                            let rdl_fn =
-                                self.module.get_function("action_rc_dec_list_node").unwrap();
-                            let _ = self.builder.build_call(
-                                rdl_fn,
-                                &[data_ptr.into(), height.into()],
-                                "",
-                            );
-                        }
-                        ValKind::Map | ValKind::Set => {
-                            let data_ptr = self
-                                .builder
-                                .build_extract_value(old, 0, "old_data")
-                                .map_err(llvm_err)?
-                                .into_pointer_value();
-                            let len = self
-                                .builder
-                                .build_extract_value(old, 1, "old_len")
-                                .map_err(llvm_err)?
-                                .into_int_value();
-                            let cap = self
-                                .builder
-                                .build_extract_value(old, 2, "old_cap")
-                                .map_err(llvm_err)?
-                                .into_int_value();
-                            let rht_fn = self.module.get_function("action_rc_dec_ht").unwrap();
-                            let _ = self.builder.build_call(
-                                rht_fn,
-                                &[data_ptr.into(), cap.into(), len.into()],
-                                "",
-                            );
-                        }
-                        _ => {}
-                    }
-                } else if let Some(old) = old_str {
+                    .build_int_compare(
+                        inkwell::IntPredicate::EQ,
+                        self.builder
+                            .build_ptr_to_int(old_data, self.i64_ty(), "odi")
+                            .map_err(llvm_err)?,
+                        self.builder
+                            .build_ptr_to_int(new_data, self.i64_ty(), "ndi")
+                            .map_err(llvm_err)?,
+                        "same_ptr",
+                    )
+                    .map_err(llvm_err)?
+            }
+            (_, Some(old), TypedValue::Str(sp)) => {
+                let new_loaded = self.load_string(*sp)?;
+                let old_data = self
+                    .builder
+                    .build_extract_value(*old, 1, "cmp_os")
+                    .map_err(llvm_err)?
+                    .into_pointer_value();
+                let new_data = self
+                    .builder
+                    .build_extract_value(new_loaded, 1, "cmp_ns")
+                    .map_err(llvm_err)?
+                    .into_pointer_value();
+                self.builder
+                    .build_int_compare(
+                        inkwell::IntPredicate::EQ,
+                        self.builder
+                            .build_ptr_to_int(old_data, self.i64_ty(), "osi")
+                            .map_err(llvm_err)?,
+                        self.builder
+                            .build_ptr_to_int(new_data, self.i64_ty(), "nsi")
+                            .map_err(llvm_err)?,
+                        "same_sptr",
+                    )
+                    .map_err(llvm_err)?
+            }
+            _ => self.context.bool_type().const_int(0, false).into(),
+        };
+        let fn_val = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("not in fn")?;
+        let do_rc_bb = self.context.append_basic_block(fn_val, "asg_rc");
+        let skip_rc_bb = self.context.append_basic_block(fn_val, "asg_skip_rc");
+        let after_rc_bb = self.context.append_basic_block(fn_val, "asg_after_rc");
+        self.builder
+            .build_conditional_branch(skip_rc_transfer, skip_rc_bb, do_rc_bb)
+            .map_err(llvm_err)?;
+        self.builder.position_at_end(do_rc_bb);
+        if var_is_closure {
+            let cap_ptr = self
+                .builder
+                .build_load(self.ptr_ty(), var_ptr, "fn_dec_ptr")
+                .map_err(llvm_err)?
+                .into_pointer_value();
+            self.rc_dec(cap_ptr)?;
+        } else if let Some(old) = old_list {
+            match var_kind {
+                ValKind::List => {
                     let data_ptr = self
                         .builder
-                        .build_extract_value(old, 1, "old_sdata")
+                        .build_extract_value(old, 0, "old_data")
                         .map_err(llvm_err)?
                         .into_pointer_value();
-                    self.rc_dec(data_ptr)?;
-                } else {
-                    self.rc_dec_at(var_ptr, var_kind, var_ty, var_rc_managed)?;
+                    let height = self
+                        .builder
+                        .build_extract_value(old, 2, "old_h")
+                        .map_err(llvm_err)?
+                        .into_int_value();
+                    let rdl_fn = self.module.get_function("action_rc_dec_list_node").unwrap();
+                    let _ = self
+                        .builder
+                        .build_call(rdl_fn, &[data_ptr.into(), height.into()], "");
                 }
-                self.rc_inc_typed_value(&v)?;
-                self.builder
-                    .build_unconditional_branch(after_rc_bb)
-                    .map_err(llvm_err)?;
-                self.builder.position_at_end(skip_rc_bb);
-                self.builder
-                    .build_unconditional_branch(after_rc_bb)
-                    .map_err(llvm_err)?;
-                self.builder.position_at_end(after_rc_bb);
-                // Wrap non-nullable value into nullable when target is nullable
-                let v = if var_kind == ValKind::Nullable && !matches!(&v, TypedValue::Nullable(..))
-                {
-                    let inner_bt = v.get_value_type(self);
-                    let nty = self.get_nullable_type(inner_bt, "assign_wrap");
-                    self.wrap_in_nullable(&v, nty)?
-                } else {
-                    v
-                };
-                match &v {
-                    TypedValue::Str(ptr) => {
-                        let str_struct = self.load_string(*ptr)?;
-                        self.builder
-                            .build_store(var_ptr, str_struct)
-                            .map_err(llvm_err)?;
-                    }
-                    TypedValue::List(ptr)
-                    | TypedValue::Map(ptr)
-                    | TypedValue::Set(ptr)
-                    | TypedValue::Task(ptr)
-                    | TypedValue::Stream(ptr) => {
-                        let list_struct = self.load_list(*ptr)?;
-                        self.builder
-                            .build_store(var_ptr, list_struct)
-                            .map_err(llvm_err)?;
-                    }
-                    TypedValue::Struct(ptr, ty) => {
-                        let bt: BasicTypeEnum = (*ty).into();
-                        let loaded = self
-                            .builder
-                            .build_load(bt, *ptr, "assign_ld")
-                            .map_err(llvm_err)?;
-                        self.builder
-                            .build_store(var_ptr, loaded)
-                            .map_err(llvm_err)?;
-                    }
-                    TypedValue::Enum(ptr, ty, inner_type, rc_managed) => {
-                        let bt: BasicTypeEnum = (*ty).into();
-                        let loaded = self
-                            .builder
-                            .build_load(bt, *ptr, "assign_ld")
-                            .map_err(llvm_err)?;
-                        self.builder
-                            .build_store(var_ptr, loaded)
-                            .map_err(llvm_err)?;
-                        // Update RC managed flag for the new enum value
-                        self.scope.set_enum_inner_type(name, *inner_type);
-                        self.scope.set_enum_data_rc_managed(name, *rc_managed);
-                    }
-                    TypedValue::LazyList(ptr)
-                    | TypedValue::CString(ptr)
-                    | TypedValue::Ptr(ptr)
-                    | TypedValue::FileHandle(ptr) => {
-                        self.builder.build_store(var_ptr, *ptr).map_err(llvm_err)?;
-                    }
-                    TypedValue::Nullable(ptr, ty) => {
-                        let loaded = self
-                            .builder
-                            .build_load(*ty, *ptr, "assign_nullable_ld")
-                            .map_err(llvm_err)?;
-                        self.builder
-                            .build_store(var_ptr, loaded)
-                            .map_err(llvm_err)?;
-                    }
-                    _ => {
-                        if let Some(bv) = v.to_bv() {
-                            self.builder.build_store(var_ptr, bv).map_err(llvm_err)?;
-                        }
-                    }
+                ValKind::Map | ValKind::Set => {
+                    let data_ptr = self
+                        .builder
+                        .build_extract_value(old, 0, "old_data")
+                        .map_err(llvm_err)?
+                        .into_pointer_value();
+                    let len = self
+                        .builder
+                        .build_extract_value(old, 1, "old_len")
+                        .map_err(llvm_err)?
+                        .into_int_value();
+                    let cap = self
+                        .builder
+                        .build_extract_value(old, 2, "old_cap")
+                        .map_err(llvm_err)?
+                        .into_int_value();
+                    let rht_fn = self.module.get_function("action_rc_dec_ht").unwrap();
+                    let _ = self.builder.build_call(
+                        rht_fn,
+                        &[data_ptr.into(), cap.into(), len.into()],
+                        "",
+                    );
                 }
-                Ok(v)
+                _ => {}
+            }
+        } else if let Some(old) = old_str {
+            let data_ptr = self
+                .builder
+                .build_extract_value(old, 1, "old_sdata")
+                .map_err(llvm_err)?
+                .into_pointer_value();
+            self.rc_dec(data_ptr)?;
+        } else {
+            self.rc_dec_at(var_ptr, var_kind, var_ty, var_rc_managed)?;
+        }
+        self.rc_inc_typed_value(&v)?;
+        self.builder
+            .build_unconditional_branch(after_rc_bb)
+            .map_err(llvm_err)?;
+        self.builder.position_at_end(skip_rc_bb);
+        self.builder
+            .build_unconditional_branch(after_rc_bb)
+            .map_err(llvm_err)?;
+        self.builder.position_at_end(after_rc_bb);
+        // Wrap non-nullable value into nullable when target is nullable
+        let v = if var_kind == ValKind::Nullable && !matches!(&v, TypedValue::Nullable(..)) {
+            let inner_bt = v.get_value_type(self);
+            let nty = self.get_nullable_type(inner_bt, "assign_wrap");
+            self.wrap_in_nullable(&v, nty)?
+        } else {
+            v
+        };
+        match &v {
+            TypedValue::Str(ptr) => {
+                let str_struct = self.load_string(*ptr)?;
+                self.builder
+                    .build_store(var_ptr, str_struct)
+                    .map_err(llvm_err)?;
+            }
+            TypedValue::List(ptr)
+            | TypedValue::Map(ptr)
+            | TypedValue::Set(ptr)
+            | TypedValue::Task(ptr)
+            | TypedValue::Stream(ptr) => {
+                let list_struct = self.load_list(*ptr)?;
+                self.builder
+                    .build_store(var_ptr, list_struct)
+                    .map_err(llvm_err)?;
+            }
+            TypedValue::Struct(ptr, ty) => {
+                let bt: BasicTypeEnum = (*ty).into();
+                let loaded = self
+                    .builder
+                    .build_load(bt, *ptr, "assign_ld")
+                    .map_err(llvm_err)?;
+                self.builder
+                    .build_store(var_ptr, loaded)
+                    .map_err(llvm_err)?;
+            }
+            TypedValue::Enum(ptr, ty, inner_type, rc_managed) => {
+                let bt: BasicTypeEnum = (*ty).into();
+                let loaded = self
+                    .builder
+                    .build_load(bt, *ptr, "assign_ld")
+                    .map_err(llvm_err)?;
+                self.builder
+                    .build_store(var_ptr, loaded)
+                    .map_err(llvm_err)?;
+                // Update RC managed flag for the new enum value
+                self.scope.set_enum_inner_type(name, *inner_type);
+                self.scope.set_enum_data_rc_managed(name, *rc_managed);
+            }
+            TypedValue::LazyList(ptr)
+            | TypedValue::CString(ptr)
+            | TypedValue::Ptr(ptr)
+            | TypedValue::FileHandle(ptr) => {
+                self.builder.build_store(var_ptr, *ptr).map_err(llvm_err)?;
+            }
+            TypedValue::Nullable(ptr, ty) => {
+                let loaded = self
+                    .builder
+                    .build_load(*ty, *ptr, "assign_nullable_ld")
+                    .map_err(llvm_err)?;
+                self.builder
+                    .build_store(var_ptr, loaded)
+                    .map_err(llvm_err)?;
+            }
+            _ => {
+                if let Some(bv) = v.to_bv() {
+                    self.builder.build_store(var_ptr, bv).map_err(llvm_err)?;
+                }
+            }
+        }
+        Ok(v)
     }
 
     fn compile_assign_field(

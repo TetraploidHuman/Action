@@ -239,11 +239,9 @@ impl<'ctx> CodeGen<'ctx> {
                 vars,
                 iterable,
                 body,
-            } => self.compile_for_with_index(
-                vars,
-                ForExprSrc::Ast(iterable),
-                ForExprSrc::Ast(body),
-            ),
+            } => {
+                self.compile_for_with_index(vars, ForExprSrc::Ast(iterable), ForExprSrc::Ast(body))
+            }
         }
     }
 
@@ -1333,11 +1331,7 @@ impl<'ctx> CodeGen<'ctx> {
         iterator: &HirExpr,
         body: &HirExpr,
     ) -> Result<TypedValue<'ctx>, String> {
-        self.compile_for_with_index(
-            vars,
-            ForExprSrc::Hir(iterator),
-            ForExprSrc::Hir(body),
-        )
+        self.compile_for_with_index(vars, ForExprSrc::Hir(iterator), ForExprSrc::Hir(body))
     }
 
     fn compile_for_nested_iterate_hir(

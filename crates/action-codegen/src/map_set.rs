@@ -37,9 +37,7 @@ impl<'ctx> CodeGen<'ctx> {
         keys: &[TypedValue<'ctx>],
         vals: &[TypedValue<'ctx>],
     ) -> Result<TypedValue<'ctx>, String> {
-        let cap = self
-            .i64_ty()
-            .const_int((keys.len() + 4) as u64, false);
+        let cap = self.i64_ty().const_int((keys.len() + 4) as u64, false);
         let cc = self.call_rt("action_map_create", &[cap.into()])?;
         let map_bv = cc.try_as_basic_value().basic().ok_or("map_create failed")?;
         let alloca = self
