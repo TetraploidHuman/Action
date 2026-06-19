@@ -604,6 +604,24 @@ impl<'ctx> CodeGen<'ctx> {
 
         // UFCS method call: receiver.method(args) → TypeName_method(receiver, args)
         if let ExprKind::FieldAccess(receiver, method) = &func.kind {
+            // Fuse `.map { }.filter { }` before compiling the map receiver (avoids mono_map + walk).
+            if method == "filter" {
+                if let Some((map_fn_expr, inner_list_expr)) = Self::extract_map_call_args(receiver)
+                {
+                    let filter_fn_val = if let Some(lam) = trailing {
+                        self.compile_expr(lam)?
+                    } else if args.len() == 1 {
+                        self.compile_expr(&args[0])?
+                    } else {
+                        return Err(
+                            "filter with trailing lambda expects 0 args; filter(fn, list) expects 2"
+                                .to_string(),
+                        );
+                    };
+                    return self.fused_map_filter(map_fn_expr, inner_list_expr, filter_fn_val);
+                }
+            }
+
             let recv_val = self.compile_expr(receiver)?;
 
             // Auto short-circuit: nullable receiver — branch on null,

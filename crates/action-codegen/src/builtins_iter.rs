@@ -63,44 +63,85 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::List(result_alloca))
     }
 
-    /// Check if an expression is a `map(...)` call and return (map_fn_expr, inner_list_expr).
-    /// Handles both `map(fn, list)` and `map(list) { fn }` syntax.
-    fn extract_map_call_args(expr: &Expr) -> Option<(&Expr, &Expr)> {
-        match &expr.kind {
-            ExprKind::Call {
-                func,
-                args,
-                trailing_lambda,
-            } => {
-                // func must be Ident("map")
-                if let ExprKind::Ident(name) = &func.kind {
-                    if name != "map" {
-                        return None;
-                    }
-                } else {
-                    return None;
-                }
-                match trailing_lambda {
-                    Some(lam) => {
-                        // map(list) { fn } → (fn, list)
-                        if args.len() == 1 {
-                            Some((lam.as_ref(), &args[0]))
-                        } else {
-                            None
-                        }
-                    }
-                    None => {
-                        // map(fn, list) → (fn, list)
-                        if args.len() == 2 {
-                            Some((&args[0], &args[1]))
-                        } else {
-                            None
-                        }
-                    }
-                }
+    pub(super) fn extract_map_call_args(expr: &Expr) -> Option<(&Expr, &Expr)> {
+        let ExprKind::Call {
+            func,
+            args,
+            trailing_lambda,
+        } = &expr.kind
+        else {
+            return None;
+        };
+        let is_map = match &func.kind {
+            ExprKind::Ident(name) => name == "map",
+            ExprKind::FieldAccess(_, method) => method == "map",
+            _ => false,
+        };
+        if !is_map {
+            return None;
+        }
+        match trailing_lambda {
+            Some(lam) => {
+                let inner = match &func.kind {
+                    ExprKind::Ident(_) if args.len() == 1 => Some(&args[0]),
+                    ExprKind::FieldAccess(obj, _) if args.is_empty() => Some(obj.as_ref()),
+                    _ => None,
+                };
+                inner.map(|list| (lam.as_ref(), list))
             }
+            None if args.len() == 2 => Some((&args[0], &args[1])),
             _ => None,
         }
+    }
+
+    /// Fused map+filter: single tree walk over inner list.
+    pub(super) fn fused_map_filter(
+        &mut self,
+        map_fn_expr: &Expr,
+        inner_list_expr: &Expr,
+        filter_fn_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let map_fn_val = self.compile_expr(map_fn_expr)?;
+        let inner_list_val = self.compile_expr(inner_list_expr)?;
+
+        let filter_fn_ptr = match filter_fn_val {
+            TypedValue::Fn(p, _) => p,
+            TypedValue::Closure { fn_ptr, .. } => fn_ptr,
+            _ => return Err("fused map+filter: filter function required".to_string()),
+        };
+        let map_fn_ptr = match map_fn_val {
+            TypedValue::Fn(p, _) => p,
+            TypedValue::Closure { fn_ptr, .. } => fn_ptr,
+            _ => return Err("fused map+filter: map function required".to_string()),
+        };
+        let inner_list_ptr = match inner_list_val {
+            TypedValue::List(p) => p,
+            _ => return Err("fused map+filter: list required".to_string()),
+        };
+
+        let inner_list_struct = self.load_list(inner_list_ptr)?;
+        let result_alloca = self
+            .builder
+            .build_alloca(self.list_type, "mf_result")
+            .map_err(llvm_err)?;
+
+        let mf_cc = self.call_rt(
+            "action_list_map_filter_walk",
+            &[
+                inner_list_struct.into(),
+                map_fn_ptr.into(),
+                filter_fn_ptr.into(),
+            ],
+        )?;
+        let result_bv = mf_cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("map_filter_walk failed")?;
+        self.builder
+            .build_store(result_alloca, result_bv)
+            .map_err(llvm_err)?;
+
+        Ok(TypedValue::List(result_alloca))
     }
 
     pub(super) fn builtin_filter(
@@ -124,57 +165,12 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Check if list_expr is a map call — extract map fn and inner list
         if let Some((map_fn_expr, inner_list_expr)) = Self::extract_map_call_args(list_expr) {
-            // Compile filter fn, map fn, and inner list
             let filter_fn_val = if let Some(lam) = trailing {
                 self.compile_expr(lam)?
             } else {
                 self.compile_expr(&args[0])?
             };
-            let map_fn_val = self.compile_expr(map_fn_expr)?;
-            let inner_list_val = self.compile_expr(inner_list_expr)?;
-
-            // NOTE: Do NOT call try_builtin_filter_direct here — it would
-            // filter on the inner list values directly, skipping the map step.
-            // The fused path must always use the fused runtime function.
-
-            let filter_fn_ptr = match filter_fn_val {
-                TypedValue::Fn(p, _) => p,
-                TypedValue::Closure { fn_ptr, .. } => fn_ptr,
-                _ => return Err("filter: first argument must be a function".to_string()),
-            };
-            let map_fn_ptr = match map_fn_val {
-                TypedValue::Fn(p, _) => p,
-                TypedValue::Closure { fn_ptr, .. } => fn_ptr,
-                _ => return Err("fused map+filter: map function required".to_string()),
-            };
-            let inner_list_ptr = match inner_list_val {
-                TypedValue::List(p) => p,
-                _ => return Err("fused map+filter: list required".to_string()),
-            };
-
-            let inner_list_struct = self.load_list(inner_list_ptr)?;
-            let result_alloca = self
-                .builder
-                .build_alloca(self.list_type, "mf_result")
-                .map_err(llvm_err)?;
-
-            let mf_cc = self.call_rt(
-                "action_list_map_filter_walk",
-                &[
-                    inner_list_struct.into(),
-                    map_fn_ptr.into(),
-                    filter_fn_ptr.into(),
-                ],
-            )?;
-            let result_bv = mf_cc
-                .try_as_basic_value()
-                .basic()
-                .ok_or("map_filter_walk failed")?;
-            self.builder
-                .build_store(result_alloca, result_bv)
-                .map_err(llvm_err)?;
-
-            return Ok(TypedValue::List(result_alloca));
+            return self.fused_map_filter(map_fn_expr, inner_list_expr, filter_fn_val);
         }
 
         // Standard filter path
