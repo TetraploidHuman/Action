@@ -3,12 +3,20 @@
 #
 # Usage:
 #   TOKEN=$(gh api repos/TetraploidHuman/Action/actions/runners/registration-token --method POST -q .token)
-#   ./scripts/setup-github-runner.sh 6 "$TOKEN" benchmark   # dedicated perf runner
+#   ./scripts/setup-github-runner.sh 2 "$TOKEN" ci       # CI runners 2–5
+#   ./scripts/setup-github-runner.sh 6 "$TOKEN" benchmark   # dedicated perf runner (no ci label)
 set -euo pipefail
 
 INSTANCE="${1:?runner instance id (2–9)}"
 TOKEN="${2:?GitHub registration token (POST .../registration-token)}"
 EXTRA_LABELS="${3:-}"
+if [[ -z "$EXTRA_LABELS" ]]; then
+    if [[ "$INSTANCE" == "6" ]]; then
+        EXTRA_LABELS="benchmark"
+    else
+        EXTRA_LABELS="ci"
+    fi
+fi
 
 ROOT="${RUNNER_ROOT:-$HOME/桌面/Runner}"
 TEMPLATE="${RUNNER_TEMPLATE:-$ROOT/runner}"
@@ -59,6 +67,9 @@ exec /run/current-system/sw/bin/bash ./run-helper.sh "$@"
 EOF
 chmod +x "$DEST/run-nixos.sh"
 
+LABELS="self-hosted,Linux,X64"
+[[ -n "$EXTRA_LABELS" ]] && LABELS="$LABELS,$EXTRA_LABELS"
+
 (
     cd "$DEST"
     set -a
@@ -69,7 +80,7 @@ chmod +x "$DEST/run-nixos.sh"
         --url "$REPO" \
         --token "$TOKEN" \
         --name "$NAME" \
-        --labels self-hosted,Linux,X64 \
+        --labels "$LABELS" \
         --unattended \
         --replace
 )

@@ -20,7 +20,7 @@ env:
 jobs:
   linux:
     name: Linux CI
-    runs-on: [self-hosted, linux]
+    runs-on: [self-hosted, linux, ci]
     env:
       CARGO_TARGET_DIR: /home/miaox99/桌面/Runner/ci-target
       CARGO_INCREMENTAL: 1
