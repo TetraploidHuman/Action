@@ -45,6 +45,11 @@ impl<'ctx> CodeGen<'ctx> {
 
         let map_struct = self.load_list(map_ptr)?;
         let input_len = self.list_len_val(map_struct)?;
+        let map_cap = self
+            .builder
+            .build_extract_value(map_struct, 2, "mf_cap")
+            .map_err(llvm_err)?
+            .into_int_value();
         let data_ptr = self.list_data_ptr(map_struct)?;
 
         let current_fn = self
@@ -54,8 +59,6 @@ impl<'ctx> CodeGen<'ctx> {
             .ok_or("Cannot compile mapFilter outside function")?;
 
         let i64 = self.i64_ty();
-        let ptr = self.ptr_ty();
-        let str_ty = self.string_type;
 
         // Create new empty map (use input_len as capacity)
         let cc = self.call_rt("action_map_create", &[input_len.into()])?;
@@ -77,6 +80,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
 
         let loop_header = self.context.append_basic_block(current_fn, "mf_hdr");
+        let loop_chk = self.context.append_basic_block(current_fn, "mf_chk");
         let loop_body = self.context.append_basic_block(current_fn, "mf_bdy");
         let loop_insert = self.context.append_basic_block(current_fn, "mf_ins");
         let loop_next = self.context.append_basic_block(current_fn, "mf_nxt");
@@ -84,7 +88,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let _ = self.builder.build_unconditional_branch(loop_header);
 
-        // Header: check i < len
+        // Header: scan slots 0..cap-1 (Robin-Hood layout)
         self.builder.position_at_end(loop_header);
         let i_val = self
             .builder
@@ -93,73 +97,27 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
         let cond = self
             .builder
-            .build_int_compare(IntPredicate::SLT, i_val, input_len, "mf_cond")
+            .build_int_compare(IntPredicate::SLT, i_val, map_cap, "mf_cond")
             .map_err(llvm_err)?;
         let _ = self
             .builder
-            .build_conditional_branch(cond, loop_body, loop_exit);
+            .build_conditional_branch(cond, loop_chk, loop_exit);
 
-        // Body: read entry, call predicate
+        self.builder.position_at_end(loop_chk);
+        self.ht_branch_if_slot_active(data_ptr, i_val, loop_body, loop_next)?;
+
+        // Body: load key/value from slot, call predicate
         self.builder.position_at_end(loop_body);
-        let off = self
-            .builder
-            .build_int_mul(i_val, i64.const_int(4, false), "off")
-            .map_err(llvm_err)?;
-        let di64 = self
-            .builder
-            .build_pointer_cast(data_ptr, ptr, "di64")
-            .map_err(llvm_err)?;
-
-        let kt_ptr = unsafe {
-            self.builder
-                .build_gep(i64, di64, &[off], "kt_ptr")
-                .map_err(llvm_err)
-        }?;
+        let key_fat = self.ht_key_fat_at(data_ptr, i_val)?;
+        let val_fat = self.ht_val_fat_at(data_ptr, i_val)?;
         let kt = self
             .builder
-            .build_load(i64, kt_ptr, "kt")
+            .build_extract_value(key_fat.into_struct_value(), 0, "kt")
             .map_err(llvm_err)?
             .into_int_value();
-        let off1 = self
-            .builder
-            .build_int_add(off, i64.const_int(1, false), "off1")
-            .map_err(llvm_err)?;
-        let kp_ptr = unsafe {
-            self.builder
-                .build_gep(i64, di64, &[off1], "kp_ptr")
-                .map_err(llvm_err)
-        }?;
-        let kp = self
-            .builder
-            .build_load(i64, kp_ptr, "kp")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let off2 = self
-            .builder
-            .build_int_add(off, i64.const_int(2, false), "off2")
-            .map_err(llvm_err)?;
-        let vt_ptr = unsafe {
-            self.builder
-                .build_gep(i64, di64, &[off2], "vt_ptr")
-                .map_err(llvm_err)
-        }?;
         let vt = self
             .builder
-            .build_load(i64, vt_ptr, "vt")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let off3 = self
-            .builder
-            .build_int_add(off, i64.const_int(3, false), "off3")
-            .map_err(llvm_err)?;
-        let vp_ptr = unsafe {
-            self.builder
-                .build_gep(i64, di64, &[off3], "vp_ptr")
-                .map_err(llvm_err)
-        }?;
-        let vp = self
-            .builder
-            .build_load(i64, vp_ptr, "vp")
+            .build_extract_value(val_fat.into_struct_value(), 0, "vt")
             .map_err(llvm_err)?
             .into_int_value();
 
@@ -191,33 +149,6 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Insert: add entry to result map, then go to next
         self.builder.position_at_end(loop_insert);
-        let key_undef = str_ty.get_undef();
-        let key1 = self
-            .builder
-            .build_insert_value(key_undef, kt, 0, "key1")
-            .map_err(llvm_err)?;
-        let kp_val = self
-            .builder
-            .build_int_to_ptr(kp, ptr, "kp_val")
-            .map_err(llvm_err)?;
-        let key_fat = self
-            .builder
-            .build_insert_value(key1, kp_val, 1, "key_fat")
-            .map_err(llvm_err)?;
-        let val_undef = str_ty.get_undef();
-        let val1 = self
-            .builder
-            .build_insert_value(val_undef, vt, 0, "val1")
-            .map_err(llvm_err)?;
-        let vp_val = self
-            .builder
-            .build_int_to_ptr(vp, ptr, "vp_val")
-            .map_err(llvm_err)?;
-        let val_fat = self
-            .builder
-            .build_insert_value(val1, vp_val, 1, "val_fat")
-            .map_err(llvm_err)?;
-
         let cur_map = self
             .builder
             .build_load(self.list_type, result_alloca, "cur_map")
@@ -225,11 +156,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_struct_value();
         let ins_cc = self.call_rt(
             "action_map_insert",
-            &[
-                cur_map.into(),
-                key_fat.as_basic_value_enum().into(),
-                val_fat.as_basic_value_enum().into(),
-            ],
+            &[cur_map.into(), key_fat.into(), val_fat.into()],
         )?;
         let new_map = ins_cc
             .try_as_basic_value()
@@ -293,6 +220,11 @@ impl<'ctx> CodeGen<'ctx> {
 
         let map_struct = self.load_list(map_ptr)?;
         let input_len = self.list_len_val(map_struct)?;
+        let map_cap = self
+            .builder
+            .build_extract_value(map_struct, 2, "mmv_cap")
+            .map_err(llvm_err)?
+            .into_int_value();
         let data_ptr = self.list_data_ptr(map_struct)?;
 
         let current_fn = self
@@ -302,15 +234,9 @@ impl<'ctx> CodeGen<'ctx> {
             .ok_or("Cannot compile mapMapValues outside function")?;
 
         let i64 = self.i64_ty();
-        let ptr = self.ptr_ty();
-        let str_ty = self.string_type;
 
         // Create new empty map for transformed values
-        let cap = self
-            .builder
-            .build_int_add(input_len, i64.const_int(4, false), "mmv_cap")
-            .map_err(llvm_err)?;
-        let cc = self.call_rt("action_map_create", &[cap.into()])?;
+        let cc = self.call_rt("action_map_create", &[input_len.into()])?;
         let new_map_bv = cc
             .try_as_basic_value()
             .basic()
@@ -329,7 +255,9 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
 
         let loop_header = self.context.append_basic_block(current_fn, "mmv_hdr");
+        let loop_chk = self.context.append_basic_block(current_fn, "mmv_chk");
         let loop_body = self.context.append_basic_block(current_fn, "mmv_bdy");
+        let loop_next = self.context.append_basic_block(current_fn, "mmv_nxt");
         let loop_exit = self.context.append_basic_block(current_fn, "mmv_ext");
 
         let _ = self.builder.build_unconditional_branch(loop_header);
@@ -342,61 +270,21 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
         let cond = self
             .builder
-            .build_int_compare(IntPredicate::SLT, i_val, input_len, "mmv_cond")
+            .build_int_compare(IntPredicate::SLT, i_val, map_cap, "mmv_cond")
             .map_err(llvm_err)?;
         let _ = self
             .builder
-            .build_conditional_branch(cond, loop_body, loop_exit);
+            .build_conditional_branch(cond, loop_chk, loop_exit);
+
+        self.builder.position_at_end(loop_chk);
+        self.ht_branch_if_slot_active(data_ptr, i_val, loop_body, loop_next)?;
 
         self.builder.position_at_end(loop_body);
-        let off = self
-            .builder
-            .build_int_mul(i_val, i64.const_int(4, false), "off")
-            .map_err(llvm_err)?;
-        let di64 = self
-            .builder
-            .build_pointer_cast(data_ptr, ptr, "di64")
-            .map_err(llvm_err)?;
-
-        // Read key tag, key ptr
-        let kt_ptr = unsafe {
-            self.builder
-                .build_gep(i64, di64, &[off], "kt_ptr")
-                .map_err(llvm_err)
-        }?;
-        let kt = self
-            .builder
-            .build_load(i64, kt_ptr, "kt")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let off1 = self
-            .builder
-            .build_int_add(off, i64.const_int(1, false), "off1")
-            .map_err(llvm_err)?;
-        let kp_ptr = unsafe {
-            self.builder
-                .build_gep(i64, di64, &[off1], "kp_ptr")
-                .map_err(llvm_err)
-        }?;
-        let kp = self
-            .builder
-            .build_load(i64, kp_ptr, "kp")
-            .map_err(llvm_err)?
-            .into_int_value();
-
-        // Read val tag, val ptr
-        let off2 = self
-            .builder
-            .build_int_add(off, i64.const_int(2, false), "off2")
-            .map_err(llvm_err)?;
-        let vt_ptr = unsafe {
-            self.builder
-                .build_gep(i64, di64, &[off2], "vt_ptr")
-                .map_err(llvm_err)
-        }?;
+        let key_fat = self.ht_key_fat_at(data_ptr, i_val)?;
+        let val_fat = self.ht_val_fat_at(data_ptr, i_val)?;
         let vt = self
             .builder
-            .build_load(i64, vt_ptr, "vt")
+            .build_extract_value(val_fat.into_struct_value(), 0, "vt")
             .map_err(llvm_err)?
             .into_int_value();
 
@@ -412,42 +300,6 @@ impl<'ctx> CodeGen<'ctx> {
             .basic()
             .ok_or("mmv call failed")?;
         let new_val = new_val_bv.into_struct_value();
-        let new_vt = self
-            .builder
-            .build_extract_value(new_val, 0, "new_vt")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let new_vp = self
-            .builder
-            .build_extract_value(new_val, 1, "new_vp")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-
-        // Build key fat {i64, ptr}
-        let key_undef = str_ty.get_undef();
-        let key1 = self
-            .builder
-            .build_insert_value(key_undef, kt, 0, "key1")
-            .map_err(llvm_err)?;
-        let kp_val = self
-            .builder
-            .build_int_to_ptr(kp, ptr, "kp_val")
-            .map_err(llvm_err)?;
-        let key_fat = self
-            .builder
-            .build_insert_value(key1, kp_val, 1, "key_fat")
-            .map_err(llvm_err)?;
-
-        // Build new val fat {i64, ptr}
-        let val_undef = str_ty.get_undef();
-        let val1 = self
-            .builder
-            .build_insert_value(val_undef, new_vt, 0, "val1")
-            .map_err(llvm_err)?;
-        let val_fat = self
-            .builder
-            .build_insert_value(val1, new_vp, 1, "val_fat")
-            .map_err(llvm_err)?;
 
         let cur_map = self
             .builder
@@ -456,11 +308,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_struct_value();
         let ins_cc = self.call_rt(
             "action_map_insert",
-            &[
-                cur_map.into(),
-                key_fat.as_basic_value_enum().into(),
-                val_fat.as_basic_value_enum().into(),
-            ],
+            &[cur_map.into(), key_fat.into(), new_val.into()],
         )?;
         let new_map = ins_cc
             .try_as_basic_value()
@@ -469,7 +317,9 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(result_alloca, new_map)
             .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(loop_next);
 
+        self.builder.position_at_end(loop_next);
         let ni = self
             .builder
             .build_int_add(i_val, i64.const_int(1, false), "ni")
@@ -540,7 +390,12 @@ impl<'ctx> CodeGen<'ctx> {
         };
 
         let map_struct = self.load_list(map_ptr)?;
-        let input_len = self.list_len_val(map_struct)?;
+        let _input_len = self.list_len_val(map_struct)?;
+        let map_cap = self
+            .builder
+            .build_extract_value(map_struct, 2, "mfld_cap")
+            .map_err(llvm_err)?
+            .into_int_value();
         let data_ptr = self.list_data_ptr(map_struct)?;
 
         let current_fn = self
@@ -550,7 +405,6 @@ impl<'ctx> CodeGen<'ctx> {
             .ok_or("Cannot compile mapFold outside function")?;
 
         let i64 = self.i64_ty();
-        let ptr = self.ptr_ty();
 
         let acc_alloca = self
             .builder
@@ -566,7 +420,9 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
 
         let loop_header = self.context.append_basic_block(current_fn, "mfld_hdr");
+        let loop_chk = self.context.append_basic_block(current_fn, "mfld_chk");
         let loop_body = self.context.append_basic_block(current_fn, "mfld_bdy");
+        let loop_next = self.context.append_basic_block(current_fn, "mfld_nxt");
         let loop_exit = self.context.append_basic_block(current_fn, "mfld_ext");
 
         let _ = self.builder.build_unconditional_branch(loop_header);
@@ -579,45 +435,26 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
         let cond = self
             .builder
-            .build_int_compare(IntPredicate::SLT, i_val, input_len, "mfld_cond")
+            .build_int_compare(IntPredicate::SLT, i_val, map_cap, "mfld_cond")
             .map_err(llvm_err)?;
         let _ = self
             .builder
-            .build_conditional_branch(cond, loop_body, loop_exit);
+            .build_conditional_branch(cond, loop_chk, loop_exit);
+
+        self.builder.position_at_end(loop_chk);
+        self.ht_branch_if_slot_active(data_ptr, i_val, loop_body, loop_next)?;
 
         self.builder.position_at_end(loop_body);
-        let off = self
-            .builder
-            .build_int_mul(i_val, i64.const_int(4, false), "off")
-            .map_err(llvm_err)?;
-        let di64 = self
-            .builder
-            .build_pointer_cast(data_ptr, ptr, "di64")
-            .map_err(llvm_err)?;
-
-        let kt_ptr = unsafe {
-            self.builder
-                .build_gep(i64, di64, &[off], "kt_ptr")
-                .map_err(llvm_err)
-        }?;
+        let key_fat = self.ht_key_fat_at(data_ptr, i_val)?;
+        let val_fat = self.ht_val_fat_at(data_ptr, i_val)?;
         let kt = self
             .builder
-            .build_load(i64, kt_ptr, "kt")
+            .build_extract_value(key_fat.into_struct_value(), 0, "kt")
             .map_err(llvm_err)?
             .into_int_value();
-
-        let off2 = self
-            .builder
-            .build_int_add(off, i64.const_int(2, false), "off2")
-            .map_err(llvm_err)?;
-        let vt_ptr = unsafe {
-            self.builder
-                .build_gep(i64, di64, &[off2], "vt_ptr")
-                .map_err(llvm_err)
-        }?;
         let vt = self
             .builder
-            .build_load(i64, vt_ptr, "vt")
+            .build_extract_value(val_fat.into_struct_value(), 0, "vt")
             .map_err(llvm_err)?
             .into_int_value();
 

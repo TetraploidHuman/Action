@@ -1,7 +1,6 @@
 // HIR-native call dispatch (release path).
 
-use action_frontend::ast::Stmt;
-use action_frontend::hir::{HirExpr, HirExprKind};
+use action_frontend::hir::{HirExpr, HirExprKind, HirStmt};
 
 use super::builtin_dispatch::BuiltinDispatch;
 use super::call_arg::CallArg;
@@ -138,7 +137,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         if let Some(generic_stmt) = self.generic_fun_defs.get(name).cloned() {
-            if let Stmt::Fun { type_params, .. } = &generic_stmt {
+            if let HirStmt::Fun { type_params, .. } = &generic_stmt {
                 if !type_params.is_empty() {
                     return self.compile_generic_call_from_call_args(
                         &generic_stmt,
@@ -213,6 +212,18 @@ impl<'ctx> CodeGen<'ctx> {
                     );
                 };
                 return self.fused_flatmap_filter_hir(flat_fn, inner, filter_fn);
+            }
+        }
+        if method == "map" {
+            if let Some((filter_fn, inner)) = Self::extract_filter_call_args_hir(receiver) {
+                let map_fn = if let Some(lam) = trailing {
+                    self.compile_hir_expr(lam)?
+                } else if args.len() == 1 {
+                    self.compile_hir_expr(&args[0])?
+                } else {
+                    return Err("map with trailing lambda expects 0 args".to_string());
+                };
+                return self.fused_filter_map_hir(filter_fn, inner, map_fn);
             }
         }
         if method == "takeWhile" {

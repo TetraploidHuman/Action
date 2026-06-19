@@ -4629,6 +4629,1539 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self.builder.build_return(Some(&mfw_res));
 
+        // ---- Phase 3: take_while / map_take_while B-tree walks ----
+        // ---- action_list_take_while_walk_rec(ptr node, i64 height, ptr fn, ptr acc, ptr buf_p, ptr buf_pos_p) -> void ----
+        let fw_leaf_sz = self.leaf_type.size_of().ok_or("leaf size")?;
+        let tw_rec_fn = self.module.add_function(
+            "action_list_take_while_walk_rec",
+            void.fn_type(
+                &[
+                    ptr.into(),
+                    i64.into(),
+                    ptr.into(),
+                    ptr.into(),
+                    ptr.into(),
+                    ptr.into(),
+                    ptr.into(),
+                ],
+                false,
+            ),
+            None,
+        );
+        let twr_entry = self.context.append_basic_block(tw_rec_fn, "entry");
+        let twr_leaf_hdr = self.context.append_basic_block(tw_rec_fn, "leaf_hdr");
+        let twr_leaf_bdy = self.context.append_basic_block(tw_rec_fn, "leaf_bdy");
+        let twr_leaf_chk = self.context.append_basic_block(tw_rec_fn, "leaf_chk");
+        let twr_leaf_push = self.context.append_basic_block(tw_rec_fn, "leaf_push");
+        let twr_leaf_stop = self.context.append_basic_block(tw_rec_fn, "leaf_stop");
+        let twr_leaf_flush = self.context.append_basic_block(tw_rec_fn, "leaf_flush");
+        let twr_leaf_next = self.context.append_basic_block(tw_rec_fn, "leaf_next");
+        let twr_leaf_done = self.context.append_basic_block(tw_rec_fn, "leaf_done");
+        let twr_int_hdr = self.context.append_basic_block(tw_rec_fn, "int_hdr");
+        let twr_int_bdy = self.context.append_basic_block(tw_rec_fn, "int_bdy");
+        let twr_int_child = self.context.append_basic_block(tw_rec_fn, "int_child");
+        let twr_int_next = self.context.append_basic_block(tw_rec_fn, "int_next");
+        let twr_concat = self.context.append_basic_block(tw_rec_fn, "concat");
+        let twr_normal = self.context.append_basic_block(tw_rec_fn, "normal");
+        self.builder.position_at_end(twr_entry);
+        let twr_node = tw_rec_fn.get_first_param().unwrap().into_pointer_value();
+        let twr_height = tw_rec_fn.get_nth_param(1).unwrap().into_int_value();
+        let twr_fn = tw_rec_fn.get_nth_param(2).unwrap().into_pointer_value();
+        let twr_acc = tw_rec_fn.get_nth_param(3).unwrap().into_pointer_value();
+        let twr_buf_p = tw_rec_fn.get_nth_param(4).unwrap().into_pointer_value();
+        let twr_buf_pos_p = tw_rec_fn.get_nth_param(5).unwrap().into_pointer_value();
+        let twr_stopped_p = tw_rec_fn.get_nth_param(6).unwrap().into_pointer_value();
+        let twr_neg1 = i64.const_int(-1i64 as u64, true);
+        let twr_is_concat = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, twr_height, twr_neg1, "twr_is_concat")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(twr_is_concat, twr_concat, twr_normal);
+        self.builder.position_at_end(twr_concat);
+        let twr_ln_p = unsafe {
+            self.builder
+                .build_gep(ptr, twr_node, &[i64.const_int(2, false)], "twr_ln_p")
+                .map_err(llvm_err)
+        }?;
+        let twr_left_node = self
+            .builder
+            .build_load(ptr, twr_ln_p, "twr_ln")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let twr_lh_p = unsafe {
+            self.builder
+                .build_gep(i64, twr_node, &[i64.const_int(4, false)], "twr_lh_p")
+                .map_err(llvm_err)
+        }?;
+        let twr_left_h = self
+            .builder
+            .build_load(i64, twr_lh_p, "twr_lh")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let twr_rn_p = unsafe {
+            self.builder
+                .build_gep(ptr, twr_node, &[i64.const_int(5, false)], "twr_rn_p")
+                .map_err(llvm_err)
+        }?;
+        let twr_right_node = self
+            .builder
+            .build_load(ptr, twr_rn_p, "twr_rn")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let twr_rh_p = unsafe {
+            self.builder
+                .build_gep(i64, twr_node, &[i64.const_int(7, false)], "twr_rh_p")
+                .map_err(llvm_err)
+        }?;
+        let twr_right_h = self
+            .builder
+            .build_load(i64, twr_rh_p, "twr_rh")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let _ = self
+            .builder
+            .build_call(
+                tw_rec_fn,
+                &[
+                    twr_left_node.into(),
+                    twr_left_h.into(),
+                    twr_fn.into(),
+                    twr_acc.into(),
+                    twr_buf_p.into(),
+                    twr_buf_pos_p.into(),
+                    twr_stopped_p.into(),
+                ],
+                "",
+            )
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_call(
+                tw_rec_fn,
+                &[
+                    twr_right_node.into(),
+                    twr_right_h.into(),
+                    twr_fn.into(),
+                    twr_acc.into(),
+                    twr_buf_p.into(),
+                    twr_buf_pos_p.into(),
+                    twr_stopped_p.into(),
+                ],
+                "",
+            )
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_return(None);
+        self.builder.position_at_end(twr_normal);
+        let twr_is_leaf = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, twr_height, zero, "twr_is_leaf")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(twr_is_leaf, twr_leaf_hdr, twr_int_hdr);
+
+        self.builder.position_at_end(twr_leaf_hdr);
+        let twr_leaf_i8 = self
+            .builder
+            .build_pointer_cast(twr_node, ptr, "twr_leaf_i8")
+            .map_err(llvm_err)?;
+        let twr_count_raw = self
+            .builder
+            .build_load(i32, twr_leaf_i8, "twr_count_raw")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let twr_count = self
+            .builder
+            .build_int_z_extend(twr_count_raw, i64, "twr_count")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(twr_leaf_bdy);
+        self.builder.position_at_end(twr_leaf_bdy);
+        let twr_i = self.builder.build_phi(i64, "twr_i").map_err(llvm_err)?;
+        let twr_done_leaf = self
+            .builder
+            .build_int_compare(
+                IntPredicate::SGE,
+                twr_i.as_basic_value().into_int_value(),
+                twr_count,
+                "twr_done",
+            )
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(twr_done_leaf, twr_leaf_done, twr_leaf_chk);
+        self.builder.position_at_end(twr_leaf_chk);
+        let twr_eb = unsafe {
+            self.builder
+                .build_gep(i8, twr_leaf_i8, &[i64.const_int(8, false)], "twr_eb")
+                .map_err(llvm_err)?
+        };
+        let twr_ep = unsafe {
+            self.builder
+                .build_gep(
+                    self.string_type,
+                    twr_eb,
+                    &[twr_i.as_basic_value().into_int_value()],
+                    "twr_ep",
+                )
+                .map_err(llvm_err)?
+        };
+        let twr_elem = self
+            .builder
+            .build_load(self.string_type, twr_ep, "twr_elem")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let twr_elem_tag = self
+            .builder
+            .build_extract_value(twr_elem, 0, "twr_etag")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let twr_pred = self
+            .builder
+            .build_indirect_call(lambda_fn_ty, twr_fn, &[twr_elem_tag.into()], "twr_pred")
+            .map_err(llvm_err)?;
+        let twr_pred_bv = twr_pred
+            .try_as_basic_value()
+            .basic()
+            .ok_or("filter_walk indirect call failed")?;
+        let twr_pred_val = if twr_pred_bv.is_struct_value() {
+            self.builder
+                .build_extract_value(twr_pred_bv.into_struct_value(), 0, "twr_pv")
+                .map_err(llvm_err)?
+                .into_int_value()
+        } else {
+            twr_pred_bv.into_int_value()
+        };
+        let twr_is_true = self
+            .builder
+            .build_int_compare(IntPredicate::NE, twr_pred_val, zero, "twr_is_true")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(twr_is_true, twr_leaf_push, twr_leaf_stop);
+        self.builder.position_at_end(twr_leaf_push);
+        let twr_buf = self
+            .builder
+            .build_load(ptr, twr_buf_p, "twr_buf")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let twr_pos = self
+            .builder
+            .build_load(i64, twr_buf_pos_p, "twr_pos")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let twr_buf_i8 = self
+            .builder
+            .build_pointer_cast(twr_buf, ptr, "twr_buf_i8")
+            .map_err(llvm_err)?;
+        let twr_buf_eb = unsafe {
+            self.builder
+                .build_gep(i8, twr_buf_i8, &[i64.const_int(8, false)], "twr_buf_eb")
+                .map_err(llvm_err)?
+        };
+        let twr_buf_ep = unsafe {
+            self.builder
+                .build_gep(self.string_type, twr_buf_eb, &[twr_pos], "twr_buf_ep")
+                .map_err(llvm_err)?
+        };
+        let _ = self
+            .builder
+            .build_store(twr_buf_ep, twr_elem)
+            .map_err(llvm_err)?;
+        let twr_pos_inc = self
+            .builder
+            .build_int_add(twr_pos, i64.const_int(1, false), "twr_pos_inc")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(twr_buf_pos_p, twr_pos_inc)
+            .map_err(llvm_err)?;
+        let twr_buf_full = self
+            .builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                twr_pos_inc,
+                i64.const_int(64, false),
+                "twr_buf_full",
+            )
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(twr_buf_full, twr_leaf_flush, twr_leaf_next);
+
+        self.builder.position_at_end(twr_leaf_flush);
+        let twr_flush_cnt = i32.const_int(64, false);
+        let _ = self
+            .builder
+            .build_store(twr_buf_i8, twr_flush_cnt)
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_call(push_leaf_fn, &[twr_acc.into(), twr_buf.into()], "")
+            .map_err(llvm_err)?;
+        let twr_new_buf = self
+            .builder
+            .build_call(malloc_rc_fn, &[fw_leaf_sz.into()], "twr_new_buf")
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_pointer_value();
+        let twr_new_buf_i8 = self
+            .builder
+            .build_pointer_cast(twr_new_buf, ptr, "twr_new_buf_i8")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_store(twr_new_buf_i8, zero)
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(twr_buf_p, twr_new_buf)
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(twr_buf_pos_p, zero)
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(twr_leaf_next);
+
+        self.builder.position_at_end(twr_leaf_stop);
+        let _ = self
+            .builder
+            .build_store(twr_stopped_p, i64.const_int(1, false))
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_return(None);
+
+        self.builder.position_at_end(twr_leaf_next);
+        let twr_next_i = self
+            .builder
+            .build_int_add(
+                twr_i.as_basic_value().into_int_value(),
+                i64.const_int(1, false),
+                "twr_ni",
+            )
+            .map_err(llvm_err)?;
+        let twr_leaf_next_bb = self.builder.get_insert_block().unwrap();
+        twr_i.add_incoming(&[(&zero, twr_leaf_hdr), (&twr_next_i, twr_leaf_next_bb)]);
+        let _ = self.builder.build_unconditional_branch(twr_leaf_bdy);
+        self.builder.position_at_end(twr_leaf_done);
+        let _ = self.builder.build_return(None);
+
+        self.builder.position_at_end(twr_int_hdr);
+        let twr_int_i8 = self
+            .builder
+            .build_pointer_cast(twr_node, ptr, "twr_int_i8")
+            .map_err(llvm_err)?;
+        let twr_child_count_raw = self
+            .builder
+            .build_load(i32, twr_int_i8, "twr_cc_raw")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let twr_child_count = self
+            .builder
+            .build_int_z_extend(twr_child_count_raw, i64, "twr_cc")
+            .map_err(llvm_err)?;
+        let twr_child_h = self
+            .builder
+            .build_int_sub(twr_height, i64.const_int(1, false), "twr_ch")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(twr_int_bdy);
+        self.builder.position_at_end(twr_int_bdy);
+        let twr_ci = self.builder.build_phi(i64, "twr_ci").map_err(llvm_err)?;
+        let twr_done_int = self
+            .builder
+            .build_int_compare(
+                IntPredicate::SGE,
+                twr_ci.as_basic_value().into_int_value(),
+                twr_child_count,
+                "twr_done_int",
+            )
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(twr_done_int, twr_leaf_done, twr_int_child);
+        self.builder.position_at_end(twr_int_child);
+        let twr_children_base = unsafe {
+            self.builder
+                .build_gep(i8, twr_int_i8, &[i64.const_int(16, false)], "twr_cb")
+                .map_err(llvm_err)?
+        };
+        let twr_child_ep = unsafe {
+            self.builder
+                .build_gep(
+                    self.child_entry_type,
+                    twr_children_base,
+                    &[twr_ci.as_basic_value().into_int_value()],
+                    "twr_cep",
+                )
+                .map_err(llvm_err)?
+        };
+        let twr_child_entry = self
+            .builder
+            .build_load(self.child_entry_type, twr_child_ep, "twr_ce")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let twr_child_ptr = self
+            .builder
+            .build_extract_value(twr_child_entry, 0, "twr_cp")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let _ = self
+            .builder
+            .build_call(
+                tw_rec_fn,
+                &[
+                    twr_child_ptr.into(),
+                    twr_child_h.into(),
+                    twr_fn.into(),
+                    twr_acc.into(),
+                    twr_buf_p.into(),
+                    twr_buf_pos_p.into(),
+                    twr_stopped_p.into(),
+                ],
+                "",
+            )
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(twr_int_next);
+        self.builder.position_at_end(twr_int_next);
+        let twr_next_ci = self
+            .builder
+            .build_int_add(
+                twr_ci.as_basic_value().into_int_value(),
+                i64.const_int(1, false),
+                "twr_nci",
+            )
+            .map_err(llvm_err)?;
+        let twr_int_next_bb = self.builder.get_insert_block().unwrap();
+        twr_ci.add_incoming(&[(&zero, twr_int_hdr), (&twr_next_ci, twr_int_next_bb)]);
+        let _ = self.builder.build_unconditional_branch(twr_int_bdy);
+
+        // ---- action_list_take_while_walk({ptr,i64,i64} list, ptr fn) -> {ptr,i64,i64} ----
+        let tw_fn = self.module.add_function(
+            "action_list_take_while_walk",
+            self.list_type
+                .fn_type(&[self.list_type.into(), ptr.into()], false),
+            None,
+        );
+        let tw_entry = self.context.append_basic_block(tw_fn, "entry");
+        let tw_walk = self.context.append_basic_block(tw_fn, "walk");
+        let tw_flush = self.context.append_basic_block(tw_fn, "flush");
+        let tw_done = self.context.append_basic_block(tw_fn, "done");
+        self.builder.position_at_end(tw_entry);
+        let tw_list = tw_fn.get_first_param().unwrap().into_struct_value();
+        let tw_fn_ptr = tw_fn.get_nth_param(1).unwrap().into_pointer_value();
+        let tw_node = self
+            .builder
+            .build_extract_value(tw_list, 0, "tw_node")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let tw_len = self
+            .builder
+            .build_extract_value(tw_list, 1, "tw_len")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let tw_height = self
+            .builder
+            .build_extract_value(tw_list, 2, "tw_height")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let tw_acc = self
+            .builder
+            .build_alloca(self.list_type, "tw_acc")
+            .map_err(llvm_err)?;
+        let tw_buf_p = self
+            .builder
+            .build_alloca(ptr, "tw_buf_p")
+            .map_err(llvm_err)?;
+        let tw_buf_pos_p = self
+            .builder
+            .build_alloca(i64, "tw_buf_pos_p")
+            .map_err(llvm_err)?;
+        let tw_stopped_p = self
+            .builder
+            .build_alloca(i64, "tw_stopped_p")
+            .map_err(llvm_err)?;
+        let tw_init = self
+            .builder
+            .build_call(create_fn, &[tw_len.into()], "tw_init")
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic();
+        self.builder
+            .build_store(tw_acc, tw_init)
+            .map_err(llvm_err)?;
+        let tw_buf_init = self
+            .builder
+            .build_call(malloc_rc_fn, &[fw_leaf_sz.into()], "tw_buf_init")
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_pointer_value();
+        let tw_buf_init_i8 = self
+            .builder
+            .build_pointer_cast(tw_buf_init, ptr, "tw_buf_init_i8")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_store(tw_buf_init_i8, zero)
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(tw_buf_p, tw_buf_init)
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(tw_buf_pos_p, zero)
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(tw_stopped_p, zero)
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(tw_walk);
+        self.builder.position_at_end(tw_walk);
+        let _ = self
+            .builder
+            .build_call(
+                tw_rec_fn,
+                &[
+                    tw_node.into(),
+                    tw_height.into(),
+                    tw_fn_ptr.into(),
+                    tw_acc.into(),
+                    tw_buf_p.into(),
+                    tw_buf_pos_p.into(),
+                    tw_stopped_p.into(),
+                ],
+                "",
+            )
+            .map_err(llvm_err)?;
+        let tw_rem_pos = self
+            .builder
+            .build_load(i64, tw_buf_pos_p, "tw_rem_pos")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let tw_has_rem = self
+            .builder
+            .build_int_compare(IntPredicate::SGT, tw_rem_pos, zero, "tw_has_rem")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(tw_has_rem, tw_flush, tw_done);
+        self.builder.position_at_end(tw_flush);
+        let tw_rem_buf = self
+            .builder
+            .build_load(ptr, tw_buf_p, "tw_rem_buf")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let tw_rem_buf_i8 = self
+            .builder
+            .build_pointer_cast(tw_rem_buf, ptr, "tw_rem_buf_i8")
+            .map_err(llvm_err)?;
+        let tw_rem_cnt = self
+            .builder
+            .build_int_truncate(tw_rem_pos, i32, "tw_rem_cnt")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_store(tw_rem_buf_i8, tw_rem_cnt)
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_call(push_leaf_fn, &[tw_acc.into(), tw_rem_buf.into()], "")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(tw_done);
+        self.builder.position_at_end(tw_done);
+        let tw_res = self
+            .builder
+            .build_load(self.list_type, tw_acc, "tw_res")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_return(Some(&tw_res));
+
+        // ---- action_list_map_take_while_walk_rec(ptr node, i64 height, ptr map_fn, ptr filter_fn, ptr acc, ptr buf_p, ptr buf_pos_p) -> void ----
+        // Fused map+filter: in-order B-tree walk that applies map_fn to each element,
+        // then calls filter_fn on the mapped value, pushing only passing elements.
+        let mfw_leaf_sz = self.leaf_type.size_of().ok_or("leaf size")?;
+        let mtw_rec_fn = self.module.add_function(
+            "action_list_map_take_while_walk_rec",
+            void.fn_type(
+                &[
+                    ptr.into(),
+                    i64.into(),
+                    ptr.into(),
+                    ptr.into(),
+                    ptr.into(),
+                    ptr.into(),
+                    ptr.into(),
+                    ptr.into(),
+                ],
+                false,
+            ),
+            None,
+        );
+        let mtwr_entry = self.context.append_basic_block(mtw_rec_fn, "entry");
+        let mtwr_leaf_hdr = self.context.append_basic_block(mtw_rec_fn, "leaf_hdr");
+        let mtwr_leaf_bdy = self.context.append_basic_block(mtw_rec_fn, "leaf_bdy");
+        let mtwr_leaf_chk = self.context.append_basic_block(mtw_rec_fn, "leaf_chk");
+        let mtwr_leaf_push = self.context.append_basic_block(mtw_rec_fn, "leaf_push");
+        let mtwr_leaf_stop = self.context.append_basic_block(mtw_rec_fn, "leaf_stop");
+        let mtwr_leaf_flush = self.context.append_basic_block(mtw_rec_fn, "leaf_flush");
+        let mtwr_leaf_next = self.context.append_basic_block(mtw_rec_fn, "leaf_next");
+        let mtwr_leaf_done = self.context.append_basic_block(mtw_rec_fn, "leaf_done");
+        let mtwr_int_hdr = self.context.append_basic_block(mtw_rec_fn, "int_hdr");
+        let mtwr_int_bdy = self.context.append_basic_block(mtw_rec_fn, "int_bdy");
+        let mtwr_int_child = self.context.append_basic_block(mtw_rec_fn, "int_child");
+        let mtwr_int_next = self.context.append_basic_block(mtw_rec_fn, "int_next");
+        let mtwr_concat = self.context.append_basic_block(mtw_rec_fn, "concat");
+        let mtwr_normal = self.context.append_basic_block(mtw_rec_fn, "normal");
+        self.builder.position_at_end(mtwr_entry);
+        let mtwr_node = mtw_rec_fn.get_first_param().unwrap().into_pointer_value();
+        let mtwr_height = mtw_rec_fn.get_nth_param(1).unwrap().into_int_value();
+        let mtwr_map_fn = mtw_rec_fn.get_nth_param(2).unwrap().into_pointer_value();
+        let mtwr_filter_fn = mtw_rec_fn.get_nth_param(3).unwrap().into_pointer_value();
+        let mtwr_acc = mtw_rec_fn.get_nth_param(4).unwrap().into_pointer_value();
+        let mtwr_buf_p = mtw_rec_fn.get_nth_param(5).unwrap().into_pointer_value();
+        let mtwr_buf_pos_p = mtw_rec_fn.get_nth_param(6).unwrap().into_pointer_value();
+        let mtwr_stopped_p = mtw_rec_fn.get_nth_param(7).unwrap().into_pointer_value();
+        let mtwr_neg1 = i64.const_int(-1i64 as u64, true);
+        let mtwr_is_concat = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, mtwr_height, mtwr_neg1, "mtwr_is_concat")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(mtwr_is_concat, mtwr_concat, mtwr_normal);
+        self.builder.position_at_end(mtwr_concat);
+        let mtwr_ln_p = unsafe {
+            self.builder
+                .build_gep(ptr, mtwr_node, &[i64.const_int(2, false)], "mtwr_ln_p")
+                .map_err(llvm_err)
+        }?;
+        let mtwr_left_node = self
+            .builder
+            .build_load(ptr, mtwr_ln_p, "mtwr_ln")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let mtwr_lh_p = unsafe {
+            self.builder
+                .build_gep(i64, mtwr_node, &[i64.const_int(4, false)], "mtwr_lh_p")
+                .map_err(llvm_err)
+        }?;
+        let mtwr_left_h = self
+            .builder
+            .build_load(i64, mtwr_lh_p, "mtwr_lh")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let mtwr_rn_p = unsafe {
+            self.builder
+                .build_gep(ptr, mtwr_node, &[i64.const_int(5, false)], "mtwr_rn_p")
+                .map_err(llvm_err)
+        }?;
+        let mtwr_right_node = self
+            .builder
+            .build_load(ptr, mtwr_rn_p, "mtwr_rn")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let mtwr_rh_p = unsafe {
+            self.builder
+                .build_gep(i64, mtwr_node, &[i64.const_int(7, false)], "mtwr_rh_p")
+                .map_err(llvm_err)
+        }?;
+        let mtwr_right_h = self
+            .builder
+            .build_load(i64, mtwr_rh_p, "mtwr_rh")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let _ = self
+            .builder
+            .build_call(
+                mtw_rec_fn,
+                &[
+                    mtwr_left_node.into(),
+                    mtwr_left_h.into(),
+                    mtwr_map_fn.into(),
+                    mtwr_filter_fn.into(),
+                    mtwr_acc.into(),
+                    mtwr_buf_p.into(),
+                    mtwr_buf_pos_p.into(),
+                    mtwr_stopped_p.into(),
+                ],
+                "",
+            )
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_call(
+                mtw_rec_fn,
+                &[
+                    mtwr_right_node.into(),
+                    mtwr_right_h.into(),
+                    mtwr_map_fn.into(),
+                    mtwr_filter_fn.into(),
+                    mtwr_acc.into(),
+                    mtwr_buf_p.into(),
+                    mtwr_buf_pos_p.into(),
+                    mtwr_stopped_p.into(),
+                ],
+                "",
+            )
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_return(None);
+        self.builder.position_at_end(mtwr_normal);
+        let mtwr_is_leaf = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, mtwr_height, zero, "mtwr_is_leaf")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(mtwr_is_leaf, mtwr_leaf_hdr, mtwr_int_hdr);
+
+        // Leaf scan: apply map, then filter, push only passing elements
+        self.builder.position_at_end(mtwr_leaf_hdr);
+        let mtwr_leaf_i8 = self
+            .builder
+            .build_pointer_cast(mtwr_node, ptr, "mtwr_leaf_i8")
+            .map_err(llvm_err)?;
+        let mtwr_count_raw = self
+            .builder
+            .build_load(i32, mtwr_leaf_i8, "mtwr_count_raw")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let mtwr_count = self
+            .builder
+            .build_int_z_extend(mtwr_count_raw, i64, "mtwr_count")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(mtwr_leaf_bdy);
+        self.builder.position_at_end(mtwr_leaf_bdy);
+        let mtwr_i = self.builder.build_phi(i64, "mtwr_i").map_err(llvm_err)?;
+        let mtwr_done_leaf = self
+            .builder
+            .build_int_compare(
+                IntPredicate::SGE,
+                mtwr_i.as_basic_value().into_int_value(),
+                mtwr_count,
+                "mtwr_done",
+            )
+            .map_err(llvm_err)?;
+        let _ =
+            self.builder
+                .build_conditional_branch(mtwr_done_leaf, mtwr_leaf_done, mtwr_leaf_chk);
+        self.builder.position_at_end(mtwr_leaf_chk);
+        let mtwr_eb = unsafe {
+            self.builder
+                .build_gep(i8, mtwr_leaf_i8, &[i64.const_int(8, false)], "mtwr_eb")
+                .map_err(llvm_err)?
+        };
+        let mtwr_ep = unsafe {
+            self.builder
+                .build_gep(
+                    self.string_type,
+                    mtwr_eb,
+                    &[mtwr_i.as_basic_value().into_int_value()],
+                    "mtwr_ep",
+                )
+                .map_err(llvm_err)?
+        };
+        let mtwr_elem = self
+            .builder
+            .build_load(self.string_type, mtwr_ep, "mtwr_elem")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let mtwr_elem_tag = self
+            .builder
+            .build_extract_value(mtwr_elem, 0, "mtwr_etag")
+            .map_err(llvm_err)?
+            .into_int_value();
+        // Apply map function
+        let mtwr_mapped_call = self
+            .builder
+            .build_indirect_call(
+                lambda_fn_ty,
+                mtwr_map_fn,
+                &[mtwr_elem_tag.into()],
+                "mtwr_map",
+            )
+            .map_err(llvm_err)?;
+        let mtwr_mapped_bv = mtwr_mapped_call
+            .try_as_basic_value()
+            .basic()
+            .ok_or("map_filter_walk map call failed")?;
+        // Extract tag from mapped value for filter predicate
+        let mtwr_mapped_struct = mtwr_mapped_bv.into_struct_value();
+        let mtwr_mapped_tag = self
+            .builder
+            .build_extract_value(mtwr_mapped_struct, 0, "mtwr_mt")
+            .map_err(llvm_err)?
+            .into_int_value();
+        // Apply filter function on mapped value
+        let mtwr_pred = self
+            .builder
+            .build_indirect_call(
+                lambda_fn_ty,
+                mtwr_filter_fn,
+                &[mtwr_mapped_tag.into()],
+                "mtwr_pred",
+            )
+            .map_err(llvm_err)?;
+        let mtwr_pred_bv = mtwr_pred
+            .try_as_basic_value()
+            .basic()
+            .ok_or("map_filter_walk filter call failed")?;
+        let mtwr_pred_val = if mtwr_pred_bv.is_struct_value() {
+            self.builder
+                .build_extract_value(mtwr_pred_bv.into_struct_value(), 0, "mtwr_pv")
+                .map_err(llvm_err)?
+                .into_int_value()
+        } else {
+            mtwr_pred_bv.into_int_value()
+        };
+        let mtwr_is_true = self
+            .builder
+            .build_int_compare(IntPredicate::NE, mtwr_pred_val, zero, "mtwr_is_true")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(mtwr_is_true, mtwr_leaf_push, mtwr_leaf_stop);
+        // Push mapped value to buffer
+        self.builder.position_at_end(mtwr_leaf_push);
+        let mtwr_buf = self
+            .builder
+            .build_load(ptr, mtwr_buf_p, "mtwr_buf")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let mtwr_pos = self
+            .builder
+            .build_load(i64, mtwr_buf_pos_p, "mtwr_pos")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let mtwr_buf_i8 = self
+            .builder
+            .build_pointer_cast(mtwr_buf, ptr, "mtwr_buf_i8")
+            .map_err(llvm_err)?;
+        let mtwr_buf_eb = unsafe {
+            self.builder
+                .build_gep(i8, mtwr_buf_i8, &[i64.const_int(8, false)], "mtwr_buf_eb")
+                .map_err(llvm_err)?
+        };
+        let mtwr_buf_ep = unsafe {
+            self.builder
+                .build_gep(self.string_type, mtwr_buf_eb, &[mtwr_pos], "mtwr_buf_ep")
+                .map_err(llvm_err)?
+        };
+        let _ = self
+            .builder
+            .build_store(mtwr_buf_ep, mtwr_mapped_bv)
+            .map_err(llvm_err)?;
+        let mtwr_pos_inc = self
+            .builder
+            .build_int_add(mtwr_pos, i64.const_int(1, false), "mtwr_pos_inc")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(mtwr_buf_pos_p, mtwr_pos_inc)
+            .map_err(llvm_err)?;
+        let mtwr_buf_full = self
+            .builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                mtwr_pos_inc,
+                i64.const_int(64, false),
+                "mtwr_buf_full",
+            )
+            .map_err(llvm_err)?;
+        let _ =
+            self.builder
+                .build_conditional_branch(mtwr_buf_full, mtwr_leaf_flush, mtwr_leaf_next);
+
+        self.builder.position_at_end(mtwr_leaf_flush);
+        let mtwr_flush_cnt = i32.const_int(64, false);
+        let _ = self
+            .builder
+            .build_store(mtwr_buf_i8, mtwr_flush_cnt)
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_call(push_leaf_fn, &[mtwr_acc.into(), mtwr_buf.into()], "")
+            .map_err(llvm_err)?;
+        let mtwr_new_buf = self
+            .builder
+            .build_call(malloc_rc_fn, &[mfw_leaf_sz.into()], "mtwr_new_buf")
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_pointer_value();
+        let mtwr_new_buf_i8 = self
+            .builder
+            .build_pointer_cast(mtwr_new_buf, ptr, "mtwr_new_buf_i8")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_store(mtwr_new_buf_i8, zero)
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(mtwr_buf_p, mtwr_new_buf)
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(mtwr_buf_pos_p, zero)
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(mtwr_leaf_next);
+
+        self.builder.position_at_end(mtwr_leaf_stop);
+        let _ = self
+            .builder
+            .build_store(mtwr_stopped_p, i64.const_int(1, false))
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_return(None);
+
+        self.builder.position_at_end(mtwr_leaf_next);
+        let mtwr_next_i = self
+            .builder
+            .build_int_add(
+                mtwr_i.as_basic_value().into_int_value(),
+                i64.const_int(1, false),
+                "mtwr_ni",
+            )
+            .map_err(llvm_err)?;
+        let mtwr_leaf_next_bb = self.builder.get_insert_block().unwrap();
+        mtwr_i.add_incoming(&[(&zero, mtwr_leaf_hdr), (&mtwr_next_i, mtwr_leaf_next_bb)]);
+        let _ = self.builder.build_unconditional_branch(mtwr_leaf_bdy);
+        self.builder.position_at_end(mtwr_leaf_done);
+        let _ = self.builder.build_return(None);
+
+        // Internal node: recurse into each child in order
+        self.builder.position_at_end(mtwr_int_hdr);
+        let mtwr_int_i8 = self
+            .builder
+            .build_pointer_cast(mtwr_node, ptr, "mtwr_int_i8")
+            .map_err(llvm_err)?;
+        let mtwr_child_count_raw = self
+            .builder
+            .build_load(i32, mtwr_int_i8, "mtwr_cc_raw")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let mtwr_child_count = self
+            .builder
+            .build_int_z_extend(mtwr_child_count_raw, i64, "mtwr_cc")
+            .map_err(llvm_err)?;
+        let mtwr_child_h = self
+            .builder
+            .build_int_sub(mtwr_height, i64.const_int(1, false), "mtwr_ch")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(mtwr_int_bdy);
+        self.builder.position_at_end(mtwr_int_bdy);
+        let mtwr_ci = self.builder.build_phi(i64, "mtwr_ci").map_err(llvm_err)?;
+        let mtwr_done_int = self
+            .builder
+            .build_int_compare(
+                IntPredicate::SGE,
+                mtwr_ci.as_basic_value().into_int_value(),
+                mtwr_child_count,
+                "mtwr_done_int",
+            )
+            .map_err(llvm_err)?;
+        let _ =
+            self.builder
+                .build_conditional_branch(mtwr_done_int, mtwr_leaf_done, mtwr_int_child);
+        self.builder.position_at_end(mtwr_int_child);
+        let mtwr_children_base = unsafe {
+            self.builder
+                .build_gep(i8, mtwr_int_i8, &[i64.const_int(16, false)], "mtwr_cb")
+                .map_err(llvm_err)?
+        };
+        let mtwr_child_ep = unsafe {
+            self.builder
+                .build_gep(
+                    self.child_entry_type,
+                    mtwr_children_base,
+                    &[mtwr_ci.as_basic_value().into_int_value()],
+                    "mtwr_cep",
+                )
+                .map_err(llvm_err)?
+        };
+        let mtwr_child_entry = self
+            .builder
+            .build_load(self.child_entry_type, mtwr_child_ep, "mtwr_ce")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let mtwr_child_ptr = self
+            .builder
+            .build_extract_value(mtwr_child_entry, 0, "mtwr_cp")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let _ = self
+            .builder
+            .build_call(
+                mtw_rec_fn,
+                &[
+                    mtwr_child_ptr.into(),
+                    mtwr_child_h.into(),
+                    mtwr_map_fn.into(),
+                    mtwr_filter_fn.into(),
+                    mtwr_acc.into(),
+                    mtwr_buf_p.into(),
+                    mtwr_buf_pos_p.into(),
+                    mtwr_stopped_p.into(),
+                ],
+                "",
+            )
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(mtwr_int_next);
+        self.builder.position_at_end(mtwr_int_next);
+        let mtwr_next_ci = self
+            .builder
+            .build_int_add(
+                mtwr_ci.as_basic_value().into_int_value(),
+                i64.const_int(1, false),
+                "mtwr_nci",
+            )
+            .map_err(llvm_err)?;
+        let mtwr_int_next_bb = self.builder.get_insert_block().unwrap();
+        mtwr_ci.add_incoming(&[(&zero, mtwr_int_hdr), (&mtwr_next_ci, mtwr_int_next_bb)]);
+        let _ = self.builder.build_unconditional_branch(mtwr_int_bdy);
+
+        // ---- action_list_map_take_while_walk({ptr,i64,i64} list, ptr map_fn, ptr filter_fn) -> {ptr,i64,i64} ----
+        let mtw_fn = self.module.add_function(
+            "action_list_map_take_while_walk",
+            self.list_type
+                .fn_type(&[self.list_type.into(), ptr.into(), ptr.into()], false),
+            None,
+        );
+        let mtw_entry = self.context.append_basic_block(mtw_fn, "entry");
+        let mtw_walk = self.context.append_basic_block(mtw_fn, "walk");
+        let mtw_flush = self.context.append_basic_block(mtw_fn, "flush");
+        let mtw_done = self.context.append_basic_block(mtw_fn, "done");
+        self.builder.position_at_end(mtw_entry);
+        let mtw_list = mtw_fn.get_first_param().unwrap().into_struct_value();
+        let mtw_map_fn_ptr = mtw_fn.get_nth_param(1).unwrap().into_pointer_value();
+        let mtw_filter_fn_ptr = mtw_fn.get_nth_param(2).unwrap().into_pointer_value();
+        let mtw_node = self
+            .builder
+            .build_extract_value(mtw_list, 0, "mtw_node")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let mtw_len = self
+            .builder
+            .build_extract_value(mtw_list, 1, "mtw_len")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let mtw_height = self
+            .builder
+            .build_extract_value(mtw_list, 2, "mtw_height")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let mtw_acc = self
+            .builder
+            .build_alloca(self.list_type, "mtw_acc")
+            .map_err(llvm_err)?;
+        let mtw_buf_p = self
+            .builder
+            .build_alloca(ptr, "mtw_buf_p")
+            .map_err(llvm_err)?;
+        let mtw_stopped_p = self
+            .builder
+            .build_alloca(i64, "mtw_stopped_p")
+            .map_err(llvm_err)?;
+        let mtw_buf_pos_p = self
+            .builder
+            .build_alloca(i64, "mtw_buf_pos_p")
+            .map_err(llvm_err)?;
+        let mtw_init = self
+            .builder
+            .build_call(create_fn, &[mtw_len.into()], "mtw_init")
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic();
+        self.builder
+            .build_store(mtw_acc, mtw_init)
+            .map_err(llvm_err)?;
+        let mtw_buf_init = self
+            .builder
+            .build_call(malloc_rc_fn, &[mfw_leaf_sz.into()], "mtw_buf_init")
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_pointer_value();
+        let mtw_buf_init_i8 = self
+            .builder
+            .build_pointer_cast(mtw_buf_init, ptr, "mtw_buf_init_i8")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_store(mtw_buf_init_i8, zero)
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(mtw_buf_p, mtw_buf_init)
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(mtw_buf_pos_p, zero)
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(mtw_stopped_p, zero)
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(mtw_walk);
+        self.builder.position_at_end(mtw_walk);
+        let _ = self
+            .builder
+            .build_call(
+                mtw_rec_fn,
+                &[
+                    mtw_node.into(),
+                    mtw_height.into(),
+                    mtw_map_fn_ptr.into(),
+                    mtw_filter_fn_ptr.into(),
+                    mtw_acc.into(),
+                    mtw_buf_p.into(),
+                    mtw_buf_pos_p.into(),
+                    mtw_stopped_p.into(),
+                ],
+                "",
+            )
+            .map_err(llvm_err)?;
+        let mtw_rem_pos = self
+            .builder
+            .build_load(i64, mtw_buf_pos_p, "mtw_rem_pos")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let mtw_has_rem = self
+            .builder
+            .build_int_compare(IntPredicate::SGT, mtw_rem_pos, zero, "mtw_has_rem")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(mtw_has_rem, mtw_flush, mtw_done);
+        self.builder.position_at_end(mtw_flush);
+        let mtw_rem_buf = self
+            .builder
+            .build_load(ptr, mtw_buf_p, "mtw_rem_buf")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let mtw_rem_buf_i8 = self
+            .builder
+            .build_pointer_cast(mtw_rem_buf, ptr, "mtw_rem_buf_i8")
+            .map_err(llvm_err)?;
+        let mtw_rem_cnt = self
+            .builder
+            .build_int_truncate(mtw_rem_pos, i32, "mtw_rem_cnt")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_store(mtw_rem_buf_i8, mtw_rem_cnt)
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_call(push_leaf_fn, &[mtw_acc.into(), mtw_rem_buf.into()], "")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(mtw_done);
+        self.builder.position_at_end(mtw_done);
+        let mtw_res = self
+            .builder
+            .build_load(self.list_type, mtw_acc, "mtw_res")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_return(Some(&mtw_res));
+
+        // ---- action_list_find_walk_rec(ptr node, i64 height, ptr fn, ptr acc, ptr buf_p, ptr buf_pos_p) -> void ----
+        let fw_leaf_sz = self.leaf_type.size_of().ok_or("leaf size")?;
+        let fd_find_rec_fn = self.module.add_function(
+            "action_list_find_walk_rec",
+            void.fn_type(
+                &[ptr.into(), i64.into(), ptr.into(), ptr.into(), ptr.into()],
+                false,
+            ),
+            None,
+        );
+        let fdr_entry = self.context.append_basic_block(fd_find_rec_fn, "entry");
+        let fdr_leaf_hdr = self.context.append_basic_block(fd_find_rec_fn, "leaf_hdr");
+        let fdr_leaf_bdy = self.context.append_basic_block(fd_find_rec_fn, "leaf_bdy");
+        let fdr_leaf_chk = self.context.append_basic_block(fd_find_rec_fn, "leaf_chk");
+        let fdr_leaf_found = self
+            .context
+            .append_basic_block(fd_find_rec_fn, "leaf_found");
+        let fdr_leaf_next = self.context.append_basic_block(fd_find_rec_fn, "leaf_next");
+        let fdr_leaf_done = self.context.append_basic_block(fd_find_rec_fn, "leaf_done");
+        let fdr_int_hdr = self.context.append_basic_block(fd_find_rec_fn, "int_hdr");
+        let fdr_int_bdy = self.context.append_basic_block(fd_find_rec_fn, "int_bdy");
+        let fdr_int_child = self.context.append_basic_block(fd_find_rec_fn, "int_child");
+        let fdr_int_next = self.context.append_basic_block(fd_find_rec_fn, "int_next");
+        let fdr_concat = self.context.append_basic_block(fd_find_rec_fn, "concat");
+        let fdr_normal = self.context.append_basic_block(fd_find_rec_fn, "normal");
+        self.builder.position_at_end(fdr_entry);
+        let fdr_node = fd_find_rec_fn
+            .get_first_param()
+            .unwrap()
+            .into_pointer_value();
+        let fdr_height = fd_find_rec_fn.get_nth_param(1).unwrap().into_int_value();
+        let fdr_fn = fd_find_rec_fn
+            .get_nth_param(2)
+            .unwrap()
+            .into_pointer_value();
+        let fdr_found_p = fd_find_rec_fn
+            .get_nth_param(3)
+            .unwrap()
+            .into_pointer_value();
+        let fdr_found_flag_p = fd_find_rec_fn
+            .get_nth_param(4)
+            .unwrap()
+            .into_pointer_value();
+        let fdr_neg1 = i64.const_int(-1i64 as u64, true);
+        let fdr_is_concat = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, fdr_height, fdr_neg1, "fdr_is_concat")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(fdr_is_concat, fdr_concat, fdr_normal);
+        self.builder.position_at_end(fdr_concat);
+        let fdr_ln_p = unsafe {
+            self.builder
+                .build_gep(ptr, fdr_node, &[i64.const_int(2, false)], "fdr_ln_p")
+                .map_err(llvm_err)
+        }?;
+        let fdr_left_node = self
+            .builder
+            .build_load(ptr, fdr_ln_p, "fdr_ln")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let fdr_lh_p = unsafe {
+            self.builder
+                .build_gep(i64, fdr_node, &[i64.const_int(4, false)], "fdr_lh_p")
+                .map_err(llvm_err)
+        }?;
+        let fdr_left_h = self
+            .builder
+            .build_load(i64, fdr_lh_p, "fdr_lh")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let fdr_rn_p = unsafe {
+            self.builder
+                .build_gep(ptr, fdr_node, &[i64.const_int(5, false)], "fdr_rn_p")
+                .map_err(llvm_err)
+        }?;
+        let fdr_right_node = self
+            .builder
+            .build_load(ptr, fdr_rn_p, "fdr_rn")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let fdr_rh_p = unsafe {
+            self.builder
+                .build_gep(i64, fdr_node, &[i64.const_int(7, false)], "fdr_rh_p")
+                .map_err(llvm_err)
+        }?;
+        let fdr_right_h = self
+            .builder
+            .build_load(i64, fdr_rh_p, "fdr_rh")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let _ = self
+            .builder
+            .build_call(
+                fd_find_rec_fn,
+                &[
+                    fdr_left_node.into(),
+                    fdr_left_h.into(),
+                    fdr_fn.into(),
+                    fdr_found_p.into(),
+                    fdr_found_flag_p.into(),
+                ],
+                "",
+            )
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_call(
+                fd_find_rec_fn,
+                &[
+                    fdr_right_node.into(),
+                    fdr_right_h.into(),
+                    fdr_fn.into(),
+                    fdr_found_p.into(),
+                    fdr_found_flag_p.into(),
+                ],
+                "",
+            )
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_return(None);
+        self.builder.position_at_end(fdr_normal);
+        let fdr_is_leaf = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, fdr_height, zero, "fdr_is_leaf")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(fdr_is_leaf, fdr_leaf_hdr, fdr_int_hdr);
+
+        self.builder.position_at_end(fdr_leaf_hdr);
+        let fdr_leaf_i8 = self
+            .builder
+            .build_pointer_cast(fdr_node, ptr, "fdr_leaf_i8")
+            .map_err(llvm_err)?;
+        let fdr_count_raw = self
+            .builder
+            .build_load(i32, fdr_leaf_i8, "fdr_count_raw")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let fdr_count = self
+            .builder
+            .build_int_z_extend(fdr_count_raw, i64, "fdr_count")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(fdr_leaf_bdy);
+        self.builder.position_at_end(fdr_leaf_bdy);
+        let fdr_i = self.builder.build_phi(i64, "fdr_i").map_err(llvm_err)?;
+        let fdr_done_leaf = self
+            .builder
+            .build_int_compare(
+                IntPredicate::SGE,
+                fdr_i.as_basic_value().into_int_value(),
+                fdr_count,
+                "fdr_done",
+            )
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(fdr_done_leaf, fdr_leaf_done, fdr_leaf_chk);
+        self.builder.position_at_end(fdr_leaf_chk);
+        let fdr_eb = unsafe {
+            self.builder
+                .build_gep(i8, fdr_leaf_i8, &[i64.const_int(8, false)], "fdr_eb")
+                .map_err(llvm_err)?
+        };
+        let fdr_ep = unsafe {
+            self.builder
+                .build_gep(
+                    self.string_type,
+                    fdr_eb,
+                    &[fdr_i.as_basic_value().into_int_value()],
+                    "fdr_ep",
+                )
+                .map_err(llvm_err)?
+        };
+        let fdr_elem = self
+            .builder
+            .build_load(self.string_type, fdr_ep, "fdr_elem")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let fdr_elem_tag = self
+            .builder
+            .build_extract_value(fdr_elem, 0, "fdr_etag")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let fdr_pred = self
+            .builder
+            .build_indirect_call(lambda_fn_ty, fdr_fn, &[fdr_elem_tag.into()], "fdr_pred")
+            .map_err(llvm_err)?;
+        let fdr_pred_bv = fdr_pred
+            .try_as_basic_value()
+            .basic()
+            .ok_or("filter_walk indirect call failed")?;
+        let fdr_pred_val = if fdr_pred_bv.is_struct_value() {
+            self.builder
+                .build_extract_value(fdr_pred_bv.into_struct_value(), 0, "fdr_pv")
+                .map_err(llvm_err)?
+                .into_int_value()
+        } else {
+            fdr_pred_bv.into_int_value()
+        };
+        let fdr_is_true = self
+            .builder
+            .build_int_compare(IntPredicate::NE, fdr_pred_val, zero, "fdr_is_true")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(fdr_is_true, fdr_leaf_found, fdr_leaf_next);
+        self.builder.position_at_end(fdr_leaf_found);
+        let _ = self
+            .builder
+            .build_store(fdr_found_p, fdr_elem)
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_store(fdr_found_flag_p, i64.const_int(1, false))
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_return(None);
+
+        self.builder.position_at_end(fdr_leaf_next);
+        let fdr_next_i = self
+            .builder
+            .build_int_add(
+                fdr_i.as_basic_value().into_int_value(),
+                i64.const_int(1, false),
+                "fdr_ni",
+            )
+            .map_err(llvm_err)?;
+        let fdr_leaf_next_bb = self.builder.get_insert_block().unwrap();
+        fdr_i.add_incoming(&[(&zero, fdr_leaf_hdr), (&fdr_next_i, fdr_leaf_next_bb)]);
+        let _ = self.builder.build_unconditional_branch(fdr_leaf_bdy);
+        self.builder.position_at_end(fdr_leaf_done);
+        let _ = self.builder.build_return(None);
+
+        self.builder.position_at_end(fdr_int_hdr);
+        let fdr_int_i8 = self
+            .builder
+            .build_pointer_cast(fdr_node, ptr, "fdr_int_i8")
+            .map_err(llvm_err)?;
+        let fdr_child_count_raw = self
+            .builder
+            .build_load(i32, fdr_int_i8, "fdr_cc_raw")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let fdr_child_count = self
+            .builder
+            .build_int_z_extend(fdr_child_count_raw, i64, "fdr_cc")
+            .map_err(llvm_err)?;
+        let fdr_child_h = self
+            .builder
+            .build_int_sub(fdr_height, i64.const_int(1, false), "fdr_ch")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(fdr_int_bdy);
+        self.builder.position_at_end(fdr_int_bdy);
+        let fdr_ci = self.builder.build_phi(i64, "fdr_ci").map_err(llvm_err)?;
+        let fdr_done_int = self
+            .builder
+            .build_int_compare(
+                IntPredicate::SGE,
+                fdr_ci.as_basic_value().into_int_value(),
+                fdr_child_count,
+                "fdr_done_int",
+            )
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(fdr_done_int, fdr_leaf_done, fdr_int_child);
+        self.builder.position_at_end(fdr_int_child);
+        let fdr_children_base = unsafe {
+            self.builder
+                .build_gep(i8, fdr_int_i8, &[i64.const_int(16, false)], "fdr_cb")
+                .map_err(llvm_err)?
+        };
+        let fdr_child_ep = unsafe {
+            self.builder
+                .build_gep(
+                    self.child_entry_type,
+                    fdr_children_base,
+                    &[fdr_ci.as_basic_value().into_int_value()],
+                    "fdr_cep",
+                )
+                .map_err(llvm_err)?
+        };
+        let fdr_child_entry = self
+            .builder
+            .build_load(self.child_entry_type, fdr_child_ep, "fdr_ce")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let fdr_child_ptr = self
+            .builder
+            .build_extract_value(fdr_child_entry, 0, "fdr_cp")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let _ = self
+            .builder
+            .build_call(
+                fd_find_rec_fn,
+                &[
+                    fdr_child_ptr.into(),
+                    fdr_child_h.into(),
+                    fdr_fn.into(),
+                    fdr_found_p.into(),
+                    fdr_found_flag_p.into(),
+                ],
+                "",
+            )
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(fdr_int_next);
+        self.builder.position_at_end(fdr_int_next);
+        let fdr_next_ci = self
+            .builder
+            .build_int_add(
+                fdr_ci.as_basic_value().into_int_value(),
+                i64.const_int(1, false),
+                "fdr_nci",
+            )
+            .map_err(llvm_err)?;
+        let fdr_int_next_bb = self.builder.get_insert_block().unwrap();
+        fdr_ci.add_incoming(&[(&zero, fdr_int_hdr), (&fdr_next_ci, fdr_int_next_bb)]);
+        let _ = self.builder.build_unconditional_branch(fdr_int_bdy);
+
+        // ---- action_list_find_walk({ptr,i64,i64} list, ptr fn) -> {i64,ptr} fat (tag=1 null) ----
+        let fd_fn = self.module.add_function(
+            "action_list_find_walk",
+            self.string_type
+                .fn_type(&[self.list_type.into(), ptr.into()], false),
+            None,
+        );
+        let fd_entry = self.context.append_basic_block(fd_fn, "entry");
+        let fd_walk = self.context.append_basic_block(fd_fn, "walk");
+        let fd_done = self.context.append_basic_block(fd_fn, "done");
+        self.builder.position_at_end(fd_entry);
+        let fd_list = fd_fn.get_first_param().unwrap().into_struct_value();
+        let fd_fn_ptr = fd_fn.get_nth_param(1).unwrap().into_pointer_value();
+        let fd_found_p = self
+            .builder
+            .build_alloca(self.string_type, "fd_found")
+            .map_err(llvm_err)?;
+        let fd_flag_p = self
+            .builder
+            .build_alloca(i64, "fd_flag")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(fd_flag_p, zero)
+            .map_err(llvm_err)?;
+        let fd_node = self
+            .builder
+            .build_extract_value(fd_list, 0, "fd_node")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let fd_height = self
+            .builder
+            .build_extract_value(fd_list, 2, "fd_height")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let fd_rec = self
+            .module
+            .get_function("action_list_find_walk_rec")
+            .unwrap();
+        let _ = self.builder.build_unconditional_branch(fd_walk);
+        self.builder.position_at_end(fd_walk);
+        let _ = self
+            .builder
+            .build_call(
+                fd_rec,
+                &[
+                    fd_node.into(),
+                    fd_height.into(),
+                    fd_fn_ptr.into(),
+                    fd_found_p.into(),
+                    fd_flag_p.into(),
+                ],
+                "",
+            )
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(fd_done);
+        self.builder.position_at_end(fd_done);
+        let fd_flag = self
+            .builder
+            .build_load(i64, fd_flag_p, "fd_f")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let fd_found = self
+            .builder
+            .build_load(self.string_type, fd_found_p, "fd_val")
+            .map_err(llvm_err)?;
+        let fd_is_found = self
+            .builder
+            .build_int_compare(IntPredicate::NE, fd_flag, zero, "fd_ok")
+            .map_err(llvm_err)?;
+        let null_u = self.string_type.get_undef();
+        let null1 = self
+            .builder
+            .build_insert_value(null_u, i64.const_int(1, false), 0, "n1")
+            .map_err(llvm_err)?;
+        let null_fat = self
+            .builder
+            .build_insert_value(null1, ptr.const_zero(), 1, "n2")
+            .map_err(llvm_err)?
+            .as_basic_value_enum();
+        let fd_ret = self
+            .builder
+            .build_select(
+                fd_is_found,
+                fd_found,
+                null_fat.as_basic_value_enum(),
+                "fd_ret",
+            )
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_return(Some(&fd_ret));
+
         // ---- action_list_fold_walk_rec / action_list_fold_walk ----
         // Int accumulator fast path: (i64, i64) -> i64 direct call, no fat-struct load/return.
         let fold_fn_ty = i64.fn_type(&[i64.into(), i64.into()], false);

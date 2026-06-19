@@ -84,6 +84,20 @@ impl<'ctx> CodeGen<'ctx> {
                     );
                 }
             }
+            if method == "map" {
+                if let Some((filter_fn_expr, inner_list_expr)) =
+                    Self::extract_filter_call_args(receiver)
+                {
+                    let map_fn_val = if let Some(lam) = trailing {
+                        self.compile_expr(lam)?
+                    } else if args.len() == 1 {
+                        self.compile_expr(&args[0])?
+                    } else {
+                        return Err("map with trailing lambda expects 0 args".to_string());
+                    };
+                    return self.fused_filter_map(filter_fn_expr, inner_list_expr, map_fn_val);
+                }
+            }
             if method == "takeWhile" {
                 if let Some((map_fn_expr, inner_list_expr)) = Self::extract_map_call_args(receiver)
                 {

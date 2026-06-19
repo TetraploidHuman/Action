@@ -107,6 +107,108 @@ impl<'ctx> CodeGen<'ctx> {
         self.fused_map_filter_values(map_fn_val, inner_list_val, filter_fn_val)
     }
 
+    pub(super) fn extract_filter_call_args(expr: &Expr) -> Option<(&Expr, &Expr)> {
+        let ExprKind::Call {
+            func,
+            args,
+            trailing_lambda,
+        } = &expr.kind
+        else {
+            return None;
+        };
+        let is_filter = match &func.kind {
+            ExprKind::Ident(name) => name == "filter",
+            ExprKind::FieldAccess(_, method) => method == "filter",
+            _ => false,
+        };
+        if !is_filter {
+            return None;
+        }
+        match trailing_lambda {
+            Some(lam) => {
+                let inner = match &func.kind {
+                    ExprKind::Ident(_) if args.len() == 1 => Some(&args[0]),
+                    ExprKind::FieldAccess(obj, _) if args.is_empty() => Some(obj.as_ref()),
+                    _ => None,
+                };
+                inner.map(|list| (lam.as_ref(), list))
+            }
+            None if args.len() == 2 => Some((&args[0], &args[1])),
+            _ => None,
+        }
+    }
+
+    /// Fused filter+map: filter tree walk then map tree walk (no index loops).
+    pub(super) fn fused_filter_map(
+        &mut self,
+        filter_fn_expr: &Expr,
+        inner_list_expr: &Expr,
+        map_fn_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let filter_fn_val = self.compile_expr(filter_fn_expr)?;
+        let inner_list_val = self.compile_expr(inner_list_expr)?;
+        self.fused_filter_map_values(filter_fn_val, inner_list_val, map_fn_val)
+    }
+
+    pub(super) fn fused_filter_map_hir(
+        &mut self,
+        filter_fn_expr: &action_frontend::hir::HirExpr,
+        inner_list_expr: &action_frontend::hir::HirExpr,
+        map_fn_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let filter_fn_val = self.compile_hir_expr(filter_fn_expr)?;
+        let inner_list_val = self.compile_hir_expr(inner_list_expr)?;
+        self.fused_filter_map_values(filter_fn_val, inner_list_val, map_fn_val)
+    }
+
+    fn fused_filter_map_values(
+        &mut self,
+        filter_fn_val: TypedValue<'ctx>,
+        inner_list_val: TypedValue<'ctx>,
+        map_fn_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let filter_fn_ptr = match filter_fn_val {
+            TypedValue::Fn(p, _) => p,
+            TypedValue::Closure { fn_ptr, .. } => fn_ptr,
+            _ => return Err("fused filter+map: filter function required".to_string()),
+        };
+        let map_fn_ptr = match map_fn_val {
+            TypedValue::Fn(p, _) => p,
+            TypedValue::Closure { fn_ptr, .. } => fn_ptr,
+            _ => return Err("fused filter+map: map function required".to_string()),
+        };
+        let list_ptr = match inner_list_val {
+            TypedValue::List(p) => p,
+            _ => return Err("fused filter+map: list required".to_string()),
+        };
+        let list_struct = self.load_list(list_ptr)?;
+        let filtered_cc = self.call_rt(
+            "action_list_filter_walk",
+            &[list_struct.into(), filter_fn_ptr.into()],
+        )?;
+        let filtered_bv = filtered_cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("filter_walk failed")?;
+        let filtered_struct = filtered_bv.into_struct_value();
+        let mapped_cc = self.call_rt(
+            "action_list_map_walk",
+            &[filtered_struct.into(), map_fn_ptr.into()],
+        )?;
+        let result_bv = mapped_cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("map_walk failed")?;
+        let res_a = self
+            .builder
+            .build_alloca(self.list_type, "fm_res")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(res_a, result_bv)
+            .map_err(llvm_err)?;
+        Ok(TypedValue::List(res_a))
+    }
+
     pub(super) fn extract_flatmap_call_args(expr: &Expr) -> Option<(&Expr, &Expr)> {
         let ExprKind::Call {
             func,
@@ -445,14 +547,15 @@ impl<'ctx> CodeGen<'ctx> {
         trailing: Option<CallArg<'_>>,
     ) -> Result<TypedValue<'ctx>, String> {
         let (fn_ptr, list_ptr) = self.extract_callback_args(args, trailing, 1, "find")?;
-        let input_len = self.list_len_val(self.load_list(list_ptr)?)?;
-        let current_fn = self
-            .builder
-            .get_insert_block()
-            .and_then(|b| b.get_parent())
-            .ok_or("no function")?;
-        let i64 = self.i64_ty();
-        // Allocate fat struct slot for found element
+        let list_struct = self.load_list(list_ptr)?;
+        let find_cc = self.call_rt(
+            "action_list_find_walk",
+            &[list_struct.into(), fn_ptr.into()],
+        )?;
+        let found_bv = find_cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("find_walk failed")?;
         let found_a = self
             .builder
             .build_alloca(self.string_type, "found")
@@ -462,76 +565,29 @@ impl<'ctx> CodeGen<'ctx> {
             .build_alloca(self.bool_ty(), "found_f")
             .map_err(llvm_err)?;
         self.builder
-            .build_store(found_flag_a, self.bool_ty().const_zero())
+            .build_store(found_a, found_bv)
             .map_err(llvm_err)?;
-        let i_a = self.builder.build_alloca(i64, "i").map_err(llvm_err)?;
-        self.builder
-            .build_store(i_a, i64.const_int(0, false))
-            .map_err(llvm_err)?;
-        let get_cache = self.alloc_list_get_cache()?;
-        let hdr = self.context.append_basic_block(current_fn, "find_hdr");
-        let bdy = self.context.append_basic_block(current_fn, "find_bdy");
-        let found_bb = self.context.append_basic_block(current_fn, "find_found");
-        let ext = self.context.append_basic_block(current_fn, "find_ext");
-        let _ = self.builder.build_unconditional_branch(hdr);
-        self.builder.position_at_end(hdr);
-        let iv = self
+        let found_tag = self
             .builder
-            .build_load(i64, i_a, "iv")
+            .build_extract_value(found_bv.into_struct_value(), 0, "ft")
             .map_err(llvm_err)?
             .into_int_value();
-        let cond = self
+        let is_found = self
             .builder
-            .build_int_compare(IntPredicate::SLT, iv, input_len, "cond")
+            .build_int_compare(
+                IntPredicate::NE,
+                found_tag,
+                self.i64_ty().const_int(1, false),
+                "is_found",
+            )
             .map_err(llvm_err)?;
-        let _ = self.builder.build_conditional_branch(cond, bdy, ext);
-        self.builder.position_at_end(bdy);
-        let elem_val = self.list_get_cached_fat(list_ptr, iv, get_cache)?;
-        let elem_tag = self
+        let found_i64 = self
             .builder
-            .build_extract_value(elem_val.into_struct_value(), 0, "et")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let fat_ret_ty = self.string_type;
-        let fn_type = fat_ret_ty.fn_type(&[i64.into()], false);
-        let call_r = self
-            .builder
-            .build_indirect_call(fn_type, fn_ptr, &[elem_tag.into()], "find_call")
-            .map_err(llvm_err)?;
-        let pred_bv = call_r.try_as_basic_value().basic().ok_or("call failed")?;
-        let pred = if pred_bv.is_struct_value() {
-            self.builder
-                .build_extract_value(pred_bv.into_struct_value(), 0, "pred")
-                .map_err(llvm_err)?
-                .into_int_value()
-        } else {
-            pred_bv.into_int_value()
-        };
-        let is_true = self
-            .builder
-            .build_int_compare(IntPredicate::NE, pred, i64.const_int(0, false), "is_true")
-            .map_err(llvm_err)?;
-        let ni = self
-            .builder
-            .build_int_add(iv, i64.const_int(1, false), "ni")
-            .map_err(llvm_err)?;
-        self.builder.build_store(i_a, ni).map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(is_true, found_bb, hdr);
-        self.builder.position_at_end(found_bb);
-        self.builder
-            .build_store(found_a, elem_val)
+            .build_int_z_extend(is_found, self.i64_ty(), "found_i64")
             .map_err(llvm_err)?;
         self.builder
-            .build_store(found_flag_a, self.bool_ty().const_int(1, false))
+            .build_store(found_flag_a, found_i64)
             .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(ext);
-        self.builder.position_at_end(ext);
-        // Build nullable String: set flag 0 + found value, or flag 1 (null).
-        // InnerType defaults to Int — list elements are fat structs whose type
-        // is only known at runtime. Fixing this requires adding element type info
-        // to List/Map/Set TypedValue variants.
         self.build_nullable_str(found_a, found_flag_a)
     }
 
@@ -868,89 +924,21 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<TypedValue<'ctx>, String> {
         let (fn_ptr, list_ptr) = self.extract_callback_args(args, trailing, 1, "takeWhile")?;
         let list_struct = self.load_list(list_ptr)?;
-        let input_len = self.list_len_val(list_struct)?;
-        let current_fn = self
-            .builder
-            .get_insert_block()
-            .and_then(|b| b.get_parent())
-            .ok_or("no function")?;
-        let i64 = self.i64_ty();
-        // Create result list
-        let cc = self.call_rt("action_list_create", &[input_len.into()])?;
-        let res_bv = cc
+        let tw_cc = self.call_rt(
+            "action_list_take_while_walk",
+            &[list_struct.into(), fn_ptr.into()],
+        )?;
+        let result_bv = tw_cc
             .try_as_basic_value()
             .basic()
-            .ok_or("list_create failed")?;
+            .ok_or("take_while_walk failed")?;
         let res_a = self
             .builder
             .build_alloca(self.list_type, "tw_res")
             .map_err(llvm_err)?;
-        self.builder.build_store(res_a, res_bv).map_err(llvm_err)?;
-        let i_a = self.builder.build_alloca(i64, "i").map_err(llvm_err)?;
         self.builder
-            .build_store(i_a, i64.const_int(0, false))
+            .build_store(res_a, result_bv)
             .map_err(llvm_err)?;
-        let get_cache = self.alloc_list_get_cache()?;
-        let hdr = self.context.append_basic_block(current_fn, "tw_hdr");
-        let bdy = self.context.append_basic_block(current_fn, "tw_bdy");
-        let ext = self.context.append_basic_block(current_fn, "tw_ext");
-        let _ = self.builder.build_unconditional_branch(hdr);
-        self.builder.position_at_end(hdr);
-        let iv = self
-            .builder
-            .build_load(i64, i_a, "iv")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let cond = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, iv, input_len, "cond")
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_conditional_branch(cond, bdy, ext);
-        self.builder.position_at_end(bdy);
-        let elem_val = self.list_get_cached_fat(list_ptr, iv, get_cache)?;
-        let elem_tag = self
-            .builder
-            .build_extract_value(elem_val.into_struct_value(), 0, "et")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let fat_ret_ty = self.string_type;
-        let fn_type = fat_ret_ty.fn_type(&[i64.into()], false);
-        let call_r = self
-            .builder
-            .build_indirect_call(fn_type, fn_ptr, &[elem_tag.into()], "tw_call")
-            .map_err(llvm_err)?;
-        let pred_bv = call_r.try_as_basic_value().basic().ok_or("call failed")?;
-        let pred = if pred_bv.is_struct_value() {
-            self.builder
-                .build_extract_value(pred_bv.into_struct_value(), 0, "pred")
-                .map_err(llvm_err)?
-                .into_int_value()
-        } else {
-            pred_bv.into_int_value()
-        };
-        let is_true = self
-            .builder
-            .build_int_compare(IntPredicate::NE, pred, i64.const_int(0, false), "is_true")
-            .map_err(llvm_err)?;
-        let push_bb = self.context.append_basic_block(current_fn, "tw_push");
-        let _ = self.builder.build_conditional_branch(is_true, push_bb, ext);
-        self.builder.position_at_end(push_bb);
-        let rl = self
-            .builder
-            .build_load(self.list_type, res_a, "rl")
-            .map_err(llvm_err)?
-            .into_struct_value();
-        let rp = self.call_rt("action_list_push", &[rl.into(), elem_val.into()])?;
-        self.builder
-            .build_store(res_a, rp.try_as_basic_value().unwrap_basic())
-            .map_err(llvm_err)?;
-        let ni = self
-            .builder
-            .build_int_add(iv, i64.const_int(1, false), "ni")
-            .map_err(llvm_err)?;
-        self.builder.build_store(i_a, ni).map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(hdr);
-        self.builder.position_at_end(ext);
         Ok(TypedValue::List(res_a))
     }
 
@@ -1432,6 +1420,43 @@ impl<'ctx> CodeGen<'ctx> {
         self.fused_flatmap_filter_values(flat_fn_val, inner_list_val, filter_fn_val)
     }
 
+    pub(super) fn extract_filter_call_args_hir(
+        expr: &action_frontend::hir::HirExpr,
+    ) -> Option<(
+        &action_frontend::hir::HirExpr,
+        &action_frontend::hir::HirExpr,
+    )> {
+        use action_frontend::hir::HirExprKind;
+        let HirExprKind::Call {
+            func,
+            args,
+            trailing_lambda,
+        } = &expr.kind
+        else {
+            return None;
+        };
+        let is_filter = match &func.kind {
+            HirExprKind::Ident(name) => name == "filter",
+            HirExprKind::FieldAccess(_, method) => method == "filter",
+            _ => false,
+        };
+        if !is_filter {
+            return None;
+        }
+        match trailing_lambda {
+            Some(lam) => {
+                let inner = match &func.kind {
+                    HirExprKind::Ident(_) if args.len() == 1 => Some(&args[0]),
+                    HirExprKind::FieldAccess(obj, _) if args.is_empty() => Some(obj.as_ref()),
+                    _ => None,
+                };
+                inner.map(|list| (lam.as_ref(), list))
+            }
+            None if args.len() == 2 => Some((&args[0], &args[1])),
+            _ => None,
+        }
+    }
+
     pub(super) fn extract_map_call_args_hir(
         expr: &action_frontend::hir::HirExpr,
     ) -> Option<(
@@ -1607,80 +1632,21 @@ impl<'ctx> CodeGen<'ctx> {
         };
 
         let list_struct = self.load_list(list_ptr)?;
-        let input_len = self.list_len_val(list_struct)?;
-        let current_fn = self
-            .builder
-            .get_insert_block()
-            .and_then(|b| b.get_parent())
-            .ok_or("no function")?;
-        let i64 = self.i64_ty();
-        let cc = self.call_rt("action_list_create", &[input_len.into()])?;
-        let res_bv = cc
+        let mtw_cc = self.call_rt(
+            "action_list_map_take_while_walk",
+            &[list_struct.into(), map_fn_ptr.into(), tw_fn_ptr.into()],
+        )?;
+        let result_bv = mtw_cc
             .try_as_basic_value()
             .basic()
-            .ok_or("list_create failed")?;
+            .ok_or("map_take_while_walk failed")?;
         let res_a = self
             .builder
             .build_alloca(self.list_type, "mtw_res")
             .map_err(llvm_err)?;
-        self.builder.build_store(res_a, res_bv).map_err(llvm_err)?;
-        let i_a = self.builder.build_alloca(i64, "mtw_i").map_err(llvm_err)?;
         self.builder
-            .build_store(i_a, i64.const_int(0, false))
+            .build_store(res_a, result_bv)
             .map_err(llvm_err)?;
-        let cache = self.alloc_list_get_cache()?;
-        let hdr = self.context.append_basic_block(current_fn, "mtw_hdr");
-        let bdy = self.context.append_basic_block(current_fn, "mtw_bdy");
-        let ext = self.context.append_basic_block(current_fn, "mtw_ext");
-        let _ = self.builder.build_unconditional_branch(hdr);
-        self.builder.position_at_end(hdr);
-        let iv = self
-            .builder
-            .build_load(i64, i_a, "mtw_iv")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let cond = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, iv, input_len, "mtw_cond")
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_conditional_branch(cond, bdy, ext);
-        self.builder.position_at_end(bdy);
-        let elem_fat = self.list_get_cached_fat(list_ptr, iv, cache)?;
-        let elem_tag = self
-            .builder
-            .build_extract_value(elem_fat.into_struct_value(), 0, "mtw_et")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let mapped_tag = self.call_i64_fn_on_tag(map_fn_ptr, elem_tag, "mtw_map")?;
-        let pred = self.call_i64_fn_on_tag(tw_fn_ptr, mapped_tag, "mtw_pred")?;
-        let is_true = self
-            .builder
-            .build_int_compare(IntPredicate::NE, pred, i64.const_int(0, false), "mtw_ok")
-            .map_err(llvm_err)?;
-        let push_bb = self.context.append_basic_block(current_fn, "mtw_push");
-        let _ = self.builder.build_conditional_branch(is_true, push_bb, ext);
-        self.builder.position_at_end(push_bb);
-        let mapped_struct = self
-            .builder
-            .build_insert_value(elem_fat.into_struct_value(), mapped_tag, 0, "mtw_fat")
-            .map_err(llvm_err)?
-            .into_struct_value();
-        let rl = self
-            .builder
-            .build_load(self.list_type, res_a, "mtw_rl")
-            .map_err(llvm_err)?
-            .into_struct_value();
-        let rp = self.call_rt("action_list_push", &[rl.into(), mapped_struct.into()])?;
-        self.builder
-            .build_store(res_a, rp.try_as_basic_value().unwrap_basic())
-            .map_err(llvm_err)?;
-        let ni = self
-            .builder
-            .build_int_add(iv, i64.const_int(1, false), "mtw_ni")
-            .map_err(llvm_err)?;
-        self.builder.build_store(i_a, ni).map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(hdr);
-        self.builder.position_at_end(ext);
         Ok(TypedValue::List(res_a))
     }
 

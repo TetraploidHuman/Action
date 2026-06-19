@@ -654,16 +654,13 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
         let mu_cap = self
             .builder
-            .build_int_add(
-                self.builder
-                    .build_int_add(mu_alen, mu_blen, "cap")
-                    .map_err(llvm_err)?,
-                i64.const_int(4, false),
-                "cap4",
-            )
+            .build_int_add(mu_alen, mu_blen, "cap_hint")
             .map_err(llvm_err)?;
         let mu_create = self.module.get_function("action_map_create").unwrap();
-        let mi_fn = self.module.get_function("action_map_insert").unwrap();
+        let bulk_fn = self
+            .module
+            .get_function("action_ht_bulk_copy_active_slots")
+            .unwrap();
         let mu_res = self
             .builder
             .build_call(mu_create, &[mu_cap.into()], "res")
@@ -674,110 +671,53 @@ impl<'ctx> CodeGen<'ctx> {
             .build_alloca(self.list_type, "mu_ra")
             .map_err(llvm_err)?;
         self.builder.build_store(mu_ra, mu_resv).map_err(llvm_err)?;
-        // Open-addressing: scan slots 0..cap-1 per map
-        let mu_i = self.builder.build_alloca(i64, "mu_i").map_err(llvm_err)?;
-        self.builder
-            .build_store(mu_i, i64.const_int(0, false))
-            .map_err(llvm_err)?;
-        let mu_loop1 = self.context.append_basic_block(mu_fn, "loop1");
-        let mu_chk1 = self.context.append_basic_block(mu_fn, "chk1");
-        let mu_body1 = self.context.append_basic_block(mu_fn, "body1");
-        let mu_skip1 = self.context.append_basic_block(mu_fn, "skip1");
-        let mu_done1 = self.context.append_basic_block(mu_fn, "done1");
-        let _ = self.builder.build_unconditional_branch(mu_loop1);
-        self.builder.position_at_end(mu_loop1);
-        let mu_iv = self
+        let mu_res_loaded = self
             .builder
-            .build_load(i64, mu_i, "iv")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let mu_c1 = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, mu_iv, mu_acap, "c1")
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(mu_c1, mu_chk1, mu_done1);
-        self.builder.position_at_end(mu_chk1);
-        self.ht_branch_if_slot_active(mu_adata, mu_iv, mu_body1, mu_skip1)?;
-        self.builder.position_at_end(mu_body1);
-        let mu_key = self.ht_key_fat_at(mu_adata, mu_iv)?;
-        let mu_val = self.ht_val_fat_at(mu_adata, mu_iv)?;
-        let mu_cl1 = self
-            .builder
-            .build_load(self.list_type, mu_ra, "cl1")
+            .build_load(self.list_type, mu_ra, "mu_loaded")
             .map_err(llvm_err)?
             .into_struct_value();
-        let mu_ins = self
+        let mu_dest_data = self
             .builder
-            .build_call(mi_fn, &[mu_cl1.into(), mu_key.into(), mu_val.into()], "ins")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(mu_ra, mu_ins.try_as_basic_value().unwrap_basic())
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(mu_skip1);
-        self.builder.position_at_end(mu_skip1);
-        let mu_inc = self
+            .build_extract_value(mu_res_loaded, 0, "dest_data")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let mu_dest_cap = self
             .builder
-            .build_int_add(mu_iv, i64.const_int(1, false), "inc")
-            .map_err(llvm_err)?;
-        self.builder.build_store(mu_i, mu_inc).map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(mu_loop1);
-        // Loop 2: insert all from B (overwrites existing keys)
-        self.builder.position_at_end(mu_done1);
-        let mu_j = self.builder.build_alloca(i64, "mu_j").map_err(llvm_err)?;
-        self.builder
-            .build_store(mu_j, i64.const_int(0, false))
-            .map_err(llvm_err)?;
-        let mu_loop2 = self.context.append_basic_block(mu_fn, "loop2");
-        let mu_chk2 = self.context.append_basic_block(mu_fn, "chk2");
-        let mu_body2 = self.context.append_basic_block(mu_fn, "body2");
-        let mu_skip2 = self.context.append_basic_block(mu_fn, "skip2");
-        let mu_done2 = self.context.append_basic_block(mu_fn, "done2");
-        let _ = self.builder.build_unconditional_branch(mu_loop2);
-        self.builder.position_at_end(mu_loop2);
-        let mu_jv = self
-            .builder
-            .build_load(i64, mu_j, "jv")
+            .build_extract_value(mu_res_loaded, 2, "dest_cap")
             .map_err(llvm_err)?
             .into_int_value();
-        let mu_c2 = self
+        let mu_len_p = self
             .builder
-            .build_int_compare(IntPredicate::SLT, mu_jv, mu_bcap, "c2")
+            .build_struct_gep(self.list_type, mu_ra, 1, "len_p")
             .map_err(llvm_err)?;
         let _ = self
-            .builder
-            .build_conditional_branch(mu_c2, mu_chk2, mu_done2);
-        self.builder.position_at_end(mu_chk2);
-        self.ht_branch_if_slot_active(mu_bdata, mu_jv, mu_body2, mu_skip2)?;
-        self.builder.position_at_end(mu_body2);
-        let mu_key2 = self.ht_key_fat_at(mu_bdata, mu_jv)?;
-        let mu_val2 = self.ht_val_fat_at(mu_bdata, mu_jv)?;
-        let mu_cl2 = self
-            .builder
-            .build_load(self.list_type, mu_ra, "cl2")
-            .map_err(llvm_err)?
-            .into_struct_value();
-        let mu_ins2 = self
             .builder
             .build_call(
-                mi_fn,
-                &[mu_cl2.into(), mu_key2.into(), mu_val2.into()],
-                "ins2",
+                bulk_fn,
+                &[
+                    mu_dest_data.into(),
+                    mu_dest_cap.into(),
+                    mu_len_p.into(),
+                    mu_adata.into(),
+                    mu_acap.into(),
+                ],
+                "",
             )
             .map_err(llvm_err)?;
-        self.builder
-            .build_store(mu_ra, mu_ins2.try_as_basic_value().unwrap_basic())
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(mu_skip2);
-        self.builder.position_at_end(mu_skip2);
-        let mu_inc2 = self
+        let _ = self
             .builder
-            .build_int_add(mu_jv, i64.const_int(1, false), "inc2")
+            .build_call(
+                bulk_fn,
+                &[
+                    mu_dest_data.into(),
+                    mu_dest_cap.into(),
+                    mu_len_p.into(),
+                    mu_bdata.into(),
+                    mu_bcap.into(),
+                ],
+                "",
+            )
             .map_err(llvm_err)?;
-        self.builder.build_store(mu_j, mu_inc2).map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(mu_loop2);
-        self.builder.position_at_end(mu_done2);
         let mu_rt = self
             .builder
             .build_load(self.list_type, mu_ra, "mu_rt")
