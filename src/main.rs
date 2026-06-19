@@ -419,9 +419,7 @@ fn find_aot_host_staticlib() -> Option<String> {
     if let Ok(target_dir) = std::env::var("CARGO_TARGET_DIR") {
         let root = PathBuf::from(target_dir);
         for profile in profiles {
-            candidates.push(
-                root.join(format!("host_rt_build/{profile}/libaction_host_rt.a")),
-            );
+            candidates.push(root.join(format!("host_rt_build/{profile}/libaction_host_rt.a")));
         }
     }
 
@@ -430,9 +428,7 @@ fn find_aot_host_staticlib() -> Option<String> {
         for _ in 0..5 {
             if let Some(ref d) = dir {
                 for profile in profiles {
-                    candidates.push(
-                        d.join(format!("host_rt_build/{profile}/libaction_host_rt.a")),
-                    );
+                    candidates.push(d.join(format!("host_rt_build/{profile}/libaction_host_rt.a")));
                 }
                 dir = d.parent().map(|p| p.to_path_buf());
             }
@@ -440,9 +436,9 @@ fn find_aot_host_staticlib() -> Option<String> {
     }
 
     for profile in profiles {
-        candidates.push(
-            manifest.join(format!("target/host_rt_build/{profile}/libaction_host_rt.a")),
-        );
+        candidates.push(manifest.join(format!(
+            "target/host_rt_build/{profile}/libaction_host_rt.a"
+        )));
         candidates.push(manifest.join(format!("target/{profile}/libaction_host_rt.a")));
     }
 
