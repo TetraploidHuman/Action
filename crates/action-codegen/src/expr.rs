@@ -1975,20 +1975,29 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    /// Compile an expression and load the result as a BasicValueEnum for passing as a call argument.
-    /// Handles loading from alloca pointers for enum, struct, and string types.
-    pub(super) fn compile_and_load(&mut self, expr: &Expr) -> Result<BasicValueEnum<'ctx>, String> {
-        let v = self.compile_expr(expr)?;
-        match &v {
+    /// Compile a HIR expression and load for use as a call argument.
+    pub(super) fn compile_and_load_hir(
+        &mut self,
+        expr: &action_frontend::hir::HirExpr,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let v = self.compile_hir_expr(expr)?;
+        self.typed_value_to_bv_for_call(&v)
+    }
+
+    fn typed_value_to_bv_for_call(
+        &mut self,
+        v: &TypedValue<'ctx>,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        match v {
             TypedValue::Enum(ptr, ty, ..) => {
-                let bt: BasicTypeEnum = (*ty).into();
+                let bt: inkwell::types::BasicTypeEnum = (*ty).into();
                 Ok(self
                     .builder
                     .build_load(bt, *ptr, "arg_enum")
                     .map_err(llvm_err)?)
             }
             TypedValue::Struct(ptr, ty) => {
-                let bt: BasicTypeEnum = (*ty).into();
+                let bt: inkwell::types::BasicTypeEnum = (*ty).into();
                 Ok(self
                     .builder
                     .build_load(bt, *ptr, "arg_struct")
@@ -2009,6 +2018,13 @@ impl<'ctx> CodeGen<'ctx> {
                 .to_bv()
                 .ok_or_else(|| format!("Cannot pass value as argument")),
         }
+    }
+
+    /// Compile an expression and load the result as a BasicValueEnum for passing as a call argument.
+    /// Handles loading from alloca pointers for enum, struct, and string types.
+    pub(super) fn compile_and_load(&mut self, expr: &Expr) -> Result<BasicValueEnum<'ctx>, String> {
+        let v = self.compile_expr(expr)?;
+        self.typed_value_to_bv_for_call(&v)
     }
 
     /// Coerce an argument value to match the expected parameter type

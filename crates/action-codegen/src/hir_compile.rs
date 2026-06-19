@@ -247,6 +247,11 @@ impl<'ctx> CodeGen<'ctx> {
     pub(super) fn compile_hir_stmt(&mut self, stmt: &HirStmt) -> Result<(), String> {
         match stmt {
             HirStmt::Let {
+                lazy_init: false, ..
+            } => {
+                self.compile_stmt(&stmt.as_stmt())?;
+            }
+            HirStmt::Let {
                 name,
                 type_ann,
                 value,
@@ -287,34 +292,9 @@ impl<'ctx> CodeGen<'ctx> {
                 );
                 let _ = mutable;
             }
-            HirStmt::Let {
-                name,
-                type_ann,
-                value,
-                mutable,
-                lazy_init: false,
-                ..
-            } => {
-                let raw_val = self.compile_hir_expr(value)?;
-                let (ty, kind) = if let Some(ann) = type_ann {
-                    (
-                        self.ast_type_to_basic_type(ann),
-                        self.param_val_kind(Some(ann)),
-                    )
-                } else {
-                    (raw_val.get_type_for_alloca(self), raw_val.val_kind())
-                };
-                let alloca = self.builder.build_alloca(ty, name).map_err(llvm_err)?;
-                self.store_typed_value(&raw_val, alloca, ty)?;
-                if *mutable {
-                    self.scope
-                        .set_mutable_val(name.clone(), alloca, ty, kind, None);
-                } else {
-                    self.scope.set_val(name.clone(), alloca, ty, kind);
-                }
-            }
             HirStmt::Expr { expr, .. } => {
-                self.compile_hir_expr(expr)?;
+                let result = self.compile_hir_expr(expr)?;
+                self.rc_discard_value(&result)?;
             }
             HirStmt::Return { value: Some(v), .. } => {
                 let val = self.compile_hir_expr(v)?;
@@ -333,17 +313,82 @@ impl<'ctx> CodeGen<'ctx> {
                 value,
                 ..
             } => {
-                let _ = self.compile_destructure(
-                    *mutable,
-                    names,
-                    renames,
-                    rest,
-                    *is_list,
-                    *is_struct,
-                    &value.as_expr(),
-                );
+                self.compile_destructure_hir(
+                    *mutable, names, renames, rest, *is_list, *is_struct, value,
+                )?;
             }
-            _ => self.compile_stmt(&stmt.as_stmt())?,
+            HirStmt::Fun {
+                name,
+                params,
+                return_type,
+                body,
+                ..
+            } => {
+                let all_typed = params.iter().all(|p| p.ty.is_some());
+                let fn_name = if all_typed && self.overloaded_functions.contains_key(name.as_str())
+                {
+                    let param_types: Vec<Type> = params
+                        .iter()
+                        .map(|p| p.ty.clone().unwrap_or(Type::Named("Int".into())))
+                        .collect();
+                    Self::mangle_name(name, &param_types)
+                } else {
+                    name.clone()
+                };
+                self.compile_fun_def_hir(&fn_name, name, params, return_type.as_ref(), body)?;
+            }
+            HirStmt::Extension {
+                type_name, methods, ..
+            } => {
+                for m in methods {
+                    if let HirStmt::Fun {
+                        name,
+                        params,
+                        return_type,
+                        body,
+                        ..
+                    } = m
+                    {
+                        let fn_name = format!("{}_{}", type_name, name);
+                        self.compile_fun_def_hir(
+                            &fn_name,
+                            name,
+                            params,
+                            return_type.as_ref(),
+                            body,
+                        )?;
+                    }
+                }
+            }
+            HirStmt::Module { name, body, .. } => {
+                let prefix = format!("{}_", name);
+                let mut saved_scope = super::Scope::new();
+                std::mem::swap(&mut self.scope, &mut saved_scope);
+                self.scope = super::Scope::with_parent(saved_scope);
+                for inner in body {
+                    let renamed = self.rename_module_hir_stmt(inner, &prefix);
+                    self.compile_hir_stmt(&renamed)?;
+                }
+                let mut parent = super::Scope::new();
+                std::mem::swap(&mut self.scope, &mut parent);
+                if let Some(p) = parent.parent {
+                    self.scope = *p;
+                }
+            }
+            HirStmt::Break { .. } => {
+                let _ = self.compile_hir_break()?;
+            }
+            HirStmt::Continue { .. } => {
+                let _ = self.compile_hir_continue()?;
+            }
+            HirStmt::Const { name, value, .. } => {
+                self.compile_hir_const(name, value)?;
+            }
+            HirStmt::TypeAlias { .. } | HirStmt::Enum { .. } | HirStmt::Import { .. } => {}
+            HirStmt::Export { stmt, .. } => self.compile_hir_stmt(stmt)?,
+            HirStmt::External { .. } | HirStmt::ExternalType { .. } => {
+                self.compile_stmt(&stmt.as_stmt())?;
+            }
         }
         Ok(())
     }
@@ -364,8 +409,8 @@ impl<'ctx> CodeGen<'ctx> {
                 args,
                 trailing_lambda,
             } => self.compile_hir_call(func, args, trailing_lambda.as_ref()),
-            HirExprKind::When(w) => self.compile_when(&w.to_when()),
-            HirExprKind::For(f) => self.compile_for(&f.to_for()),
+            HirExprKind::When(w) => self.compile_hir_when(w),
+            HirExprKind::For(f) => self.compile_hir_for(f),
             HirExprKind::Assign { target, value } => self.compile_hir_assign(target, value),
             HirExprKind::StringInterpolate(parts) => self.compile_hir_string_interp(parts),
             HirExprKind::FieldAccess(obj, field) => self.compile_hir_field_access(obj, field),
@@ -544,11 +589,47 @@ impl<'ctx> CodeGen<'ctx> {
     fn compile_hir_block(
         &mut self,
         stmts: &[HirStmt],
-        result_ty: &Type,
+        _result_ty: &Type,
     ) -> Result<TypedValue<'ctx>, String> {
-        let ast_stmts: Vec<Stmt> = stmts.iter().map(HirStmt::as_stmt).collect();
-        let _ = result_ty;
-        self.compile_block(&ast_stmts)
+        let mut saved = super::Scope::new();
+        std::mem::swap(&mut self.scope, &mut saved);
+        self.scope = super::Scope::with_parent(saved);
+
+        self.block_did_rc_inc = false;
+
+        let mut last = TypedValue::Unit;
+        for s in stmts {
+            match s {
+                HirStmt::Expr { expr, .. } => {
+                    self.rc_discard_value(&last)?;
+                    last = self.compile_hir_expr(expr)?;
+                }
+                _ => self.compile_hir_stmt(s)?,
+            }
+        }
+
+        let current_block = self
+            .builder
+            .get_insert_block()
+            .ok_or("compile_hir_block: builder has no insert block")?;
+        if current_block.get_terminator().is_none() {
+            if self.is_scope_variable(&last) {
+                self.rc_inc_typed_value(&last)?;
+                self.block_did_rc_inc = true;
+            } else {
+                self.block_did_rc_inc = false;
+            }
+            self.emit_scope_cleanup()?;
+        } else {
+            self.block_did_rc_inc = false;
+        }
+
+        let mut parent = super::Scope::new();
+        std::mem::swap(&mut self.scope, &mut parent);
+        if let Some(p) = parent.parent {
+            self.scope = *p;
+        }
+        Ok(last)
     }
 
     fn compile_hir_call(
@@ -562,6 +643,282 @@ impl<'ctx> CodeGen<'ctx> {
             &args.iter().map(HirExpr::as_expr).collect::<Vec<_>>(),
             &trailing_lambda.map(|b| Box::new(b.as_expr())),
         )
+    }
+
+    fn compile_destructure_hir(
+        &mut self,
+        mutable: bool,
+        names: &[String],
+        renames: &[(String, String)],
+        rest: &Option<String>,
+        is_list: bool,
+        is_struct: bool,
+        value: &HirExpr,
+    ) -> Result<(), String> {
+        let _ = (renames,);
+        if !is_list {
+            return self.compile_stmt(
+                &HirStmt::Destructure {
+                    mutable,
+                    names: names.to_vec(),
+                    renames: renames.to_vec(),
+                    rest: rest.clone(),
+                    is_list,
+                    is_struct,
+                    value: value.clone(),
+                    span: value.span,
+                }
+                .as_stmt(),
+            );
+        }
+        let val = self.compile_hir_expr(value)?;
+        if is_list {
+            let list_ptr = match val {
+                TypedValue::List(ptr) => ptr,
+                _ => return Err("List destructuring requires a list value".to_string()),
+            };
+            let list_val = self.load_list(list_ptr)?;
+            let data = self
+                .builder
+                .build_extract_value(list_val, 0, "data")
+                .map_err(llvm_err)?
+                .into_pointer_value();
+            let len = self
+                .builder
+                .build_extract_value(list_val, 1, "len")
+                .map_err(llvm_err)?
+                .into_int_value();
+            let data_str = self
+                .builder
+                .build_pointer_cast(data, self.ptr_ty(), "data_str")
+                .map_err(llvm_err)?;
+            for (i, name) in names.iter().enumerate() {
+                let idx = self.i64_ty().const_int(i as u64, false);
+                let elem_ptr = unsafe {
+                    self.builder
+                        .build_gep(self.string_type, data_str, &[idx], "delem_ptr")
+                }
+                .map_err(llvm_err)?;
+                let loaded = self
+                    .builder
+                    .build_load(self.string_type, elem_ptr, "delem")
+                    .map_err(llvm_err)?;
+                let ss = loaded.into_struct_value();
+                let tag = self
+                    .builder
+                    .build_extract_value(ss, 0, "tag")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                let tag_ty = tag.get_type();
+                let alloca = self.builder.build_alloca(tag_ty, name).map_err(llvm_err)?;
+                self.builder.build_store(alloca, tag).map_err(llvm_err)?;
+                if mutable {
+                    self.scope.set_mutable(
+                        name.clone(),
+                        alloca,
+                        tag_ty.into(),
+                        super::ValKind::Int,
+                        None,
+                    );
+                } else {
+                    self.scope
+                        .set(name.clone(), alloca, tag_ty.into(), super::ValKind::Int);
+                }
+            }
+            if let Some(rest_name) = rest {
+                let start_idx = names.len() as u64;
+                let cap = self.i64_ty().const_int(4, false);
+                let new_list_cc = self.call_rt("action_list_create", &[cap.into()])?;
+                let new_list_bv = new_list_cc
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("rest list create fail")?;
+                let rest_alloca = self
+                    .builder
+                    .build_alloca(self.list_type, rest_name)
+                    .map_err(llvm_err)?;
+                self.builder
+                    .build_store(rest_alloca, new_list_bv)
+                    .map_err(llvm_err)?;
+                let current_fn = self
+                    .builder
+                    .get_insert_block()
+                    .unwrap()
+                    .get_parent()
+                    .unwrap();
+                let i64 = self.i64_ty();
+                let i_a = self.builder.build_alloca(i64, "ri").map_err(llvm_err)?;
+                self.builder
+                    .build_store(i_a, i64.const_int(start_idx, false))
+                    .map_err(llvm_err)?;
+                let rest_hdr = self.context.append_basic_block(current_fn, "rest_hdr");
+                let rest_bdy = self.context.append_basic_block(current_fn, "rest_bdy");
+                let rest_ext = self.context.append_basic_block(current_fn, "rest_ext");
+                let _ = self.builder.build_unconditional_branch(rest_hdr);
+                self.builder.position_at_end(rest_hdr);
+                let cur = self
+                    .builder
+                    .build_load(i64, i_a, "rc")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                let cond = self
+                    .builder
+                    .build_int_compare(IntPredicate::SLT, cur, len, "rc")
+                    .map_err(llvm_err)?;
+                let _ = self
+                    .builder
+                    .build_conditional_branch(cond, rest_bdy, rest_ext);
+                self.builder.position_at_end(rest_bdy);
+                let elem = self.call_rt("action_list_get", &[list_val.into(), cur.into()])?;
+                let elem_bv = elem.try_as_basic_value().basic().ok_or("rest get fail")?;
+                let rest_loaded = self.load_list(rest_alloca)?;
+                let _ = self.call_rt("action_list_push", &[rest_loaded.into(), elem_bv.into()])?;
+                let nxt = self
+                    .builder
+                    .build_int_add(cur, i64.const_int(1, false), "rn")
+                    .map_err(llvm_err)?;
+                self.builder.build_store(i_a, nxt).map_err(llvm_err)?;
+                let _ = self.builder.build_unconditional_branch(rest_hdr);
+                self.builder.position_at_end(rest_ext);
+                let _ = rest_name;
+            }
+        } else {
+            return Err("Only list destructuring is supported in HIR codegen".to_string());
+        }
+        Ok(())
+    }
+
+    fn compile_hir_const(&mut self, name: &str, value: &HirExpr) -> Result<(), String> {
+        match &value.kind {
+            HirExprKind::Literal(lit) => {
+                let (global_ptr, ty, kind): (
+                    inkwell::values::PointerValue<'ctx>,
+                    BasicTypeEnum<'ctx>,
+                    super::ValKind,
+                ) = match lit {
+                    Literal::Int(n) => {
+                        let g = self.add_module_global(self.i64_ty(), name)?;
+                        g.set_initializer(&self.i64_ty().const_int(*n as u64, true));
+                        (
+                            g.as_pointer_value(),
+                            self.i64_ty().into(),
+                            super::ValKind::Int,
+                        )
+                    }
+                    Literal::Float(n) => {
+                        let g = self.add_module_global(self.f64_ty(), name)?;
+                        g.set_initializer(&self.f64_ty().const_float(*n));
+                        (
+                            g.as_pointer_value(),
+                            self.f64_ty().into(),
+                            super::ValKind::Float,
+                        )
+                    }
+                    Literal::Bool(b) => {
+                        let g = self.add_module_global(self.bool_ty(), name)?;
+                        g.set_initializer(&self.bool_ty().const_int(if *b { 1 } else { 0 }, false));
+                        (
+                            g.as_pointer_value(),
+                            self.bool_ty().into(),
+                            super::ValKind::Bool,
+                        )
+                    }
+                    Literal::Char(c) => {
+                        let g = self.add_module_global(self.i64_ty(), name)?;
+                        g.set_initializer(&self.i64_ty().const_int(*c as u64, false));
+                        (
+                            g.as_pointer_value(),
+                            self.i64_ty().into(),
+                            super::ValKind::Int,
+                        )
+                    }
+                    Literal::Unit => {
+                        let g = self.add_module_global(self.i64_ty(), name)?;
+                        g.set_initializer(&self.i64_ty().const_int(0, false));
+                        (
+                            g.as_pointer_value(),
+                            self.i64_ty().into(),
+                            super::ValKind::Unit,
+                        )
+                    }
+                    Literal::String(s) => {
+                        let content_bytes: Vec<u8> = s.bytes().chain(std::iter::once(0)).collect();
+                        let arr_ty = self
+                            .context
+                            .i8_type()
+                            .array_type(content_bytes.len() as u32);
+                        let str_data_g =
+                            self.add_module_global(arr_ty, &format!("__const_str_data_{}", name))?;
+                        let arr_val = self.context.const_string(&content_bytes, false);
+                        str_data_g.set_initializer(&arr_val);
+                        let len_val = self.i64_ty().const_int(s.len() as u64, false);
+                        let i8_ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+                        let data_ptr = str_data_g.as_pointer_value();
+                        let data_ptr_i8 = data_ptr.const_cast(i8_ptr_ty);
+                        let fat_struct = self
+                            .context
+                            .const_struct(&[len_val.into(), data_ptr_i8.into()], false);
+                        let g = self.add_module_global(self.string_type, name)?;
+                        g.set_initializer(&fat_struct);
+                        (
+                            g.as_pointer_value(),
+                            self.string_type.into(),
+                            super::ValKind::Str,
+                        )
+                    }
+                };
+                self.consts.insert(name.to_string(), (global_ptr, ty, kind));
+            }
+            _ => {
+                let val = self.compile_hir_expr(value)?;
+                if let Some(bv) = val.to_bv() {
+                    let ty = bv.get_type();
+                    let g = self.add_module_global(ty, name)?;
+                    g.set_initializer(&bv);
+                    self.consts
+                        .insert(name.to_string(), (g.as_pointer_value(), ty, val.val_kind()));
+                } else {
+                    return Err(format!("Non-basic-value const '{}' is not supported", name));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn rename_module_hir_stmt(&self, stmt: &HirStmt, prefix: &str) -> HirStmt {
+        match stmt {
+            HirStmt::Fun {
+                name,
+                params,
+                return_type,
+                body,
+                type_params,
+                is_single_expr,
+                is_test,
+                span,
+            } => HirStmt::Fun {
+                name: format!("{}{}", prefix, name),
+                params: params.clone(),
+                return_type: return_type.clone(),
+                body: body.clone(),
+                type_params: type_params.clone(),
+                is_single_expr: *is_single_expr,
+                is_test: *is_test,
+                span: *span,
+            },
+            HirStmt::Const {
+                name,
+                type_ann,
+                value,
+                span,
+            } => HirStmt::Const {
+                name: format!("{}{}", prefix, name),
+                type_ann: type_ann.clone(),
+                value: value.clone(),
+                span: *span,
+            },
+            other => other.clone(),
+        }
     }
 
     fn compile_binary_values(
@@ -855,132 +1212,6 @@ impl<'ctx> CodeGen<'ctx> {
     fn compile_return_void(&mut self) -> Result<(), String> {
         self.emit_scope_cleanup()?;
         let _ = self.builder.build_return(None);
-        Ok(())
-    }
-
-    /// Compile destructuring assignment from HIR values.
-    fn compile_destructure(
-        &mut self,
-        mutable: bool,
-        names: &[String],
-        _renames: &[(String, String)],
-        rest: &Option<String>,
-        is_list: bool,
-        _is_struct: bool,
-        value_expr: &Expr,
-    ) -> Result<(), String> {
-        let val = self.compile_expr(value_expr)?;
-        if is_list {
-            let list_ptr = match val {
-                TypedValue::List(ptr) => ptr,
-                _ => return Err("List destructuring requires a list value".to_string()),
-            };
-            let list_val = self.load_list(list_ptr)?;
-            let data = self
-                .builder
-                .build_extract_value(list_val, 0, "data")
-                .map_err(llvm_err)?
-                .into_pointer_value();
-            let len = self
-                .builder
-                .build_extract_value(list_val, 1, "len")
-                .map_err(llvm_err)?
-                .into_int_value();
-            let data_str = self
-                .builder
-                .build_pointer_cast(data, self.ptr_ty(), "data_str")
-                .map_err(llvm_err)?;
-            for (i, name) in names.iter().enumerate() {
-                let idx = self.i64_ty().const_int(i as u64, false);
-                let elem_ptr = unsafe {
-                    self.builder
-                        .build_gep(self.string_type, data_str, &[idx], "delem_ptr")
-                }
-                .map_err(llvm_err)?;
-                let loaded = self
-                    .builder
-                    .build_load(self.string_type, elem_ptr, "delem")
-                    .map_err(llvm_err)?;
-                let ss = loaded.into_struct_value();
-                let tag = self
-                    .builder
-                    .build_extract_value(ss, 0, "tag")
-                    .map_err(llvm_err)?
-                    .into_int_value();
-                let tag_ty = tag.get_type();
-                let alloca = self.builder.build_alloca(tag_ty, name).map_err(llvm_err)?;
-                self.builder.build_store(alloca, tag).map_err(llvm_err)?;
-                if mutable {
-                    self.scope
-                        .set_mutable(name.clone(), alloca, tag_ty.into(), ValKind::Int, None);
-                } else {
-                    self.scope
-                        .set(name.clone(), alloca, tag_ty.into(), ValKind::Int);
-                }
-            }
-            if let Some(rest_name) = rest {
-                let start_idx = names.len() as u64;
-                let _new_len = self
-                    .builder
-                    .build_int_sub(len, self.i64_ty().const_int(start_idx, false), "rest_len")
-                    .map_err(llvm_err)?;
-                let cap = self.i64_ty().const_int(4, false);
-                let new_list_cc = self.call_rt("action_list_create", &[cap.into()])?;
-                let new_list_bv = new_list_cc
-                    .try_as_basic_value()
-                    .basic()
-                    .ok_or("rest list create fail")?;
-                let rest_alloca = self
-                    .builder
-                    .build_alloca(self.list_type, rest_name)
-                    .map_err(llvm_err)?;
-                self.builder
-                    .build_store(rest_alloca, new_list_bv)
-                    .map_err(llvm_err)?;
-                let current_fn = self
-                    .builder
-                    .get_insert_block()
-                    .unwrap()
-                    .get_parent()
-                    .unwrap();
-                let i64 = self.i64_ty();
-                let i_a = self.builder.build_alloca(i64, "ri").map_err(llvm_err)?;
-                self.builder
-                    .build_store(i_a, i64.const_int(start_idx, false))
-                    .map_err(llvm_err)?;
-                let rest_hdr = self.context.append_basic_block(current_fn, "rest_hdr");
-                let rest_bdy = self.context.append_basic_block(current_fn, "rest_bdy");
-                let rest_ext = self.context.append_basic_block(current_fn, "rest_ext");
-                let _ = self.builder.build_unconditional_branch(rest_hdr);
-                self.builder.position_at_end(rest_hdr);
-                let cur = self
-                    .builder
-                    .build_load(i64, i_a, "rc")
-                    .map_err(llvm_err)?
-                    .into_int_value();
-                let cond = self
-                    .builder
-                    .build_int_compare(IntPredicate::SLT, cur, len, "rc")
-                    .map_err(llvm_err)?;
-                let _ = self
-                    .builder
-                    .build_conditional_branch(cond, rest_bdy, rest_ext);
-                self.builder.position_at_end(rest_bdy);
-                let elem = self.call_rt("action_list_get", &[list_val.into(), cur.into()])?;
-                let elem_bv = elem.try_as_basic_value().basic().ok_or("rest get fail")?;
-                let rest_loaded = self.load_list(rest_alloca)?;
-                let _ = self.call_rt("action_list_push", &[rest_loaded.into(), elem_bv.into()])?;
-                let nxt = self
-                    .builder
-                    .build_int_add(cur, i64.const_int(1, false), "rn")
-                    .map_err(llvm_err)?;
-                self.builder.build_store(i_a, nxt).map_err(llvm_err)?;
-                let _ = self.builder.build_unconditional_branch(rest_hdr);
-                self.builder.position_at_end(rest_ext);
-            }
-        } else {
-            return Err("Only list destructuring is supported in HIR codegen".to_string());
-        }
         Ok(())
     }
 

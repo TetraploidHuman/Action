@@ -1201,4 +1201,451 @@ impl<'ctx> CodeGen<'ctx> {
             Ok(TypedValue::Unit)
         }
     }
+
+    pub(super) fn compile_hir_when(
+        &mut self,
+        w: &action_frontend::hir::HirWhen,
+    ) -> Result<TypedValue<'ctx>, String> {
+        use action_frontend::hir::{HirExprKind, HirWhenKind};
+        match &w.kind {
+            HirWhenKind::OneLine {
+                condition,
+                then_expr,
+                else_expr,
+            } => {
+                let c = self.compile_hir_expr(condition)?;
+                let c_bool = match c {
+                    TypedValue::Bool(b) => b,
+                    _ => return Err("when condition must be boolean".to_string()),
+                };
+                let smart_var: Option<String> = match &condition.kind {
+                    HirExprKind::Binary(lhs, BinaryOp::Neq, rhs)
+                    | HirExprKind::Binary(lhs, BinaryOp::Eq, rhs) => match (&lhs.kind, &rhs.kind) {
+                        (HirExprKind::Ident(name), HirExprKind::Null)
+                        | (HirExprKind::Null, HirExprKind::Ident(name)) => Some(name.clone()),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                if let Some(ref var) = smart_var {
+                    let is_eq = matches!(&condition.kind, HirExprKind::Binary(_, BinaryOp::Eq, _));
+                    if is_eq {
+                        let negated = self
+                            .builder
+                            .build_not(c_bool, "neg_cond")
+                            .map_err(llvm_err)?;
+                        self.not_null_set.insert(var.clone());
+                        let result =
+                            self.compile_when_branch_lazy_hir(negated, else_expr, then_expr);
+                        self.not_null_set.remove(var);
+                        result
+                    } else {
+                        self.not_null_set.insert(var.clone());
+                        let result =
+                            self.compile_when_branch_lazy_hir(c_bool, then_expr, else_expr);
+                        self.not_null_set.remove(var);
+                        result
+                    }
+                } else {
+                    self.compile_when_branch_lazy_hir(c_bool, then_expr, else_expr)
+                }
+            }
+            HirWhenKind::ValueMatch { value, arms } => self.compile_hir_value_match(value, arms),
+            HirWhenKind::ConditionChain { arms } => self.compile_hir_condition_chain(arms),
+        }
+    }
+
+    fn compile_hir_value_match(
+        &mut self,
+        value: &action_frontend::hir::HirExpr,
+        arms: &[action_frontend::hir::HirWhenArm],
+    ) -> Result<TypedValue<'ctx>, String> {
+        if arms.is_empty() {
+            return Ok(TypedValue::Unit);
+        }
+        self.registry
+            .check_when_exhaustive(&arms.iter().map(|a| a.to_when_arm()).collect::<Vec<_>>())?;
+
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("Cannot compile when outside function")?;
+
+        let matched_val = self.compile_hir_expr(value)?;
+        let matched_type = value.ty.clone();
+        let result_type = arms
+            .first()
+            .map(|a| a.body.ty.clone())
+            .unwrap_or_else(|| Type::Named("Int".into()));
+        let result_ty = self.ast_type_to_basic_type(&result_type);
+
+        let entry = current_fn.get_first_basic_block().unwrap();
+        let saved_pos = self.builder.get_insert_block();
+        match entry.get_first_instruction() {
+            Some(instr) => {
+                let _ = self.builder.position_before(&instr);
+            }
+            None => self.builder.position_at_end(entry),
+        }
+        let result_alloca = self
+            .builder
+            .build_alloca(result_ty, "match_result")
+            .map_err(llvm_err)?;
+        let zero = result_ty.const_zero();
+        self.builder
+            .build_store(result_alloca, zero)
+            .map_err(llvm_err)?;
+        if let Some(block) = saved_pos {
+            self.builder.position_at_end(block);
+        }
+
+        let merge_block = self.context.append_basic_block(current_fn, "match_merge");
+        let mut next_check = self.context.append_basic_block(current_fn, "match_check0");
+        let _ = self.builder.build_unconditional_branch(next_check);
+        let mut result_enum_info: Option<(InnerType, bool)> = None;
+
+        for (i, hir_arm) in arms.iter().enumerate() {
+            let arm = hir_arm.to_when_arm();
+            let is_last = i == arms.len() - 1;
+            self.builder.position_at_end(next_check);
+
+            let matches = self.compile_pattern_match(&arm.pattern, &matched_val)?;
+            let matches = if hir_arm.guard.is_some() {
+                let mut saved_scope = Scope::new();
+                std::mem::swap(&mut self.scope, &mut saved_scope);
+                self.scope = Scope::with_parent(saved_scope);
+                self.bind_pattern_vars(&arm.pattern, Some(&matched_val), Some(&matched_type))?;
+                let guard_matches = self.compile_guard_hir(hir_arm.guard.as_deref())?;
+                let combined = self
+                    .builder
+                    .build_and(matches, guard_matches, "guard_and")
+                    .map_err(llvm_err)?;
+                self.emit_scope_cleanup()?;
+                let mut parent = Scope::new();
+                std::mem::swap(&mut self.scope, &mut parent);
+                if let Some(p) = parent.parent {
+                    self.scope = *p;
+                }
+                combined
+            } else {
+                matches
+            };
+
+            let body_block = self
+                .context
+                .append_basic_block(current_fn, &format!("match_body{}", i));
+            if is_last {
+                let _ = self
+                    .builder
+                    .build_conditional_branch(matches, body_block, merge_block);
+            } else {
+                next_check = self
+                    .context
+                    .append_basic_block(current_fn, &format!("match_check{}", i + 1));
+                let _ = self
+                    .builder
+                    .build_conditional_branch(matches, body_block, next_check);
+            }
+
+            self.builder.position_at_end(body_block);
+            let mut saved_scope = Scope::new();
+            std::mem::swap(&mut self.scope, &mut saved_scope);
+            self.scope = Scope::with_parent(saved_scope);
+            self.bind_pattern_vars(&arm.pattern, Some(&matched_val), Some(&matched_type))?;
+            let body_val = self.compile_hir_expr(&hir_arm.body)?;
+            if result_enum_info.is_none() {
+                if let TypedValue::Enum(_, _, inner, rc) = &body_val {
+                    result_enum_info = Some((*inner, *rc));
+                }
+            }
+            self.store_branch_result(&body_val, result_alloca, &result_type)?;
+            self.emit_scope_cleanup()?;
+            let mut parent = Scope::new();
+            std::mem::swap(&mut self.scope, &mut parent);
+            if let Some(p) = parent.parent {
+                self.scope = *p;
+            }
+            let _ = self.builder.build_unconditional_branch(merge_block);
+        }
+
+        self.builder.position_at_end(merge_block);
+        self.last_enum_inner = result_enum_info;
+        let loaded = self
+            .builder
+            .build_load(result_ty, result_alloca, "match_ld")
+            .map_err(llvm_err)?;
+        self.bv_to_typed(loaded)
+    }
+
+    fn compile_hir_condition_chain(
+        &mut self,
+        arms: &[action_frontend::hir::HirWhenArm],
+    ) -> Result<TypedValue<'ctx>, String> {
+        let ast_arms: Vec<WhenArm> = arms.iter().map(|a| a.to_when_arm()).collect();
+        self.compile_condition_chain_hir(&ast_arms, arms)
+    }
+
+    fn compile_condition_chain_hir(
+        &mut self,
+        arms: &[WhenArm],
+        hir_arms: &[action_frontend::hir::HirWhenArm],
+    ) -> Result<TypedValue<'ctx>, String> {
+        if arms.is_empty() {
+            return Ok(TypedValue::Unit);
+        }
+
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("Cannot compile when outside function")?;
+
+        let merge_block = self.context.append_basic_block(current_fn, "chain_merge");
+        let result_type = hir_arms
+            .first()
+            .map(|a| a.body.ty.clone())
+            .unwrap_or_else(|| Type::Named("Int".into()));
+        let result_ty = self.ast_type_to_basic_type(&result_type);
+
+        let entry = current_fn.get_first_basic_block().unwrap();
+        let saved_pos = self.builder.get_insert_block();
+        match entry.get_first_instruction() {
+            Some(instr) => {
+                let _ = self.builder.position_before(&instr);
+            }
+            None => self.builder.position_at_end(entry),
+        }
+        let result_alloca = self
+            .builder
+            .build_alloca(result_ty, "chain_result")
+            .map_err(llvm_err)?;
+        if let Some(block) = saved_pos {
+            self.builder.position_at_end(block);
+        }
+
+        let mut next_check = self.context.append_basic_block(current_fn, "chain_check0");
+        let _ = self.builder.build_unconditional_branch(next_check);
+        let mut chain_enum_info: Option<(InnerType, bool)> = None;
+
+        for (i, (arm, hir_arm)) in arms.iter().zip(hir_arms.iter()).enumerate() {
+            let is_last = i == arms.len() - 1;
+            self.builder.position_at_end(next_check);
+
+            let matches = self.compile_pattern_condition(&arm.pattern, None)?;
+            let matches = if arm.guard.is_some() {
+                let mut saved_scope = Scope::new();
+                std::mem::swap(&mut self.scope, &mut saved_scope);
+                self.scope = Scope::with_parent(saved_scope);
+                self.bind_pattern_vars(&arm.pattern, None, None)?;
+                let guard_matches = self.compile_guard_hir(hir_arm.guard.as_deref())?;
+                let combined = self
+                    .builder
+                    .build_and(matches, guard_matches, "guard_and")
+                    .map_err(llvm_err)?;
+                self.emit_scope_cleanup()?;
+                let mut parent = Scope::new();
+                std::mem::swap(&mut self.scope, &mut parent);
+                if let Some(p) = parent.parent {
+                    self.scope = *p;
+                }
+                combined
+            } else {
+                matches
+            };
+            let body_block = self
+                .context
+                .append_basic_block(current_fn, &format!("chain_body{}", i));
+
+            if is_last {
+                let _ = self
+                    .builder
+                    .build_conditional_branch(matches, body_block, merge_block);
+            } else {
+                next_check = self
+                    .context
+                    .append_basic_block(current_fn, &format!("chain_check{}", i + 1));
+                let _ = self
+                    .builder
+                    .build_conditional_branch(matches, body_block, next_check);
+            }
+
+            self.builder.position_at_end(body_block);
+            let mut saved_scope = Scope::new();
+            std::mem::swap(&mut self.scope, &mut saved_scope);
+            self.scope = Scope::with_parent(saved_scope);
+            self.bind_pattern_vars(&arm.pattern, None, None)?;
+            let body_val = self.compile_hir_expr(&hir_arm.body)?;
+            if chain_enum_info.is_none() {
+                if let TypedValue::Enum(_, _, inner, rc) = &body_val {
+                    chain_enum_info = Some((*inner, *rc));
+                }
+            }
+            self.store_branch_result(&body_val, result_alloca, &result_type)?;
+            self.emit_scope_cleanup()?;
+            let mut parent = Scope::new();
+            std::mem::swap(&mut self.scope, &mut parent);
+            if let Some(p) = parent.parent {
+                self.scope = *p;
+            }
+            let _ = self.builder.build_unconditional_branch(merge_block);
+        }
+
+        self.builder.position_at_end(merge_block);
+        self.last_enum_inner = chain_enum_info;
+        let loaded = self
+            .builder
+            .build_load(result_ty, result_alloca, "chain_ld")
+            .map_err(llvm_err)?;
+        self.bv_to_typed(loaded)
+    }
+
+    fn compile_guard_hir(
+        &mut self,
+        guard: Option<&action_frontend::hir::HirExpr>,
+    ) -> Result<IntValue<'ctx>, String> {
+        match guard {
+            Some(expr) => {
+                let val = self.compile_hir_expr(expr)?;
+                match val {
+                    TypedValue::Bool(b) => Ok(b),
+                    TypedValue::Int(i) => {
+                        let zero = self.i64_ty().const_int(0, false);
+                        Ok(self
+                            .builder
+                            .build_int_compare(IntPredicate::NE, i, zero, "guard_truthy")
+                            .map_err(llvm_err)?)
+                    }
+                    _ => Ok(self.bool_ty().const_int(1, false)),
+                }
+            }
+            None => Ok(self.bool_ty().const_int(1, false)),
+        }
+    }
+
+    pub(super) fn compile_when_branch_lazy_hir(
+        &mut self,
+        c: IntValue<'ctx>,
+        then_expr: &action_frontend::hir::HirExpr,
+        else_expr: &action_frontend::hir::HirExpr,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let then_diverges = matches!(
+            then_expr.kind,
+            action_frontend::hir::HirExprKind::Continue | action_frontend::hir::HirExprKind::Break
+        );
+        let else_diverges = matches!(
+            else_expr.kind,
+            action_frontend::hir::HirExprKind::Continue | action_frontend::hir::HirExprKind::Break
+        );
+
+        let then_inferred = if !then_diverges {
+            then_expr.ty.clone()
+        } else {
+            Type::Named("Int".into())
+        };
+        let else_inferred = if !else_diverges {
+            else_expr.ty.clone()
+        } else {
+            then_inferred.clone()
+        };
+        let result_type = match (&then_inferred, &else_inferred) {
+            (a, b) if !matches!(a, Type::Nullable(_)) && !matches!(b, Type::Nullable(_)) => {
+                then_inferred.clone()
+            }
+            (Type::Nullable(inner), other) | (other, Type::Nullable(inner)) if matches!(inner.as_ref(), Type::Named(n) if n == "Nothing") => {
+                match other {
+                    Type::Nullable(oi) => Type::Nullable(oi.clone()),
+                    _ => Type::Nullable(Box::new(other.clone())),
+                }
+            }
+            (Type::Nullable(inner), _) | (_, Type::Nullable(inner)) => {
+                Type::Nullable(inner.clone())
+            }
+            _ => then_inferred.clone(),
+        };
+        let result_ty: BasicTypeEnum = self.ast_type_to_basic_type(&result_type);
+
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("Cannot compile when outside function".to_string())?;
+
+        let then_block = self.context.append_basic_block(current_fn, "when_then");
+        let else_block = self.context.append_basic_block(current_fn, "when_else");
+        let merge_block = self.context.append_basic_block(current_fn, "when_merge");
+
+        let _ = self
+            .builder
+            .build_conditional_branch(c, then_block, else_block);
+
+        let result_alloca = if !then_diverges || !else_diverges {
+            let entry = current_fn.get_first_basic_block().unwrap();
+            let saved_pos = self.builder.get_insert_block();
+            match entry.get_first_instruction() {
+                Some(instr) => {
+                    let _ = self.builder.position_before(&instr);
+                }
+                None => self.builder.position_at_end(entry),
+            }
+            let alloca = self
+                .builder
+                .build_alloca(result_ty, "when_result")
+                .map_err(llvm_err)?;
+            if let Some(block) = saved_pos {
+                self.builder.position_at_end(block);
+            }
+            Some(alloca)
+        } else {
+            None
+        };
+
+        let mut when_enum_info: Option<(InnerType, bool)> = None;
+
+        self.builder.position_at_end(then_block);
+        if then_diverges {
+            self.compile_hir_expr(then_expr)?;
+        } else {
+            let tv = self.compile_hir_expr(then_expr)?;
+            if let TypedValue::Enum(_, _, inner, rc) = &tv {
+                when_enum_info = Some((*inner, *rc));
+            }
+            self.store_branch_result(
+                &tv,
+                result_alloca.ok_or_else(|| "No result alloca".to_string())?,
+                &result_type,
+            )?;
+            let _ = self.builder.build_unconditional_branch(merge_block);
+        }
+
+        self.builder.position_at_end(else_block);
+        if else_diverges {
+            self.compile_hir_expr(else_expr)?;
+        } else {
+            let ev = self.compile_hir_expr(else_expr)?;
+            if when_enum_info.is_none() {
+                if let TypedValue::Enum(_, _, inner, rc) = &ev {
+                    when_enum_info = Some((*inner, *rc));
+                }
+            }
+            self.store_branch_result(
+                &ev,
+                result_alloca.ok_or_else(|| "No result alloca".to_string())?,
+                &result_type,
+            )?;
+            let _ = self.builder.build_unconditional_branch(merge_block);
+        }
+
+        self.builder.position_at_end(merge_block);
+        if let Some(alloca) = result_alloca {
+            self.last_enum_inner = when_enum_info;
+            let loaded = self
+                .builder
+                .build_load(result_ty, alloca, "when_ld")
+                .map_err(llvm_err)?;
+            self.bv_to_typed(loaded)
+        } else {
+            Ok(TypedValue::Unit)
+        }
+    }
 }

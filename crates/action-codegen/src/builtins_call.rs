@@ -1688,9 +1688,117 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    /// HIR-native indirect call (function values, closures, untyped callbacks).
+    pub(super) fn compile_indirect_call_hir(
+        &mut self,
+        target: TypedValue<'ctx>,
+        args: &[action_frontend::hir::HirExpr],
+        trailing: Option<&Box<action_frontend::hir::HirExpr>>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        match target {
+            TypedValue::Fn(fn_ptr, fn_type) => {
+                let mut ca: Vec<BasicMetadataValueEnum> = Vec::new();
+                let mut tracked_args: Vec<TypedValue<'ctx>> = Vec::new();
+                for a in args {
+                    let av = self.compile_hir_expr(a)?;
+                    let bv = self.typed_value_to_bv(&av);
+                    ca.push(bv.into());
+                    tracked_args.push(av);
+                }
+                if let Some(lam) = trailing {
+                    let bv = self.compile_and_load_hir(lam)?;
+                    ca.push(bv.into());
+                }
+                let cc = self
+                    .builder
+                    .build_indirect_call(fn_type, fn_ptr, &ca, "indirect")
+                    .map_err(llvm_err)?;
+                for av in &tracked_args {
+                    self.rc_free_intermediate(av)?;
+                }
+                match cc.try_as_basic_value().basic() {
+                    Some(bv) => self.unpack_fat_return(bv, fn_type.get_return_type()),
+                    None => Ok(TypedValue::Unit),
+                }
+            }
+            TypedValue::Closure {
+                fn_ptr,
+                actual_fn_type,
+                closure_ptr,
+                closure_ty,
+                alloca,
+            } => {
+                let mut ca: Vec<BasicMetadataValueEnum> = Vec::new();
+                let mut tracked_args: Vec<TypedValue<'ctx>> = Vec::new();
+                ca.push(closure_ptr.into());
+                for a in args {
+                    let av = self.compile_hir_expr(a)?;
+                    let bv = self.typed_value_to_bv(&av);
+                    ca.push(bv.into());
+                    tracked_args.push(av);
+                }
+                if let Some(lam) = trailing {
+                    let bv = self.compile_and_load_hir(lam)?;
+                    ca.push(bv.into());
+                }
+                let cc = self
+                    .builder
+                    .build_indirect_call(actual_fn_type, fn_ptr, &ca, "indirect_closure")
+                    .map_err(llvm_err)?;
+                for av in &tracked_args {
+                    self.rc_free_intermediate(av)?;
+                }
+                if alloca.is_none() {
+                    self.rc_inc(closure_ptr)?;
+                    self.rc_dec_closure_captures(closure_ptr, closure_ty)?;
+                }
+                match cc.try_as_basic_value().basic() {
+                    Some(bv) => self.unpack_fat_return(bv, actual_fn_type.get_return_type()),
+                    None => Ok(TypedValue::Unit),
+                }
+            }
+            TypedValue::Int(iv) => {
+                let total_args = args.len() + trailing.map_or(0, |_| 1);
+                let param_tys: Vec<BasicMetadataTypeEnum<'ctx>> =
+                    (0..total_args).map(|_| self.i64_ty().into()).collect();
+                let ret_ty = self.fat_return_type;
+                let fn_type = ret_ty.fn_type(&param_tys, false);
+                let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                let fn_ptr = self
+                    .builder
+                    .build_int_to_ptr(iv, ptr_type, "fn_ptr_cast")
+                    .map_err(llvm_err)?;
+                let mut ca: Vec<BasicMetadataValueEnum> = Vec::new();
+                let mut tracked_args: Vec<TypedValue<'ctx>> = Vec::new();
+                for a in args {
+                    let av = self.compile_hir_expr(a)?;
+                    let bv = self.typed_value_to_bv(&av);
+                    ca.push(bv.into());
+                    tracked_args.push(av);
+                }
+                if let Some(lam) = trailing {
+                    let bv = self.compile_and_load_hir(lam)?;
+                    ca.push(bv.into());
+                }
+                let cc = self
+                    .builder
+                    .build_indirect_call(fn_type, fn_ptr, &ca, "indirect_untyped")
+                    .map_err(llvm_err)?;
+                for av in &tracked_args {
+                    self.rc_free_intermediate(av)?;
+                }
+                match cc.try_as_basic_value().basic() {
+                    Some(bv) => self.unpack_fat_return(bv, Some(BasicTypeEnum::StructType(ret_ty))),
+                    None => Ok(TypedValue::Unit),
+                }
+            }
+            _ => Err("Call target is not a function".to_string()),
+        }
+    }
+
     /// Read-only List UFCS methods using the already-compiled receiver value.
     /// Returns `None` when `method` is not handled here.
-    fn compile_list_readonly_ufcs(
+    pub(super) fn compile_list_readonly_ufcs(
         &mut self,
         lp: PointerValue<'ctx>,
         recv_val: &TypedValue<'ctx>,
@@ -2067,7 +2175,7 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// Convert a TypedValue to a BasicValueEnum suitable for passing as a
     /// function call argument, without re-compiling the expression.
-    fn typed_value_to_bv(&self, av: &TypedValue<'ctx>) -> BasicValueEnum<'ctx> {
+    pub(super) fn typed_value_to_bv(&self, av: &TypedValue<'ctx>) -> BasicValueEnum<'ctx> {
         av.to_bv().unwrap_or_else(|| match av {
             TypedValue::Str(ptr) => {
                 let ld = self

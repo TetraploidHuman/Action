@@ -1181,4 +1181,162 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(ext);
         Ok((ext, i_a))
     }
+
+    pub(super) fn compile_hir_for(
+        &mut self,
+        f: &action_frontend::hir::HirFor,
+    ) -> Result<TypedValue<'ctx>, String> {
+        use action_frontend::hir::HirForKind;
+        match &f.kind {
+            HirForKind::Iterate {
+                var,
+                iterable,
+                body,
+                collect,
+            } => self.compile_for_iterate_hir(var, iterable, body, *collect),
+            HirForKind::Condition { condition, body } => {
+                if let Some(result) =
+                    self.try_compile_for_sequential_list_get_hir(condition, body)?
+                {
+                    return Ok(result);
+                }
+                self.compile_for_condition_hir(condition, body)
+            }
+            HirForKind::Infinite { body } => self.compile_for_infinite_hir(body),
+            HirForKind::IterateWithIndex {
+                vars,
+                iterable,
+                body,
+            } => self.compile_for_with_index_hir(vars, iterable, body),
+            HirForKind::NestedIterate {
+                bindings,
+                body,
+                collect,
+            } => self.compile_for_nested_iterate_hir(bindings, body, *collect),
+        }
+    }
+
+    fn compile_for_condition_hir(
+        &mut self,
+        condition: &action_frontend::hir::HirExpr,
+        body: &action_frontend::hir::HirExpr,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("Cannot compile for outside function")?;
+
+        let header = self.context.append_basic_block(current_fn, "for_cond_hdr");
+        let body_block = self.context.append_basic_block(current_fn, "for_cond_body");
+        let exit = self.context.append_basic_block(current_fn, "for_cond_exit");
+
+        let saved_continue = self.continue_target;
+        let saved_break = self.break_target;
+        self.continue_target = Some(header);
+        self.break_target = Some(exit);
+
+        let _ = self.builder.build_unconditional_branch(header);
+        self.builder.position_at_end(header);
+        let cv = self.compile_hir_expr(condition)?;
+        let cond_val = match cv {
+            TypedValue::Bool(b) => b,
+            TypedValue::Int(v) => self
+                .builder
+                .build_int_compare(
+                    inkwell::IntPredicate::NE,
+                    v,
+                    self.i64_ty().const_int(0, false),
+                    "cond",
+                )
+                .map_err(llvm_err)?,
+            _ => return Err("for condition must evaluate to Bool or Int".to_string()),
+        };
+        let _ = self
+            .builder
+            .build_conditional_branch(cond_val, body_block, exit);
+
+        self.builder.position_at_end(body_block);
+        let body_val = self.compile_hir_expr(body)?;
+        self.rc_discard_value(&body_val)?;
+        let _ = self.builder.build_unconditional_branch(header);
+
+        self.builder.position_at_end(exit);
+        self.continue_target = saved_continue;
+        self.break_target = saved_break;
+
+        Ok(TypedValue::Unit)
+    }
+
+    fn compile_for_infinite_hir(
+        &mut self,
+        body: &action_frontend::hir::HirExpr,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("Cannot compile for outside function")?;
+
+        let body_block = self.context.append_basic_block(current_fn, "for_inf_body");
+        let exit = self.context.append_basic_block(current_fn, "for_inf_exit");
+
+        let saved_continue = self.continue_target;
+        let saved_break = self.break_target;
+        self.continue_target = Some(body_block);
+        self.break_target = Some(exit);
+
+        let _ = self.builder.build_unconditional_branch(body_block);
+        self.builder.position_at_end(body_block);
+        let body_val = self.compile_hir_expr(body)?;
+        self.rc_discard_value(&body_val)?;
+        let _ = self.builder.build_unconditional_branch(body_block);
+
+        self.builder.position_at_end(exit);
+        self.continue_target = saved_continue;
+        self.break_target = saved_break;
+
+        Ok(TypedValue::Unit)
+    }
+
+    fn compile_for_iterate_hir(
+        &mut self,
+        variable: &str,
+        iterator: &action_frontend::hir::HirExpr,
+        body: &action_frontend::hir::HirExpr,
+        collect: bool,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let body_box = Box::new(body.as_expr());
+        self.compile_for_iterate(variable, &iterator.as_expr(), &body_box, collect)
+    }
+
+    fn compile_for_with_index_hir(
+        &mut self,
+        vars: &[String],
+        iterator: &action_frontend::hir::HirExpr,
+        body: &action_frontend::hir::HirExpr,
+    ) -> Result<TypedValue<'ctx>, String> {
+        self.compile_for_with_index(vars, &iterator.as_expr(), &body.as_expr())
+    }
+
+    fn compile_for_nested_iterate_hir(
+        &mut self,
+        bindings: &[(String, action_frontend::hir::HirExpr)],
+        body: &action_frontend::hir::HirExpr,
+        collect: bool,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let ast_bindings: Vec<(String, Expr)> = bindings
+            .iter()
+            .map(|(n, e)| (n.clone(), e.as_expr()))
+            .collect();
+        self.compile_for_nested_iterate(&ast_bindings, &body.as_expr(), collect)
+    }
+
+    fn try_compile_for_sequential_list_get_hir(
+        &mut self,
+        condition: &action_frontend::hir::HirExpr,
+        body: &action_frontend::hir::HirExpr,
+    ) -> Result<Option<TypedValue<'ctx>>, String> {
+        self.try_compile_for_sequential_list_get(&condition.as_expr(), &body.as_expr())
+    }
 }

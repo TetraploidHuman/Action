@@ -7,6 +7,20 @@ use inkwell::IntPredicate;
 
 use super::{llvm_err, CodeGen, Scope, TcoState, TypedValue, ValKind};
 
+enum FunBody<'a> {
+    Ast(&'a Expr),
+    Hir(&'a action_frontend::hir::HirExpr),
+}
+
+impl<'a> FunBody<'a> {
+    fn compile<'ctx>(&self, cg: &mut CodeGen<'ctx>) -> Result<TypedValue<'ctx>, String> {
+        match self {
+            FunBody::Ast(e) => cg.compile_expr(e),
+            FunBody::Hir(e) => cg.compile_expr(&e.as_expr()),
+        }
+    }
+}
+
 impl<'ctx> CodeGen<'ctx> {
     pub(super) fn compile_stmt(&mut self, stmt: &Stmt) -> Result<(), String> {
         match stmt {
@@ -990,8 +1004,30 @@ impl<'ctx> CodeGen<'ctx> {
         name: &str,
         original_name: &str,
         params: &[Param],
-        _return_type: Option<&Type>,
+        return_type: Option<&Type>,
         body: &Expr,
+    ) -> Result<(), String> {
+        self.compile_fun_def_inner(name, original_name, params, return_type, FunBody::Ast(body))
+    }
+
+    pub(super) fn compile_fun_def_hir(
+        &mut self,
+        name: &str,
+        original_name: &str,
+        params: &[Param],
+        return_type: Option<&Type>,
+        body: &action_frontend::hir::HirExpr,
+    ) -> Result<(), String> {
+        self.compile_fun_def_inner(name, original_name, params, return_type, FunBody::Hir(body))
+    }
+
+    fn compile_fun_def_inner(
+        &mut self,
+        name: &str,
+        original_name: &str,
+        params: &[Param],
+        _return_type: Option<&Type>,
+        body: FunBody<'_>,
     ) -> Result<(), String> {
         // Function was already declared in Pass 1; just look it up
         let function = self.module.get_function(name).ok_or_else(|| {
@@ -1144,7 +1180,7 @@ impl<'ctx> CodeGen<'ctx> {
             fn_name: original_name.to_string(),
         });
 
-        let result = self.compile_expr(body)?;
+        let result = body.compile(self)?;
 
         // If the body already ended with a return/break/continue, the current block
         // already has a terminator — skip the fallback ret.

@@ -296,7 +296,7 @@ impl HirWhen {
 }
 
 impl HirWhenArm {
-    fn to_when_arm(&self) -> WhenArm {
+    pub fn to_when_arm(&self) -> WhenArm {
         WhenArm {
             pattern: self.pattern.to_pattern(),
             guard: self.guard.as_ref().map(|g| Box::new(g.to_expr())),
@@ -306,7 +306,7 @@ impl HirWhenArm {
 }
 
 impl HirPattern {
-    fn to_pattern(&self) -> Pattern {
+    pub fn to_pattern(&self) -> Pattern {
         match self {
             HirPattern::Wildcard => Pattern::Wildcard,
             HirPattern::Literal(l) => Pattern::Literal(l.clone()),
