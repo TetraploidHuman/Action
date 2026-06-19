@@ -8,7 +8,7 @@
 # Instance 1 (nixos-x64-runner) lives at ~/桌面/Runner/runner and is left untouched.
 set -euo pipefail
 
-INSTANCE="${1:?runner instance id (2 or 3)}"
+INSTANCE="${1:?runner instance id (2–9)}"
 TOKEN="${2:?GitHub registration token (POST .../registration-token)}"
 
 ROOT="${RUNNER_ROOT:-$HOME/桌面/Runner}"
