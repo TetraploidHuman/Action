@@ -110,8 +110,8 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         lam: &Expr,
     ) -> Result<inkwell::values::PointerValue<'ctx>, String> {
-        match lam {
-            Expr::Lambda { params, body, .. } => {
+        match &lam.kind {
+            ExprKind::Lambda { params, body, .. } => {
                 if params.is_empty() {
                     return Err("lazy_list step function expects 1 parameter".to_string());
                 }

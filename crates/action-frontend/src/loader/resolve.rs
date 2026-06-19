@@ -335,16 +335,24 @@ pub fn transform_module_access(program: &mut Program) {
     }
 
     fn transform_expr(expr: &mut Expr, prefixes: &HashSet<String>) {
-        if let Expr::FieldAccess(ref base, ref field) = expr {
-            if let Expr::Ident(ref ident) = **base {
-                if prefixes.contains(ident) {
-                    *expr = Expr::Ident(format!("{}_{}", ident, field));
-                    return;
+        // Handle module prefix transformation: Module.func -> Module_func
+        // Check separately to avoid borrow conflicts with the mutable match below
+        let replacement = match &expr.kind {
+            ExprKind::FieldAccess(base, field) => match &base.kind {
+                ExprKind::Ident(ident) if prefixes.contains(ident) => {
+                    Some(ExprKind::Ident(format!("{}_{}", ident, field)).into())
                 }
-            }
+                _ => None,
+            },
+            _ => None,
+        };
+        if let Some(new_expr) = replacement {
+            *expr = new_expr;
+            return;
         }
-        match expr {
-            Expr::Call {
+
+        match &mut expr.kind {
+            ExprKind::Call {
                 func,
                 args,
                 trailing_lambda,
@@ -357,54 +365,54 @@ pub fn transform_module_access(program: &mut Program) {
                     transform_expr(lambda, prefixes);
                 }
             }
-            Expr::Binary(lhs, _, rhs) => {
+            ExprKind::Binary(lhs, _, rhs) => {
                 transform_expr(lhs, prefixes);
                 transform_expr(rhs, prefixes);
             }
-            Expr::Unary(_, operand) => {
+            ExprKind::Unary(_, operand) => {
                 transform_expr(operand, prefixes);
             }
-            Expr::FieldAccess(base, _) => {
+            ExprKind::FieldAccess(base, _) => {
                 transform_expr(base, prefixes);
             }
-            Expr::Index(base, idx) => {
+            ExprKind::Index(base, idx) => {
                 transform_expr(base, prefixes);
                 transform_expr(idx, prefixes);
             }
-            Expr::Range(start, end) => {
+            ExprKind::Range(start, end) => {
                 transform_expr(start, prefixes);
                 transform_expr(end, prefixes);
             }
-            Expr::Tuple(elements) => {
+            ExprKind::Tuple(elements) => {
                 for (_, e) in elements.iter_mut() {
                     transform_expr(e, prefixes);
                 }
             }
-            Expr::StructLiteral(fields) => {
+            ExprKind::StructLiteral(fields) => {
                 for (_, e) in fields.iter_mut() {
                     transform_expr(e, prefixes);
                 }
             }
-            Expr::MapLiteral(entries) => {
+            ExprKind::MapLiteral(entries) => {
                 for (k, v) in entries.iter_mut() {
                     transform_expr(k, prefixes);
                     transform_expr(v, prefixes);
                 }
             }
-            Expr::SetLiteral(items) => {
+            ExprKind::SetLiteral(items) => {
                 for item in items.iter_mut() {
                     transform_expr(item, prefixes);
                 }
             }
-            Expr::Block(stmts) => {
+            ExprKind::Block(stmts) => {
                 for s in stmts.iter_mut() {
                     transform_stmt(s, prefixes);
                 }
             }
-            Expr::Lambda { body, .. } => {
+            ExprKind::Lambda { body, .. } => {
                 transform_expr(body, prefixes);
             }
-            Expr::When(w) => match &mut w.kind {
+            ExprKind::When(w) => match &mut w.kind {
                 WhenKind::OneLine {
                     condition,
                     then_expr,
@@ -432,7 +440,7 @@ pub fn transform_module_access(program: &mut Program) {
                     }
                 }
             },
-            Expr::For(fr) => match &mut fr.kind {
+            ExprKind::For(fr) => match &mut fr.kind {
                 ForKind::Iterate { iterable, body, .. }
                 | ForKind::IterateWithIndex { iterable, body, .. } => {
                     transform_expr(iterable, prefixes);
@@ -452,22 +460,22 @@ pub fn transform_module_access(program: &mut Program) {
                     transform_expr(body, prefixes);
                 }
             },
-            Expr::Assign { target, value, .. } => {
+            ExprKind::Assign { target, value, .. } => {
                 transform_expr(target, prefixes);
                 transform_expr(value, prefixes);
             }
-            Expr::Unsafe(inner) => {
+            ExprKind::Unsafe(inner) => {
                 transform_expr(inner, prefixes);
             }
-            Expr::Copy(inner) => {
+            ExprKind::Copy(inner) => {
                 transform_expr(inner, prefixes);
             }
-            Expr::Null => {}
-            Expr::OrBlock { nullable, fallback } => {
+            ExprKind::Null => {}
+            ExprKind::OrBlock { nullable, fallback } => {
                 transform_expr(nullable, prefixes);
                 transform_expr(fallback, prefixes);
             }
-            Expr::StringInterpolate(parts) => {
+            ExprKind::StringInterpolate(parts) => {
                 for part in parts.iter_mut() {
                     if let StringPart::Expr(ref mut e) = part {
                         transform_expr(e, prefixes);

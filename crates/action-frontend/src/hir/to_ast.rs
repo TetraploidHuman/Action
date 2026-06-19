@@ -178,73 +178,80 @@ impl HirExpr {
 
     fn to_expr(&self) -> Expr {
         match &self.kind {
-            HirExprKind::Literal(l) => Expr::Literal(l.clone()),
-            HirExprKind::Ident(n) => Expr::Ident(n.clone()),
-            HirExprKind::Binary(lhs, op, rhs) => {
-                Expr::Binary(Box::new(lhs.to_expr()), *op, Box::new(rhs.to_expr()))
-            }
-            HirExprKind::Unary(op, inner) => Expr::Unary(*op, Box::new(inner.to_expr())),
+            HirExprKind::Literal(l) => ExprKind::Literal(l.clone()).into(),
+            HirExprKind::Ident(n) => ExprKind::Ident(n.clone()).into(),
+            HirExprKind::Binary(lhs, op, rhs) => Expr::binary(lhs.to_expr(), *op, rhs.to_expr()),
+            HirExprKind::Unary(op, inner) => Expr::unary(*op, inner.to_expr()),
             HirExprKind::Call {
                 func,
                 args,
                 trailing_lambda,
-            } => Expr::Call {
+            } => ExprKind::Call {
                 func: Box::new(func.to_expr()),
                 args: args.iter().map(HirExpr::to_expr).collect(),
                 trailing_lambda: trailing_lambda.as_ref().map(|l| Box::new(l.to_expr())),
-            },
+            }
+            .into(),
             HirExprKind::Lambda {
                 params,
                 body,
                 implicit_it,
-            } => Expr::Lambda {
+            } => ExprKind::Lambda {
                 params: params.clone(),
                 body: Box::new(body.to_expr()),
                 implicit_it: *implicit_it,
-            },
-            HirExprKind::When(w) => Expr::When(Box::new(w.to_when())),
-            HirExprKind::For(f) => Expr::For(Box::new(f.to_for())),
-            HirExprKind::Block(stmts) => Expr::Block(stmts.iter().map(HirStmt::to_stmt).collect()),
-            HirExprKind::StructLiteral(fields) => Expr::StructLiteral(
+            }
+            .into(),
+            HirExprKind::When(w) => ExprKind::When(Box::new(w.to_when())).into(),
+            HirExprKind::For(f) => ExprKind::For(Box::new(f.to_for())).into(),
+            HirExprKind::Block(stmts) => {
+                ExprKind::Block(stmts.iter().map(HirStmt::to_stmt).collect()).into()
+            }
+            HirExprKind::StructLiteral(fields) => ExprKind::StructLiteral(
                 fields
                     .iter()
                     .map(|(n, e)| (n.clone(), e.to_expr()))
                     .collect(),
-            ),
-            HirExprKind::MapLiteral(entries) => Expr::MapLiteral(
+            )
+            .into(),
+            HirExprKind::MapLiteral(entries) => ExprKind::MapLiteral(
                 entries
                     .iter()
                     .map(|(k, v)| (k.to_expr(), v.to_expr()))
                     .collect(),
-            ),
+            )
+            .into(),
             HirExprKind::SetLiteral(items) => {
-                Expr::SetLiteral(items.iter().map(HirExpr::to_expr).collect())
+                ExprKind::SetLiteral(items.iter().map(HirExpr::to_expr).collect()).into()
             }
             HirExprKind::FieldAccess(obj, field) => {
-                Expr::FieldAccess(Box::new(obj.to_expr()), field.clone())
+                ExprKind::FieldAccess(Box::new(obj.to_expr()), field.clone()).into()
             }
             HirExprKind::Index(obj, idx) => {
-                Expr::Index(Box::new(obj.to_expr()), Box::new(idx.to_expr()))
+                ExprKind::Index(Box::new(obj.to_expr()), Box::new(idx.to_expr())).into()
             }
             HirExprKind::Range(start, end) => {
-                Expr::Range(Box::new(start.to_expr()), Box::new(end.to_expr()))
+                ExprKind::Range(Box::new(start.to_expr()), Box::new(end.to_expr())).into()
             }
-            HirExprKind::Tuple(items) => Expr::Tuple(
+            HirExprKind::Tuple(items) => ExprKind::Tuple(
                 items
                     .iter()
                     .map(|(n, e)| (n.clone(), e.to_expr()))
                     .collect(),
-            ),
-            HirExprKind::Null => Expr::Null,
-            HirExprKind::OrBlock { nullable, fallback } => Expr::OrBlock {
+            )
+            .into(),
+            HirExprKind::Null => ExprKind::Null.into(),
+            HirExprKind::OrBlock { nullable, fallback } => ExprKind::OrBlock {
                 nullable: Box::new(nullable.to_expr()),
                 fallback: Box::new(fallback.to_expr()),
-            },
-            HirExprKind::Assign { target, value } => Expr::Assign {
+            }
+            .into(),
+            HirExprKind::Assign { target, value } => ExprKind::Assign {
                 target: Box::new(target.to_expr()),
                 value: Box::new(value.to_expr()),
-            },
-            HirExprKind::StringInterpolate(parts) => Expr::StringInterpolate(
+            }
+            .into(),
+            HirExprKind::StringInterpolate(parts) => ExprKind::StringInterpolate(
                 parts
                     .iter()
                     .map(|p| match p {
@@ -252,12 +259,13 @@ impl HirExpr {
                         HirStringPart::Expr(e) => StringPart::Expr(Box::new(e.to_expr())),
                     })
                     .collect(),
-            ),
-            HirExprKind::Continue => Expr::Continue,
-            HirExprKind::Break => Expr::Break,
-            HirExprKind::FunctionRef(n) => Expr::FunctionRef(n.clone()),
-            HirExprKind::Copy(inner) => Expr::Copy(Box::new(inner.to_expr())),
-            HirExprKind::Unsafe(inner) => Expr::Unsafe(Box::new(inner.to_expr())),
+            )
+            .into(),
+            HirExprKind::Continue => ExprKind::Continue.into(),
+            HirExprKind::Break => ExprKind::Break.into(),
+            HirExprKind::FunctionRef(n) => ExprKind::FunctionRef(n.clone()).into(),
+            HirExprKind::Copy(inner) => ExprKind::Copy(Box::new(inner.to_expr())).into(),
+            HirExprKind::Unsafe(inner) => ExprKind::Unsafe(Box::new(inner.to_expr())).into(),
         }
     }
 }

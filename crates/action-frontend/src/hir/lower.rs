@@ -175,16 +175,16 @@ impl<'a> Lowerer<'a> {
 
     fn lower_expr(&self, expr: &Expr) -> HirExpr {
         let ty = self.checker.inferred_type(expr);
-        let kind = match expr {
-            Expr::Literal(l) => HirExprKind::Literal(l.clone()),
-            Expr::Ident(n) => HirExprKind::Ident(n.clone()),
-            Expr::Binary(lhs, op, rhs) => HirExprKind::Binary(
+        let kind = match &expr.kind {
+            ExprKind::Literal(l) => HirExprKind::Literal(l.clone()),
+            ExprKind::Ident(n) => HirExprKind::Ident(n.clone()),
+            ExprKind::Binary(lhs, op, rhs) => HirExprKind::Binary(
                 Box::new(self.lower_expr(lhs)),
                 *op,
                 Box::new(self.lower_expr(rhs)),
             ),
-            Expr::Unary(op, inner) => HirExprKind::Unary(*op, Box::new(self.lower_expr(inner))),
-            Expr::Call {
+            ExprKind::Unary(op, inner) => HirExprKind::Unary(*op, Box::new(self.lower_expr(inner))),
+            ExprKind::Call {
                 func,
                 args,
                 trailing_lambda,
@@ -195,7 +195,7 @@ impl<'a> Lowerer<'a> {
                     .as_ref()
                     .map(|l| Box::new(self.lower_expr(l))),
             },
-            Expr::Lambda {
+            ExprKind::Lambda {
                 params,
                 body,
                 implicit_it,
@@ -204,51 +204,51 @@ impl<'a> Lowerer<'a> {
                 body: Box::new(self.lower_expr(body)),
                 implicit_it: *implicit_it,
             },
-            Expr::When(w) => HirExprKind::When(Box::new(self.lower_when(w))),
-            Expr::For(f) => HirExprKind::For(Box::new(self.lower_for(f))),
-            Expr::Block(stmts) => HirExprKind::Block(self.lower_stmts(stmts)),
-            Expr::StructLiteral(fields) => HirExprKind::StructLiteral(
+            ExprKind::When(w) => HirExprKind::When(Box::new(self.lower_when(w))),
+            ExprKind::For(f) => HirExprKind::For(Box::new(self.lower_for(f))),
+            ExprKind::Block(stmts) => HirExprKind::Block(self.lower_stmts(stmts)),
+            ExprKind::StructLiteral(fields) => HirExprKind::StructLiteral(
                 fields
                     .iter()
                     .map(|(n, e)| (n.clone(), self.lower_expr(e)))
                     .collect(),
             ),
-            Expr::MapLiteral(entries) => HirExprKind::MapLiteral(
+            ExprKind::MapLiteral(entries) => HirExprKind::MapLiteral(
                 entries
                     .iter()
                     .map(|(k, v)| (self.lower_expr(k), self.lower_expr(v)))
                     .collect(),
             ),
-            Expr::SetLiteral(items) => {
+            ExprKind::SetLiteral(items) => {
                 HirExprKind::SetLiteral(items.iter().map(|e| self.lower_expr(e)).collect())
             }
-            Expr::FieldAccess(obj, field) => {
+            ExprKind::FieldAccess(obj, field) => {
                 HirExprKind::FieldAccess(Box::new(self.lower_expr(obj)), field.clone())
             }
-            Expr::Index(obj, idx) => HirExprKind::Index(
+            ExprKind::Index(obj, idx) => HirExprKind::Index(
                 Box::new(self.lower_expr(obj)),
                 Box::new(self.lower_expr(idx)),
             ),
-            Expr::Range(start, end) => HirExprKind::Range(
+            ExprKind::Range(start, end) => HirExprKind::Range(
                 Box::new(self.lower_expr(start)),
                 Box::new(self.lower_expr(end)),
             ),
-            Expr::Tuple(items) => HirExprKind::Tuple(
+            ExprKind::Tuple(items) => HirExprKind::Tuple(
                 items
                     .iter()
                     .map(|(n, e)| (n.clone(), self.lower_expr(e)))
                     .collect(),
             ),
-            Expr::Null => HirExprKind::Null,
-            Expr::OrBlock { nullable, fallback } => HirExprKind::OrBlock {
+            ExprKind::Null => HirExprKind::Null,
+            ExprKind::OrBlock { nullable, fallback } => HirExprKind::OrBlock {
                 nullable: Box::new(self.lower_expr(nullable)),
                 fallback: Box::new(self.lower_expr(fallback)),
             },
-            Expr::Assign { target, value } => HirExprKind::Assign {
+            ExprKind::Assign { target, value } => HirExprKind::Assign {
                 target: Box::new(self.lower_expr(target)),
                 value: Box::new(self.lower_expr(value)),
             },
-            Expr::StringInterpolate(parts) => HirExprKind::StringInterpolate(
+            ExprKind::StringInterpolate(parts) => HirExprKind::StringInterpolate(
                 parts
                     .iter()
                     .map(|p| match p {
@@ -257,11 +257,11 @@ impl<'a> Lowerer<'a> {
                     })
                     .collect(),
             ),
-            Expr::Continue => HirExprKind::Continue,
-            Expr::Break => HirExprKind::Break,
-            Expr::FunctionRef(n) => HirExprKind::FunctionRef(n.clone()),
-            Expr::Copy(inner) => HirExprKind::Copy(Box::new(self.lower_expr(inner))),
-            Expr::Unsafe(inner) => HirExprKind::Unsafe(Box::new(self.lower_expr(inner))),
+            ExprKind::Continue => HirExprKind::Continue,
+            ExprKind::Break => HirExprKind::Break,
+            ExprKind::FunctionRef(n) => HirExprKind::FunctionRef(n.clone()),
+            ExprKind::Copy(inner) => HirExprKind::Copy(Box::new(self.lower_expr(inner))),
+            ExprKind::Unsafe(inner) => HirExprKind::Unsafe(Box::new(self.lower_expr(inner))),
         };
         HirExpr {
             ty,

@@ -243,9 +243,9 @@ impl<'ctx> CodeGen<'ctx> {
         let i64 = self.i64_ty();
 
         // Determine iteration kind: range or list
-        let (start_val, end_val, input_list_ptr) = match iterator {
-            Expr::Binary(lhs, BinaryOp::Range, rhs)
-            | Expr::Binary(lhs, BinaryOp::RangeExclusive, rhs) => {
+        let (start_val, end_val, input_list_ptr) = match &iterator.kind {
+            ExprKind::Binary(lhs, BinaryOp::Range, rhs)
+            | ExprKind::Binary(lhs, BinaryOp::RangeExclusive, rhs) => {
                 let start_v = self.compile_expr(lhs)?;
                 let end_v = self.compile_expr(rhs)?;
                 let (s, e) = match (start_v, end_v) {
@@ -496,9 +496,9 @@ impl<'ctx> CodeGen<'ctx> {
             },
         }
 
-        let mode = match iterator {
-            Expr::Binary(lhs, BinaryOp::Range, rhs)
-            | Expr::Binary(lhs, BinaryOp::RangeExclusive, rhs) => {
+        let mode = match &iterator.kind {
+            ExprKind::Binary(lhs, BinaryOp::Range, rhs)
+            | ExprKind::Binary(lhs, BinaryOp::RangeExclusive, rhs) => {
                 let start_v = self.compile_expr(lhs)?;
                 let end_v = self.compile_expr(rhs)?;
                 let (start, end) = match (start_v, end_v) {
@@ -694,9 +694,9 @@ impl<'ctx> CodeGen<'ctx> {
         // Pre-allocate all loop counters and bounds: (idx_alloca, start_val, end_val)
         let mut loops: Vec<(PointerValue, IntValue, IntValue)> = Vec::new();
         for (i, (_var, iterable)) in bindings.iter().enumerate() {
-            let (start, end) = match iterable {
-                Expr::Binary(lhs, BinaryOp::Range, rhs)
-                | Expr::Binary(lhs, BinaryOp::RangeExclusive, rhs) => {
+            let (start, end) = match &iterable.kind {
+                ExprKind::Binary(lhs, BinaryOp::Range, rhs)
+                | ExprKind::Binary(lhs, BinaryOp::RangeExclusive, rhs) => {
                     let s = self.compile_expr(lhs)?;
                     let e = self.compile_expr(rhs)?;
                     match (s, e) {
@@ -948,9 +948,9 @@ impl<'ctx> CodeGen<'ctx> {
         condition: &Expr,
         body: &Expr,
     ) -> Result<Option<TypedValue<'ctx>>, String> {
-        let (idx_var, end_expr) = match condition {
-            Expr::Binary(lhs, BinaryOp::Lt, rhs) => match (&**lhs, &**rhs) {
-                (Expr::Ident(v), end) => (v.clone(), end.clone()),
+        let (idx_var, end_expr): (String, Expr) = match &condition.kind {
+            ExprKind::Binary(lhs, BinaryOp::Lt, rhs) => match (&lhs.kind, &rhs.kind) {
+                (ExprKind::Ident(v), end) => (v.clone(), ExprKind::clone(end).into()),
                 _ => return Ok(None),
             },
             _ => return Ok(None),
@@ -1051,8 +1051,8 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     fn find_list_get_in_expr(body: &Expr) -> Option<(Expr, String)> {
-        match body {
-            Expr::Block(stmts) => {
+        match &body.kind {
+            ExprKind::Block(stmts) => {
                 for stmt in stmts {
                     if let Some(v) = Self::find_list_get_in_stmt(stmt) {
                         return Some(v);
@@ -1060,47 +1060,49 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 None
             }
-            other => Self::find_list_get_in_expr_inner(other),
+            other => Self::find_list_get_in_expr_inner(&Expr::from(other.clone())),
         }
     }
 
     fn find_list_get_in_stmt(stmt: &Stmt) -> Option<(Expr, String)> {
         match stmt {
-            Stmt::Let { value, .. } => Self::find_list_get_in_expr_inner(value),
-            Stmt::Expr { expr, .. } => Self::find_list_get_in_expr_inner(expr),
+            Stmt::Let { value, .. } => Self::find_list_get_in_expr_inner(&value.kind),
+            Stmt::Expr { expr, .. } => Self::find_list_get_in_expr_inner(&expr.kind),
             _ => None,
         }
     }
 
-    fn find_list_get_in_expr_inner(expr: &Expr) -> Option<(Expr, String)> {
-        match expr {
-            Expr::Call { func, args, .. } => {
-                if let Expr::FieldAccess(obj, method) = &**func {
+    fn find_list_get_in_expr_inner(kind: &ExprKind) -> Option<(Expr, String)> {
+        match kind {
+            ExprKind::Call { func, args, .. } => {
+                if let ExprKind::FieldAccess(obj, method) = &func.kind {
                     if method == "get" && args.len() == 1 {
-                        if let Expr::Ident(idx) = &args[0] {
+                        if let ExprKind::Ident(idx) = &args[0].kind {
                             return Some(((*obj.clone()).clone(), idx.clone()));
                         }
                     }
                 }
                 None
             }
-            Expr::Block(stmts) => Self::find_list_get_in_expr(&Expr::Block(stmts.clone())),
+            ExprKind::Block(stmts) => {
+                Self::find_list_get_in_expr(&ExprKind::Block(stmts.clone()).into())
+            }
             _ => None,
         }
     }
 
     fn body_increments_var(body: &Expr, var: &str) -> bool {
-        match body {
-            Expr::Block(stmts) => stmts.iter().any(|s| Self::stmt_increments_var(s, var)),
-            Expr::Assign { target, value } => Self::is_var_increment(target, value, var),
+        match &body.kind {
+            ExprKind::Block(stmts) => stmts.iter().any(|s| Self::stmt_increments_var(s, var)),
+            ExprKind::Assign { target, value } => Self::is_var_increment(target, value, var),
             _ => false,
         }
     }
 
     fn stmt_increments_var(stmt: &Stmt, var: &str) -> bool {
         match stmt {
-            Stmt::Expr { expr, .. } => match expr {
-                Expr::Assign { target, value } => Self::is_var_increment(target, value, var),
+            Stmt::Expr { expr, .. } => match &expr.kind {
+                ExprKind::Assign { target, value } => Self::is_var_increment(target, value, var),
                 _ => false,
             },
             _ => false,
@@ -1108,10 +1110,10 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     fn is_var_increment(target: &Expr, value: &Expr, var: &str) -> bool {
-        match (target, value) {
-            (Expr::Ident(t), Expr::Binary(lhs, BinaryOp::Add, rhs)) if t == var => {
-                matches!(&**lhs, Expr::Ident(v) if v == var)
-                    || matches!(&**rhs, Expr::Ident(v) if v == var)
+        match (&target.kind, &value.kind) {
+            (ExprKind::Ident(t), ExprKind::Binary(lhs, BinaryOp::Add, rhs)) if t == var => {
+                matches!(&lhs.kind, ExprKind::Ident(v) if v == var)
+                    || matches!(&rhs.kind, ExprKind::Ident(v) if v == var)
             }
             _ => false,
         }

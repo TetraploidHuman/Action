@@ -438,8 +438,8 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
             Stmt::Const { name, value, .. } => {
-                match value {
-                    Expr::Literal(lit) => {
+                match &value.kind {
+                    ExprKind::Literal(lit) => {
                         let (global_ptr, ty, kind): (PointerValue, BasicTypeEnum, ValKind) =
                             match lit {
                                 Literal::Int(n) => {
@@ -538,10 +538,10 @@ impl<'ctx> CodeGen<'ctx> {
                 self.compile_fun_def(&fn_name, name, params, return_type.as_ref(), body)?;
             }
             Stmt::Continue { .. } => {
-                self.compile_expr(&Expr::Continue)?;
+                self.compile_expr(&ExprKind::Continue.into())?;
             }
             Stmt::Break { .. } => {
-                self.compile_expr(&Expr::Break)?;
+                self.compile_expr(&ExprKind::Break.into())?;
             }
             Stmt::Expr { expr, .. } => {
                 let result = self.compile_expr(expr)?;
@@ -562,7 +562,7 @@ impl<'ctx> CodeGen<'ctx> {
 
                     // Pattern 1: return call(...) — direct tail call
                     if let Some((param_slots, tail_entry)) = tco_info {
-                        if let Expr::Call { args, .. } = e {
+                        if let ExprKind::Call { args, .. } = &e.kind {
                             // Compile all args first before storing — storing to param
                             // allocas would corrupt scope variables later args depend on.
                             let arg_vals: Vec<TypedValue<'ctx>> = args
@@ -581,7 +581,7 @@ impl<'ctx> CodeGen<'ctx> {
                     }
 
                     // Pattern 2: return when cond then val else call(...)
-                    if let Expr::When(when_expr) = e {
+                    if let ExprKind::When(when_expr) = &e.kind {
                         if let WhenKind::OneLine {
                             condition,
                             then_expr,
@@ -802,13 +802,13 @@ impl<'ctx> CodeGen<'ctx> {
         )>,
         inkwell::basic_block::BasicBlock<'ctx>,
     )> {
-        if let Expr::Call {
+        if let ExprKind::Call {
             func,
             args,
             trailing_lambda: None,
-        } = expr
+        } = &expr.kind
         {
-            if let Expr::Ident(fn_name) = func.as_ref() {
+            if let ExprKind::Ident(fn_name) = &func.kind {
                 if let Some(ref tco) = self.tco_state {
                     if *fn_name == tco.fn_name && args.len() <= tco.param_slots.len() {
                         return Some((tco.param_slots.clone(), tco.tail_entry));
@@ -878,7 +878,7 @@ impl<'ctx> CodeGen<'ctx> {
         // --- else block (may be TCO or normal) ---
         self.builder.position_at_end(else_block);
         if let Some((ref param_slots, tail_entry)) = else_tco {
-            if let Expr::Call { args, .. } = else_expr {
+            if let ExprKind::Call { args, .. } = &else_expr.kind {
                 // Compile all args first before storing — storing to param allocas
                 // would corrupt scope variables that later args depend on.
                 let arg_vals: Vec<TypedValue<'ctx>> = args
@@ -901,7 +901,7 @@ impl<'ctx> CodeGen<'ctx> {
         // --- then block (may be TCO or normal) ---
         self.builder.position_at_end(then_block);
         if let Some((ref param_slots, tail_entry)) = then_tco {
-            if let Expr::Call { args, .. } = then_expr {
+            if let ExprKind::Call { args, .. } = &then_expr.kind {
                 let arg_vals: Vec<TypedValue<'ctx>> = args
                     .iter()
                     .map(|a| self.compile_expr(a))

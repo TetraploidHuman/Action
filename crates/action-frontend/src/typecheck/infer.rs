@@ -71,21 +71,21 @@ impl TypeChecker {
         expr: &Expr,
         locals: &HashMap<String, Type>,
     ) -> Result<Type, CompilerError> {
-        match expr {
-            Expr::Literal(Literal::String(_)) | Expr::StringInterpolate(_) => {
+        match &expr.kind {
+            ExprKind::Literal(Literal::String(_)) | ExprKind::StringInterpolate(_) => {
                 Ok(Type::Named("String".into()))
             }
-            Expr::Literal(Literal::Int(_)) => Ok(Type::Named("Int".into())),
-            Expr::Literal(Literal::Float(_)) => Ok(Type::Named("Float".into())),
-            Expr::Literal(Literal::Bool(_)) => Ok(Type::Named("Bool".into())),
-            Expr::Literal(Literal::Char(_)) => Ok(Type::Named("Char".into())),
-            Expr::Literal(Literal::Unit) => Ok(Type::Unit),
-            Expr::MapLiteral(_) => Ok(Type::Map(
+            ExprKind::Literal(Literal::Int(_)) => Ok(Type::Named("Int".into())),
+            ExprKind::Literal(Literal::Float(_)) => Ok(Type::Named("Float".into())),
+            ExprKind::Literal(Literal::Bool(_)) => Ok(Type::Named("Bool".into())),
+            ExprKind::Literal(Literal::Char(_)) => Ok(Type::Named("Char".into())),
+            ExprKind::Literal(Literal::Unit) => Ok(Type::Unit),
+            ExprKind::MapLiteral(_) => Ok(Type::Map(
                 Box::new(Type::Named("String".into())),
                 Box::new(Type::Named("Int".into())),
             )),
-            Expr::SetLiteral(_) => Ok(Type::Set(Box::new(Type::Named("Int".into())))),
-            Expr::Binary(lhs, op, rhs) => {
+            ExprKind::SetLiteral(_) => Ok(Type::Set(Box::new(Type::Named("Int".into())))),
+            ExprKind::Binary(lhs, op, rhs) => {
                 let lt = self.infer_expr_type_with_locals(lhs, locals)?;
                 let rt = self.infer_expr_type_with_locals(rhs, locals)?;
                 if *op == BinaryOp::Add {
@@ -133,8 +133,8 @@ impl TypeChecker {
                 }
                 Ok(Type::Named("Int".into()))
             }
-            Expr::Call { func, args, .. } => {
-                if let Expr::Ident(name) = func.as_ref() {
+            ExprKind::Call { func, args, .. } => {
+                if let ExprKind::Ident(name) = &func.kind {
                     match name.as_str() {
                         "print" | "println" | "send" | "close" | "cancel" => Ok(Type::Unit),
                         "toCString" => Ok(Type::Named("CString".into())),
@@ -177,7 +177,7 @@ impl TypeChecker {
                             }
                         }
                     }
-                } else if let Expr::FieldAccess(receiver, method) = func.as_ref() {
+                } else if let ExprKind::FieldAccess(receiver, method) = &func.kind {
                     let recv_type = self.infer_expr_type_with_locals(receiver, locals)?;
                     if let Some(kind) = builtin::receiver_kind_from_type(&recv_type) {
                         if let Some(def) = builtin::lookup_ufcs(kind, method) {
@@ -211,11 +211,12 @@ impl TypeChecker {
                             let mut all_args = vec![receiver.as_ref().clone()];
                             all_args.extend(args.iter().cloned());
                             self.infer_expr_type_with_locals(
-                                &Expr::Call {
-                                    func: Box::new(Expr::Ident(method.clone())),
+                                &ExprKind::Call {
+                                    func: Box::new(Expr::ident(&method)),
                                     args: all_args,
                                     trailing_lambda: None,
-                                },
+                                }
+                                .into(),
                                 locals,
                             )
                         }
@@ -224,7 +225,7 @@ impl TypeChecker {
                     Ok(Type::Named("Int".into()))
                 }
             }
-            Expr::When(w) => {
+            ExprKind::When(w) => {
                 let arms = self.when_arms(w);
                 if let Some(arm) = arms.first() {
                     let arm_locals = self.pattern_local_types(&arm.pattern);
@@ -240,9 +241,9 @@ impl TypeChecker {
                 }
                 Ok(Type::Unit)
             }
-            Expr::Continue | Expr::Break => Ok(Type::Unit),
-            Expr::For(_) => Ok(Type::Unit),
-            Expr::FunctionRef(name) => {
+            ExprKind::Continue | ExprKind::Break => Ok(Type::Unit),
+            ExprKind::For(_) => Ok(Type::Unit),
+            ExprKind::FunctionRef(name) => {
                 if let Some(ty) = self.type_env.get(name) {
                     Ok(ty.clone())
                 } else {
@@ -252,9 +253,9 @@ impl TypeChecker {
                     ))
                 }
             }
-            Expr::Copy(inner) => self.infer_expr_type_with_locals(inner, locals),
-            Expr::Null => Ok(Type::Nullable(Box::new(Type::Named("Nothing".into())))),
-            Expr::OrBlock { nullable, fallback } => {
+            ExprKind::Copy(inner) => self.infer_expr_type_with_locals(inner, locals),
+            ExprKind::Null => Ok(Type::Nullable(Box::new(Type::Named("Nothing".into())))),
+            ExprKind::OrBlock { nullable, fallback } => {
                 let nullable_ty = self.infer_expr_type_with_locals(nullable, locals)?;
                 let fallback_ty = self.infer_expr_type_with_locals(fallback, locals)?;
                 // Or-block unwraps nullable: T? or { ... } -> T
@@ -269,8 +270,8 @@ impl TypeChecker {
                     _ => nullable_ty,
                 })
             }
-            Expr::Unsafe(inner) => self.infer_expr_type_with_locals(inner, locals),
-            Expr::Block(stmts) => stmts
+            ExprKind::Unsafe(inner) => self.infer_expr_type_with_locals(inner, locals),
+            ExprKind::Block(stmts) => stmts
                 .last()
                 .map(|s| match s {
                     Stmt::Expr { expr: e, .. } => self.infer_expr_type_with_locals(e, locals),
@@ -281,7 +282,7 @@ impl TypeChecker {
                     _ => Ok(Type::Unit),
                 })
                 .unwrap_or(Ok(Type::Unit)),
-            Expr::Ident(name) => {
+            ExprKind::Ident(name) => {
                 if let Some(ty) = locals.get(name) {
                     return Ok(ty.clone());
                 }
@@ -307,8 +308,8 @@ impl TypeChecker {
                     Err(CompilerError::new(format!("Unknown variable: '{}'", name)))
                 }
             }
-            Expr::Lambda { body, .. } => self.infer_expr_type_with_locals(body, locals),
-            Expr::Index(obj, _) => {
+            ExprKind::Lambda { body, .. } => self.infer_expr_type_with_locals(body, locals),
+            ExprKind::Index(obj, _) => {
                 let obj_type = self.infer_expr_type_with_locals(obj, locals)?;
                 match obj_type {
                     // Map/Set indexing returns nullable T? (was Option<T>)
@@ -325,7 +326,7 @@ impl TypeChecker {
                     _ => Ok(Type::Named("Int".into())),
                 }
             }
-            Expr::FieldAccess(obj, field) => {
+            ExprKind::FieldAccess(obj, field) => {
                 let obj_type = self.infer_expr_type_with_locals(obj, locals)?;
                 // If obj is nullable, field access short-circuits to nullable result
                 let (inner_obj_type, is_nullable) = match &obj_type {
@@ -356,7 +357,7 @@ impl TypeChecker {
                     Ok(field_type)
                 }
             }
-            Expr::StructLiteral(fields) => {
+            ExprKind::StructLiteral(fields) => {
                 let field_names: Vec<String> = fields.iter().map(|(n, _)| n.clone()).collect();
                 if let Some(struct_info) = self.registry.find_struct_by_fields(&field_names) {
                     Ok(Type::Named(struct_info.name.clone()))
@@ -364,8 +365,8 @@ impl TypeChecker {
                     Ok(Type::Named("Int".into()))
                 }
             }
-            Expr::Assign { value, .. } => self.infer_expr_type_with_locals(value, locals),
-            Expr::Unary(op, inner) => match op {
+            ExprKind::Assign { value, .. } => self.infer_expr_type_with_locals(value, locals),
+            ExprKind::Unary(op, inner) => match op {
                 UnaryOp::Not => Ok(Type::Named("Bool".into())),
                 UnaryOp::Neg | UnaryOp::BitNot => {
                     Ok(self.infer_expr_type_with_locals(inner, locals)?)
@@ -391,7 +392,7 @@ impl TypeChecker {
             let mut arg_tys = Vec::new();
             let mut filtered_params = Vec::new();
             for (arg, param_ty) in args.iter().zip(param_tys.iter()) {
-                if matches!(arg, Expr::Lambda { .. }) {
+                if matches!(&arg.kind, ExprKind::Lambda { .. }) {
                     continue;
                 }
                 arg_tys.push(self.try_infer_expr_type(arg));

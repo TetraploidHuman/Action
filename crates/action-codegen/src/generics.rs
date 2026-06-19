@@ -64,7 +64,7 @@ impl<'ctx> CodeGen<'ctx> {
             if i >= args.len() {
                 break;
             }
-            if matches!(&args[i], Expr::Lambda { .. }) {
+            if matches!(&args[i].kind, ExprKind::Lambda { .. }) {
                 continue;
             }
             let param_ty = param.ty.clone().unwrap_or(Type::Named("Int".into()));

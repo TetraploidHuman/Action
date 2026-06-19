@@ -195,8 +195,8 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Tuple/struct indexing: requires compile-time constant integer index
         if let TypedValue::Struct(ptr, struct_ty) = &o {
-            let index = match idx {
-                Expr::Literal(Literal::Int(n)) => *n as u32,
+            let index = match &idx.kind {
+                ExprKind::Literal(Literal::Int(n)) => *n as u32,
                 _ => return Err("Tuple/struct index must be an integer literal".to_string()),
             };
             let bt: BasicTypeEnum = (*struct_ty).into();
@@ -631,8 +631,8 @@ impl<'ctx> CodeGen<'ctx> {
         target: &Expr,
         value: &Expr,
     ) -> Result<TypedValue<'ctx>, String> {
-        match target {
-            Expr::Ident(name) => {
+        match &target.kind {
+            ExprKind::Ident(name) => {
                 let (var_ptr, var_kind, var_ty, var_rc_managed, var_is_closure) = {
                     let var = self
                         .scope
@@ -892,8 +892,8 @@ impl<'ctx> CodeGen<'ctx> {
         target: &Expr,
         v: &TypedValue<'ctx>,
     ) -> Result<TypedValue<'ctx>, String> {
-        match target {
-            Expr::FieldAccess(obj, field) => {
+        match &target.kind {
+            ExprKind::FieldAccess(obj, field) => {
                 let obj_val = self.compile_expr(obj)?;
                 match obj_val {
                     TypedValue::Struct(ptr, st) => {
@@ -969,10 +969,10 @@ impl<'ctx> CodeGen<'ctx> {
                     _ => Err(format!("Cannot assign to field '{}' of non-struct", field)),
                 }
             }
-            Expr::Tuple(names) => {
+            ExprKind::Tuple(names) => {
                 for (i, (_, name_expr)) in names.iter().enumerate() {
-                    let name = match name_expr {
-                        Expr::Ident(n) => n,
+                    let name = match &name_expr.kind {
+                        ExprKind::Ident(n) => n,
                         _ => return Err("Destructuring target must be an identifier".to_string()),
                     };
                     // Collect var info before mutable self call

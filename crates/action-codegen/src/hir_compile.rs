@@ -1082,8 +1082,8 @@ impl<'ctx> CodeGen<'ctx> {
                 let idx_expr_val = action_frontend::ast::Literal::Int(
                     idx_int.get_zero_extended_constant().unwrap_or(0) as i64,
                 );
-                let fake_obj = Expr::Ident("it".to_string());
-                let fake_idx = Expr::Literal(idx_expr_val);
+                let fake_obj = ExprKind::Ident("it".to_string()).into();
+                let fake_idx = ExprKind::Literal(idx_expr_val).into();
                 self.compile_index(&fake_obj, &fake_idx)
             }
         }

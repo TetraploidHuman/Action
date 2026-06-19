@@ -41,9 +41,10 @@ impl Parser {
                 self.skip(TokenKind::Semicolon);
             }
             self.expect(TokenKind::RBrace)?;
-            return Ok(Expr::When(Box::new(When {
+            return Ok(ExprKind::When(Box::new(When {
                 kind: WhenKind::ConditionChain { arms },
-            })));
+            }))
+            .into());
         }
 
         // Parse the condition or value
@@ -110,12 +111,13 @@ impl Parser {
                     self.skip(TokenKind::Semicolon);
                 }
                 self.expect(TokenKind::RBrace)?;
-                return Ok(Expr::When(Box::new(When {
+                return Ok(ExprKind::When(Box::new(When {
                     kind: WhenKind::ValueMatch {
                         value: Box::new(first),
                         arms,
                     },
-                })));
+                }))
+                .into());
             } else {
                 // Binary conditional: when cond { true_expr else false_expr }
                 // else clause is optional; if omitted, defaults to ()
@@ -129,16 +131,17 @@ impl Parser {
                     self.advance();
                     self.parse_when_arm_expr()?
                 } else {
-                    Expr::Literal(Literal::Unit)
+                    ExprKind::Literal(Literal::Unit).into()
                 };
                 self.expect(TokenKind::RBrace)?;
-                return Ok(Expr::When(Box::new(When {
+                return Ok(ExprKind::When(Box::new(When {
                     kind: WhenKind::OneLine {
                         condition: Box::new(first),
                         then_expr: Box::new(true_expr),
                         else_expr: Box::new(false_expr),
                     },
-                })));
+                }))
+                .into());
             }
         }
 
@@ -284,11 +287,12 @@ impl Parser {
         // Check for: for { body } (infinite loop)
         if self.current_kind() == TokenKind::LBrace {
             let body = self.parse_block_expr()?;
-            return Ok(Expr::For(Box::new(For {
+            return Ok(ExprKind::For(Box::new(For {
                 kind: ForKind::Infinite {
                     body: Box::new(body),
                 },
-            })));
+            }))
+            .into());
         }
 
         // Check for shorthand: for List[...] / Set[...] / Map[...] { body } uses implicit "it"
@@ -300,14 +304,15 @@ impl Parser {
                 self.advance(); // skip List/Set/Map
                 let iterable = self.parse_collection_literal(&collection_kind)?;
                 let body = self.parse_block_expr()?;
-                return Ok(Expr::For(Box::new(For {
+                return Ok(ExprKind::For(Box::new(For {
                     kind: ForKind::Iterate {
                         var: "it".to_string(),
                         iterable: Box::new(iterable),
                         body: Box::new(body),
                         collect: true,
                     },
-                })));
+                }))
+                .into());
             }
         }
 
@@ -340,13 +345,14 @@ impl Parser {
                     self.expect(TokenKind::In)?;
                     let iterable = self.parse_expr()?;
                     let body = self.parse_block_expr()?;
-                    return Ok(Expr::For(Box::new(For {
+                    return Ok(ExprKind::For(Box::new(For {
                         kind: ForKind::IterateWithIndex {
                             vars,
                             iterable: Box::new(iterable),
                             body: Box::new(body),
                         },
-                    })));
+                    }))
+                    .into());
                 }
             }
         }
@@ -376,13 +382,14 @@ impl Parser {
                 // Multiple bindings → nested iterate (for expression, collects results)
                 if bindings.len() > 1 {
                     let body = self.parse_block_expr()?;
-                    return Ok(Expr::For(Box::new(For {
+                    return Ok(ExprKind::For(Box::new(For {
                         kind: ForKind::NestedIterate {
                             bindings,
                             body: Box::new(body),
                             collect: true,
                         },
-                    })));
+                    }))
+                    .into());
                 }
 
                 // Single binding
@@ -390,14 +397,15 @@ impl Parser {
 
                 // for var in iterable { body } → for expression (collects results)
                 let body = self.parse_block_expr()?;
-                return Ok(Expr::For(Box::new(For {
+                return Ok(ExprKind::For(Box::new(For {
                     kind: ForKind::Iterate {
                         var: var_single,
                         iterable: Box::new(iterable_single),
                         body: Box::new(body),
                         collect: true,
                     },
-                })));
+                }))
+                .into());
             }
         }
 
@@ -407,12 +415,13 @@ impl Parser {
         // for condition { body }
         if self.current_kind() == TokenKind::LBrace {
             let body = self.parse_block_expr()?;
-            return Ok(Expr::For(Box::new(For {
+            return Ok(ExprKind::For(Box::new(For {
                 kind: ForKind::Condition {
                     condition: Box::new(first),
                     body: Box::new(body),
                 },
-            })));
+            }))
+            .into());
         }
 
         Err(self.error("Invalid for expression"))

@@ -260,8 +260,8 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// Guess the return type from the function body expression when no annotation is provided.
     pub(super) fn infer_return_type(&self, body: &Expr) -> Option<Type> {
-        match body {
-            Expr::Block(stmts) => stmts.last().and_then(|s| match s {
+        match &body.kind {
+            ExprKind::Block(stmts) => stmts.last().and_then(|s| match s {
                 Stmt::Expr { expr: e, .. } => Some(self.infer_expr_type(e)),
                 _ => None,
             }),
@@ -270,15 +270,15 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     pub(super) fn infer_expr_type(&self, expr: &Expr) -> Type {
-        match expr {
-            Expr::Literal(Literal::String(_)) | Expr::StringInterpolate(_) => {
+        match &expr.kind {
+            ExprKind::Literal(Literal::String(_)) | ExprKind::StringInterpolate(_) => {
                 Type::Named("String".into())
             }
-            Expr::Literal(Literal::Int(_)) => Type::Named("Int".into()),
-            Expr::Literal(Literal::Float(_)) => Type::Named("Float".into()),
-            Expr::Literal(Literal::Bool(_)) => Type::Named("Bool".into()),
-            Expr::Literal(Literal::Char(_)) => Type::Named("Char".into()),
-            Expr::Binary(left, op, _) => {
+            ExprKind::Literal(Literal::Int(_)) => Type::Named("Int".into()),
+            ExprKind::Literal(Literal::Float(_)) => Type::Named("Float".into()),
+            ExprKind::Literal(Literal::Bool(_)) => Type::Named("Bool".into()),
+            ExprKind::Literal(Literal::Char(_)) => Type::Named("Char".into()),
+            ExprKind::Binary(left, op, _) => {
                 if *op == BinaryOp::Add {
                     // If either side is a string, result is string
                     if matches!(self.infer_expr_type(left), Type::Named(ref n) if n == "String") {
@@ -287,8 +287,8 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 Type::Named("Int".into())
             }
-            Expr::Call { func, .. } => {
-                if let Expr::Ident(name) = func.as_ref() {
+            ExprKind::Call { func, .. } => {
+                if let ExprKind::Ident(name) = &func.kind {
                     match name.as_str() {
                         "print" | "println" | "action_json_free" => Type::Unit,
                         "toString" | "toUpper" | "toLower" => Type::Named("String".into()),
@@ -334,17 +334,17 @@ impl<'ctx> CodeGen<'ctx> {
                     Type::Named("Int".into())
                 }
             }
-            Expr::When(w) => self.infer_when_type(&w.kind),
-            Expr::Continue | Expr::Break => Type::Unit,
-            Expr::For(_) => Type::Unit,
-            Expr::Block(stmts) => stmts
+            ExprKind::When(w) => self.infer_when_type(&w.kind),
+            ExprKind::Continue | ExprKind::Break => Type::Unit,
+            ExprKind::For(_) => Type::Unit,
+            ExprKind::Block(stmts) => stmts
                 .last()
                 .map(|s| match s {
                     Stmt::Expr { expr: e, .. } => self.infer_expr_type(e),
                     _ => Type::Unit,
                 })
                 .unwrap_or(Type::Unit),
-            Expr::Ident(name) => {
+            ExprKind::Ident(name) => {
                 // Check scope first for AST type info
                 if let Some(sv) = self.scope.get(name) {
                     if let Some(ref ast_type) = sv.ast_type {
@@ -381,13 +381,13 @@ impl<'ctx> CodeGen<'ctx> {
                     Type::Named("Int".into())
                 }
             }
-            Expr::MapLiteral(_) => Type::Map(
+            ExprKind::MapLiteral(_) => Type::Map(
                 Box::new(Type::Named("String".into())),
                 Box::new(Type::Named("Int".into())),
             ),
-            Expr::SetLiteral(_) => Type::Set(Box::new(Type::Named("Int".into()))),
-            Expr::Null => Type::Nullable(Box::new(Type::Named("Nothing".into()))),
-            Expr::OrBlock { nullable, fallback } => {
+            ExprKind::SetLiteral(_) => Type::Set(Box::new(Type::Named("Int".into()))),
+            ExprKind::Null => Type::Nullable(Box::new(Type::Named("Nothing".into()))),
+            ExprKind::OrBlock { nullable, fallback } => {
                 let cond_ty = self.infer_expr_type(nullable);
                 match cond_ty {
                     Type::Nullable(inner) => *inner,

@@ -19,9 +19,9 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<TypedValue<'ctx>, String> {
         // Parse optional scheduler argument
         let scheduler = if !args.is_empty() {
-            match &args[0] {
-                Expr::Ident(s) if s == "io" => 1i64,
-                Expr::Ident(s) if s == "cpu" => 2i64,
+            match &args[0].kind {
+                ExprKind::Ident(s) if s == "io" => 1i64,
+                ExprKind::Ident(s) if s == "cpu" => 2i64,
                 _ => return Err("launch scheduler must be 'io' or 'cpu'".to_string()),
             }
         } else {
@@ -30,8 +30,8 @@ impl<'ctx> CodeGen<'ctx> {
         let body = trailing
             .as_ref()
             .ok_or("launch requires a trailing lambda body")?;
-        let body_expr = match body.as_ref() {
-            Expr::Lambda { params, body, .. } if params.is_empty() => body.as_ref(),
+        let body_expr = match &body.kind {
+            ExprKind::Lambda { params, body, .. } if params.is_empty() => body.as_ref(),
             _ => return Err("launch expects a block body: launch { ... }".to_string()),
         };
 
@@ -261,8 +261,8 @@ impl<'ctx> CodeGen<'ctx> {
         let body = trailing
             .as_ref()
             .ok_or("coroutineScope requires a trailing lambda body")?;
-        let body_expr = match body.as_ref() {
-            Expr::Lambda { params, body, .. } if params.is_empty() => body.as_ref(),
+        let body_expr = match &body.kind {
+            ExprKind::Lambda { params, body, .. } if params.is_empty() => body.as_ref(),
             _ => {
                 return Err(
                     "coroutineScope expects a block body: coroutineScope { ... }".to_string(),
@@ -657,8 +657,8 @@ impl<'ctx> CodeGen<'ctx> {
         let body = trailing
             .as_ref()
             .ok_or("withTimeout requires a trailing lambda body")?;
-        let body_expr = match body.as_ref() {
-            Expr::Lambda { params, body, .. } if params.is_empty() => body.as_ref().clone(),
+        let body_expr = match &body.kind {
+            ExprKind::Lambda { params, body, .. } if params.is_empty() => body.as_ref().clone(),
             _ => {
                 return Err("withTimeout expects a block body: withTimeout(ms) { ... }".to_string())
             }

@@ -61,7 +61,7 @@ impl Parser {
                         }
                         _ => return Err(self.error("Expected field name after '.'")),
                     };
-                    left = Expr::FieldAccess(Box::new(left), field);
+                    left = ExprKind::FieldAccess(Box::new(left), field).into();
                     true
                 }
                 TokenKind::ColonColon => {
@@ -74,22 +74,22 @@ impl Parser {
                         }
                         _ => return Err(self.error("Expected method name after '::'")),
                     };
-                    let type_name = match &left {
-                        Expr::Ident(name) => name.clone(),
+                    let type_name = match &left.kind {
+                        ExprKind::Ident(name) => name.clone(),
                         _ => {
                             return Err(
                                 self.error("Expected type name before '::' (e.g., Int::toString)")
                             )
                         }
                     };
-                    left = Expr::FunctionRef(format!("{}.{}", type_name, method));
+                    left = ExprKind::FunctionRef(format!("{}.{}", type_name, method)).into();
                     true
                 }
                 TokenKind::LBracket => {
                     self.advance();
                     let idx = self.parse_expr()?;
                     self.expect(TokenKind::RBracket)?;
-                    left = Expr::Index(Box::new(left), Box::new(idx));
+                    left = ExprKind::Index(Box::new(left), Box::new(idx)).into();
                     true
                 }
                 TokenKind::Question => {
@@ -107,12 +107,12 @@ impl Parser {
                             }
                             _ => return Err(self.error("Expected field name after '?.'")),
                         };
-                        left = Expr::FieldAccess(Box::new(left), field);
+                        left = ExprKind::FieldAccess(Box::new(left), field).into();
                     } else if self.current_kind() == TokenKind::LBracket {
                         self.advance(); // skip '['
                         let idx = self.parse_expr()?;
                         self.expect(TokenKind::RBracket)?;
-                        left = Expr::Index(Box::new(left), Box::new(idx));
+                        left = ExprKind::Index(Box::new(left), Box::new(idx)).into();
                     } else if self.current_kind() == TokenKind::LParen {
                         left = self.parse_call_suffix(left)?;
                     } else {
@@ -126,27 +126,29 @@ impl Parser {
                     if self.peek2() == TokenKind::LBrace {
                         self.advance(); // skip 'or'
                         let fallback = self.parse_block_expr()?;
-                        left = Expr::OrBlock {
+                        left = ExprKind::OrBlock {
                             nullable: Box::new(left),
                             fallback: Box::new(fallback),
-                        };
+                        }
+                        .into();
                         true
                     } else {
                         false
                     }
                 }
                 TokenKind::LBrace => {
-                    let is_callable = matches!(&left, Expr::Ident(name)
+                    let is_callable = matches!(&left.kind, ExprKind::Ident(name)
                         if name == "launch" || name == "coroutineScope")
-                        || matches!(&left, Expr::FieldAccess(_, _));
+                        || matches!(&left.kind, ExprKind::FieldAccess(_, _));
                     if is_callable {
                         let lambda = self.parse_lambda_or_struct()?;
-                        if matches!(lambda, Expr::Lambda { .. }) {
-                            left = Expr::Call {
+                        if matches!(&lambda.kind, ExprKind::Lambda { .. }) {
+                            left = ExprKind::Call {
                                 func: Box::new(left),
                                 args: vec![],
                                 trailing_lambda: Some(Box::new(lambda)),
-                            };
+                            }
+                            .into();
                             true
                         } else {
                             return Err(self.error("Expected lambda after call"));
@@ -168,10 +170,13 @@ impl Parser {
                 self.advance();
                 let right = self.parse_pratt(Precedence::Assignment.next())?;
                 let lhs_clone = left.clone();
-                left = Expr::Assign {
+                left = ExprKind::Assign {
                     target: Box::new(left),
-                    value: Box::new(Expr::Binary(Box::new(lhs_clone), base_op, Box::new(right))),
-                };
+                    value: Box::new(
+                        ExprKind::Binary(Box::new(lhs_clone), base_op, Box::new(right)).into(),
+                    ),
+                }
+                .into();
                 continue;
             }
 
@@ -183,12 +188,13 @@ impl Parser {
                 self.advance();
                 let right = self.parse_pratt(prec.next())?;
                 if op == BinaryOp::Assign {
-                    left = Expr::Assign {
+                    left = ExprKind::Assign {
                         target: Box::new(left),
                         value: Box::new(right),
-                    };
+                    }
+                    .into();
                 } else {
-                    left = Expr::Binary(Box::new(left), op, Box::new(right));
+                    left = ExprKind::Binary(Box::new(left), op, Box::new(right)).into();
                 }
                 continue;
             }
@@ -205,7 +211,7 @@ impl Parser {
                 };
                 self.advance();
                 let right = self.parse_pratt(prec.next())?;
-                left = Expr::Binary(Box::new(left), op, Box::new(right));
+                left = ExprKind::Binary(Box::new(left), op, Box::new(right)).into();
                 continue;
             }
 
@@ -217,16 +223,16 @@ impl Parser {
                     }
                     self.advance();
                     let right = self.parse_pratt(prec.next())?;
-                    let mut elements = if let Expr::Tuple(elems) = left {
-                        elems
+                    let mut elements = if let ExprKind::Tuple(elems) = &left.kind {
+                        elems.clone()
                     } else {
                         vec![(None, left)]
                     };
-                    match right {
-                        Expr::Tuple(elems) => elements.extend(elems),
+                    match &right.kind {
+                        ExprKind::Tuple(elems) => elements.extend(elems.clone()),
                         _ => elements.push((None, right)),
                     }
-                    left = Expr::Tuple(elements);
+                    left = ExprKind::Tuple(elements).into();
                     continue;
                 }
             }
@@ -262,29 +268,31 @@ impl Parser {
         // Check for trailing lambda (outside parentheses).
         // Only consume { as trailing lambda if the content looks like a lambda
         // (params -> body or expression), not a statement block (var/val/for/when/...).
-        let is_simple_target =
-            matches!(&func, Expr::Ident(_)) || matches!(&func, Expr::FieldAccess(_, _));
+        let is_simple_target = matches!(&func.kind, ExprKind::Ident(_))
+            || matches!(&func.kind, ExprKind::FieldAccess(_, _));
         if is_simple_target
             && self.current_kind() == TokenKind::LBrace
             && self.brace_is_lambda_like()
         {
             let lambda = self.parse_lambda_or_struct()?;
-            if matches!(lambda, Expr::Lambda { .. }) {
-                return Ok(Expr::Call {
+            if matches!(&lambda.kind, ExprKind::Lambda { .. }) {
+                return Ok(ExprKind::Call {
                     func: Box::new(func),
                     args,
                     trailing_lambda: Some(Box::new(lambda)),
-                });
+                }
+                .into());
             } else {
                 return Err(self.error("Expected lambda after call"));
             }
         }
 
-        Ok(Expr::Call {
+        Ok(ExprKind::Call {
             func: Box::new(func),
             args,
             trailing_lambda: None,
-        })
+        }
+        .into())
     }
 
     pub(crate) fn parse_prefix(&mut self) -> Result<Expr, ParseError> {
@@ -303,11 +311,11 @@ impl Parser {
             }
             TokenKind::Null => {
                 self.advance();
-                Ok(Expr::Null)
+                Ok(ExprKind::Null.into())
             }
             TokenKind::CharLiteral(c) => {
                 self.advance();
-                Ok(Expr::Literal(Literal::Char(c)))
+                Ok(ExprKind::Literal(Literal::Char(c)).into())
             }
             TokenKind::StringLiteral(ref s) => {
                 let s = s.clone();
@@ -332,9 +340,9 @@ impl Parser {
                 }
                 // Check for function call (identifier followed by paren)
                 if self.current_kind() == TokenKind::LParen {
-                    self.parse_call_suffix(Expr::Ident(name.clone()))
+                    self.parse_call_suffix(ExprKind::Ident(name.clone()).into())
                 } else {
-                    Ok(Expr::Ident(name))
+                    Ok(ExprKind::Ident(name).into())
                 }
             }
             TokenKind::ColonColon => {
@@ -370,7 +378,7 @@ impl Parser {
                         }
                     }
                 }
-                Ok(Expr::FunctionRef(path))
+                Ok(ExprKind::FunctionRef(path).into())
             }
             TokenKind::Minus => {
                 self.advance();
@@ -389,24 +397,24 @@ impl Parser {
             }
             TokenKind::Continue => {
                 self.advance();
-                Ok(Expr::Continue)
+                Ok(ExprKind::Continue.into())
             }
             TokenKind::Break => {
                 self.advance();
-                Ok(Expr::Break)
+                Ok(ExprKind::Break.into())
             }
             TokenKind::When => self.parse_when(),
             TokenKind::For => self.parse_for(),
             TokenKind::Copy => {
                 self.advance();
                 let expr = self.parse_prefix()?;
-                Ok(Expr::Copy(Box::new(expr)))
+                Ok(ExprKind::Copy(Box::new(expr)).into())
             }
             TokenKind::Unsafe => {
                 self.advance();
                 self.expect(TokenKind::LBrace)?;
                 let body = self.parse_block_body()?;
-                Ok(Expr::Unsafe(Box::new(body)))
+                Ok(ExprKind::Unsafe(Box::new(body)).into())
             }
             TokenKind::LBrace => self.parse_lambda_or_struct(),
             TokenKind::LParen => self.parse_paren_or_tuple(),
@@ -417,7 +425,7 @@ impl Parser {
             TokenKind::Underscore => {
                 self.advance();
                 // Wildcard pattern — typically used in patterns, return as Ident for now
-                Ok(Expr::Ident("_".to_string()))
+                Ok(ExprKind::Ident("_".to_string()).into())
             }
             _ => Err(self.error(&format!("Unexpected token: {}", self.current_kind()))),
         }
@@ -484,14 +492,14 @@ impl Parser {
         if !current.is_empty() {
             parts.push(StringPart::Literal(current));
         }
-        Ok(Expr::StringInterpolate(parts))
+        Ok(ExprKind::StringInterpolate(parts).into())
     }
 
     pub(crate) fn parse_paren_or_tuple(&mut self) -> Result<Expr, ParseError> {
         self.advance(); // skip '('
 
         if self.skip(TokenKind::RParen) {
-            return Ok(Expr::Literal(Literal::Unit));
+            return Ok(ExprKind::Literal(Literal::Unit).into());
         }
 
         let first = self.parse_expr()?;
@@ -503,7 +511,7 @@ impl Parser {
         let mut exprs: Vec<(Option<String>, Expr)> = Vec::new();
 
         // Check if first expr is named: ident followed by ':'
-        let named_first = if let Expr::Ident(ref name) = first {
+        let named_first = if let ExprKind::Ident(ref name) = first.kind {
             if self.current_kind() == TokenKind::Colon {
                 let field_name = name.clone();
                 self.advance(); // skip ':'
@@ -527,7 +535,7 @@ impl Parser {
             if exprs.len() == 1 && exprs[0].0.is_none() {
                 return Ok(exprs.remove(0).1);
             }
-            return Ok(Expr::Tuple(exprs));
+            return Ok(ExprKind::Tuple(exprs).into());
         }
 
         // Tuple
@@ -555,7 +563,7 @@ impl Parser {
             }
         }
         self.expect(TokenKind::RParen)?;
-        Ok(Expr::Tuple(exprs))
+        Ok(ExprKind::Tuple(exprs).into())
     }
 
     /// Parse collection literal after `List`, `Set`, or `Map` keyword: List[...], Set[...], Map[...]
@@ -575,7 +583,10 @@ impl Parser {
                     items.push(self.parse_expr()?);
                 }
                 self.expect(TokenKind::RBracket)?;
-                Ok(Expr::call(Expr::Ident("__list".to_string()), items))
+                Ok(Expr::call(
+                    ExprKind::Ident("__list".to_string()).into(),
+                    items,
+                ))
             }
             "Set" => {
                 let mut elements = Vec::new();
@@ -590,7 +601,7 @@ impl Parser {
                     elements.push(elem);
                 }
                 self.expect(TokenKind::RBracket)?;
-                Ok(Expr::SetLiteral(elements))
+                Ok(ExprKind::SetLiteral(elements).into())
             }
             "Map" => {
                 let mut entries = Vec::new();
@@ -607,7 +618,7 @@ impl Parser {
                     entries.push((key, value));
                 }
                 self.expect(TokenKind::RBracket)?;
-                Ok(Expr::MapLiteral(entries))
+                Ok(ExprKind::MapLiteral(entries).into())
             }
             _ => unreachable!(),
         }
@@ -669,7 +680,7 @@ impl Parser {
 
         // {} → empty block returning unit ()
         if self.skip(TokenKind::RBrace) {
-            return Ok(Expr::Tuple(vec![])); // unit value
+            return Ok(ExprKind::Tuple(vec![]).into()); // unit value
         }
 
         // {:} is an error — use Map[] instead
@@ -750,11 +761,12 @@ impl Parser {
 
         // { stmts } — no-param lambda with block body (handles both single expr and multi-stmt)
         let body = self.parse_block_body()?;
-        Ok(Expr::Lambda {
+        Ok(ExprKind::Lambda {
             params: vec![],
             body: Box::new(body),
             implicit_it: false,
-        })
+        }
+        .into())
     }
 
     pub(crate) fn parse_struct_literal(&mut self) -> Result<Expr, ParseError> {
@@ -776,11 +788,11 @@ impl Parser {
                 fields.push((name, value));
             } else {
                 // Shorthand: {x} becomes {x: x}
-                fields.push((name.clone(), Expr::Ident(name)));
+                fields.push((name.clone(), ExprKind::Ident(name).into()));
             }
         }
         self.expect(TokenKind::RBrace)?;
-        Ok(Expr::StructLiteral(fields))
+        Ok(ExprKind::StructLiteral(fields).into())
     }
 
     /// Check if the token after the current one is a colon (for Map detection)
@@ -810,11 +822,12 @@ impl Parser {
                     // No explicit params — treat as no-param lambda { expr }
                     let body = self.parse_expr()?;
                     self.expect(TokenKind::RBrace)?;
-                    return Ok(Expr::Lambda {
+                    return Ok(ExprKind::Lambda {
                         params: vec![],
                         body: Box::new(body),
                         implicit_it: false,
-                    });
+                    }
+                    .into());
                 }
             }
         }
@@ -825,11 +838,12 @@ impl Parser {
         let body = self.parse_expr()?;
         self.expect(TokenKind::RBrace)?;
 
-        Ok(Expr::Lambda {
+        Ok(ExprKind::Lambda {
             params,
             body: Box::new(body),
             implicit_it: false,
-        })
+        }
+        .into())
     }
 
     pub(crate) fn parse_block_body(&mut self) -> Result<Expr, ParseError> {
@@ -852,7 +866,7 @@ impl Parser {
             }
         }
 
-        Ok(Expr::Block(stmts))
+        Ok(ExprKind::Block(stmts).into())
     }
 
     pub(crate) fn parse_block_expr(&mut self) -> Result<Expr, ParseError> {

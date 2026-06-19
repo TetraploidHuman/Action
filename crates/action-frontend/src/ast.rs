@@ -332,7 +332,7 @@ impl fmt::Display for Pattern {
 
 #[derive(Debug, Clone, PartialEq)]
 #[allow(dead_code)]
-pub enum Expr {
+pub enum ExprKind {
     /// Literal value: 42, true, "hello"
     Literal(Literal),
     /// Variable reference: x, myVar
@@ -396,6 +396,48 @@ pub enum Expr {
     Copy(Box<Expr>),
     /// Unsafe block: unsafe { ... }
     Unsafe(Box<Expr>),
+}
+
+/// Expression AST node with source span for diagnostics.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Expr {
+    pub kind: ExprKind,
+    pub span: Span,
+}
+
+impl Expr {
+    pub fn new(kind: ExprKind, span: Span) -> Self {
+        Expr { kind, span }
+    }
+    pub fn span(&self) -> Span {
+        self.span
+    }
+    pub fn with_span(mut self, span: Span) -> Self {
+        self.span = span;
+        self
+    }
+}
+
+impl Default for Expr {
+    fn default() -> Self {
+        Expr {
+            kind: ExprKind::Null,
+            span: Span::default(),
+        }
+    }
+}
+
+impl From<ExprKind> for Expr {
+    fn from(kind: ExprKind) -> Self {
+        Expr::new(kind, Span::default())
+    }
+}
+
+impl std::ops::Deref for Expr {
+    type Target = ExprKind;
+    fn deref(&self) -> &ExprKind {
+        &self.kind
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -471,12 +513,12 @@ pub enum ForKind {
 
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Expr::Literal(lit) => write!(f, "{}", lit),
-            Expr::Ident(name) => write!(f, "{}", name),
-            Expr::Binary(lhs, op, rhs) => write!(f, "({} {} {})", lhs, op, rhs),
-            Expr::Unary(op, expr) => write!(f, "{}{}", op, expr),
-            Expr::Call {
+        match &self.kind {
+            ExprKind::Literal(lit) => write!(f, "{}", lit),
+            ExprKind::Ident(name) => write!(f, "{}", name),
+            ExprKind::Binary(lhs, op, rhs) => write!(f, "({} {} {})", lhs, op, rhs),
+            ExprKind::Unary(op, expr) => write!(f, "{}{}", op, expr),
+            ExprKind::Call {
                 func,
                 args,
                 trailing_lambda,
@@ -494,7 +536,7 @@ impl fmt::Display for Expr {
                 }
                 Ok(())
             }
-            Expr::Lambda {
+            ExprKind::Lambda {
                 params,
                 body,
                 implicit_it,
@@ -515,16 +557,16 @@ impl fmt::Display for Expr {
                 }
                 write!(f, " }}")
             }
-            Expr::When(w) => write!(f, "{}", w),
-            Expr::For(fr) => write!(f, "{}", fr),
-            Expr::Block(stmts) => {
+            ExprKind::When(w) => write!(f, "{}", w),
+            ExprKind::For(fr) => write!(f, "{}", fr),
+            ExprKind::Block(stmts) => {
                 write!(f, "{{ ")?;
                 for s in stmts {
                     write!(f, "{}; ", s)?;
                 }
                 write!(f, "}}")
             }
-            Expr::StructLiteral(fields) => {
+            ExprKind::StructLiteral(fields) => {
                 write!(f, "{{")?;
                 for (i, (name, val)) in fields.iter().enumerate() {
                     if i > 0 {
@@ -534,7 +576,7 @@ impl fmt::Display for Expr {
                 }
                 write!(f, "}}")
             }
-            Expr::MapLiteral(entries) => {
+            ExprKind::MapLiteral(entries) => {
                 write!(f, "{{")?;
                 if entries.is_empty() {
                     write!(f, ":")?;
@@ -548,7 +590,7 @@ impl fmt::Display for Expr {
                 }
                 write!(f, "}}")
             }
-            Expr::SetLiteral(elements) => {
+            ExprKind::SetLiteral(elements) => {
                 write!(f, "{{")?;
                 for (i, e) in elements.iter().enumerate() {
                     if i > 0 {
@@ -558,10 +600,10 @@ impl fmt::Display for Expr {
                 }
                 write!(f, "}}")
             }
-            Expr::FieldAccess(expr, field) => write!(f, "{}.{}", expr, field),
-            Expr::Index(expr, idx) => write!(f, "{}[{}]", expr, idx),
-            Expr::Range(start, end) => write!(f, "{}..{}", start, end),
-            Expr::Tuple(exprs) => {
+            ExprKind::FieldAccess(expr, field) => write!(f, "{}.{}", expr, field),
+            ExprKind::Index(expr, idx) => write!(f, "{}[{}]", expr, idx),
+            ExprKind::Range(start, end) => write!(f, "{}..{}", start, end),
+            ExprKind::Tuple(exprs) => {
                 write!(f, "(")?;
                 for (i, (name, e)) in exprs.iter().enumerate() {
                     if i > 0 {
@@ -575,12 +617,12 @@ impl fmt::Display for Expr {
                 }
                 write!(f, ")")
             }
-            Expr::Null => write!(f, "null"),
-            Expr::OrBlock { nullable, fallback } => {
+            ExprKind::Null => write!(f, "null"),
+            ExprKind::OrBlock { nullable, fallback } => {
                 write!(f, "({} or {{ {} }})", nullable, fallback)
             }
-            Expr::Assign { target, value } => write!(f, "{} = {}", target, value),
-            Expr::StringInterpolate(parts) => {
+            ExprKind::Assign { target, value } => write!(f, "{} = {}", target, value),
+            ExprKind::StringInterpolate(parts) => {
                 write!(f, "\"")?;
                 for p in parts {
                     match p {
@@ -590,11 +632,11 @@ impl fmt::Display for Expr {
                 }
                 write!(f, "\"")
             }
-            Expr::Continue => write!(f, "continue"),
-            Expr::Break => write!(f, "break"),
-            Expr::FunctionRef(name) => write!(f, "::{}", name),
-            Expr::Copy(expr) => write!(f, "copy {}", expr),
-            Expr::Unsafe(expr) => write!(f, "unsafe {}", expr),
+            ExprKind::Continue => write!(f, "continue"),
+            ExprKind::Break => write!(f, "break"),
+            ExprKind::FunctionRef(name) => write!(f, "::{}", name),
+            ExprKind::Copy(expr) => write!(f, "copy {}", expr),
+            ExprKind::Unsafe(expr) => write!(f, "unsafe {}", expr),
         }
     }
 }
@@ -1092,66 +1134,60 @@ impl fmt::Display for Program {
 
 impl Expr {
     pub fn int(n: i64) -> Self {
-        Expr::Literal(Literal::Int(n))
+        ExprKind::Literal(Literal::Int(n)).into()
     }
-
     pub fn float(n: f64) -> Self {
-        Expr::Literal(Literal::Float(n))
+        ExprKind::Literal(Literal::Float(n)).into()
     }
-
     pub fn bool(b: bool) -> Self {
-        Expr::Literal(Literal::Bool(b))
+        ExprKind::Literal(Literal::Bool(b)).into()
     }
-
     pub fn string(s: &str) -> Self {
-        Expr::Literal(Literal::String(s.to_string()))
+        ExprKind::Literal(Literal::String(s.to_string())).into()
     }
-
     #[allow(dead_code)]
     pub fn ident(name: &str) -> Self {
-        Expr::Ident(name.to_string())
+        ExprKind::Ident(name.to_string()).into()
     }
-
     pub fn call(func: Expr, args: Vec<Expr>) -> Self {
-        Expr::Call {
+        ExprKind::Call {
             func: Box::new(func),
             args,
             trailing_lambda: None,
         }
+        .into()
     }
-
     #[allow(dead_code)]
     pub fn call_with_lambda(func: Expr, args: Vec<Expr>, lambda: Expr) -> Self {
-        Expr::Call {
+        ExprKind::Call {
             func: Box::new(func),
             args,
             trailing_lambda: Some(Box::new(lambda)),
         }
+        .into()
     }
-
     #[allow(dead_code)]
     pub fn lambda(params: Vec<&str>, body: Expr) -> Self {
-        Expr::Lambda {
+        ExprKind::Lambda {
             params: params.into_iter().map(|s| s.to_string()).collect(),
             body: Box::new(body),
             implicit_it: false,
         }
+        .into()
     }
-
     pub fn it_lambda(body: Expr) -> Self {
-        Expr::Lambda {
+        ExprKind::Lambda {
             params: vec!["it".to_string()],
             body: Box::new(body),
             implicit_it: true,
         }
+        .into()
     }
-
     #[allow(dead_code)]
     pub fn binary(lhs: Expr, op: BinaryOp, rhs: Expr) -> Self {
-        Expr::Binary(Box::new(lhs), op, Box::new(rhs))
+        ExprKind::Binary(Box::new(lhs), op, Box::new(rhs)).into()
     }
-
     pub fn unary(op: UnaryOp, expr: Expr) -> Self {
-        Expr::Unary(op, Box::new(expr))
+        ExprKind::Unary(op, Box::new(expr)).into()
     }
 }

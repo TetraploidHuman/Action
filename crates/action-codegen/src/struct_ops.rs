@@ -262,7 +262,7 @@ impl<'ctx> CodeGen<'ctx> {
         field: &str,
     ) -> Result<TypedValue<'ctx>, String> {
         // Handle enum variant access: EnumName.Variant
-        if let Expr::Ident(enum_name) = obj {
+        if let ExprKind::Ident(enum_name) = &obj.kind {
             if self.enum_types.contains_key(enum_name) {
                 // Look up the variant in this specific enum
                 let variant_info = self

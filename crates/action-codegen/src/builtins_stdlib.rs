@@ -630,16 +630,18 @@ impl<'ctx> CodeGen<'ctx> {
                     return Err("compose expects 3 arguments (f, g, x)".to_string());
                 }
                 // compose(f, g, x) = f(g(x))
-                let inner = Expr::Call {
+                let inner = ExprKind::Call {
                     func: Box::new(args[1].clone()),
                     args: vec![args[2].clone()],
                     trailing_lambda: None,
-                };
-                let outer = Expr::Call {
+                }
+                .into();
+                let outer = ExprKind::Call {
                     func: Box::new(args[0].clone()),
                     args: vec![inner],
                     trailing_lambda: None,
-                };
+                }
+                .into();
                 self.compile_expr(&outer)
             }
             "flip" => {
@@ -647,11 +649,12 @@ impl<'ctx> CodeGen<'ctx> {
                     return Err("flip expects 3 arguments (f, a, b)".to_string());
                 }
                 // flip(f, a, b) = f(b, a)
-                let call = Expr::Call {
+                let call = ExprKind::Call {
                     func: Box::new(args[0].clone()),
                     args: vec![args[2].clone(), args[1].clone()],
                     trailing_lambda: None,
-                };
+                }
+                .into();
                 self.compile_expr(&call)
             }
             "constant" => {
@@ -666,16 +669,18 @@ impl<'ctx> CodeGen<'ctx> {
                     return Err("uncurry expects 3 arguments (f, a, b)".to_string());
                 }
                 // uncurry(f, a, b) = f(a)(b)
-                let inner = Expr::Call {
+                let inner = ExprKind::Call {
                     func: Box::new(args[0].clone()),
                     args: vec![args[1].clone()],
                     trailing_lambda: None,
-                };
-                let outer = Expr::Call {
+                }
+                .into();
+                let outer = ExprKind::Call {
                     func: Box::new(inner),
                     args: vec![args[2].clone()],
                     trailing_lambda: None,
-                };
+                }
+                .into();
                 self.compile_expr(&outer)
             }
             "curry" => {
@@ -684,15 +689,19 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 // curry(f, a) → creates a lambda |b| f(a, b)
                 // We implement this by compiling the partial application as a lambda expression
-                let lambda = Expr::Lambda {
+                let lambda = ExprKind::Lambda {
                     params: vec!["b".to_string()],
-                    body: Box::new(Expr::Call {
-                        func: Box::new(args[0].clone()),
-                        args: vec![args[1].clone(), Expr::Ident("b".to_string())],
-                        trailing_lambda: None,
-                    }),
+                    body: Box::new(
+                        ExprKind::Call {
+                            func: Box::new(args[0].clone()),
+                            args: vec![args[1].clone(), ExprKind::Ident("b".to_string()).into()],
+                            trailing_lambda: None,
+                        }
+                        .into(),
+                    ),
                     implicit_it: false,
-                };
+                }
+                .into();
                 self.compile_expr(&lambda)
             }
             // ---- LazyList operations ----

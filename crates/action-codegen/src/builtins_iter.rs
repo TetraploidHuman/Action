@@ -66,14 +66,14 @@ impl<'ctx> CodeGen<'ctx> {
     /// Check if an expression is a `map(...)` call and return (map_fn_expr, inner_list_expr).
     /// Handles both `map(fn, list)` and `map(list) { fn }` syntax.
     fn extract_map_call_args(expr: &Expr) -> Option<(&Expr, &Expr)> {
-        match expr {
-            Expr::Call {
+        match &expr.kind {
+            ExprKind::Call {
                 func,
                 args,
                 trailing_lambda,
             } => {
                 // func must be Ident("map")
-                if let Expr::Ident(name) = func.as_ref() {
+                if let ExprKind::Ident(name) = &func.kind {
                     if name != "map" {
                         return None;
                     }

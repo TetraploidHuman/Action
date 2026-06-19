@@ -104,7 +104,7 @@ impl<'ctx> CodeGen<'ctx> {
         // bv_to_typed treats {ptr,i64,i64} as List by default, but the receiver
         // may be a typed nullable (e.g. Map?, Set?).  Look up the AST type
         // annotation to correct the ValKind before we push the synthetic scope var.
-        if let Expr::Ident(recv_name) = _receiver {
+        if let ExprKind::Ident(recv_name) = &_receiver.kind {
             if let Some(sv) = self.scope.get(recv_name) {
                 if let Some(Type::Nullable(inner_ast)) = &sv.ast_type {
                     let ptr = match &inner_typed {
@@ -222,10 +222,11 @@ impl<'ctx> CodeGen<'ctx> {
         // If dispatch fails (e.g., inner type is generic i64 from a null literal
         // that lacks concrete type info), use Int(0) as a fallback result.
         // The null path will always be taken at runtime in that case anyway.
-        let syn_func = Expr::FieldAccess(
-            Box::new(Expr::Ident(synthetic_name.clone())),
+        let syn_func = ExprKind::FieldAccess(
+            Box::new(ExprKind::Ident(synthetic_name.clone()).into()),
             method.to_string(),
-        );
+        )
+        .into();
         // compile_call may fail when the inner type is generic (e.g. null literal
         // with no type annotation) because the method can't be resolved on i64.
         // The null path is always taken at runtime, so the method result is unused.

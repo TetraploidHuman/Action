@@ -86,11 +86,12 @@ pub fn eval_repl_line(
     let mut parser = crate::parser::Parser::new(tokens);
     let program: Program;
     if let Ok(expr) = parser.parse_expr() {
-        let print_call = Expr::Call {
-            func: Box::new(Expr::Ident("println".to_string())),
+        let print_call: Expr = ExprKind::Call {
+            func: Box::new(ExprKind::Ident("println".to_string()).into()),
             args: vec![expr],
             trailing_lambda: None,
-        };
+        }
+        .into();
         program = Program {
             stmts: vec![Stmt::Fun {
                 name: "main".to_string(),

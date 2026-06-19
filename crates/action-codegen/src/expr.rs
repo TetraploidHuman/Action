@@ -10,32 +10,32 @@ use super::{llvm_err, CodeGen, InnerType, Scope, TypedValue, ValKind};
 
 impl<'ctx> CodeGen<'ctx> {
     pub(super) fn compile_expr(&mut self, expr: &Expr) -> Result<TypedValue<'ctx>, String> {
-        match expr {
-            Expr::Literal(lit) => self.compile_literal(lit),
-            Expr::Ident(name) => self.compile_ident(name),
-            Expr::Binary(lhs, op, rhs) => self.compile_binary(lhs, *op, rhs),
-            Expr::Unary(op, e) => self.compile_unary(*op, e),
-            Expr::Call {
+        match &expr.kind {
+            ExprKind::Literal(lit) => self.compile_literal(lit),
+            ExprKind::Ident(name) => self.compile_ident(name),
+            ExprKind::Binary(lhs, op, rhs) => self.compile_binary(lhs, *op, rhs),
+            ExprKind::Unary(op, e) => self.compile_unary(*op, e),
+            ExprKind::Call {
                 func,
                 args,
                 trailing_lambda,
             } => self.compile_call(func, args, trailing_lambda),
-            Expr::When(w) => self.compile_when(w),
-            Expr::Block(stmts) => self.compile_block(stmts),
-            Expr::Assign { target, value } => self.compile_assign(target, value),
-            Expr::For(f) => self.compile_for(f),
-            Expr::StringInterpolate(parts) => self.compile_string_interp(parts),
-            Expr::FieldAccess(obj, field) => self.compile_field_access(obj, field),
-            Expr::StructLiteral(fields) => self.compile_struct_lit(fields),
-            Expr::MapLiteral(entries) => self.compile_map_lit(entries),
-            Expr::SetLiteral(elements) => self.compile_set_lit(elements),
-            Expr::Lambda { params, body, .. } => self.compile_lambda(params, body),
-            Expr::Index(obj, idx) => self.compile_index(obj, idx),
-            Expr::Range(start, end) => self.compile_range(start, end),
-            Expr::Tuple(exprs) => self.compile_tuple(exprs),
-            Expr::Null => self.compile_null(),
-            Expr::OrBlock { nullable, fallback } => self.compile_or_block(nullable, fallback),
-            Expr::Continue => {
+            ExprKind::When(w) => self.compile_when(w),
+            ExprKind::Block(stmts) => self.compile_block(stmts),
+            ExprKind::Assign { target, value } => self.compile_assign(target, value),
+            ExprKind::For(f) => self.compile_for(f),
+            ExprKind::StringInterpolate(parts) => self.compile_string_interp(parts),
+            ExprKind::FieldAccess(obj, field) => self.compile_field_access(obj, field),
+            ExprKind::StructLiteral(fields) => self.compile_struct_lit(fields),
+            ExprKind::MapLiteral(entries) => self.compile_map_lit(entries),
+            ExprKind::SetLiteral(elements) => self.compile_set_lit(elements),
+            ExprKind::Lambda { params, body, .. } => self.compile_lambda(params, body),
+            ExprKind::Index(obj, idx) => self.compile_index(obj, idx),
+            ExprKind::Range(start, end) => self.compile_range(start, end),
+            ExprKind::Tuple(exprs) => self.compile_tuple(exprs),
+            ExprKind::Null => self.compile_null(),
+            ExprKind::OrBlock { nullable, fallback } => self.compile_or_block(nullable, fallback),
+            ExprKind::Continue => {
                 if let Some(target) = self.continue_target {
                     self.builder
                         .build_unconditional_branch(target)
@@ -45,7 +45,7 @@ impl<'ctx> CodeGen<'ctx> {
                     Err("continue outside loop".to_string())
                 }
             }
-            Expr::Break => {
+            ExprKind::Break => {
                 if let Some(target) = self.break_target {
                     self.builder
                         .build_unconditional_branch(target)
@@ -55,11 +55,11 @@ impl<'ctx> CodeGen<'ctx> {
                     Err("break outside loop".to_string())
                 }
             }
-            Expr::FunctionRef(name) => {
+            ExprKind::FunctionRef(name) => {
                 // Resolve function reference: ::name, ::Type.method, ::module::func
                 self.compile_function_ref(name)
             }
-            Expr::Copy(inner) => {
+            ExprKind::Copy(inner) => {
                 let val = self.compile_expr(inner)?;
                 match &val {
                     TypedValue::Int(_)
@@ -188,7 +188,7 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                 }
             }
-            Expr::Unsafe(inner) => {
+            ExprKind::Unsafe(inner) => {
                 let prev = self.in_unsafe;
                 self.in_unsafe = true;
                 let result = self.compile_expr(inner);
@@ -1750,8 +1750,8 @@ impl<'ctx> CodeGen<'ctx> {
     pub(super) fn bin_in(&mut self, lhs: &Expr, rhs: &Expr) -> Result<TypedValue<'ctx>, String> {
         let value = self.compile_expr(lhs)?;
         // Check if rhs is a range expression
-        match rhs {
-            Expr::Range(start_expr, end_expr) => {
+        match &rhs.kind {
+            ExprKind::Range(start_expr, end_expr) => {
                 let start = self.compile_expr(start_expr)?;
                 let end = self.compile_expr(end_expr)?;
                 let start_int = match start {
@@ -1780,7 +1780,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?;
                 Ok(TypedValue::Bool(result))
             }
-            Expr::Binary(start_expr, BinaryOp::RangeExclusive, end_expr) => {
+            ExprKind::Binary(start_expr, BinaryOp::RangeExclusive, end_expr) => {
                 let start = self.compile_expr(start_expr)?;
                 let end = self.compile_expr(end_expr)?;
                 let start_int = match start {
@@ -1865,8 +1865,8 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// `is` operator: expr is Type — runtime type check
     pub(super) fn bin_is(&mut self, lhs: &Expr, rhs: &Expr) -> Result<TypedValue<'ctx>, String> {
-        let type_name = match rhs {
-            Expr::Ident(name) => name.clone(),
+        let type_name = match &rhs.kind {
+            ExprKind::Ident(name) => name.clone(),
             _ => return Err("'is' operator requires a type name on the right".into()),
         };
 
@@ -2232,13 +2232,13 @@ fn collect_free_vars(
     bound: &mut Vec<String>,
     free: &mut Vec<String>,
 ) {
-    match expr {
-        Expr::Ident(name) => {
+    match &expr.kind {
+        ExprKind::Ident(name) => {
             if !params.contains(name) && !bound.contains(name) && !free.contains(name) {
                 free.push(name.clone());
             }
         }
-        Expr::Lambda {
+        ExprKind::Lambda {
             params: inner_params,
             body,
             ..
@@ -2247,17 +2247,17 @@ fn collect_free_vars(
             inner_bound.extend(inner_params.iter().cloned());
             collect_free_vars(body, inner_params, &mut inner_bound, free);
         }
-        Expr::Block(stmts) => {
+        ExprKind::Block(stmts) => {
             for stmt in stmts {
                 visit_stmt_free_vars(stmt, params, bound, free);
             }
         }
-        Expr::Binary(lhs, _, rhs) => {
+        ExprKind::Binary(lhs, _, rhs) => {
             collect_free_vars(lhs, params, bound, free);
             collect_free_vars(rhs, params, bound, free);
         }
-        Expr::Unary(_, e) => collect_free_vars(e, params, bound, free),
-        Expr::Call {
+        ExprKind::Unary(_, e) => collect_free_vars(e, params, bound, free),
+        ExprKind::Call {
             func,
             args,
             trailing_lambda,
@@ -2270,50 +2270,50 @@ fn collect_free_vars(
                 collect_free_vars(t, params, bound, free);
             }
         }
-        Expr::FieldAccess(e, _) => collect_free_vars(e, params, bound, free),
-        Expr::Index(target, index) => {
+        ExprKind::FieldAccess(e, _) => collect_free_vars(e, params, bound, free),
+        ExprKind::Index(target, index) => {
             collect_free_vars(target, params, bound, free);
             collect_free_vars(index, params, bound, free);
         }
-        Expr::When(w) => visit_when_free_vars(w, params, bound, free),
-        Expr::For(f) => visit_for_free_vars(f, params, bound, free),
-        Expr::StructLiteral(fields) => {
+        ExprKind::When(w) => visit_when_free_vars(w, params, bound, free),
+        ExprKind::For(f) => visit_for_free_vars(f, params, bound, free),
+        ExprKind::StructLiteral(fields) => {
             for (_, v) in fields {
                 collect_free_vars(v, params, bound, free);
             }
         }
-        Expr::SetLiteral(elems) => {
+        ExprKind::SetLiteral(elems) => {
             for e in elems {
                 collect_free_vars(e, params, bound, free);
             }
         }
-        Expr::MapLiteral(pairs) => {
+        ExprKind::MapLiteral(pairs) => {
             for (k, v) in pairs {
                 collect_free_vars(k, params, bound, free);
                 collect_free_vars(v, params, bound, free);
             }
         }
-        Expr::Null => {}
-        Expr::OrBlock { nullable, fallback } => {
+        ExprKind::Null => {}
+        ExprKind::OrBlock { nullable, fallback } => {
             collect_free_vars(nullable, params, bound, free);
             collect_free_vars(fallback, params, bound, free);
         }
-        Expr::Range(start, end) => {
+        ExprKind::Range(start, end) => {
             collect_free_vars(start, params, bound, free);
             collect_free_vars(end, params, bound, free);
         }
-        Expr::Tuple(fields) => {
+        ExprKind::Tuple(fields) => {
             for (_, e) in fields {
                 collect_free_vars(e, params, bound, free);
             }
         }
-        Expr::Assign { target, value, .. } => {
+        ExprKind::Assign { target, value, .. } => {
             collect_free_vars(target, params, bound, free);
             collect_free_vars(value, params, bound, free);
         }
-        Expr::Copy(e) => collect_free_vars(e, params, bound, free),
-        Expr::Unsafe(e) => collect_free_vars(e, params, bound, free),
-        Expr::StringInterpolate(parts) => {
+        ExprKind::Copy(e) => collect_free_vars(e, params, bound, free),
+        ExprKind::Unsafe(e) => collect_free_vars(e, params, bound, free),
+        ExprKind::StringInterpolate(parts) => {
             for p in parts {
                 if let StringPart::Expr(e) = p {
                     collect_free_vars(e, params, bound, free);
@@ -2321,7 +2321,7 @@ fn collect_free_vars(
             }
         }
         // Leaves
-        Expr::Literal(_) | Expr::FunctionRef(_) | Expr::Break | Expr::Continue => {}
+        ExprKind::Literal(_) | ExprKind::FunctionRef(_) | ExprKind::Break | ExprKind::Continue => {}
     }
 }
 

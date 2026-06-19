@@ -3,15 +3,15 @@ use crate::types::{infer_type_args, mangle_name, types_compatible};
 
 impl TypeChecker {
     pub(crate) fn collect_expr_errors(&mut self, expr: &Expr, errors: &mut Vec<CompilerError>) {
-        match expr {
-            Expr::Binary(lhs, op, rhs) => {
+        match &expr.kind {
+            ExprKind::Binary(lhs, op, rhs) => {
                 if let Err(e) = self.check_binary_op(lhs, *op, rhs) {
                     errors.push(e);
                 }
                 self.collect_expr_errors(lhs, errors);
                 self.collect_expr_errors(rhs, errors);
             }
-            Expr::When(w) => {
+            ExprKind::When(w) => {
                 let arms = self.when_arms(w);
                 if !arms.is_empty() {
                     if let Err(e) = self.check_when_arms(arms) {
@@ -24,7 +24,7 @@ impl TypeChecker {
                     // inject x into not_null_set for non-null arms
                     let smart_var: Option<String> = match &w.kind {
                         WhenKind::ValueMatch { value, .. } => {
-                            if let Expr::Ident(name) = value.as_ref() {
+                            if let ExprKind::Ident(name) = &value.as_ref().kind {
                                 let ty = self
                                     .infer_expr_type(value)
                                     .unwrap_or(Type::Named("Int".into()));
@@ -106,28 +106,26 @@ impl TypeChecker {
                     else_expr,
                 } = &w.kind
                 {
-                    let smart_var = match condition.as_ref() {
-                        Expr::Binary(lhs, BinaryOp::Neq, rhs) => {
-                            match (lhs.as_ref(), rhs.as_ref()) {
-                                (Expr::Ident(name), Expr::Null)
-                                | (Expr::Null, Expr::Ident(name)) => {
-                                    let ty = self
-                                        .infer_expr_type(lhs)
-                                        .unwrap_or(Type::Named("Int".into()));
-                                    if matches!(ty, Type::Nullable(_)) {
-                                        Some(name.clone())
-                                    } else {
-                                        None
-                                    }
+                    let smart_var = match &condition.as_ref().kind {
+                        ExprKind::Binary(lhs, BinaryOp::Neq, rhs) => match (&lhs.kind, &rhs.kind) {
+                            (ExprKind::Ident(name), ExprKind::Null)
+                            | (ExprKind::Null, ExprKind::Ident(name)) => {
+                                let ty = self
+                                    .infer_expr_type(lhs)
+                                    .unwrap_or(Type::Named("Int".into()));
+                                if matches!(ty, Type::Nullable(_)) {
+                                    Some(name.clone())
+                                } else {
+                                    None
                                 }
-                                _ => None,
                             }
-                        }
-                        Expr::Binary(lhs, BinaryOp::Eq, rhs) => {
+                            _ => None,
+                        },
+                        ExprKind::Binary(lhs, BinaryOp::Eq, rhs) => {
                             // x == null means in the ELSE branch x is NOT null (smart cast)
-                            match (lhs.as_ref(), rhs.as_ref()) {
-                                (Expr::Ident(name), Expr::Null)
-                                | (Expr::Null, Expr::Ident(name)) => {
+                            match (&lhs.kind, &rhs.kind) {
+                                (ExprKind::Ident(name), ExprKind::Null)
+                                | (ExprKind::Null, ExprKind::Ident(name)) => {
                                     let ty = self
                                         .infer_expr_type(lhs)
                                         .unwrap_or(Type::Named("Int".into()));
@@ -145,8 +143,10 @@ impl TypeChecker {
                     if let Some(ref var) = smart_var {
                         // For x != null: then branch has non-null x
                         // For x == null: else branch has non-null x
-                        let is_neq =
-                            matches!(condition.as_ref(), Expr::Binary(_, BinaryOp::Neq, _));
+                        let is_neq = matches!(
+                            &condition.as_ref().kind,
+                            ExprKind::Binary(_, BinaryOp::Neq, _)
+                        );
                         if is_neq {
                             self.not_null_set.borrow_mut().insert(var.clone());
                         }
@@ -167,7 +167,7 @@ impl TypeChecker {
                     }
                 }
             }
-            Expr::Call {
+            ExprKind::Call {
                 func,
                 args,
                 trailing_lambda,
@@ -179,7 +179,7 @@ impl TypeChecker {
                 // identifier — simple idents in call position are function names
                 // (builtins like `println`, user-defined functions, etc.) and
                 // should not be checked as variable references.
-                if !matches!(func.as_ref(), Expr::Ident(_)) {
+                if !matches!(&func.as_ref().kind, ExprKind::Ident(_)) {
                     self.collect_expr_errors(func, errors);
                 }
                 for a in args {
@@ -189,12 +189,12 @@ impl TypeChecker {
                     self.collect_expr_errors(lam, errors);
                 }
             }
-            Expr::Block(stmts) => {
+            ExprKind::Block(stmts) => {
                 for s in stmts {
                     self.collect_stmt_errors(s, errors);
                 }
             }
-            Expr::For(for_expr) => match &for_expr.kind {
+            ExprKind::For(for_expr) => match &for_expr.kind {
                 ForKind::Iterate {
                     var: variable,
                     iterable,
@@ -272,7 +272,7 @@ impl TypeChecker {
                     }
                 }
             },
-            Expr::Lambda {
+            ExprKind::Lambda {
                 params,
                 body,
                 implicit_it,
@@ -301,32 +301,32 @@ impl TypeChecker {
                     }
                 }
             }
-            Expr::FieldAccess(obj, _) => {
+            ExprKind::FieldAccess(obj, _) => {
                 self.collect_expr_errors(obj, errors);
             }
-            Expr::Copy(inner) => {
+            ExprKind::Copy(inner) => {
                 self.collect_expr_errors(inner, errors);
             }
-            Expr::Unsafe(inner) => {
+            ExprKind::Unsafe(inner) => {
                 self.collect_expr_errors(inner, errors);
             }
-            Expr::Null => {}
-            Expr::OrBlock { nullable, fallback } => {
+            ExprKind::Null => {}
+            ExprKind::OrBlock { nullable, fallback } => {
                 self.collect_expr_errors(nullable, errors);
                 self.collect_expr_errors(fallback, errors);
             }
-            Expr::Unary(_, inner) => {
+            ExprKind::Unary(_, inner) => {
                 self.collect_expr_errors(inner, errors);
             }
-            Expr::Index(obj, idx) => {
+            ExprKind::Index(obj, idx) => {
                 self.collect_expr_errors(obj, errors);
                 self.collect_expr_errors(idx, errors);
             }
-            Expr::Assign { target, value, .. } => {
+            ExprKind::Assign { target, value, .. } => {
                 self.collect_expr_errors(target, errors);
                 self.collect_expr_errors(value, errors);
                 // Check if target is an immutable variable
-                if let Expr::Ident(name) = target.as_ref() {
+                if let ExprKind::Ident(name) = &target.as_ref().kind {
                     if self.type_env.contains_key(name) && !self.mutable_vars.contains(name) {
                         errors.push(
                             CompilerError::new(format!(
@@ -338,39 +338,39 @@ impl TypeChecker {
                     }
                 }
             }
-            Expr::Tuple(elements) => {
+            ExprKind::Tuple(elements) => {
                 for (_, e) in elements {
                     self.collect_expr_errors(e, errors);
                 }
             }
-            Expr::Range(start, end) => {
+            ExprKind::Range(start, end) => {
                 self.collect_expr_errors(start, errors);
                 self.collect_expr_errors(end, errors);
             }
-            Expr::StructLiteral(fields) => {
+            ExprKind::StructLiteral(fields) => {
                 for (_, v) in fields {
                     self.collect_expr_errors(v, errors);
                 }
             }
-            Expr::MapLiteral(entries) => {
+            ExprKind::MapLiteral(entries) => {
                 for (k, v) in entries {
                     self.collect_expr_errors(k, errors);
                     self.collect_expr_errors(v, errors);
                 }
             }
-            Expr::SetLiteral(elements) => {
+            ExprKind::SetLiteral(elements) => {
                 for e in elements {
                     self.collect_expr_errors(e, errors);
                 }
             }
-            Expr::StringInterpolate(parts) => {
+            ExprKind::StringInterpolate(parts) => {
                 for part in parts {
                     if let StringPart::Expr(e) = part {
                         self.collect_expr_errors(e, errors);
                     }
                 }
             }
-            Expr::Ident(name) => {
+            ExprKind::Ident(name) => {
                 // Check if the variable is defined in the type environment
                 // (except for enum variants which are handled by registry)
                 if !self.type_env.contains_key(name) && self.registry.lookup_variant(name).is_none()
@@ -540,7 +540,7 @@ impl TypeChecker {
     }
 
     pub(crate) fn check_call(&self, func: &Expr, args: &[Expr]) -> Result<(), CompilerError> {
-        if let Expr::Ident(name) = func {
+        if let ExprKind::Ident(name) = &func.kind {
             if let Some((_ei, vi)) = self.registry.lookup_variant(name) {
                 let expected = vi.params.len();
                 let actual = args.len();
@@ -578,7 +578,7 @@ impl TypeChecker {
                         let mut arg_tys = Vec::new();
                         let mut filtered_params = Vec::new();
                         for (arg, param_ty) in args.iter().zip(param_tys.iter()) {
-                            if matches!(arg, Expr::Lambda { .. }) {
+                            if matches!(&arg.kind, ExprKind::Lambda { .. }) {
                                 continue;
                             }
                             arg_tys.push(self.try_infer_expr_type(arg));
@@ -612,7 +612,7 @@ impl TypeChecker {
                         }
                         for (i, (arg, param_ty)) in args.iter().zip(param_tys.iter()).enumerate() {
                             // Skip lambdas — infer_expr_type returns body type, not function type
-                            if matches!(arg, Expr::Lambda { .. }) {
+                            if matches!(&arg.kind, ExprKind::Lambda { .. }) {
                                 continue;
                             }
                             let arg_ty = self.infer_expr_type(arg)?;
@@ -645,7 +645,7 @@ impl TypeChecker {
                 // Overloaded function: resolve mangled name from argument types
                 let arg_tys: Result<Vec<Type>, CompilerError> = args
                     .iter()
-                    .filter(|a| !matches!(a, Expr::Lambda { .. }))
+                    .filter(|a| !matches!(&a.kind, ExprKind::Lambda { .. }))
                     .map(|a| self.infer_expr_type(a))
                     .collect();
                 if let Ok(arg_tys) = arg_tys {
@@ -661,7 +661,7 @@ impl TypeChecker {
                             .with_span(self.current_span));
                         }
                         for (i, (arg, param_ty)) in args.iter().zip(param_tys.iter()).enumerate() {
-                            if matches!(arg, Expr::Lambda { .. }) {
+                            if matches!(&arg.kind, ExprKind::Lambda { .. }) {
                                 continue;
                             }
                             let arg_ty = self.infer_expr_type(arg)?;
@@ -679,7 +679,7 @@ impl TypeChecker {
                     }
                 }
             }
-        } else if let Expr::FieldAccess(receiver, method) = func {
+        } else if let ExprKind::FieldAccess(receiver, method) = &func.kind {
             let recv_type = self.infer_expr_type(receiver)?;
             let type_name = match recv_type {
                 Type::Named(n) => n,

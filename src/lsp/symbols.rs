@@ -342,25 +342,25 @@ fn stmt_to_document_symbol(stmt: &Stmt, source: &str) -> Option<DocumentSymbol> 
 }
 
 fn extract_body_symbols(body: &Expr, source: &str) -> Vec<DocumentSymbol> {
-    match body {
-        Expr::Block(stmts) => extract_document_symbols(stmts, source),
+    match &body.kind {
+        ExprKind::Block(stmts) => extract_document_symbols(stmts, source),
         _ => Vec::new(),
     }
 }
 
 fn infer_value_type(value: &Expr) -> String {
-    match value {
-        Expr::Literal(Literal::Int(_)) => "Int".to_string(),
-        Expr::Literal(Literal::Float(_)) => "Float".to_string(),
-        Expr::Literal(Literal::Bool(_)) => "Bool".to_string(),
-        Expr::Literal(Literal::String(_)) => "String".to_string(),
-        Expr::Literal(Literal::Char(_)) => "Char".to_string(),
-        Expr::Literal(Literal::Unit) => "()".to_string(),
-        Expr::MapLiteral(_) => "map".to_string(),
-        Expr::SetLiteral(_) => "set".to_string(),
-        Expr::Lambda { .. } => "Function".to_string(),
-        Expr::StructLiteral(_) => "Struct".to_string(),
-        Expr::Ident(name) => name.clone(),
+    match &value.kind {
+        ExprKind::Literal(Literal::Int(_)) => "Int".to_string(),
+        ExprKind::Literal(Literal::Float(_)) => "Float".to_string(),
+        ExprKind::Literal(Literal::Bool(_)) => "Bool".to_string(),
+        ExprKind::Literal(Literal::String(_)) => "String".to_string(),
+        ExprKind::Literal(Literal::Char(_)) => "Char".to_string(),
+        ExprKind::Literal(Literal::Unit) => "()".to_string(),
+        ExprKind::MapLiteral(_) => "map".to_string(),
+        ExprKind::SetLiteral(_) => "set".to_string(),
+        ExprKind::Lambda { .. } => "Function".to_string(),
+        ExprKind::StructLiteral(_) => "Struct".to_string(),
+        ExprKind::Ident(name) => name.clone(),
         _ => "?".to_string(),
     }
 }
@@ -524,19 +524,19 @@ mod tests {
 
     #[test]
     fn test_infer_value_type_int() {
-        let expr = Expr::Literal(Literal::Int(42));
+        let expr: Expr = ExprKind::Literal(Literal::Int(42)).into();
         assert_eq!(infer_value_type(&expr), "Int");
     }
 
     #[test]
     fn test_infer_value_type_float() {
-        let expr = Expr::Literal(Literal::Float(3.14));
+        let expr: Expr = ExprKind::Literal(Literal::Float(3.14)).into();
         assert_eq!(infer_value_type(&expr), "Float");
     }
 
     #[test]
     fn test_infer_value_type_string() {
-        let expr = Expr::Literal(Literal::String("hi".into()));
+        let expr: Expr = ExprKind::Literal(Literal::String("hi".into())).into();
         assert_eq!(infer_value_type(&expr), "String");
     }
 

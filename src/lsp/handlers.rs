@@ -13,7 +13,7 @@ use lsp_types::{
     WorkspaceSymbolParams,
 };
 
-use crate::ast::{Expr, Stmt, Type};
+use crate::ast::{Expr, ExprKind, Stmt, Type};
 use crate::fmt::{self, FormatOptions};
 use crate::lexer::{Span, Token, TokenKind};
 use crate::typecheck::TypeRegistry;
@@ -1077,13 +1077,13 @@ impl<'a> ScopeWalker<'a> {
         if self.result.is_some() {
             return;
         }
-        match expr {
-            Expr::Block(stmts) => {
+        match &expr.kind {
+            ExprKind::Block(stmts) => {
                 self.enter_scope(HashMap::new());
                 self.walk_stmts(stmts);
                 self.exit_scope();
             }
-            Expr::Call {
+            ExprKind::Call {
                 func,
                 args,
                 trailing_lambda,
@@ -1097,7 +1097,7 @@ impl<'a> ScopeWalker<'a> {
                     self.walk_expr(lam);
                 }
             }
-            Expr::Lambda { params, body, .. } => {
+            ExprKind::Lambda { params, body, .. } => {
                 let mut lam_scope = HashMap::new();
                 for p in params {
                     lam_scope.insert(p.clone(), Span::default());
@@ -1106,28 +1106,28 @@ impl<'a> ScopeWalker<'a> {
                 self.walk_expr(body);
                 self.exit_scope();
             }
-            Expr::Binary(lhs, _, rhs) => {
+            ExprKind::Binary(lhs, _, rhs) => {
                 self.walk_expr(lhs);
                 self.walk_expr(rhs);
             }
-            Expr::Unary(_, inner) => self.walk_expr(inner),
-            Expr::FieldAccess(obj, _) => self.walk_expr(obj),
-            Expr::Index(obj, idx) => {
+            ExprKind::Unary(_, inner) => self.walk_expr(inner),
+            ExprKind::FieldAccess(obj, _) => self.walk_expr(obj),
+            ExprKind::Index(obj, idx) => {
                 self.walk_expr(obj);
                 self.walk_expr(idx);
             }
-            Expr::When(w) => match &w.kind {
+            ExprKind::When(w) => match &w.kind {
                 crate::ast::WhenKind::OneLine {
                     condition,
                     then_expr,
                     else_expr,
                 } => {
-                    self.walk_expr(condition);
-                    self.walk_expr(then_expr);
-                    self.walk_expr(else_expr);
+                    self.walk_expr(&condition);
+                    self.walk_expr(&then_expr);
+                    self.walk_expr(&else_expr);
                 }
                 crate::ast::WhenKind::ValueMatch { value, arms } => {
-                    self.walk_expr(value);
+                    self.walk_expr(&value);
                     for arm in arms {
                         let mut arm_scope = HashMap::new();
                         collect_pattern_bindings(&arm.pattern, &mut arm_scope);
@@ -1149,18 +1149,18 @@ impl<'a> ScopeWalker<'a> {
                     }
                 }
             },
-            Expr::For(fr) => match &fr.kind {
+            ExprKind::For(fr) => match &fr.kind {
                 crate::ast::ForKind::Iterate {
                     var,
                     iterable,
                     body,
                     ..
                 } => {
-                    self.walk_expr(iterable);
+                    self.walk_expr(&iterable);
                     let mut for_scope = HashMap::new();
                     for_scope.insert(var.clone(), Span::default());
                     self.enter_scope(for_scope);
-                    self.walk_expr(body);
+                    self.walk_expr(&body);
                     self.exit_scope();
                 }
                 crate::ast::ForKind::IterateWithIndex {
@@ -1168,86 +1168,89 @@ impl<'a> ScopeWalker<'a> {
                     iterable,
                     body,
                 } => {
-                    self.walk_expr(iterable);
+                    self.walk_expr(&iterable);
                     let mut for_scope = HashMap::new();
                     for v in vars {
                         for_scope.insert(v.clone(), Span::default());
                     }
                     self.enter_scope(for_scope);
-                    self.walk_expr(body);
+                    self.walk_expr(&body);
                     self.exit_scope();
                 }
                 crate::ast::ForKind::NestedIterate { bindings, body, .. } => {
                     for (_, iter) in bindings {
-                        self.walk_expr(iter);
+                        self.walk_expr(&iter);
                     }
                     let mut for_scope = HashMap::new();
                     for (v, _) in bindings {
                         for_scope.insert(v.clone(), Span::default());
                     }
                     self.enter_scope(for_scope);
-                    self.walk_expr(body);
+                    self.walk_expr(&body);
                     self.exit_scope();
                 }
                 crate::ast::ForKind::Condition { condition, body } => {
-                    self.walk_expr(condition);
-                    self.walk_expr(body);
+                    self.walk_expr(&condition);
+                    self.walk_expr(&body);
                 }
                 crate::ast::ForKind::Infinite { body } => {
-                    self.walk_expr(body);
+                    self.walk_expr(&body);
                 }
             },
-            Expr::Assign { target, value } => {
-                self.walk_expr(target);
-                self.walk_expr(value);
+            ExprKind::Assign { target, value } => {
+                self.walk_expr(&target);
+                self.walk_expr(&value);
             }
-            Expr::OrBlock { nullable, fallback } => {
-                self.walk_expr(nullable);
-                self.walk_expr(fallback);
+            ExprKind::OrBlock { nullable, fallback } => {
+                self.walk_expr(&nullable);
+                self.walk_expr(&fallback);
             }
-            Expr::Tuple(items) => {
+            ExprKind::Tuple(items) => {
                 for (_, e) in items {
-                    self.walk_expr(e);
+                    self.walk_expr(&e);
                 }
             }
-            Expr::StructLiteral(fields) => {
+            ExprKind::StructLiteral(fields) => {
                 for (_, e) in fields {
-                    self.walk_expr(e);
+                    self.walk_expr(&e);
                 }
             }
-            Expr::MapLiteral(entries) => {
+            ExprKind::MapLiteral(entries) => {
                 for (k, v) in entries {
                     self.walk_expr(k);
                     self.walk_expr(v);
                 }
             }
-            Expr::SetLiteral(elements) => {
+            ExprKind::SetLiteral(elements) => {
                 for e in elements {
                     self.walk_expr(e);
                 }
             }
-            Expr::Range(start, end) => {
+            ExprKind::Range(start, end) => {
                 self.walk_expr(start);
                 self.walk_expr(end);
             }
-            Expr::Unsafe(inner) => self.walk_expr(inner),
-            Expr::Copy(inner) => self.walk_expr(inner),
-            Expr::StringInterpolate(parts) => {
+            ExprKind::Unsafe(inner) => self.walk_expr(inner),
+            ExprKind::Copy(inner) => self.walk_expr(inner),
+            ExprKind::StringInterpolate(parts) => {
                 for part in parts {
                     if let crate::ast::StringPart::Expr(e) = part {
-                        self.walk_expr(e);
+                        self.walk_expr(&e);
                     }
                 }
             }
-            Expr::Ident(name) => {
+            ExprKind::Ident(name) => {
                 if name == self.target_name && self.result.is_none() {
                     if let Some(span) = self.lookup() {
                         self.result = Some(span);
                     }
                 }
             }
-            Expr::Literal(_) | Expr::Null | Expr::Continue | Expr::Break | Expr::FunctionRef(_) => {
-            }
+            ExprKind::Literal(_)
+            | ExprKind::Null
+            | ExprKind::Continue
+            | ExprKind::Break
+            | ExprKind::FunctionRef(_) => {}
         }
     }
 }

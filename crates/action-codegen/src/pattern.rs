@@ -23,18 +23,17 @@ impl<'ctx> CodeGen<'ctx> {
                     _ => return Err("when condition must be boolean".to_string()),
                 };
                 // Smart cast: when x != null { ... } or when x == null { ... } else { ... }
-                let smart_var: Option<String> = match condition.as_ref() {
-                    Expr::Binary(lhs, BinaryOp::Neq, rhs)
-                    | Expr::Binary(lhs, BinaryOp::Eq, rhs) => match (lhs.as_ref(), rhs.as_ref()) {
-                        (Expr::Ident(name), Expr::Null) | (Expr::Null, Expr::Ident(name)) => {
-                            Some(name.clone())
-                        }
+                let smart_var: Option<String> = match &condition.kind {
+                    ExprKind::Binary(lhs, BinaryOp::Neq, rhs)
+                    | ExprKind::Binary(lhs, BinaryOp::Eq, rhs) => match (&lhs.kind, &rhs.kind) {
+                        (ExprKind::Ident(name), ExprKind::Null)
+                        | (ExprKind::Null, ExprKind::Ident(name)) => Some(name.clone()),
                         _ => None,
                     },
                     _ => None,
                 };
                 if let Some(ref var) = smart_var {
-                    let is_eq = matches!(condition.as_ref(), Expr::Binary(_, BinaryOp::Eq, _));
+                    let is_eq = matches!(&condition.kind, ExprKind::Binary(_, BinaryOp::Eq, _));
                     if is_eq {
                         // when x == null { null_body } else { non_null_body }
                         // Negate condition and swap branches so smart cast applies to non_null_body
@@ -323,9 +322,9 @@ impl<'ctx> CodeGen<'ctx> {
             // Smart cast: if matched value is an Ident of nullable type and this arm's
             // pattern is non-null, inject the ident into not_null_set so the ident
             // is treated as non-nullable inside this arm's body.
-            let smart_var: Option<String> = match (value, &arm.pattern) {
-                (Expr::Ident(_), Pattern::Null) => None,
-                (Expr::Ident(name), _) => Some(name.clone()),
+            let smart_var: Option<String> = match (&value.kind, &arm.pattern) {
+                (ExprKind::Ident(_), Pattern::Null) => None,
+                (ExprKind::Ident(name), _) => Some(name.clone()),
                 _ => None,
             };
             if let Some(ref var) = smart_var {
@@ -339,7 +338,7 @@ impl<'ctx> CodeGen<'ctx> {
             // When arm body is a zero-param lambda (parser wraps { ... } blocks
             // after -> as lambdas), compile the inner body directly so pattern
             // bindings are visible in the current scope.
-            let body_val = if let Expr::Lambda { params, body, .. } = arm.body.as_ref() {
+            let body_val = if let ExprKind::Lambda { params, body, .. } = &arm.body.kind {
                 if params.is_empty() {
                     self.compile_expr(body)?
                 } else {
@@ -1080,8 +1079,8 @@ impl<'ctx> CodeGen<'ctx> {
             .and_then(|b| b.get_parent())
             .ok_or("Cannot compile when outside function".to_string())?;
 
-        let then_diverges = matches!(then_expr, Expr::Continue | Expr::Break);
-        let else_diverges = matches!(else_expr, Expr::Continue | Expr::Break);
+        let then_diverges = matches!(&then_expr.kind, ExprKind::Continue | ExprKind::Break);
+        let else_diverges = matches!(&else_expr.kind, ExprKind::Continue | ExprKind::Break);
 
         // Infer result type from both branches (prefer nullable if either is nullable)
         let then_inferred = if !then_diverges {

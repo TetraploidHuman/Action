@@ -17,7 +17,7 @@ impl<'ctx> CodeGen<'ctx> {
         trailing: &Option<Box<Expr>>,
     ) -> Result<TypedValue<'ctx>, String> {
         // Handle named function calls (including builtins)
-        if let Expr::Ident(name) = func {
+        if let ExprKind::Ident(name) = &func.kind {
             // If this name is a function variable in scope, dispatch via indirect call
             // (takes precedence over builtins to allow passing builtins as function references)
             if let Some(scope_var) = self.scope.get(name) {
@@ -553,8 +553,8 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         // Module-qualified call: module.function(args) → module_function(args)
-        if let Expr::FieldAccess(module_expr, method) = func {
-            if let Expr::Ident(module_name) = module_expr.as_ref() {
+        if let ExprKind::FieldAccess(module_expr, method) = &func.kind {
+            if let ExprKind::Ident(module_name) = &module_expr.kind {
                 // List.of(...) → List[...] (equivalent to list literal)
                 if module_name == "list" && method == "of" {
                     return self.builtin_list(args);
@@ -566,7 +566,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let mangled = format!("{}_{}", module_name, method);
                 // Check if mangled name is a builtin
                 if mangled == "Random_new" || mangled == "Random_next_int" {
-                    let new_func = Expr::Ident(mangled);
+                    let new_func: Expr = ExprKind::Ident(mangled).into();
                     return self.compile_call(&new_func, args, trailing);
                 }
                 if self.module.get_function(&mangled).is_some() {
@@ -603,7 +603,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         // UFCS method call: receiver.method(args) → TypeName_method(receiver, args)
-        if let Expr::FieldAccess(receiver, method) = func {
+        if let ExprKind::FieldAccess(receiver, method) = &func.kind {
             let recv_val = self.compile_expr(receiver)?;
 
             // Auto short-circuit: nullable receiver — branch on null,
@@ -653,22 +653,22 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 if method == "keys" {
                     self.rc_free_method_receiver(&recv_val)?;
-                    let new_func = Expr::Ident("mapKeys".to_string());
+                    let new_func = ExprKind::Ident("mapKeys".to_string()).into();
                     return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                 }
                 if method == "values" {
                     self.rc_free_method_receiver(&recv_val)?;
-                    let new_func = Expr::Ident("mapValues".to_string());
+                    let new_func = ExprKind::Ident("mapValues".to_string()).into();
                     return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                 }
                 if method == "mapValues" {
                     self.rc_free_method_receiver(&recv_val)?;
-                    let new_func = Expr::Ident("mapMapValues".to_string());
+                    let new_func = ExprKind::Ident("mapMapValues".to_string()).into();
                     return self.compile_call(&new_func, &[receiver.as_ref().clone()], trailing);
                 }
                 if method == "entries" {
                     self.rc_free_method_receiver(&recv_val)?;
-                    let new_func = Expr::Ident("mapEntries".to_string());
+                    let new_func = ExprKind::Ident("mapEntries".to_string()).into();
                     return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                 }
                 if method == "union" {
@@ -676,7 +676,7 @@ impl<'ctx> CodeGen<'ctx> {
                         return Err("map.union expects 1 argument (other map)".to_string());
                     }
                     self.rc_free_method_receiver(&recv_val)?;
-                    let new_func = Expr::Ident("mapUnion".to_string());
+                    let new_func = ExprKind::Ident("mapUnion".to_string()).into();
                     return self.compile_call(
                         &new_func,
                         &[receiver.as_ref().clone(), args[0].clone()],
@@ -685,12 +685,12 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 if method == "filter" {
                     self.rc_free_method_receiver(&recv_val)?;
-                    let new_func = Expr::Ident("mapFilter".to_string());
+                    let new_func = ExprKind::Ident("mapFilter".to_string()).into();
                     return self.compile_call(&new_func, &[receiver.as_ref().clone()], trailing);
                 }
                 if method == "fold" {
                     self.rc_free_method_receiver(&recv_val)?;
-                    let new_func = Expr::Ident("mapFold".to_string());
+                    let new_func = ExprKind::Ident("mapFold".to_string()).into();
                     let mut new_args = vec![receiver.as_ref().clone()];
                     new_args.extend(args.iter().cloned());
                     return self.compile_call(&new_func, &new_args, trailing);
@@ -731,7 +731,7 @@ impl<'ctx> CodeGen<'ctx> {
                         return Err("set.union expects 1 argument (other set)".to_string());
                     }
                     self.rc_free_method_receiver(&recv_val)?;
-                    let new_func = Expr::Ident("setUnion".to_string());
+                    let new_func = ExprKind::Ident("setUnion".to_string()).into();
                     return self.compile_call(
                         &new_func,
                         &[receiver.as_ref().clone(), args[0].clone()],
@@ -743,7 +743,7 @@ impl<'ctx> CodeGen<'ctx> {
                         return Err("set.intersection expects 1 argument (other set)".to_string());
                     }
                     self.rc_free_method_receiver(&recv_val)?;
-                    let new_func = Expr::Ident("setIntersection".to_string());
+                    let new_func = ExprKind::Ident("setIntersection".to_string()).into();
                     return self.compile_call(
                         &new_func,
                         &[receiver.as_ref().clone(), args[0].clone()],
@@ -755,7 +755,7 @@ impl<'ctx> CodeGen<'ctx> {
                         return Err("set.difference expects 1 argument (other set)".to_string());
                     }
                     self.rc_free_method_receiver(&recv_val)?;
-                    let new_func = Expr::Ident("setDifference".to_string());
+                    let new_func = ExprKind::Ident("setDifference".to_string()).into();
                     return self.compile_call(
                         &new_func,
                         &[receiver.as_ref().clone(), args[0].clone()],
@@ -767,7 +767,7 @@ impl<'ctx> CodeGen<'ctx> {
                         return Err("set.isSubset expects 1 argument (other set)".to_string());
                     }
                     self.rc_free_method_receiver(&recv_val)?;
-                    let new_func = Expr::Ident("setIsSubset".to_string());
+                    let new_func = ExprKind::Ident("setIsSubset".to_string()).into();
                     return self.compile_call(
                         &new_func,
                         &[receiver.as_ref().clone(), args[0].clone()],
@@ -776,7 +776,7 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 if method == "toList" {
                     self.rc_free_method_receiver(&recv_val)?;
-                    let new_func = Expr::Ident("toList".to_string());
+                    let new_func = ExprKind::Ident("toList".to_string()).into();
                     return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                 }
             }
@@ -808,18 +808,18 @@ impl<'ctx> CodeGen<'ctx> {
                 self.rc_free_method_receiver(&recv_val)?;
                 match method.as_str() {
                     "toList" => {
-                        let new_func = Expr::Ident("toList".to_string());
+                        let new_func = ExprKind::Ident("toList".to_string()).into();
                         return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                     }
                     "toLazyList" => {
-                        let new_func = Expr::Ident("toLazyList".to_string());
+                        let new_func = ExprKind::Ident("toLazyList".to_string()).into();
                         return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                     }
                     "take" => {
                         if args.len() != 1 {
                             return Err("lazy.take expects 1 argument (n)".to_string());
                         }
-                        let new_func = Expr::Ident("lazyTake".to_string());
+                        let new_func = ExprKind::Ident("lazyTake".to_string()).into();
                         return self.compile_call(
                             &new_func,
                             &[args[0].clone(), receiver.as_ref().clone()],
@@ -830,7 +830,7 @@ impl<'ctx> CodeGen<'ctx> {
                         if args.len() != 1 {
                             return Err("lazy.drop expects 1 argument (n)".to_string());
                         }
-                        let new_func = Expr::Ident("lazyDrop".to_string());
+                        let new_func = ExprKind::Ident("lazyDrop".to_string()).into();
                         return self.compile_call(
                             &new_func,
                             &[args[0].clone(), receiver.as_ref().clone()],
@@ -838,7 +838,7 @@ impl<'ctx> CodeGen<'ctx> {
                         );
                     }
                     "map" => {
-                        let new_func = Expr::Ident("lazyMap".to_string());
+                        let new_func = ExprKind::Ident("lazyMap".to_string()).into();
                         return self.compile_call(
                             &new_func,
                             &[receiver.as_ref().clone()],
@@ -846,7 +846,7 @@ impl<'ctx> CodeGen<'ctx> {
                         );
                     }
                     "filter" => {
-                        let new_func = Expr::Ident("lazyFilter".to_string());
+                        let new_func = ExprKind::Ident("lazyFilter".to_string()).into();
                         return self.compile_call(
                             &new_func,
                             &[receiver.as_ref().clone()],
@@ -854,7 +854,7 @@ impl<'ctx> CodeGen<'ctx> {
                         );
                     }
                     "takeWhile" => {
-                        let new_func = Expr::Ident("lazyTakeWhile".to_string());
+                        let new_func = ExprKind::Ident("lazyTakeWhile".to_string()).into();
                         return self.compile_call(
                             &new_func,
                             &[receiver.as_ref().clone()],
@@ -862,14 +862,14 @@ impl<'ctx> CodeGen<'ctx> {
                         );
                     }
                     "head" => {
-                        let new_func = Expr::Ident("lazyHead".to_string());
+                        let new_func = ExprKind::Ident("lazyHead".to_string()).into();
                         return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                     }
                     "zip" => {
                         if args.len() != 1 {
                             return Err("lazy.zip expects 1 argument (other)".to_string());
                         }
-                        let new_func = Expr::Ident("lazyZip".to_string());
+                        let new_func = ExprKind::Ident("lazyZip".to_string()).into();
                         return self.compile_call(
                             &new_func,
                             &[receiver.as_ref().clone(), args[0].clone()],
@@ -888,7 +888,7 @@ impl<'ctx> CodeGen<'ctx> {
                     // No-arg methods
                     "len" | "isEmpty" | "toUpper" | "toLower" | "trim" | "trimStart"
                     | "trimEnd" | "chars" | "splitLines" | "toInt" | "toFloat" => {
-                        let new_func = Expr::Ident(method.to_string());
+                        let new_func = ExprKind::Ident(method.to_string()).into();
                         return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                     }
                     // Single-arg methods (method(string, arg))
@@ -903,7 +903,7 @@ impl<'ctx> CodeGen<'ctx> {
                             "slice" => "slice",
                             other => other,
                         };
-                        let new_func = Expr::Ident(mapped.to_string());
+                        let new_func = ExprKind::Ident(mapped.to_string()).into();
                         return self.compile_call(
                             &new_func,
                             &[receiver.as_ref().clone(), args[0].clone()],
@@ -917,7 +917,7 @@ impl<'ctx> CodeGen<'ctx> {
                                 "string.substring expects 2 arguments (start, length)".to_string()
                             );
                         }
-                        let new_func = Expr::Ident("substring".to_string());
+                        let new_func = ExprKind::Ident("substring".to_string()).into();
                         return self.compile_call(
                             &new_func,
                             &[receiver.as_ref().clone(), args[0].clone(), args[1].clone()],
@@ -929,7 +929,7 @@ impl<'ctx> CodeGen<'ctx> {
                         if args.len() != 1 {
                             return Err("string.join expects 1 argument (list)".to_string());
                         }
-                        let new_func = Expr::Ident("join".to_string());
+                        let new_func = ExprKind::Ident("join".to_string()).into();
                         return self.compile_call(
                             &new_func,
                             &[receiver.as_ref().clone(), args[0].clone()],
@@ -937,7 +937,7 @@ impl<'ctx> CodeGen<'ctx> {
                         );
                     }
                     "toCString" => {
-                        let new_func = Expr::Ident("toCString".to_string());
+                        let new_func = ExprKind::Ident("toCString".to_string()).into();
                         return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                     }
                     _ => return Err(format!("Method '{}' not found on String", method)),
@@ -951,11 +951,11 @@ impl<'ctx> CodeGen<'ctx> {
                 self.rc_free_method_receiver(&recv_val)?;
                 match method.as_str() {
                     "isNull" => {
-                        let new_func = Expr::Ident("isNull".to_string());
+                        let new_func = ExprKind::Ident("isNull".to_string()).into();
                         return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                     }
                     "deref" => {
-                        let new_func = Expr::Ident("deref".to_string());
+                        let new_func = ExprKind::Ident("deref".to_string()).into();
                         return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                     }
                     _ => return Err(format!("Method '{}' not found on Ptr/CString", method)),
@@ -1424,7 +1424,7 @@ impl<'ctx> CodeGen<'ctx> {
                     // No-arg methods: f(list) — read-only handled above
                     "init" | "toList" | "toLazyList" | "flatten" | "unique" | "sorted"
                     | "product" => {
-                        let new_func = Expr::Ident(method.to_string());
+                        let new_func = ExprKind::Ident(method.to_string()).into();
                         return self.compile_call(&new_func, &[receiver.as_ref().clone()], &None);
                     }
                     // Two-arg methods: f(list, arg1, arg2) — dispatch to builtin_stdlib
@@ -1432,7 +1432,7 @@ impl<'ctx> CodeGen<'ctx> {
                         if args.len() != 2 {
                             return Err(format!("list.{} expects 2 arguments", method));
                         }
-                        let new_func = Expr::Ident(method.to_string());
+                        let new_func = ExprKind::Ident(method.to_string()).into();
                         return self.compile_call(
                             &new_func,
                             &[receiver.as_ref().clone(), args[0].clone(), args[1].clone()],
@@ -1446,7 +1446,7 @@ impl<'ctx> CodeGen<'ctx> {
                         if args.len() != 1 {
                             return Err(format!("list.{} expects 1 argument", method));
                         }
-                        let new_func = Expr::Ident(method.to_string());
+                        let new_func = ExprKind::Ident(method.to_string()).into();
                         return self.compile_call(
                             &new_func,
                             &[receiver.as_ref().clone(), args[0].clone()],
@@ -1456,7 +1456,7 @@ impl<'ctx> CodeGen<'ctx> {
                     // map, filter, fold, any, all, find, reduce, foldRight, takeWhile, dropWhile, flatMap, sortedBy
                     "map" | "filter" | "any" | "all" | "find" | "reduce" | "takeWhile"
                     | "dropWhile" | "flatMap" | "foldRight" | "sortedBy" | "findIndex" => {
-                        let new_func = Expr::Ident(method.to_string());
+                        let new_func = ExprKind::Ident(method.to_string()).into();
                         return self.compile_call(
                             &new_func,
                             &[receiver.as_ref().clone()],
@@ -1467,7 +1467,7 @@ impl<'ctx> CodeGen<'ctx> {
                         if args.len() < 1 {
                             return Err("list.fold expects at least 1 argument (init)".to_string());
                         }
-                        let new_func = Expr::Ident("fold".to_string());
+                        let new_func = ExprKind::Ident("fold".to_string()).into();
                         let mut new_args = vec![receiver.as_ref().clone()];
                         new_args.extend(args.iter().cloned());
                         return self.compile_call(&new_func, &new_args, trailing);
@@ -1560,7 +1560,7 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
             self.rc_free_method_receiver(&recv_val)?;
-            let new_func = Expr::Ident(method.to_string());
+            let new_func = ExprKind::Ident(method.to_string()).into();
             let mut new_args = vec![receiver.as_ref().clone()];
             new_args.extend(args.iter().cloned());
             return self.compile_call(&new_func, &new_args, trailing);

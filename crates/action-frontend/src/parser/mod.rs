@@ -452,15 +452,15 @@ mod tests {
     fn test_binary_expr() {
         let expr = parse_expr("1 + 2 * 3").unwrap();
         // Should be: 1 + (2 * 3)
-        match expr {
-            Expr::Binary(lhs, op, rhs) => {
+        match expr.kind {
+            ExprKind::Binary(lhs, op, rhs) => {
                 assert_eq!(op, BinaryOp::Add);
-                match *lhs {
-                    Expr::Literal(Literal::Int(1)) => {}
+                match lhs.kind {
+                    ExprKind::Literal(Literal::Int(1)) => {}
                     _ => panic!("Expected 1"),
                 }
-                match *rhs {
-                    Expr::Binary(_, BinaryOp::Mul, _) => {}
+                match rhs.kind {
+                    ExprKind::Binary(_, BinaryOp::Mul, _) => {}
                     _ => panic!("Expected multiplication"),
                 }
             }
@@ -471,8 +471,8 @@ mod tests {
     #[test]
     fn test_when_one_line() {
         let expr = parse_expr("when a > b { a else b }").unwrap();
-        match expr {
-            Expr::When(w) => match &w.kind {
+        match expr.kind {
+            ExprKind::When(w) => match &w.kind {
                 WhenKind::OneLine { .. } => {}
                 _ => panic!("Expected one-line when"),
             },
@@ -484,24 +484,24 @@ mod tests {
     fn test_when_value_match() {
         let prog = parse("when x { 0 -> \"zero\"; 1 -> \"one\"; else -> \"many\" }").unwrap();
         match &prog.stmts[0] {
-            Stmt::Expr {
-                expr: Expr::When(w),
-                ..
-            } => match &w.kind {
-                WhenKind::ValueMatch { arms, .. } => {
-                    assert_eq!(arms.len(), 3);
-                }
-                _ => panic!("Expected value match"),
+            Stmt::Expr { ref expr, .. } => match &expr.kind {
+                ExprKind::When(w) => match &w.kind {
+                    WhenKind::ValueMatch { arms, .. } => {
+                        assert_eq!(arms.len(), 3);
+                    }
+                    _ => panic!("Expected value match"),
+                },
+                _ => panic!("Expected when expr"),
             },
-            _ => panic!("Expected when expr"),
+            _ => panic!("Expected when stmt"),
         }
     }
 
     #[test]
     fn test_lambda() {
         let expr = parse_expr("{ it * 2 }").unwrap();
-        match expr {
-            Expr::Lambda { implicit_it, .. } => {
+        match expr.kind {
+            ExprKind::Lambda { implicit_it, .. } => {
                 assert!(implicit_it);
             }
             _ => panic!("Expected lambda"),
@@ -512,15 +512,16 @@ mod tests {
     fn test_for_iterate() {
         let prog = parse("for item in List[1,2,3] { println(item) }").unwrap();
         match &prog.stmts[0] {
-            Stmt::Expr {
-                expr: Expr::For(f), ..
-            } => match &f.kind {
-                ForKind::Iterate { var, .. } => {
-                    assert_eq!(var, "item");
-                }
-                _ => panic!("Expected iterate"),
+            Stmt::Expr { ref expr, .. } => match &expr.kind {
+                ExprKind::For(f) => match &f.kind {
+                    ForKind::Iterate { var, .. } => {
+                        assert_eq!(var, "item");
+                    }
+                    _ => panic!("Expected iterate"),
+                },
+                _ => panic!("Expected for"),
             },
-            _ => panic!("Expected for"),
+            _ => panic!("Expected for stmt"),
         }
     }
 
@@ -528,23 +529,24 @@ mod tests {
     fn test_for_with_index() {
         let prog = parse("for i, v in List[1,2,3] { println(i + v) }").unwrap();
         match &prog.stmts[0] {
-            Stmt::Expr {
-                expr: Expr::For(f), ..
-            } => match &f.kind {
-                ForKind::IterateWithIndex { vars, .. } => {
-                    assert_eq!(vars, &vec!["i".to_string(), "v".to_string()]);
-                }
-                _ => panic!("Expected IterateWithIndex"),
+            Stmt::Expr { ref expr, .. } => match &expr.kind {
+                ExprKind::For(f) => match &f.kind {
+                    ForKind::IterateWithIndex { vars, .. } => {
+                        assert_eq!(vars, &vec!["i".to_string(), "v".to_string()]);
+                    }
+                    _ => panic!("Expected IterateWithIndex"),
+                },
+                _ => panic!("Expected for"),
             },
-            _ => panic!("Expected for"),
+            _ => panic!("Expected for stmt"),
         }
     }
 
     #[test]
     fn test_for_expression() {
         let expr = parse_expr("for x in List[1,2,3,4,5] { x * x }").unwrap();
-        match expr {
-            Expr::For(f) => match &f.kind {
+        match expr.kind {
+            ExprKind::For(f) => match &f.kind {
                 ForKind::Iterate { var, .. } => {
                     assert_eq!(var, "x");
                 }
@@ -591,8 +593,8 @@ mod tests {
     #[test]
     fn test_struct_literal() {
         let expr = parse_expr("{x = 10, y = 20}").unwrap();
-        match expr {
-            Expr::StructLiteral(fields) => {
+        match expr.kind {
+            ExprKind::StructLiteral(fields) => {
                 assert_eq!(fields.len(), 2);
                 assert_eq!(fields[0].0, "x");
                 assert_eq!(fields[1].0, "y");
@@ -604,10 +606,10 @@ mod tests {
     #[test]
     fn test_field_access() {
         let expr = parse_expr("p.x").unwrap();
-        match expr {
-            Expr::FieldAccess(obj, field) => {
-                match *obj {
-                    Expr::Ident(name) => assert_eq!(name, "p"),
+        match expr.kind {
+            ExprKind::FieldAccess(obj, field) => {
+                match obj.kind {
+                    ExprKind::Ident(name) => assert_eq!(name, "p"),
                     _ => panic!("Expected identifier"),
                 }
                 assert_eq!(field, "x");
