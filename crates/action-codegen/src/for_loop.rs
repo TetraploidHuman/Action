@@ -1341,7 +1341,7 @@ impl<'ctx> CodeGen<'ctx> {
     fn find_list_get_in_hir_stmt(
         stmt: &action_frontend::hir::HirStmt,
     ) -> Option<(HirExpr, String)> {
-        use action_frontend::hir::{HirExprKind, HirStmt};
+        use action_frontend::hir::HirStmt;
         match stmt {
             HirStmt::Let { value, .. } => Self::find_list_get_in_hir_inner(value),
             HirStmt::Expr { expr, .. } => Self::find_list_get_in_hir_inner(expr),
@@ -1368,7 +1368,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     fn body_increments_var_hir(body: &HirExpr, var: &str) -> bool {
-        use action_frontend::hir::{HirExprKind, HirStmt};
+        use action_frontend::hir::HirExprKind;
         match &body.kind {
             HirExprKind::Block(stmts) => {
                 stmts.iter().any(|s| Self::hir_stmt_increments_var(s, var))

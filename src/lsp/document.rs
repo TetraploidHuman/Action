@@ -197,10 +197,20 @@ mod tests {
     use lsp_types::Url;
     use std::collections::HashMap;
 
+    fn test_session() -> FrontendSession {
+        FrontendSession::with_context(Vec::new(), TypeRegistry::new(), HashMap::new())
+            .unwrap_or_else(|_| FrontendSession {
+                stdlib_stmts: Vec::new(),
+                search_dirs: Vec::new(),
+                base_registry: TypeRegistry::new(),
+                base_type_env: HashMap::new(),
+            })
+    }
+
     fn make_doc(source: &str) -> Document {
         let uri = Url::parse("file:///test.at").unwrap();
         let mut doc = Document::new(uri, source.to_string(), 1);
-        doc.recheck_with_session(&empty_session());
+        doc.recheck_with_session(&test_session());
         doc
     }
 
