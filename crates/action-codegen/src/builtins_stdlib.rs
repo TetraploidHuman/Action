@@ -630,36 +630,13 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 3 {
                     return Err("compose expects 3 arguments (f, g, x)".to_string());
                 }
-                // compose(f, g, x) = f(g(x))
-                let inner = ExprKind::Call {
-                    func: Box::new(Self::call_arg_to_expr(args[1])),
-                    args: vec![Self::call_arg_to_expr(args[2])],
-                    trailing_lambda: None,
-                }
-                .into();
-                let outer = ExprKind::Call {
-                    func: Box::new(Self::call_arg_to_expr(args[0])),
-                    args: vec![inner],
-                    trailing_lambda: None,
-                }
-                .into();
-                self.compile_expr(&outer)
+                self.compile_compose_call_args(args[0], args[1], args[2])
             }
             "flip" => {
                 if args.len() != 3 {
                     return Err("flip expects 3 arguments (f, a, b)".to_string());
                 }
-                // flip(f, a, b) = f(b, a)
-                let call = ExprKind::Call {
-                    func: Box::new(Self::call_arg_to_expr(args[0])),
-                    args: vec![
-                        Self::call_arg_to_expr(args[2]),
-                        Self::call_arg_to_expr(args[1]),
-                    ],
-                    trailing_lambda: None,
-                }
-                .into();
-                self.compile_expr(&call)
+                self.compile_flip_call_args(args[0], args[1], args[2])
             }
             "constant" => {
                 if args.len() != 2 {
@@ -672,44 +649,13 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 3 {
                     return Err("uncurry expects 3 arguments (f, a, b)".to_string());
                 }
-                // uncurry(f, a, b) = f(a)(b)
-                let inner = ExprKind::Call {
-                    func: Box::new(Self::call_arg_to_expr(args[0])),
-                    args: vec![Self::call_arg_to_expr(args[1])],
-                    trailing_lambda: None,
-                }
-                .into();
-                let outer = ExprKind::Call {
-                    func: Box::new(inner),
-                    args: vec![Self::call_arg_to_expr(args[2])],
-                    trailing_lambda: None,
-                }
-                .into();
-                self.compile_expr(&outer)
+                self.compile_uncurry_call_args(args[0], args[1], args[2])
             }
             "curry" => {
                 if args.len() != 2 {
                     return Err("curry expects 2 arguments (f, a)".to_string());
                 }
-                // curry(f, a) → creates a lambda |b| f(a, b)
-                // We implement this by compiling the partial application as a lambda expression
-                let lambda = ExprKind::Lambda {
-                    params: vec!["b".to_string()],
-                    body: Box::new(
-                        ExprKind::Call {
-                            func: Box::new(Self::call_arg_to_expr(args[0])),
-                            args: vec![
-                                Self::call_arg_to_expr(args[1]),
-                                ExprKind::Ident("b".to_string()).into(),
-                            ],
-                            trailing_lambda: None,
-                        }
-                        .into(),
-                    ),
-                    implicit_it: false,
-                }
-                .into();
-                self.compile_expr(&lambda)
+                self.compile_curry_call_args(args[0], args[1])
             }
             // ---- LazyList operations ----
             "toList" => {

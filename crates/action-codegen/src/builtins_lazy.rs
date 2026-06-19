@@ -13,7 +13,9 @@ impl<'ctx> CodeGen<'ctx> {
         a: CallArg<'_>,
         b: CallArg<'_>,
     ) -> Result<TypedValue<'ctx>, String> {
-        self.builtin_lazy_take(&Self::call_arg_to_expr(a), &Self::call_arg_to_expr(b))
+        let n_val = self.compile_call_arg(a)?;
+        let lazy_val = self.compile_call_arg(b)?;
+        self.builtin_lazy_take_values(n_val, lazy_val)
     }
 
     pub(super) fn builtin_lazy_drop_call_args(
@@ -21,7 +23,9 @@ impl<'ctx> CodeGen<'ctx> {
         a: CallArg<'_>,
         b: CallArg<'_>,
     ) -> Result<TypedValue<'ctx>, String> {
-        self.builtin_lazy_drop(&Self::call_arg_to_expr(a), &Self::call_arg_to_expr(b))
+        let n_val = self.compile_call_arg(a)?;
+        let lazy_val = self.compile_call_arg(b)?;
+        self.builtin_lazy_drop_values(n_val, lazy_val)
     }
 
     pub(super) fn builtin_lazy_map_call_args(
@@ -29,7 +33,9 @@ impl<'ctx> CodeGen<'ctx> {
         a: CallArg<'_>,
         b: CallArg<'_>,
     ) -> Result<TypedValue<'ctx>, String> {
-        self.builtin_lazy_map(&Self::call_arg_to_expr(a), &Self::call_arg_to_expr(b))
+        let fn_val = self.compile_call_arg(a)?;
+        let lazy_val = self.compile_call_arg(b)?;
+        self.builtin_lazy_map_values(fn_val, lazy_val)
     }
 
     pub(super) fn builtin_lazy_filter_call_args(
@@ -37,7 +43,9 @@ impl<'ctx> CodeGen<'ctx> {
         a: CallArg<'_>,
         b: CallArg<'_>,
     ) -> Result<TypedValue<'ctx>, String> {
-        self.builtin_lazy_filter(&Self::call_arg_to_expr(a), &Self::call_arg_to_expr(b))
+        let fn_val = self.compile_call_arg(a)?;
+        let lazy_val = self.compile_call_arg(b)?;
+        self.builtin_lazy_filter_values(fn_val, lazy_val)
     }
 
     pub(super) fn builtin_lazy_take_while_call_args(
@@ -45,14 +53,17 @@ impl<'ctx> CodeGen<'ctx> {
         a: CallArg<'_>,
         b: CallArg<'_>,
     ) -> Result<TypedValue<'ctx>, String> {
-        self.builtin_lazy_take_while(&Self::call_arg_to_expr(a), &Self::call_arg_to_expr(b))
+        let fn_val = self.compile_call_arg(a)?;
+        let lazy_val = self.compile_call_arg(b)?;
+        self.builtin_lazy_take_while_values(fn_val, lazy_val)
     }
 
     pub(super) fn builtin_lazy_head_call_arg(
         &mut self,
         arg: CallArg<'_>,
     ) -> Result<TypedValue<'ctx>, String> {
-        self.builtin_lazy_head(&Self::call_arg_to_expr(arg))
+        let lazy_val = self.compile_call_arg(arg)?;
+        self.builtin_lazy_head_value(lazy_val)
     }
 
     pub(super) fn builtin_lazy_zip_call_args(
@@ -60,7 +71,9 @@ impl<'ctx> CodeGen<'ctx> {
         a: CallArg<'_>,
         b: CallArg<'_>,
     ) -> Result<TypedValue<'ctx>, String> {
-        self.builtin_lazy_zip(&Self::call_arg_to_expr(a), &Self::call_arg_to_expr(b))
+        let v1 = self.compile_call_arg(a)?;
+        let v2 = self.compile_call_arg(b)?;
+        self.builtin_lazy_zip_values(v1, v2)
     }
 
     /// lazyTake(n, lazy_list) - limit lazy list to first n elements (lazy: just updates take_count)
@@ -70,11 +83,19 @@ impl<'ctx> CodeGen<'ctx> {
         lazy_expr: &Expr,
     ) -> Result<TypedValue<'ctx>, String> {
         let n_val = self.compile_expr(n_expr)?;
+        let lazy_val = self.compile_expr(lazy_expr)?;
+        self.builtin_lazy_take_values(n_val, lazy_val)
+    }
+
+    pub(super) fn builtin_lazy_take_values(
+        &mut self,
+        n_val: TypedValue<'ctx>,
+        lazy_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
         let n = match n_val {
             TypedValue::Int(v) => v,
             _ => return Err("lazyTake: first argument must be an Int".to_string()),
         };
-        let lazy_val = self.compile_expr(lazy_expr)?;
         let lazy_ptr = match &lazy_val {
             TypedValue::LazyList(p) => *p,
             _ => return Err("lazyTake: second argument must be a LazyList".to_string()),
@@ -148,11 +169,19 @@ impl<'ctx> CodeGen<'ctx> {
         lazy_expr: &Expr,
     ) -> Result<TypedValue<'ctx>, String> {
         let n_val = self.compile_expr(n_expr)?;
+        let lazy_val = self.compile_expr(lazy_expr)?;
+        self.builtin_lazy_drop_values(n_val, lazy_val)
+    }
+
+    pub(super) fn builtin_lazy_drop_values(
+        &mut self,
+        n_val: TypedValue<'ctx>,
+        lazy_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
         let n = match n_val {
             TypedValue::Int(v) => v,
             _ => return Err("lazyDrop: first argument must be an Int".to_string()),
         };
-        let lazy_val = self.compile_expr(lazy_expr)?;
         let lazy_ptr = match &lazy_val {
             TypedValue::LazyList(p) => *p,
             _ => return Err("lazyDrop: second argument must be a LazyList".to_string()),
@@ -505,16 +534,23 @@ impl<'ctx> CodeGen<'ctx> {
         lazy_expr: &Expr,
     ) -> Result<TypedValue<'ctx>, String> {
         let fn_val = self.compile_expr(fn_expr)?;
+        let lazy_val = self.compile_expr(lazy_expr)?;
+        self.builtin_lazy_map_values(fn_val, lazy_val)
+    }
+
+    pub(super) fn builtin_lazy_map_values(
+        &mut self,
+        fn_val: TypedValue<'ctx>,
+        lazy_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
         let (map_fn_ptr, _fn_type) = match fn_val {
             TypedValue::Fn(p, ft) => (p, ft),
             _ => return Err("lazyMap: first argument must be a function".to_string()),
         };
-        let lazy_val = self.compile_expr(lazy_expr)?;
         match &lazy_val {
             TypedValue::LazyList(ll_ptr) => self.lazy_map_impl(map_fn_ptr, *ll_ptr),
             TypedValue::List(_) => {
-                // Convert to lazy list first, then map lazily
-                let ll_val = self.builtin_to_lazy_list(lazy_expr)?;
+                let ll_val = self.builtin_to_lazy_list_value(lazy_val.clone())?;
                 match ll_val {
                     TypedValue::LazyList(ll_ptr) => self.lazy_map_impl(map_fn_ptr, ll_ptr),
                     _ => Err("lazyMap: toLazyList did not return LazyList".to_string()),
@@ -729,15 +765,23 @@ impl<'ctx> CodeGen<'ctx> {
         lazy_expr: &Expr,
     ) -> Result<TypedValue<'ctx>, String> {
         let fn_val = self.compile_expr(fn_expr)?;
+        let lazy_val = self.compile_expr(lazy_expr)?;
+        self.builtin_lazy_filter_values(fn_val, lazy_val)
+    }
+
+    pub(super) fn builtin_lazy_filter_values(
+        &mut self,
+        fn_val: TypedValue<'ctx>,
+        lazy_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
         let (filter_fn_ptr, _) = match fn_val {
             TypedValue::Fn(p, _) => (p, fn_val),
             _ => return Err("lazyFilter: first argument must be a function".to_string()),
         };
-        let lazy_val = self.compile_expr(lazy_expr)?;
         match &lazy_val {
             TypedValue::LazyList(ll_ptr) => self.lazy_filter_impl(filter_fn_ptr, *ll_ptr),
             TypedValue::List(_) => {
-                let ll_val = self.builtin_to_lazy_list(lazy_expr)?;
+                let ll_val = self.builtin_to_lazy_list_value(lazy_val.clone())?;
                 match ll_val {
                     TypedValue::LazyList(ll_ptr) => self.lazy_filter_impl(filter_fn_ptr, ll_ptr),
                     _ => Err("lazyFilter: toLazyList did not return LazyList".to_string()),
@@ -1015,11 +1059,19 @@ impl<'ctx> CodeGen<'ctx> {
         lazy_expr: &Expr,
     ) -> Result<TypedValue<'ctx>, String> {
         let fn_val = self.compile_expr(fn_expr)?;
+        let lazy_val = self.compile_expr(lazy_expr)?;
+        self.builtin_lazy_take_while_values(fn_val, lazy_val)
+    }
+
+    pub(super) fn builtin_lazy_take_while_values(
+        &mut self,
+        fn_val: TypedValue<'ctx>,
+        lazy_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
         let (fn_ptr, _) = match fn_val {
             TypedValue::Fn(p, _) => (p, fn_val),
             _ => return Err("lazyTakeWhile: first argument must be a function".to_string()),
         };
-        let lazy_val = self.compile_expr(lazy_expr)?;
         let lazy_ptr = self.ensure_list_ptr(&lazy_val, "ltw")?;
         let list = self.load_list(lazy_ptr)?;
         let len = self
@@ -1142,7 +1194,13 @@ impl<'ctx> CodeGen<'ctx> {
         lazy_expr: &Expr,
     ) -> Result<TypedValue<'ctx>, String> {
         let lazy_val = self.compile_expr(lazy_expr)?;
-        // If LazyList, extract head directly. If List, use first element.
+        self.builtin_lazy_head_value(lazy_val)
+    }
+
+    pub(super) fn builtin_lazy_head_value(
+        &mut self,
+        lazy_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
         let (head_val, is_empty) = match &lazy_val {
             TypedValue::LazyList(ptr) => {
                 let ll_sv = self
@@ -1286,6 +1344,14 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<TypedValue<'ctx>, String> {
         let v1 = self.compile_expr(lazy1_expr)?;
         let v2 = self.compile_expr(lazy2_expr)?;
+        self.builtin_lazy_zip_values(v1, v2)
+    }
+
+    pub(super) fn builtin_lazy_zip_values(
+        &mut self,
+        v1: TypedValue<'ctx>,
+        v2: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
         let p1 = self.ensure_list_ptr(&v1, "lz1")?;
         let p2 = self.ensure_list_ptr(&v2, "lz2")?;
         let l1 = self.load_list(p1)?;

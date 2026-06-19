@@ -58,7 +58,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Compile step function if provided
         let (step_fn_ptr, state, take_count) = if let Some(lam) = trailing {
-            let step_fn_val = self.compile_lambda_for_lazy(&Self::call_arg_to_expr(lam))?;
+            let step_fn_val = self.compile_lambda_for_lazy_call_arg(lam)?;
             // -1 means "infinite" — only bounded by explicit take()
             (
                 step_fn_val,
@@ -106,6 +106,30 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         self.builder.build_store(ll_alloca, v5).map_err(llvm_err)?;
         Ok(TypedValue::LazyList(ll_alloca))
+    }
+
+    /// Compile a lambda CallArg for use as a lazy list step function.
+    fn compile_lambda_for_lazy_call_arg(
+        &mut self,
+        lam: CallArg<'_>,
+    ) -> Result<inkwell::values::PointerValue<'ctx>, String> {
+        match lam {
+            CallArg::Ast(e) => self.compile_lambda_for_lazy(e),
+            CallArg::Hir(h) => match &h.kind {
+                action_frontend::hir::HirExprKind::Lambda { params, body, .. } => {
+                    if params.is_empty() {
+                        return Err("lazy_list step function expects 1 parameter".to_string());
+                    }
+                    let fn_val = self.compile_lambda_hir(params, body)?;
+                    match fn_val {
+                        TypedValue::Fn(ptr, _) => Ok(ptr),
+                        TypedValue::Closure { fn_ptr, .. } => Ok(fn_ptr),
+                        _ => Err("lazy_list: step function compilation failed".to_string()),
+                    }
+                }
+                _ => Err("lazy_list: expected lambda body".to_string()),
+            },
+        }
     }
 
     /// Compile a lambda for use as a lazy list step function.

@@ -1,7 +1,7 @@
 //! Unified call-argument source for AST and HIR codegen paths.
 
-use action_frontend::ast::Expr;
-use action_frontend::hir::HirExpr;
+use action_frontend::ast::{Expr, ExprKind};
+use action_frontend::hir::{HirExpr, HirExprKind};
 
 use super::{CodeGen, TypedValue};
 
@@ -20,6 +20,12 @@ impl<'a> CallArg<'a> {
     pub fn hir(e: &'a HirExpr) -> Self {
         CallArg::Hir(e)
     }
+}
+
+/// Trailing block body extracted from a zero-param lambda CallArg.
+pub enum TrailingBody<'a> {
+    Ast(&'a Expr),
+    Hir(&'a HirExpr),
 }
 
 impl<'ctx> CodeGen<'ctx> {
@@ -55,14 +61,134 @@ impl<'ctx> CodeGen<'ctx> {
         trailing.as_ref().map(|b| CallArg::ast(b.as_ref()))
     }
 
-    pub(super) fn call_arg_to_expr(arg: CallArg<'_>) -> Expr {
+    pub(super) fn trailing_call_arg_hir(trailing: Option<&Box<HirExpr>>) -> Option<CallArg<'_>> {
+        trailing.map(|b| CallArg::hir(b.as_ref()))
+    }
+
+    pub(super) fn call_arg_ident_name(arg: CallArg<'_>) -> Option<&str> {
         match arg {
-            CallArg::Ast(e) => e.clone(),
-            CallArg::Hir(h) => h.as_expr(),
+            CallArg::Ast(e) => match &e.kind {
+                ExprKind::Ident(name) => Some(name.as_str()),
+                _ => None,
+            },
+            CallArg::Hir(h) => match &h.kind {
+                HirExprKind::Ident(name) => Some(name.as_str()),
+                _ => None,
+            },
         }
     }
 
-    pub(super) fn trailing_call_arg_hir(trailing: Option<&Box<HirExpr>>) -> Option<CallArg<'_>> {
-        trailing.map(|b| CallArg::hir(b.as_ref()))
+    pub(super) fn extract_trailing_block_body(
+        trailing: CallArg<'_>,
+    ) -> Result<TrailingBody<'_>, String> {
+        match trailing {
+            CallArg::Ast(e) => match &e.kind {
+                ExprKind::Lambda { params, body, .. } if params.is_empty() => {
+                    Ok(TrailingBody::Ast(body))
+                }
+                _ => Err("expected a block body: trailing `{ ... }`".to_string()),
+            },
+            CallArg::Hir(h) => match &h.kind {
+                HirExprKind::Lambda { params, body, .. } if params.is_empty() => {
+                    Ok(TrailingBody::Hir(body))
+                }
+                _ => Err("expected a block body: trailing `{ ... }`".to_string()),
+            },
+        }
+    }
+
+    pub(super) fn compile_trailing_body(
+        &mut self,
+        body: TrailingBody<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        match body {
+            TrailingBody::Ast(e) => self.compile_expr(e),
+            TrailingBody::Hir(h) => self.compile_hir_expr(h),
+        }
+    }
+
+    pub(super) fn parse_launch_scheduler(arg: CallArg<'_>) -> Result<i64, String> {
+        match arg {
+            CallArg::Ast(e) => match &e.kind {
+                ExprKind::Ident(s) if s == "io" => Ok(1),
+                ExprKind::Ident(s) if s == "cpu" => Ok(2),
+                _ => Err("launch scheduler must be 'io' or 'cpu'".to_string()),
+            },
+            CallArg::Hir(h) => match &h.kind {
+                HirExprKind::Ident(s) if s == "io" => Ok(1),
+                HirExprKind::Ident(s) if s == "cpu" => Ok(2),
+                _ => Err("launch scheduler must be 'io' or 'cpu'".to_string()),
+            },
+        }
+    }
+
+    pub(super) fn compile_synthetic_call_call_args(
+        &mut self,
+        func: CallArg<'_>,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let target = self.compile_call_arg(func)?;
+        self.compile_indirect_call_from_call_args(target, args, trailing)
+    }
+
+    pub(super) fn compile_compose_call_args(
+        &mut self,
+        f: CallArg<'_>,
+        g: CallArg<'_>,
+        x: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let inner = self.compile_synthetic_call_call_args(g, &[x], None)?;
+        let f_val = self.compile_call_arg(f)?;
+        self.compile_indirect_call_with_precompiled_args(f_val, &[inner], None)
+    }
+
+    pub(super) fn compile_flip_call_args(
+        &mut self,
+        f: CallArg<'_>,
+        a: CallArg<'_>,
+        b: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        self.compile_synthetic_call_call_args(f, &[b, a], None)
+    }
+
+    pub(super) fn compile_uncurry_call_args(
+        &mut self,
+        f: CallArg<'_>,
+        a: CallArg<'_>,
+        b: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let partial = self.compile_synthetic_call_call_args(f, &[a], None)?;
+        self.compile_indirect_call_from_call_args(partial, &[b], None)
+    }
+
+    pub(super) fn compile_curry_call_args(
+        &mut self,
+        f: CallArg<'_>,
+        a: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        self.compile_lambda_impl(
+            &["b".to_string()],
+            |params, bound, free| {
+                Self::collect_call_arg_free_vars(f, params, bound, free);
+                Self::collect_call_arg_free_vars(a, params, bound, free);
+            },
+            |this| {
+                let b_ident = ExprKind::Ident("b".to_string()).into();
+                this.compile_synthetic_call_call_args(f, &[a, CallArg::ast(&b_ident)], None)
+            },
+        )
+    }
+
+    pub(super) fn collect_call_arg_free_vars(
+        arg: CallArg<'_>,
+        params: &[String],
+        bound: &mut Vec<String>,
+        free: &mut Vec<String>,
+    ) {
+        match arg {
+            CallArg::Ast(e) => super::expr::collect_free_vars(e, params, bound, free),
+            CallArg::Hir(h) => super::expr::collect_free_vars_hir(h, params, bound, free),
+        }
     }
 }

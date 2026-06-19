@@ -54,14 +54,10 @@ impl<'ctx> CodeGen<'ctx> {
         args: &[CallArg<'_>],
         trailing: Option<CallArg<'_>>,
     ) -> Result<TypedValue<'ctx>, String> {
-        let receiver_expr = match receiver {
-            CallArg::Ast(e) => e.clone(),
-            CallArg::Hir(h) => h.as_expr(),
-        };
         self.compile_nullable_method_call_call_args_inner(
             nullable_ptr,
             inner_bt,
-            &receiver_expr,
+            receiver,
             method,
             args,
             trailing,
@@ -72,7 +68,7 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         nullable_ptr: PointerValue<'ctx>,
         inner_bt: BasicTypeEnum<'ctx>,
-        receiver_expr: &Expr,
+        receiver: CallArg<'_>,
         method: &str,
         args: &[CallArg<'_>],
         trailing: Option<CallArg<'_>>,
@@ -128,7 +124,7 @@ impl<'ctx> CodeGen<'ctx> {
         // bv_to_typed treats {ptr,i64,i64} as List by default, but the receiver
         // may be a typed nullable (e.g. Map?, Set?).  Look up the AST type
         // annotation to correct the ValKind before we push the synthetic scope var.
-        if let ExprKind::Ident(recv_name) = &receiver_expr.kind {
+        if let Some(recv_name) = Self::call_arg_ident_name(receiver) {
             if let Some(sv) = self.scope.get(recv_name) {
                 if let Some(Type::Nullable(inner_ast)) = &sv.ast_type {
                     let ptr = match &inner_typed {

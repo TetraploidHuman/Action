@@ -222,7 +222,7 @@ impl<'ctx> CodeGen<'ctx> {
         )
     }
 
-    fn compile_lambda_impl(
+    pub(super) fn compile_lambda_impl(
         &mut self,
         params: &[String],
         collect_free: impl FnOnce(&[String], &mut Vec<String>, &mut Vec<String>),
@@ -2514,7 +2514,7 @@ impl<'ctx> CodeGen<'ctx> {
 }
 
 /// Collect free variables in `expr` that are NOT bound by `params` or local let/destructure.
-fn collect_free_vars(
+pub(super) fn collect_free_vars(
     expr: &Expr,
     params: &[String],
     bound: &mut Vec<String>,
@@ -2771,7 +2771,7 @@ fn visit_stmt_free_vars(
     }
 }
 
-fn collect_free_vars_hir(
+pub(super) fn collect_free_vars_hir(
     expr: &action_frontend::hir::HirExpr,
     params: &[String],
     bound: &mut Vec<String>,

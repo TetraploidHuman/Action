@@ -10,19 +10,28 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         arg: CallArg<'_>,
     ) -> Result<TypedValue<'ctx>, String> {
-        self.builtin_to_list(&Self::call_arg_to_expr(arg))
+        let val = self.compile_call_arg(arg)?;
+        self.builtin_to_list_value(val)
     }
 
     pub(super) fn builtin_to_lazy_list_call_arg(
         &mut self,
         arg: CallArg<'_>,
     ) -> Result<TypedValue<'ctx>, String> {
-        self.builtin_to_lazy_list(&Self::call_arg_to_expr(arg))
+        let val = self.compile_call_arg(arg)?;
+        self.builtin_to_lazy_list_value(val)
     }
 
     /// toList(lazy_or_set) - convert a LazyList or Set to a List
     pub(super) fn builtin_to_list(&mut self, expr: &Expr) -> Result<TypedValue<'ctx>, String> {
         let val = self.compile_expr(expr)?;
+        self.builtin_to_list_value(val)
+    }
+
+    pub(super) fn builtin_to_list_value(
+        &mut self,
+        val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
         match val {
             TypedValue::LazyList(_) => {
                 let list_sv = self.convert_lazylist_to_list(&val)?;
@@ -54,6 +63,13 @@ impl<'ctx> CodeGen<'ctx> {
     /// toLazyList(list) - convert a List to a LazyList
     pub(super) fn builtin_to_lazy_list(&mut self, expr: &Expr) -> Result<TypedValue<'ctx>, String> {
         let val = self.compile_expr(expr)?;
+        self.builtin_to_lazy_list_value(val)
+    }
+
+    pub(super) fn builtin_to_lazy_list_value(
+        &mut self,
+        val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
         match val {
             TypedValue::List(ptr) => {
                 // Load list, extract first element as head

@@ -10,6 +10,7 @@ use inkwell::types::{BasicType, BasicTypeEnum};
 use inkwell::values::{GlobalValue, IntValue, PointerValue};
 use inkwell::IntPredicate;
 
+use super::call_arg::CallArg;
 use super::{llvm_err, CodeGen, Scope, TypedValue, ValKind};
 
 impl<'ctx> CodeGen<'ctx> {
@@ -86,111 +87,8 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<TypedValue<'ctx>, String> {
         let o = self.compile_expr(obj)?;
 
-        // Nullable receiver: short-circuit on null, extract inner and index that
         if let TypedValue::Nullable(nullable_ptr, inner_bt) = o {
-            let current_fn = self
-                .builder
-                .get_insert_block()
-                .and_then(|b| b.get_parent())
-                .ok_or("Cannot index outside function")?;
-
-            let nullable_st = inner_bt.into_struct_type();
-            let null_bt: BasicTypeEnum = nullable_st.into();
-
-            let loaded = self
-                .builder
-                .build_load(null_bt, nullable_ptr, "nidx_ld")
-                .map_err(llvm_err)?;
-            let nullable_struct = loaded.into_struct_value();
-            let null_flag = self
-                .builder
-                .build_extract_value(nullable_struct, 0, "nidx_flag")
-                .map_err(llvm_err)?
-                .into_int_value();
-
-            let b1 = self.null_flag_ty();
-            let is_null = self
-                .builder
-                .build_int_compare(
-                    IntPredicate::EQ,
-                    null_flag,
-                    b1.const_int(1, false),
-                    "nidx_is_null",
-                )
-                .map_err(llvm_err)?;
-
-            let null_block = self.context.append_basic_block(current_fn, "nidx_null");
-            let val_block = self.context.append_basic_block(current_fn, "nidx_val");
-            let merge_block = self.context.append_basic_block(current_fn, "nidx_merge");
-
-            self.builder
-                .build_conditional_branch(is_null, null_block, val_block)
-                .map_err(llvm_err)?;
-
-            // Null path: return null of the same nullable type
-            self.builder.position_at_end(null_block);
-            let null_loaded = self
-                .builder
-                .build_load(null_bt, nullable_ptr, "nidx_null_ld")
-                .map_err(llvm_err)?;
-            self.builder
-                .build_unconditional_branch(merge_block)
-                .map_err(llvm_err)?;
-
-            // Value path: extract inner and index into it
-            self.builder.position_at_end(val_block);
-            let inner = self
-                .builder
-                .build_extract_value(nullable_struct, 1, "nidx_inner")
-                .map_err(llvm_err)?;
-            let inner_typed = self.bv_to_typed(inner)?;
-
-            // Directly handle indexing on the inner TypedValue
-            let idx_val = self.compile_expr(idx)?;
-            let val_result: TypedValue = match &inner_typed {
-                TypedValue::Map(map_ptr) => self.compile_map_index(*map_ptr, idx)?,
-                TypedValue::Set(set_ptr) => self.compile_set_index(*set_ptr, idx)?,
-                TypedValue::List(list_ptr) | TypedValue::LazyList(list_ptr) => {
-                    let index_val = match idx_val {
-                        TypedValue::Int(v) => v,
-                        _ => return Err("Index must be an integer".to_string()),
-                    };
-                    let list_val = self.load_list(*list_ptr)?;
-                    let cc =
-                        self.call_rt("action_list_get", &[list_val.into(), index_val.into()])?;
-                    match cc.try_as_basic_value().basic() {
-                        Some(bv) => {
-                            let fat = bv.into_struct_value();
-                            let alloca = self
-                                .builder
-                                .build_alloca(self.string_type, "list_elem")
-                                .map_err(llvm_err)?;
-                            self.builder.build_store(alloca, fat).map_err(llvm_err)?;
-                            TypedValue::Str(alloca)
-                        }
-                        None => return Err("list_get failed".to_string()),
-                    }
-                }
-                _ => return Err("Indexing not supported on this type".to_string()),
-            };
-
-            let val_bv = val_result
-                .to_bv()
-                .unwrap_or_else(|| self.i64_ty().const_int(0, false).into());
-            self.builder
-                .build_unconditional_branch(merge_block)
-                .map_err(llvm_err)?;
-
-            // Merge: phi the null and value paths
-            self.builder.position_at_end(merge_block);
-            let phi_type = val_bv.get_type();
-            let phi = self
-                .builder
-                .build_phi(phi_type, "nidx_merge")
-                .map_err(llvm_err)?;
-            phi.add_incoming(&[(&null_loaded, null_block), (&val_bv, val_block)]);
-
-            return self.bv_to_typed(phi.as_basic_value());
+            return self.compile_nullable_index_values(nullable_ptr, inner_bt, CallArg::ast(idx));
         }
 
         // Tuple/struct indexing: requires compile-time constant integer index
@@ -228,14 +126,114 @@ impl<'ctx> CodeGen<'ctx> {
             _ => return Err("Index must be an integer".to_string()),
         };
 
-        match o {
+        self.compile_index_values(o, TypedValue::Int(index_val))
+    }
+
+    pub(super) fn compile_nullable_index_values(
+        &mut self,
+        nullable_ptr: PointerValue<'ctx>,
+        inner_bt: BasicTypeEnum<'ctx>,
+        idx: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("Cannot index outside function")?;
+
+        let nullable_st = inner_bt.into_struct_type();
+        let null_bt: BasicTypeEnum = nullable_st.into();
+
+        let loaded = self
+            .builder
+            .build_load(null_bt, nullable_ptr, "nidx_ld")
+            .map_err(llvm_err)?;
+        let nullable_struct = loaded.into_struct_value();
+        let null_flag = self
+            .builder
+            .build_extract_value(nullable_struct, 0, "nidx_flag")
+            .map_err(llvm_err)?
+            .into_int_value();
+
+        let b1 = self.null_flag_ty();
+        let is_null = self
+            .builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                null_flag,
+                b1.const_int(1, false),
+                "nidx_is_null",
+            )
+            .map_err(llvm_err)?;
+
+        let null_block = self.context.append_basic_block(current_fn, "nidx_null");
+        let val_block = self.context.append_basic_block(current_fn, "nidx_val");
+        let merge_block = self.context.append_basic_block(current_fn, "nidx_merge");
+
+        self.builder
+            .build_conditional_branch(is_null, null_block, val_block)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(null_block);
+        let null_loaded = self
+            .builder
+            .build_load(null_bt, nullable_ptr, "nidx_null_ld")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(val_block);
+        let inner = self
+            .builder
+            .build_extract_value(nullable_struct, 1, "nidx_inner")
+            .map_err(llvm_err)?;
+        let inner_typed = self.bv_to_typed(inner)?;
+
+        let idx_val = self.compile_call_arg(idx)?;
+        let val_result: TypedValue = match &inner_typed {
+            TypedValue::Map(map_ptr) => self.compile_map_index_key(*map_ptr, idx_val.clone())?,
+            TypedValue::Set(set_ptr) => self.compile_set_index_key(*set_ptr, idx_val.clone())?,
+            TypedValue::List(_) | TypedValue::LazyList(_) => {
+                self.compile_index_values(inner_typed, idx_val)?
+            }
+            _ => return Err("Indexing not supported on this type".to_string()),
+        };
+
+        let val_bv = val_result
+            .to_bv()
+            .unwrap_or_else(|| self.i64_ty().const_int(0, false).into());
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(merge_block);
+        let phi_type = val_bv.get_type();
+        let phi = self
+            .builder
+            .build_phi(phi_type, "nidx_merge")
+            .map_err(llvm_err)?;
+        phi.add_incoming(&[(&null_loaded, null_block), (&val_bv, val_block)]);
+
+        self.bv_to_typed(phi.as_basic_value())
+    }
+
+    /// Compile index access on already-compiled values (list/lazy list/string).
+    pub(super) fn compile_index_values(
+        &mut self,
+        obj_val: TypedValue<'ctx>,
+        idx_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let index_val = match idx_val {
+            TypedValue::Int(v) => v,
+            _ => return Err("Index must be an integer".to_string()),
+        };
+        match obj_val {
             TypedValue::List(list_ptr) | TypedValue::LazyList(list_ptr) => {
                 let list_val = self.load_list(list_ptr)?;
                 let cc = self.call_rt("action_list_get", &[list_val.into(), index_val.into()])?;
                 match cc.try_as_basic_value().basic() {
                     Some(bv) => {
-                        // list_get returns {i64, ptr} fat struct — the universal value repr.
-                        // Store in string alloca; callers extract fields as needed.
                         let fat = bv.into_struct_value();
                         let alloca = self
                             .builder
@@ -259,7 +257,6 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_extract_value(str_val, 1, "data")
                     .map_err(llvm_err)?
                     .into_pointer_value();
-                // Bounds check: clamp index to [0, len-1], return 0 for OOB
                 let zero = self.i64_ty().const_int(0, false);
                 let len_minus1 = self
                     .builder
@@ -269,15 +266,10 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_and(
                         self.builder
-                            .build_int_compare(inkwell::IntPredicate::SGE, index_val, zero, "ge0")
+                            .build_int_compare(IntPredicate::SGE, index_val, zero, "ge0")
                             .map_err(llvm_err)?,
                         self.builder
-                            .build_int_compare(
-                                inkwell::IntPredicate::SLE,
-                                index_val,
-                                len_minus1,
-                                "le_len",
-                            )
+                            .build_int_compare(IntPredicate::SLE, index_val, len_minus1, "le_len")
                             .map_err(llvm_err)?,
                         "in_bounds",
                     )
@@ -302,7 +294,6 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_int_z_extend(char_val, self.i64_ty(), "char_ext")
                     .map_err(llvm_err)?;
-                // Return 0 for out-of-bounds, actual char value for in-bounds
                 let result = self
                     .builder
                     .build_select(in_bounds, raw, zero, "idx_result")

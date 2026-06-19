@@ -382,7 +382,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.dispatch_named_call(name, args, trailing)
     }
 
-    fn compile_indirect_call_from_call_args(
+    pub(super) fn compile_indirect_call_from_call_args(
         &mut self,
         target: TypedValue<'ctx>,
         args: &[CallArg<'_>],
@@ -416,6 +416,112 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
             other => self.compile_indirect_call_hir_full(other, args, trailing),
+        }
+    }
+
+    pub(super) fn compile_indirect_call_with_precompiled_args(
+        &mut self,
+        target: TypedValue<'ctx>,
+        args: &[TypedValue<'ctx>],
+        trailing: Option<TypedValue<'ctx>>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        use inkwell::types::BasicMetadataTypeEnum;
+        use inkwell::values::BasicMetadataValueEnum;
+        match target {
+            TypedValue::Fn(fn_ptr, fn_type) => {
+                let mut ca: Vec<BasicMetadataValueEnum> = Vec::new();
+                for av in args {
+                    ca.push(self.typed_value_to_bv(av).into());
+                }
+                if let Some(av) = &trailing {
+                    ca.push(self.typed_value_to_bv(av).into());
+                }
+                let cc = self
+                    .builder
+                    .build_indirect_call(fn_type, fn_ptr, &ca, "indirect")
+                    .map_err(super::llvm_err)?;
+                for av in args {
+                    self.rc_free_intermediate(av)?;
+                }
+                if let Some(av) = &trailing {
+                    self.rc_free_intermediate(av)?;
+                }
+                match cc.try_as_basic_value().basic() {
+                    Some(bv) => self.unpack_fat_return(bv, fn_type.get_return_type()),
+                    None => Ok(TypedValue::Unit),
+                }
+            }
+            TypedValue::Closure {
+                fn_ptr,
+                actual_fn_type,
+                closure_ptr,
+                closure_ty,
+                alloca,
+            } => {
+                let mut ca: Vec<BasicMetadataValueEnum> = Vec::new();
+                ca.push(closure_ptr.into());
+                for av in args {
+                    ca.push(self.typed_value_to_bv(av).into());
+                }
+                if let Some(av) = &trailing {
+                    ca.push(self.typed_value_to_bv(av).into());
+                }
+                let cc = self
+                    .builder
+                    .build_indirect_call(actual_fn_type, fn_ptr, &ca, "indirect_closure")
+                    .map_err(super::llvm_err)?;
+                for av in args {
+                    self.rc_free_intermediate(av)?;
+                }
+                if let Some(av) = &trailing {
+                    self.rc_free_intermediate(av)?;
+                }
+                if alloca.is_none() {
+                    self.rc_inc(closure_ptr)?;
+                    self.rc_dec_closure_captures(closure_ptr, closure_ty)?;
+                }
+                match cc.try_as_basic_value().basic() {
+                    Some(bv) => self.unpack_fat_return(bv, actual_fn_type.get_return_type()),
+                    None => Ok(TypedValue::Unit),
+                }
+            }
+            TypedValue::Int(iv) => {
+                let total_args = args.len() + trailing.as_ref().map_or(0, |_| 1);
+                let param_tys: Vec<BasicMetadataTypeEnum<'ctx>> =
+                    (0..total_args).map(|_| self.i64_ty().into()).collect();
+                let ret_ty = self.fat_return_type;
+                let fn_type = ret_ty.fn_type(&param_tys, false);
+                let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+                let fn_ptr = self
+                    .builder
+                    .build_int_to_ptr(iv, ptr_type, "fn_ptr_cast")
+                    .map_err(super::llvm_err)?;
+                let mut ca: Vec<BasicMetadataValueEnum> = Vec::new();
+                for av in args {
+                    ca.push(self.typed_value_to_bv(av).into());
+                }
+                if let Some(av) = &trailing {
+                    ca.push(self.typed_value_to_bv(av).into());
+                }
+                let cc = self
+                    .builder
+                    .build_indirect_call(fn_type, fn_ptr, &ca, "indirect_untyped")
+                    .map_err(super::llvm_err)?;
+                for av in args {
+                    self.rc_free_intermediate(av)?;
+                }
+                if let Some(av) = &trailing {
+                    self.rc_free_intermediate(av)?;
+                }
+                match cc.try_as_basic_value().basic() {
+                    Some(bv) => self.unpack_fat_return(
+                        bv,
+                        Some(inkwell::types::BasicTypeEnum::StructType(ret_ty)),
+                    ),
+                    None => Ok(TypedValue::Unit),
+                }
+            }
+            _ => Err("Call target is not a function".to_string()),
         }
     }
 

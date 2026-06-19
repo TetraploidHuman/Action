@@ -176,22 +176,25 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
 
-        let list_expr = Self::call_arg_to_expr(list_arg);
-        if let Some((map_fn_expr, inner_list_expr)) = Self::extract_map_call_args(&list_expr) {
-            let filter_fn_val = if let Some(lam) = trailing {
-                self.compile_call_arg(lam)?
-            } else {
-                self.compile_call_arg(args[0])?
-            };
-            return self.fused_map_filter(map_fn_expr, inner_list_expr, filter_fn_val);
-        }
-        if let Some((flat_fn_expr, inner_list_expr)) = Self::extract_flatmap_call_args(&list_expr) {
-            let filter_fn_val = if let Some(lam) = trailing {
-                self.compile_call_arg(lam)?
-            } else {
-                self.compile_call_arg(args[0])?
-            };
-            return self.fused_flatmap_filter_ast(flat_fn_expr, inner_list_expr, filter_fn_val);
+        if let CallArg::Ast(list_expr) = list_arg {
+            if let Some((map_fn_expr, inner_list_expr)) = Self::extract_map_call_args(list_expr) {
+                let filter_fn_val = if let Some(lam) = trailing {
+                    self.compile_call_arg(lam)?
+                } else {
+                    self.compile_call_arg(args[0])?
+                };
+                return self.fused_map_filter(map_fn_expr, inner_list_expr, filter_fn_val);
+            }
+            if let Some((flat_fn_expr, inner_list_expr)) =
+                Self::extract_flatmap_call_args(list_expr)
+            {
+                let filter_fn_val = if let Some(lam) = trailing {
+                    self.compile_call_arg(lam)?
+                } else {
+                    self.compile_call_arg(args[0])?
+                };
+                return self.fused_flatmap_filter_ast(flat_fn_expr, inner_list_expr, filter_fn_val);
+            }
         }
 
         // Standard filter path

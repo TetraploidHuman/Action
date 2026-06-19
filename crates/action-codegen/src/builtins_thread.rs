@@ -20,19 +20,13 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<TypedValue<'ctx>, String> {
         // Parse optional scheduler argument
         let scheduler = if !args.is_empty() {
-            match Self::call_arg_to_expr(args[0]).kind {
-                ExprKind::Ident(s) if s == "io" => 1i64,
-                ExprKind::Ident(s) if s == "cpu" => 2i64,
-                _ => return Err("launch scheduler must be 'io' or 'cpu'".to_string()),
-            }
+            Self::parse_launch_scheduler(args[0])?
         } else {
             0i64 // default scheduler
         };
         let body = trailing.ok_or("launch requires a trailing lambda body")?;
-        let body_expr = match Self::call_arg_to_expr(body).kind {
-            ExprKind::Lambda { params, body, .. } if params.is_empty() => body,
-            _ => return Err("launch expects a block body: launch { ... }".to_string()),
-        };
+        let body_body = Self::extract_trailing_block_body(body)
+            .map_err(|_| "launch expects a block body: launch { ... }".to_string())?;
 
         // 1. Heap-allocate Task struct (so thread can safely write to it after main returns)
         // Compute task struct size via GEP trick
@@ -122,7 +116,7 @@ impl<'ctx> CodeGen<'ctx> {
         let task_ptr_param = task_fn.get_first_param().unwrap().into_pointer_value();
 
         // Compile the body expression
-        let result = self.compile_expr(body_expr.as_ref())?;
+        let result = self.compile_trailing_body(body_body)?;
 
         // Create a fresh list INSIDE the thread (avoids cross-thread data issues)
         let cap = self.i64_ty().const_int(1, false);
@@ -258,14 +252,9 @@ impl<'ctx> CodeGen<'ctx> {
         trailing: Option<CallArg<'_>>,
     ) -> Result<TypedValue<'ctx>, String> {
         let body = trailing.ok_or("coroutineScope requires a trailing lambda body")?;
-        let body_expr = match Self::call_arg_to_expr(body).kind {
-            ExprKind::Lambda { params, body, .. } if params.is_empty() => body,
-            _ => {
-                return Err(
-                    "coroutineScope expects a block body: coroutineScope { ... }".to_string(),
-                )
-            }
-        };
+        let body_body = Self::extract_trailing_block_body(body).map_err(|_| {
+            "coroutineScope expects a block body: coroutineScope { ... }".to_string()
+        })?;
 
         // Create collector list for task pointers
         let cap = self.i64_ty().const_int(4, false);
@@ -287,7 +276,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.coroutine_collector = Some(collector_alloca);
 
         // Compile the body (launch calls inside will spawn threads and push task pointers to collector)
-        self.compile_expr(body_expr.as_ref())?;
+        self.compile_trailing_body(body_body)?;
 
         // Restore previous collector
         self.coroutine_collector = prev_collector;
@@ -655,12 +644,8 @@ impl<'ctx> CodeGen<'ctx> {
             _ => return Err("withTimeout: first argument must be Int (milliseconds)".to_string()),
         };
         let body = trailing.ok_or("withTimeout requires a trailing lambda body")?;
-        let body_expr = match Self::call_arg_to_expr(body).kind {
-            ExprKind::Lambda { params, body, .. } if params.is_empty() => *body,
-            _ => {
-                return Err("withTimeout expects a block body: withTimeout(ms) { ... }".to_string())
-            }
-        };
+        let body_body = Self::extract_trailing_block_body(body)
+            .map_err(|_| "withTimeout expects a block body: withTimeout(ms) { ... }".to_string())?;
 
         // 1. Heap-allocate Task struct for the thread to write results into
         let task_ty_ptr = self.context.ptr_type(Default::default());
@@ -749,7 +734,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(entry);
         let task_ptr_param = task_fn.get_first_param().unwrap().into_pointer_value();
 
-        let result = self.compile_expr(&body_expr)?;
+        let result = self.compile_trailing_body(body_body)?;
 
         // Store result in the task's result_list
         let cap = self.i64_ty().const_int(1, false);

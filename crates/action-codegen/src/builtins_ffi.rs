@@ -12,33 +12,44 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         arg: CallArg<'_>,
     ) -> Result<TypedValue<'ctx>, String> {
-        self.builtin_to_cstring(&Self::call_arg_to_expr(arg))
+        let val = self.compile_call_arg(arg)?;
+        self.builtin_to_cstring_value(val)
     }
 
     pub(super) fn builtin_from_cstring_call_arg(
         &mut self,
         arg: CallArg<'_>,
     ) -> Result<TypedValue<'ctx>, String> {
-        self.builtin_from_cstring(&Self::call_arg_to_expr(arg))
+        let val = self.compile_call_arg(arg)?;
+        self.builtin_from_cstring_value(val)
     }
 
     pub(super) fn builtin_is_null_call_arg(
         &mut self,
         arg: CallArg<'_>,
     ) -> Result<TypedValue<'ctx>, String> {
-        self.builtin_is_null(&Self::call_arg_to_expr(arg))
+        let val = self.compile_call_arg(arg)?;
+        self.builtin_is_null_value(val)
     }
 
     pub(super) fn builtin_deref_call_arg(
         &mut self,
         arg: CallArg<'_>,
     ) -> Result<TypedValue<'ctx>, String> {
-        self.builtin_deref(&Self::call_arg_to_expr(arg))
+        let val = self.compile_call_arg(arg)?;
+        self.builtin_deref_value(val)
     }
 
     /// toCString(str) -> CString: allocate a null-terminated copy of the string
     pub(super) fn builtin_to_cstring(&mut self, expr: &Expr) -> Result<TypedValue<'ctx>, String> {
         let val = self.compile_expr(expr)?;
+        self.builtin_to_cstring_value(val)
+    }
+
+    pub(super) fn builtin_to_cstring_value(
+        &mut self,
+        val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
         match val {
             TypedValue::Str(ptr) => {
                 let str_val = self.load_string(ptr)?;
@@ -86,6 +97,13 @@ impl<'ctx> CodeGen<'ctx> {
     /// fromCString(cstr) -> String: read a null-terminated C string
     pub(super) fn builtin_from_cstring(&mut self, expr: &Expr) -> Result<TypedValue<'ctx>, String> {
         let val = self.compile_expr(expr)?;
+        self.builtin_from_cstring_value(val)
+    }
+
+    pub(super) fn builtin_from_cstring_value(
+        &mut self,
+        val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
         match val {
             TypedValue::CString(ptr) | TypedValue::Ptr(ptr) | TypedValue::FileHandle(ptr) => {
                 if matches!(val, TypedValue::FileHandle(_)) {
@@ -195,10 +213,17 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// isNull(ptr) -> Bool: check if a Ptr or CString is null
     pub(super) fn builtin_is_null(&mut self, expr: &Expr) -> Result<TypedValue<'ctx>, String> {
+        let val = self.compile_expr(expr)?;
+        self.builtin_is_null_value(val)
+    }
+
+    pub(super) fn builtin_is_null_value(
+        &mut self,
+        val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
         if !self.in_unsafe {
             return Err("isNull can only be used inside an unsafe block".to_string());
         }
-        let val = self.compile_expr(expr)?;
         match val {
             TypedValue::Ptr(p) | TypedValue::CString(p) | TypedValue::FileHandle(p) => {
                 let null_ptr = self
@@ -217,10 +242,17 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// deref(ptr) -> T: dereference a typed pointer (unsafe)
     pub(super) fn builtin_deref(&mut self, expr: &Expr) -> Result<TypedValue<'ctx>, String> {
+        let val = self.compile_expr(expr)?;
+        self.builtin_deref_value(val)
+    }
+
+    pub(super) fn builtin_deref_value(
+        &mut self,
+        val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
         if !self.in_unsafe {
             return Err("deref can only be used inside an unsafe block".to_string());
         }
-        let val = self.compile_expr(expr)?;
         match val {
             TypedValue::Ptr(p) => {
                 // Load as i64 (most common FFI use case)
@@ -241,12 +273,11 @@ impl<'ctx> CodeGen<'ctx> {
         c: CallArg<'_>,
         d: CallArg<'_>,
     ) -> Result<TypedValue<'ctx>, String> {
-        self.builtin_http_request(
-            &Self::call_arg_to_expr(a),
-            &Self::call_arg_to_expr(b),
-            &Self::call_arg_to_expr(c),
-            &Self::call_arg_to_expr(d),
-        )
+        let method_val = self.compile_call_arg(a)?;
+        let url_val = self.compile_call_arg(b)?;
+        let headers_val = self.compile_call_arg(c)?;
+        let body_val = self.compile_call_arg(d)?;
+        self.builtin_http_request_values(method_val, url_val, headers_val, body_val)
     }
 
     /// httpRequest(method: String, url: String, headers: String, body: String) -> String
@@ -258,11 +289,24 @@ impl<'ctx> CodeGen<'ctx> {
         headers: &Expr,
         body: &Expr,
     ) -> Result<TypedValue<'ctx>, String> {
-        // Delegate to existing toCString for each arg
-        let method_cstr = self.builtin_to_cstring(method)?;
-        let url_cstr = self.builtin_to_cstring(url)?;
-        let headers_cstr = self.builtin_to_cstring(headers)?;
-        let body_cstr = self.builtin_to_cstring(body)?;
+        let method_val = self.compile_expr(method)?;
+        let url_val = self.compile_expr(url)?;
+        let headers_val = self.compile_expr(headers)?;
+        let body_val = self.compile_expr(body)?;
+        self.builtin_http_request_values(method_val, url_val, headers_val, body_val)
+    }
+
+    pub(super) fn builtin_http_request_values(
+        &mut self,
+        method_val: TypedValue<'ctx>,
+        url_val: TypedValue<'ctx>,
+        headers_val: TypedValue<'ctx>,
+        body_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let method_cstr = self.builtin_to_cstring_value(method_val)?;
+        let url_cstr = self.builtin_to_cstring_value(url_val)?;
+        let headers_cstr = self.builtin_to_cstring_value(headers_val)?;
+        let body_cstr = self.builtin_to_cstring_value(body_val)?;
 
         let method_ptr = match method_cstr {
             TypedValue::CString(p) => p,

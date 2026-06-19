@@ -521,8 +521,12 @@ impl<'ctx> CodeGen<'ctx> {
         use action_frontend::hir::HirExprKind;
 
         let obj_val = self.compile_hir_expr(obj)?;
-        if matches!(obj_val, TypedValue::Nullable(_, _)) {
-            return self.compile_index(&obj.as_expr(), &idx.as_expr());
+        if let TypedValue::Nullable(nullable_ptr, inner_bt) = obj_val {
+            return self.compile_nullable_index_values(
+                nullable_ptr,
+                inner_bt,
+                super::call_arg::CallArg::hir(idx),
+            );
         }
         match obj_val {
             TypedValue::Map(map_ptr) => {
@@ -1321,95 +1325,6 @@ impl<'ctx> CodeGen<'ctx> {
         // Delegate to compile_field_access_on_typed_value for other types
         let val_bt = obj_val.get_type_for_alloca(self);
         self.compile_field_access_on_typed_value(&obj_val, field, val_bt)
-    }
-
-    /// Compile index access on already-compiled values (list/lazy list/string).
-    fn compile_index_values(
-        &mut self,
-        obj_val: TypedValue<'ctx>,
-        idx_val: TypedValue<'ctx>,
-    ) -> Result<TypedValue<'ctx>, String> {
-        use inkwell::IntPredicate;
-
-        let index_val = match idx_val {
-            TypedValue::Int(v) => v,
-            _ => return Err("Index must be an integer".to_string()),
-        };
-        match obj_val {
-            TypedValue::List(list_ptr) | TypedValue::LazyList(list_ptr) => {
-                let list_val = self.load_list(list_ptr)?;
-                let cc = self.call_rt("action_list_get", &[list_val.into(), index_val.into()])?;
-                match cc.try_as_basic_value().basic() {
-                    Some(bv) => {
-                        let fat = bv.into_struct_value();
-                        let alloca = self
-                            .builder
-                            .build_alloca(self.string_type, "list_elem")
-                            .map_err(llvm_err)?;
-                        self.builder.build_store(alloca, fat).map_err(llvm_err)?;
-                        Ok(TypedValue::Str(alloca))
-                    }
-                    None => Err("list_get failed".to_string()),
-                }
-            }
-            TypedValue::Str(str_ptr) => {
-                let str_val = self.load_string(str_ptr)?;
-                let len_val = self
-                    .builder
-                    .build_extract_value(str_val, 0, "slen")
-                    .map_err(llvm_err)?
-                    .into_int_value();
-                let data = self
-                    .builder
-                    .build_extract_value(str_val, 1, "data")
-                    .map_err(llvm_err)?
-                    .into_pointer_value();
-                let zero = self.i64_ty().const_int(0, false);
-                let len_minus1 = self
-                    .builder
-                    .build_int_sub(len_val, self.i64_ty().const_int(1, false), "len1")
-                    .map_err(llvm_err)?;
-                let in_bounds = self
-                    .builder
-                    .build_and(
-                        self.builder
-                            .build_int_compare(IntPredicate::SGE, index_val, zero, "ge0")
-                            .map_err(llvm_err)?,
-                        self.builder
-                            .build_int_compare(IntPredicate::SLE, index_val, len_minus1, "le_len")
-                            .map_err(llvm_err)?,
-                        "in_bounds",
-                    )
-                    .map_err(llvm_err)?;
-                let safe_idx = self
-                    .builder
-                    .build_select(in_bounds, index_val, zero, "safe_idx")
-                    .map_err(llvm_err)?
-                    .into_int_value();
-                let i8 = self.context.i8_type();
-                let char_ptr = unsafe {
-                    self.builder
-                        .build_gep(i8, data, &[safe_idx], "char_ptr")
-                        .map_err(llvm_err)
-                }?;
-                let char_val = self
-                    .builder
-                    .build_load(i8, char_ptr, "Char")
-                    .map_err(llvm_err)?
-                    .into_int_value();
-                let raw = self
-                    .builder
-                    .build_int_z_extend(char_val, self.i64_ty(), "char_ext")
-                    .map_err(llvm_err)?;
-                let result = self
-                    .builder
-                    .build_select(in_bounds, raw, zero, "idx_result")
-                    .map_err(llvm_err)?
-                    .into_int_value();
-                Ok(TypedValue::Int(result))
-            }
-            _ => Err("Index access not supported for this type".to_string()),
-        }
     }
 
     /// Compile range creation from already-compiled start/end values.
