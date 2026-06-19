@@ -1,6 +1,11 @@
 name: Benchmark
 
+# Full 30× JIT + 30× AOT suite. Does NOT block push CI wall time:
+# triggered after CI succeeds (workflow_run) or on schedule / manual.
 on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
   schedule:
     - cron: '0 18 * * *' # daily 02:00 CST (UTC 18:00)
   workflow_dispatch:
@@ -11,10 +16,20 @@ env:
 
 jobs:
   linux-benchmark:
-    name: Linux Benchmark
-    runs-on: [self-hosted, linux]
+    name: Linux Benchmark (full)
+    # Runner 6 is reserved with the `benchmark` label so CI jobs never queue behind this.
+    runs-on: [self-hosted, linux, benchmark]
+    # Only run after green CI (skip failed/cancelled pushes).
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
+    env:
+      CARGO_INCREMENTAL: 1
+      CARGO_BUILD_JOBS: 16
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -23,7 +38,9 @@ jobs:
       - name: Ensure persistent target dir
         run: mkdir -p "$CARGO_TARGET_DIR"
 
-      - name: Benchmark
+      - name: Full benchmark (JIT + AOT)
+        env:
+          TARGET: ${{ env.LINUX_TARGET }}
         run: nix-shell --run "bash scripts/ci-linux.sh benchmark"
 
       - name: Check AOT benchmark regression

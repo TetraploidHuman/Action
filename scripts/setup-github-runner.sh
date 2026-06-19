@@ -3,13 +3,12 @@
 #
 # Usage:
 #   TOKEN=$(gh api repos/TetraploidHuman/Action/actions/runners/registration-token --method POST -q .token)
-#   ./scripts/setup-github-runner.sh 2 "$TOKEN"
-#
-# Instance 1 (nixos-x64-runner) lives at ~/桌面/Runner/runner and is left untouched.
+#   ./scripts/setup-github-runner.sh 6 "$TOKEN" benchmark   # dedicated perf runner
 set -euo pipefail
 
 INSTANCE="${1:?runner instance id (2–9)}"
 TOKEN="${2:?GitHub registration token (POST .../registration-token)}"
+EXTRA_LABELS="${3:-}"
 
 ROOT="${RUNNER_ROOT:-$HOME/桌面/Runner}"
 TEMPLATE="${RUNNER_TEMPLATE:-$ROOT/runner}"
