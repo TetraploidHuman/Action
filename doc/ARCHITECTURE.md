@@ -161,8 +161,9 @@ pub use span::Span;
 | R5d | Codegen reads HIR directly (`compile_hir`); REPL via `compile_checked` | ✅ |
 | R6 | Cargo workspace：`action-frontend` / `action-codegen` 独立 crate | ✅ |
 | R6b | driver 独立 crate (`action-driver`)：`compile_checked` / `load_checked` / `emit_hir` | ✅ |
-| R5e | 去掉 HIR bridge，`compile_hir_expr/stmt` 原生 dispatch；`infer_return_type` 替换为 `body.ty` | ✅ |
-| R7 | REPL 使用 `error::report_compiler_errors` 诊断路径，消除 regex re-parse | ✅（LSP 已接入；REPL 用 `compile_checked`） |
+| R5e | 去掉 HIR bridge：`compile_hir_block/when/for/stmt` 原生；`compile(&Program)` 仅 test | ✅ |
+| R7 | REPL/LSP 统一 `FrontendSession` + `CompilerError` 诊断；消除 regex re-parse | ✅ |
+| P1 | `Expr { kind: ExprKind, span: Span }` 结构迁移；parser/typecheck/codegen/LSP 全路径 | ✅ |
 
 ## 性能优化（P2）
 
