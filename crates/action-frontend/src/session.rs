@@ -229,54 +229,13 @@ impl FrontendSession {
         Ok((program, registry))
     }
 
-    /// Recovering parse + typecheck for a single buffer (LSP).
-    ///
-    /// Does not resolve imports or inject stdlib into the AST; uses `base_registry`
-    /// and `base_type_env` from the session instead.
-    pub fn compile_recover_buffer(&self, source: &str) -> RecoverResult {
-        let mut lexer = crate::lexer::Lexer::new(source);
-        let tokens = lexer.tokenize();
-        let lexer_errors = lexer.take_errors();
-
-        let mut parser = Parser::new(tokens);
-        let (user_stmts, parse_errors) = parser.parse_program_recover();
-
-        if user_stmts.is_empty() {
-            return RecoverResult {
-                stmts: Vec::new(),
-                registry: self.base_registry.clone(),
-                type_env: self.base_type_env.clone(),
-                type_errors: lexer_errors,
-                parse_errors,
-            };
-        }
-
-        let program = Program {
-            stmts: user_stmts.clone(),
-        };
-
-        let mut registry = self.base_registry.clone();
-        for stmt in &program.stmts {
-            let _ = registry.register(stmt);
-        }
-
-        let mut checker = TypeChecker::new(registry);
-        checker.seed_type_env(&self.base_type_env);
-        let mut type_errors = lexer_errors;
-        type_errors.extend(checker.check(&program));
-        let type_env = checker.type_env().clone();
-
-        RecoverResult {
-            stmts: user_stmts,
-            registry: checker.registry_ref().clone(),
-            type_env,
-            type_errors,
-            parse_errors,
-        }
-    }
-
     /// Recovering parse + typecheck with full import/stdlib assembly.
     pub fn compile_recover(&self, source: &str) -> RecoverResult {
+        self.compile_recover_for_path(source, None)
+    }
+
+    /// Recovering parse + typecheck for LSP / REPL buffers with optional file path.
+    pub fn compile_recover_for_path(&self, source: &str, path: Option<&Path>) -> RecoverResult {
         let mut lexer = crate::lexer::Lexer::new(source);
         let tokens = lexer.tokenize();
         let lexer_errors = lexer.take_errors();
@@ -291,10 +250,11 @@ impl FrontendSession {
                 type_env: self.base_type_env.clone(),
                 type_errors: lexer_errors,
                 parse_errors,
+                hir: None,
             };
         }
 
-        let program = match self.assemble_program(None, user_stmts.clone()) {
+        let program = match self.assemble_program(path, user_stmts.clone()) {
             Ok(p) => p,
             Err(e) => {
                 return RecoverResult {
@@ -303,6 +263,7 @@ impl FrontendSession {
                     type_env: self.base_type_env.clone(),
                     type_errors: vec![CompilerError::new(e)],
                     parse_errors,
+                    hir: None,
                 };
             }
         };
@@ -313,6 +274,11 @@ impl FrontendSession {
         let mut type_errors = lexer_errors;
         type_errors.extend(checker.check(&program));
         let type_env = checker.type_env().clone();
+        let hir = if type_errors.is_empty() {
+            Some(crate::hir::lower_program(&program, &checker))
+        } else {
+            None
+        };
 
         RecoverResult {
             stmts: program.stmts,
@@ -320,7 +286,29 @@ impl FrontendSession {
             type_env,
             type_errors,
             parse_errors,
+            hir,
         }
+    }
+
+    /// Type-check assembled user statements (REPL / programmatic compile).
+    pub fn compile_checked_from_stmts(
+        &self,
+        user_stmts: Vec<Stmt>,
+        path: &Path,
+        explain: bool,
+    ) -> Result<CheckedProgram, Vec<CompilerError>> {
+        let program = self
+            .assemble_program(Some(path), user_stmts)
+            .map_err(|e| vec![CompilerError::new(e)])?;
+        let (registry, checker) = self.typecheck_with_checker(&program, explain)?;
+        Ok(CheckedProgram::new(program, registry, &checker))
+    }
+
+    /// Recovering parse + typecheck for a single buffer (LSP legacy).
+    ///
+    /// Prefer [`compile_recover_for_path`] with the document path for import/path_deps parity.
+    pub fn compile_recover_buffer(&self, source: &str) -> RecoverResult {
+        self.compile_recover_for_path(source, None)
     }
 
     /// Load stdlib `.at` files into registry + type_env (for LSP startup).
@@ -366,4 +354,6 @@ pub struct RecoverResult {
     pub type_env: HashMap<String, Type>,
     pub type_errors: Vec<CompilerError>,
     pub parse_errors: Vec<ParseError>,
+    /// Lowered HIR when type-check succeeded (LSP hover / codegen alignment).
+    pub hir: Option<crate::hir::HirModule>,
 }

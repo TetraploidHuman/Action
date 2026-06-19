@@ -77,12 +77,18 @@ pub fn handle_hover(state: &ServerState, params: HoverParams) -> Option<Hover> {
         _ => return None,
     };
 
-    // Look up type in document's type_env first, then stdlib
+    // Look up type: HIR expression type first, then top-level type_env
     let type_str = doc
-        .type_env
-        .get(&name)
-        .or_else(|| state.project.session.base_type_env.get(&name))
-        .map(|t| format!("```action\n{}: {}\n```", name, t))
+        .hir
+        .as_ref()
+        .and_then(|hir| super::hir_lookup::find_hir_expr_type(hir, &doc.source, &pos))
+        .map(|t| format!("```action\n{}\n```", t))
+        .or_else(|| {
+            doc.type_env
+                .get(&name)
+                .or_else(|| state.project.session.base_type_env.get(&name))
+                .map(|t| format!("```action\n{}: {}\n```", name, t))
+        })
         .unwrap_or_else(|| format!("```action\n{}\n```", name));
 
     // Extract doc comment from source

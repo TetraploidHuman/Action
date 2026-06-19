@@ -4,6 +4,7 @@ use action_span::Span;
 use inkwell::context::Context;
 use inkwell::targets::{InitializationConfig, Target};
 use std::io::{self, Write};
+use std::path::Path;
 
 /// Interactive REPL: read, compile, execute, print
 pub fn run_repl(opt: u8, profile: bool, target: &str) -> Result<(), String> {
@@ -117,23 +118,34 @@ pub fn eval_repl_line(
         }
     }
 
-    let registry = crate::loader::register_types(&program);
-    let mut checker = crate::typecheck::TypeChecker::new(registry.clone());
-    let errors = checker.check(&program);
-    if !errors.is_empty() {
-        let error_strs: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
-        error::report_compiler_errors(input, "<repl>", &error_strs);
-        return Ok(());
-    }
+    let repl_path = Path::new("<repl>");
+    let session = crate::session::FrontendSession::with_context(
+        crate::session::FrontendSession::search_dirs_for_workspace([]),
+        crate::typecheck::TypeRegistry::new(),
+        std::collections::HashMap::new(),
+    )
+    .map_err(|e| e.to_string())?;
 
-    let checked = crate::checked::CheckedProgram::new(program, registry, &checker);
+    let checked = match session.compile_checked_from_stmts(program.stmts, repl_path, false) {
+        Ok(c) => c,
+        Err(errors) => {
+            let error_strs: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
+            error::report_compiler_errors(input, "<repl>", &error_strs);
+            return Ok(());
+        }
+    };
+
     let target_opt = if target == "native" {
         None
     } else {
         Some(target.to_string())
     };
-    let mut cg =
-        crate::codegen::CodeGen::new(context, "repl", checked.registry.clone(), target_opt);
+    let mut cg = crate::codegen::CodeGen::new(
+        context,
+        "repl",
+        checked.registry.clone(),
+        target_opt,
+    );
     cg.set_opt_level(opt);
     if let Err(e) = cg.compile_checked(&checked) {
         eprintln!("Compile error: {}", e);

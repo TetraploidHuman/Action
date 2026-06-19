@@ -1,11 +1,14 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString, Position, Range, Url};
 
 use crate::ast::*;
 use crate::error::CompilerError;
+use crate::hir::HirModule;
 use crate::lexer::{Lexer, Span, Token};
 use crate::parser::ParseError;
+use crate::registry::TypeRegistry;
 use crate::session::FrontendSession;
 
 use super::position;
@@ -13,9 +16,12 @@ use super::position;
 /// Per-file document state with cached parse and type-check results
 pub struct Document {
     pub uri: Url,
+    pub path: Option<PathBuf>,
     pub source: String,
     pub tokens: Vec<Token>,
     pub ast: Vec<Stmt>,
+    pub hir: Option<HirModule>,
+    pub registry: TypeRegistry,
     pub parse_errors: Vec<ParseError>,
     pub type_env: HashMap<String, Type>,
     pub type_errors: Vec<CompilerError>,
@@ -24,25 +30,20 @@ pub struct Document {
 
 impl Document {
     pub fn new(uri: Url, source: String, _version: i32) -> Self {
+        let path = uri.to_file_path().ok();
         Document {
             uri,
+            path,
             source,
             tokens: Vec::new(),
             ast: Vec::new(),
+            hir: None,
+            registry: TypeRegistry::new(),
             parse_errors: Vec::new(),
             type_env: HashMap::new(),
             type_errors: Vec::new(),
             definition_map: HashMap::new(),
         }
-    }
-}
-
-fn empty_session() -> FrontendSession {
-    FrontendSession {
-        stdlib_stmts: Vec::new(),
-        search_dirs: Vec::new(),
-        base_registry: crate::typecheck::TypeRegistry::new(),
-        base_type_env: HashMap::new(),
     }
 }
 
@@ -52,12 +53,14 @@ impl Document {
         let mut lexer = Lexer::new(&self.source);
         self.tokens = lexer.tokenize();
 
-        let result = session.compile_recover_buffer(&self.source);
+        let result = session.compile_recover_for_path(&self.source, self.path.as_deref());
         self.ast = result.stmts;
         self.parse_errors = result.parse_errors;
         self.definition_map = build_definition_map(&self.ast);
         self.type_errors = result.type_errors;
         self.type_env = result.type_env;
+        self.registry = result.registry;
+        self.hir = result.hir;
     }
 
     #[allow(dead_code)]

@@ -1,5 +1,6 @@
 pub mod document;
 pub mod handlers;
+pub mod hir_lookup;
 pub mod position;
 pub mod project;
 pub mod symbols;
