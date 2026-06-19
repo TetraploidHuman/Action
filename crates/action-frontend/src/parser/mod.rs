@@ -660,7 +660,8 @@ mod tests {
             let open = "{".repeat(depth);
             let close = "}".repeat(depth);
             let source = format!("val x = {}42{}", open, close);
-            let mut parser = crate::parser::Parser::new(crate::lexer::Lexer::new(&source).tokenize());
+            let mut parser =
+                crate::parser::Parser::new(crate::lexer::Lexer::new(&source).tokenize());
             let result = parser.parse_program();
             assert!(
                 result.is_ok(),
@@ -676,7 +677,8 @@ mod tests {
             // Build deeply nested: 1 + 1 + 1 + ... (100 times)
             let expr = (0..100).map(|_| "1 +").collect::<String>() + "1";
             let source = format!("val x = {}", expr);
-            let mut parser = crate::parser::Parser::new(crate::lexer::Lexer::new(&source).tokenize());
+            let mut parser =
+                crate::parser::Parser::new(crate::lexer::Lexer::new(&source).tokenize());
             let result = parser.parse_program();
             assert!(
                 result.is_ok(),
