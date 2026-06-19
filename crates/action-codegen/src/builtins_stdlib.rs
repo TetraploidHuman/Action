@@ -3,6 +3,7 @@
 use action_frontend::ast::*;
 use inkwell::IntPredicate;
 
+use super::call_arg::CallArg;
 use super::{llvm_err, CodeGen, TypedValue};
 
 impl<'ctx> CodeGen<'ctx> {
@@ -10,20 +11,20 @@ impl<'ctx> CodeGen<'ctx> {
     pub(super) fn builtin_stdlib(
         &mut self,
         name: &str,
-        args: &[Expr],
+        args: &[CallArg<'_>],
     ) -> Result<TypedValue<'ctx>, String> {
         match name {
             "to" => {
                 if args.len() != 2 {
                     return Err("to expects 2 arguments".to_string());
                 }
-                self.compile_tuple(&[(None, args[0].clone()), (None, args[1].clone())])
+                self.compile_tuple_call_args(&[(None, args[0]), (None, args[1])])
             }
             "len" => {
                 if args.len() != 1 {
                     return Err("len expects 1 argument".to_string());
                 }
-                let val = self.compile_expr(&args[0])?;
+                let val = self.compile_call_arg(args[0])?;
                 match val {
                     TypedValue::List(ptr) => {
                         let list = self.load_list(ptr)?;
@@ -96,7 +97,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("isEmpty expects 1 argument".to_string());
                 }
-                let val = self.compile_expr(&args[0])?;
+                let val = self.compile_call_arg(args[0])?;
                 let len = match val {
                     TypedValue::List(ptr) => {
                         let list = self.load_list(ptr)?;
@@ -148,12 +149,12 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("append expects 2 arguments (list, element)".to_string());
                 }
-                let list_val = self.compile_expr(&args[0])?;
+                let list_val = self.compile_call_arg(args[0])?;
                 let list_ptr = match list_val {
                     TypedValue::List(p) => p,
                     _ => return Err("append: first argument must be a list".to_string()),
                 };
-                let elem_val = self.compile_expr(&args[1])?;
+                let elem_val = self.compile_call_arg(args[1])?;
                 // action_list_push handles rc_inc of the element data_ptr internally
                 let elem_fat = self.to_fat_struct(&elem_val)?;
                 let list = self.load_list(list_ptr)?;
@@ -172,8 +173,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("concat expects 2 arguments".to_string());
                 }
-                let v1 = self.compile_expr(&args[0])?;
-                let v2 = self.compile_expr(&args[1])?;
+                let v1 = self.compile_call_arg(args[0])?;
+                let v2 = self.compile_call_arg(args[1])?;
                 match (&v1, &v2) {
                     (TypedValue::Str(p1), TypedValue::Str(p2)) => {
                         let s1 = self.load_string(*p1)?;
@@ -266,7 +267,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("panic expects 1 argument (message)".to_string());
                 }
-                let msg = self.compile_expr(&args[0])?;
+                let msg = self.compile_call_arg(args[0])?;
                 match msg {
                     TypedValue::Str(sp) => {
                         let sv = self.load_string(sp)?;
@@ -297,7 +298,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("assert expects 2 arguments (condition, message)".to_string());
                 }
-                let cond = self.compile_expr(&args[0])?;
+                let cond = self.compile_call_arg(args[0])?;
                 let cond_bool = match cond {
                     TypedValue::Bool(b) => b,
                     _ => return Err("assert: first argument must be a Bool".to_string()),
@@ -316,7 +317,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_conditional_branch(cond_bool, assert_ok_bb, assert_fail_bb);
                 // Fail: print message and exit
                 self.builder.position_at_end(assert_fail_bb);
-                let msg = self.compile_expr(&args[1])?;
+                let msg = self.compile_call_arg(args[1])?;
                 match msg {
                     TypedValue::Str(sp) => {
                         let sv = self.load_string(sp)?;
@@ -357,7 +358,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("toString expects 1 argument".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 match v {
                     TypedValue::Int(iv) => {
                         let cc = self.call_rt("action_int_to_string", &[iv.into()])?;
@@ -439,7 +440,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err(format!("{} expects 1 argument (list)", name));
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 match v {
                     TypedValue::List(p) => {
                         let lv = self.load_list(p)?;
@@ -462,7 +463,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("toInt expects 1 argument".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 match v {
                     TypedValue::Int(iv) => {
                         self.build_nullable_int(iv, self.bool_ty().const_int(1, false))
@@ -501,7 +502,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("toFloat expects 1 argument".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 let always_true = self.bool_ty().const_int(1, false);
                 match v {
                     TypedValue::Float(fv) => self.build_nullable_float(fv, always_true),
@@ -623,7 +624,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("identity expects 1 argument".to_string());
                 }
-                self.compile_expr(&args[0])
+                self.compile_call_arg(args[0])
             }
             "compose" => {
                 if args.len() != 3 {
@@ -631,13 +632,13 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 // compose(f, g, x) = f(g(x))
                 let inner = ExprKind::Call {
-                    func: Box::new(args[1].clone()),
-                    args: vec![args[2].clone()],
+                    func: Box::new(Self::call_arg_to_expr(args[1])),
+                    args: vec![Self::call_arg_to_expr(args[2])],
                     trailing_lambda: None,
                 }
                 .into();
                 let outer = ExprKind::Call {
-                    func: Box::new(args[0].clone()),
+                    func: Box::new(Self::call_arg_to_expr(args[0])),
                     args: vec![inner],
                     trailing_lambda: None,
                 }
@@ -650,8 +651,11 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 // flip(f, a, b) = f(b, a)
                 let call = ExprKind::Call {
-                    func: Box::new(args[0].clone()),
-                    args: vec![args[2].clone(), args[1].clone()],
+                    func: Box::new(Self::call_arg_to_expr(args[0])),
+                    args: vec![
+                        Self::call_arg_to_expr(args[2]),
+                        Self::call_arg_to_expr(args[1]),
+                    ],
                     trailing_lambda: None,
                 }
                 .into();
@@ -662,7 +666,7 @@ impl<'ctx> CodeGen<'ctx> {
                     return Err("constant expects 2 arguments (a, b)".to_string());
                 }
                 // constant(a, b) = a (returns first argument, ignores second)
-                self.compile_expr(&args[0])
+                self.compile_call_arg(args[0])
             }
             "uncurry" => {
                 if args.len() != 3 {
@@ -670,14 +674,14 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 // uncurry(f, a, b) = f(a)(b)
                 let inner = ExprKind::Call {
-                    func: Box::new(args[0].clone()),
-                    args: vec![args[1].clone()],
+                    func: Box::new(Self::call_arg_to_expr(args[0])),
+                    args: vec![Self::call_arg_to_expr(args[1])],
                     trailing_lambda: None,
                 }
                 .into();
                 let outer = ExprKind::Call {
                     func: Box::new(inner),
-                    args: vec![args[2].clone()],
+                    args: vec![Self::call_arg_to_expr(args[2])],
                     trailing_lambda: None,
                 }
                 .into();
@@ -693,8 +697,11 @@ impl<'ctx> CodeGen<'ctx> {
                     params: vec!["b".to_string()],
                     body: Box::new(
                         ExprKind::Call {
-                            func: Box::new(args[0].clone()),
-                            args: vec![args[1].clone(), ExprKind::Ident("b".to_string()).into()],
+                            func: Box::new(Self::call_arg_to_expr(args[0])),
+                            args: vec![
+                                Self::call_arg_to_expr(args[1]),
+                                ExprKind::Ident("b".to_string()).into(),
+                            ],
                             trailing_lambda: None,
                         }
                         .into(),
@@ -709,79 +716,79 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("toList expects 1 argument (lazy_list or set)".to_string());
                 }
-                self.builtin_to_list(&args[0])
+                self.builtin_to_list_call_arg(args[0])
             }
             "toLazyList" => {
                 if args.len() != 1 {
                     return Err("toLazyList expects 1 argument (list)".to_string());
                 }
-                self.builtin_to_lazy_list(&args[0])
+                self.builtin_to_lazy_list_call_arg(args[0])
             }
             "lazyTake" => {
                 if args.len() != 2 {
                     return Err("lazyTake expects 2 arguments (n, lazy_list)".to_string());
                 }
-                self.builtin_lazy_take(&args[0], &args[1])
+                self.builtin_lazy_take_call_args(args[0], args[1])
             }
             "lazyDrop" => {
                 if args.len() != 2 {
                     return Err("lazyDrop expects 2 arguments (n, lazy_list)".to_string());
                 }
-                self.builtin_lazy_drop(&args[0], &args[1])
+                self.builtin_lazy_drop_call_args(args[0], args[1])
             }
             "lazyMap" => {
                 if args.len() != 2 {
                     return Err("lazyMap expects 2 arguments (fn, lazy_list)".to_string());
                 }
-                self.builtin_lazy_map(&args[0], &args[1])
+                self.builtin_lazy_map_call_args(args[0], args[1])
             }
             "lazyFilter" => {
                 if args.len() != 2 {
                     return Err("lazyFilter expects 2 arguments (fn, lazy_list)".to_string());
                 }
-                self.builtin_lazy_filter(&args[0], &args[1])
+                self.builtin_lazy_filter_call_args(args[0], args[1])
             }
             "lazyTakeWhile" => {
                 if args.len() != 2 {
                     return Err("lazyTakeWhile expects 2 arguments (fn, lazy_list)".to_string());
                 }
-                self.builtin_lazy_take_while(&args[0], &args[1])
+                self.builtin_lazy_take_while_call_args(args[0], args[1])
             }
             "lazyHead" => {
                 if args.len() != 1 {
                     return Err("lazyHead expects 1 argument (lazy_list)".to_string());
                 }
-                self.builtin_lazy_head(&args[0])
+                self.builtin_lazy_head_call_arg(args[0])
             }
             "lazyZip" => {
                 if args.len() != 2 {
                     return Err("lazy.zip expects 2 arguments (lazy1, lazy2)".to_string());
                 }
-                self.builtin_lazy_zip(&args[0], &args[1])
+                self.builtin_lazy_zip_call_args(args[0], args[1])
             }
             "toCString" => {
                 if args.len() != 1 {
                     return Err("toCString expects 1 argument".to_string());
                 }
-                self.builtin_to_cstring(&args[0])
+                self.builtin_to_cstring_call_arg(args[0])
             }
             "fromCString" => {
                 if args.len() != 1 {
                     return Err("fromCString expects 1 argument".to_string());
                 }
-                self.builtin_from_cstring(&args[0])
+                self.builtin_from_cstring_call_arg(args[0])
             }
             "isNull" => {
                 if args.len() != 1 {
                     return Err("isNull expects 1 argument".to_string());
                 }
-                self.builtin_is_null(&args[0])
+                self.builtin_is_null_call_arg(args[0])
             }
             "deref" => {
                 if args.len() != 1 {
                     return Err("deref expects 1 argument".to_string());
                 }
-                self.builtin_deref(&args[0])
+                self.builtin_deref_call_arg(args[0])
             }
             "ping" => {
                 let result = self.call_rt("action_test_ping", &[])?;
@@ -798,7 +805,7 @@ impl<'ctx> CodeGen<'ctx> {
                         "httpRequest expects 4 arguments (method, url, headers, body)".to_string(),
                     );
                 }
-                self.builtin_http_request(&args[0], &args[1], &args[2], &args[3])
+                self.builtin_http_request_call_args(args[0], args[1], args[2], args[3])
             }
             "today" | "now" | "year" | "month" | "day" | "hour" | "minute" | "second"
             | "addDays" | "addHours" | "diffDays" | "weekday" | "nowUtc" | "diffSeconds"

@@ -4,13 +4,14 @@ use action_frontend::ast::*;
 use inkwell::values::{BasicValue, BasicValueEnum};
 use inkwell::IntPredicate;
 
+use super::call_arg::CallArg;
 use super::{llvm_err, CodeGen, InnerType, TypedValue};
 
 impl<'ctx> CodeGen<'ctx> {
     pub(super) fn builtin_print(
         &mut self,
         name: &str,
-        args: &[Expr],
+        args: &[CallArg<'_>],
     ) -> Result<TypedValue<'ctx>, String> {
         if args.is_empty() {
             if name == "println" {
@@ -18,7 +19,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             return Ok(TypedValue::Unit);
         }
-        let v = self.compile_expr(&args[0])?;
+        let v = self.compile_call_arg(args[0])?;
         match &v {
             TypedValue::Int(_) => {
                 if let Some(bv) = v.to_bv() {

@@ -4,6 +4,7 @@ use action_frontend::ast::*;
 use inkwell::types::BasicTypeEnum;
 use inkwell::values::{BasicValue, BasicValueEnum, PointerValue};
 
+use super::call_arg::CallArg;
 use super::{llvm_err, CodeGen, GepCursor, InnerType, TypedValue};
 
 impl<'ctx> CodeGen<'ctx> {
@@ -131,7 +132,10 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::Set(alloca))
     }
 
-    pub(super) fn builtin_set_of(&mut self, args: &[Expr]) -> Result<TypedValue<'ctx>, String> {
+    pub(super) fn builtin_set_of(
+        &mut self,
+        args: &[CallArg<'_>],
+    ) -> Result<TypedValue<'ctx>, String> {
         // Set.of(...) is equivalent to a set literal with the given elements
         let cap = self.i64_ty().const_int((args.len() + 4) as u64, false);
         let cc = self.call_rt("action_map_create", &[cap.into()])?;
@@ -156,7 +160,7 @@ impl<'ctx> CodeGen<'ctx> {
         };
 
         for elem_expr in args {
-            let elem_val = self.compile_expr(elem_expr)?;
+            let elem_val = self.compile_call_arg(*elem_expr)?;
             self.rc_inc_typed_value(&elem_val)?;
             let elem_fat = self.to_fat_struct(&elem_val)?;
             let set_loaded = self.load_list(alloca)?;
@@ -184,13 +188,13 @@ impl<'ctx> CodeGen<'ctx> {
     pub(super) fn builtin_map_insert(
         &mut self,
         map_ptr: PointerValue<'ctx>,
-        args: &[Expr],
+        args: &[CallArg<'_>],
     ) -> Result<TypedValue<'ctx>, String> {
         if args.len() != 2 {
             return Err("map.insert expects 2 arguments (key, value)".to_string());
         }
-        let key_val = self.compile_expr(&args[0])?;
-        let val_val = self.compile_expr(&args[1])?;
+        let key_val = self.compile_call_arg(args[0])?;
+        let val_val = self.compile_call_arg(args[1])?;
         let key_fat = self.to_fat_struct(&key_val)?;
         let val_fat = self.to_fat_struct(&val_val)?;
         let map_loaded = self.load_list(map_ptr)?;
@@ -220,12 +224,12 @@ impl<'ctx> CodeGen<'ctx> {
     pub(super) fn builtin_map_remove(
         &mut self,
         map_ptr: PointerValue<'ctx>,
-        args: &[Expr],
+        args: &[CallArg<'_>],
     ) -> Result<TypedValue<'ctx>, String> {
         if args.len() != 1 {
             return Err("map.remove expects 1 argument (key)".to_string());
         }
-        let key_val = self.compile_expr(&args[0])?;
+        let key_val = self.compile_call_arg(args[0])?;
         let key_fat = self.to_fat_struct(&key_val)?;
         let map_loaded = self.load_list(map_ptr)?;
         let remove_fn = self
@@ -257,12 +261,12 @@ impl<'ctx> CodeGen<'ctx> {
     pub(super) fn builtin_map_contains(
         &mut self,
         map_ptr: PointerValue<'ctx>,
-        args: &[Expr],
+        args: &[CallArg<'_>],
     ) -> Result<TypedValue<'ctx>, String> {
         if args.len() != 1 {
             return Err("map.contains expects 1 argument (key)".to_string());
         }
-        let key_val = self.compile_expr(&args[0])?;
+        let key_val = self.compile_call_arg(args[0])?;
         let key_fat = self.to_fat_struct(&key_val)?;
         let map_loaded = self.load_list(map_ptr)?;
         let contains_fn = self
@@ -295,12 +299,12 @@ impl<'ctx> CodeGen<'ctx> {
     pub(super) fn builtin_set_insert(
         &mut self,
         set_ptr: PointerValue<'ctx>,
-        args: &[Expr],
+        args: &[CallArg<'_>],
     ) -> Result<TypedValue<'ctx>, String> {
         if args.len() != 1 {
             return Err("set.insert expects 1 argument (element)".to_string());
         }
-        let elem_val = self.compile_expr(&args[0])?;
+        let elem_val = self.compile_call_arg(args[0])?;
         let elem_fat = self.to_fat_struct(&elem_val)?;
 
         let null_val: BasicValueEnum = {
@@ -342,12 +346,12 @@ impl<'ctx> CodeGen<'ctx> {
     pub(super) fn builtin_set_remove(
         &mut self,
         set_ptr: PointerValue<'ctx>,
-        args: &[Expr],
+        args: &[CallArg<'_>],
     ) -> Result<TypedValue<'ctx>, String> {
         if args.len() != 1 {
             return Err("set.remove expects 1 argument (element)".to_string());
         }
-        let elem_val = self.compile_expr(&args[0])?;
+        let elem_val = self.compile_call_arg(args[0])?;
         let elem_fat = self.to_fat_struct(&elem_val)?;
         let set_loaded = self.load_list(set_ptr)?;
         let remove_fn = self
@@ -379,12 +383,12 @@ impl<'ctx> CodeGen<'ctx> {
     pub(super) fn builtin_set_contains(
         &mut self,
         set_ptr: PointerValue<'ctx>,
-        args: &[Expr],
+        args: &[CallArg<'_>],
     ) -> Result<TypedValue<'ctx>, String> {
         if args.len() != 1 {
             return Err("set.contains expects 1 argument (element)".to_string());
         }
-        let elem_val = self.compile_expr(&args[0])?;
+        let elem_val = self.compile_call_arg(args[0])?;
         let elem_fat = self.to_fat_struct(&elem_val)?;
         let set_loaded = self.load_list(set_ptr)?;
         let contains_fn = self
@@ -417,7 +421,7 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         enum_info: &action_frontend::typecheck::EnumInfo,
         variant: &action_frontend::typecheck::EnumVariantInfo,
-        args: &[Expr],
+        args: &[CallArg<'_>],
     ) -> Result<TypedValue<'ctx>, String> {
         let i64 = self.i64_ty();
         let ptr_ty = self.ptr_ty();
@@ -450,7 +454,7 @@ impl<'ctx> CodeGen<'ctx> {
             // Compile args first to determine sizes
             let compiled: Vec<TypedValue> = args
                 .iter()
-                .map(|a| self.compile_expr(a))
+                .map(|a| self.compile_call_arg(*a))
                 .collect::<Result<Vec<_>, _>>()?;
             // Calculate total bytes: each field uses its alloca type size
             let mut total_bytes: u64 = 0;
@@ -501,13 +505,13 @@ impl<'ctx> CodeGen<'ctx> {
     pub(super) fn builtin_list_insert(
         &mut self,
         list_ptr: PointerValue<'ctx>,
-        args: &[Expr],
+        args: &[CallArg<'_>],
     ) -> Result<TypedValue<'ctx>, String> {
         if args.len() != 2 {
             return Err("list.insert expects 2 arguments (index, element)".to_string());
         }
-        let idx_val = self.compile_expr(&args[0])?;
-        let elem_val = self.compile_expr(&args[1])?;
+        let idx_val = self.compile_call_arg(args[0])?;
+        let elem_val = self.compile_call_arg(args[1])?;
         match (&idx_val, &elem_val) {
             (TypedValue::Int(iv), _) => {
                 let elem_fat = self.to_fat_struct(&elem_val)?;
@@ -538,12 +542,12 @@ impl<'ctx> CodeGen<'ctx> {
     pub(super) fn builtin_list_remove(
         &mut self,
         list_ptr: PointerValue<'ctx>,
-        args: &[Expr],
+        args: &[CallArg<'_>],
     ) -> Result<TypedValue<'ctx>, String> {
         if args.len() != 1 {
             return Err("list.remove expects 1 argument (index)".to_string());
         }
-        let idx_val = self.compile_expr(&args[0])?;
+        let idx_val = self.compile_call_arg(args[0])?;
         match &idx_val {
             TypedValue::Int(iv) => {
                 let lv = self.load_list(list_ptr)?;
@@ -564,12 +568,12 @@ impl<'ctx> CodeGen<'ctx> {
     pub(super) fn builtin_list_append(
         &mut self,
         list_ptr: PointerValue<'ctx>,
-        args: &[Expr],
+        args: &[CallArg<'_>],
     ) -> Result<TypedValue<'ctx>, String> {
         if args.len() != 1 {
             return Err("list.append expects 1 argument (element)".to_string());
         }
-        let elem_val = self.compile_expr(&args[0])?;
+        let elem_val = self.compile_call_arg(args[0])?;
         let elem_fat = self.to_fat_struct(&elem_val)?;
         let lv = self.load_list(list_ptr)?;
         let cc = match self.call_rt("action_list_push", &[lv.into(), elem_fat.into()]) {

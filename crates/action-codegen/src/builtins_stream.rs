@@ -3,6 +3,7 @@
 use action_frontend::ast::*;
 use inkwell::IntPredicate;
 
+use super::call_arg::CallArg;
 use super::{llvm_err, CodeGen, TypedValue};
 
 impl<'ctx> CodeGen<'ctx> {
@@ -112,19 +113,19 @@ impl<'ctx> CodeGen<'ctx> {
     pub(super) fn builtin_stream_op(
         &mut self,
         name: &str,
-        args: &[Expr],
+        args: &[CallArg<'_>],
     ) -> Result<TypedValue<'ctx>, String> {
         match name {
             "send" => {
                 if args.len() != 2 {
                     return Err("send expects 2 arguments: stream and value".to_string());
                 }
-                let stream_val = self.compile_expr(&args[0])?;
+                let stream_val = self.compile_call_arg(args[0])?;
                 let stream_ptr = match stream_val {
                     TypedValue::Stream(p) => p,
                     _ => return Err("send: first argument must be a Stream".to_string()),
                 };
-                let value = self.compile_expr(&args[1])?;
+                let value = self.compile_call_arg(args[1])?;
                 let mutex_ptr = self
                     .builder
                     .build_struct_gep(self.stream_type, stream_ptr, 0, "sm")
@@ -171,7 +172,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("receive expects 1 argument: stream".to_string());
                 }
-                let stream_val = self.compile_expr(&args[0])?;
+                let stream_val = self.compile_call_arg(args[0])?;
                 let stream_ptr = match stream_val {
                     TypedValue::Stream(p) => p,
                     _ => return Err("receive: argument must be a Stream".to_string()),
@@ -369,7 +370,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("close expects 1 argument: stream".to_string());
                 }
-                let stream_val = self.compile_expr(&args[0])?;
+                let stream_val = self.compile_call_arg(args[0])?;
                 let stream_ptr = match stream_val {
                     TypedValue::Stream(p) => p,
                     _ => return Err("close: argument must be a Stream".to_string()),
@@ -425,12 +426,12 @@ impl<'ctx> CodeGen<'ctx> {
     pub(super) fn builtin_task_op(
         &mut self,
         name: &str,
-        args: &[Expr],
+        args: &[CallArg<'_>],
     ) -> Result<TypedValue<'ctx>, String> {
         if args.len() != 1 {
             return Err(format!("{} expects 1 argument: task", name));
         }
-        let task_val = self.compile_expr(&args[0])?;
+        let task_val = self.compile_call_arg(args[0])?;
         let task_ptr = match task_val {
             TypedValue::Task(p) => p,
             _ => return Err(format!("{}: argument must be a Task", name)),

@@ -4,9 +4,65 @@ use action_frontend::ast::*;
 use inkwell::types::BasicTypeEnum;
 use inkwell::IntPredicate;
 
+use super::call_arg::CallArg;
 use super::{llvm_err, CodeGen, TypedValue};
 
 impl<'ctx> CodeGen<'ctx> {
+    pub(super) fn builtin_lazy_take_call_args(
+        &mut self,
+        a: CallArg<'_>,
+        b: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        self.builtin_lazy_take(&Self::call_arg_to_expr(a), &Self::call_arg_to_expr(b))
+    }
+
+    pub(super) fn builtin_lazy_drop_call_args(
+        &mut self,
+        a: CallArg<'_>,
+        b: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        self.builtin_lazy_drop(&Self::call_arg_to_expr(a), &Self::call_arg_to_expr(b))
+    }
+
+    pub(super) fn builtin_lazy_map_call_args(
+        &mut self,
+        a: CallArg<'_>,
+        b: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        self.builtin_lazy_map(&Self::call_arg_to_expr(a), &Self::call_arg_to_expr(b))
+    }
+
+    pub(super) fn builtin_lazy_filter_call_args(
+        &mut self,
+        a: CallArg<'_>,
+        b: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        self.builtin_lazy_filter(&Self::call_arg_to_expr(a), &Self::call_arg_to_expr(b))
+    }
+
+    pub(super) fn builtin_lazy_take_while_call_args(
+        &mut self,
+        a: CallArg<'_>,
+        b: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        self.builtin_lazy_take_while(&Self::call_arg_to_expr(a), &Self::call_arg_to_expr(b))
+    }
+
+    pub(super) fn builtin_lazy_head_call_arg(
+        &mut self,
+        arg: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        self.builtin_lazy_head(&Self::call_arg_to_expr(arg))
+    }
+
+    pub(super) fn builtin_lazy_zip_call_args(
+        &mut self,
+        a: CallArg<'_>,
+        b: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        self.builtin_lazy_zip(&Self::call_arg_to_expr(a), &Self::call_arg_to_expr(b))
+    }
+
     /// lazyTake(n, lazy_list) - limit lazy list to first n elements (lazy: just updates take_count)
     pub(super) fn builtin_lazy_take(
         &mut self,

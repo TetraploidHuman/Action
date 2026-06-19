@@ -3,6 +3,7 @@
 use action_frontend::ast::*;
 use inkwell::IntPredicate;
 
+use super::call_arg::CallArg;
 use super::{llvm_err, CodeGen, Scope, TypedValue};
 
 impl<'ctx> CodeGen<'ctx> {
@@ -14,12 +15,12 @@ impl<'ctx> CodeGen<'ctx> {
     /// Task struct: {pthread: i64, done: i64, cancelled: i64, result_list: {ptr, i64, i64}}
     pub(super) fn builtin_launch(
         &mut self,
-        args: &[Expr],
-        trailing: &Option<Box<Expr>>,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
     ) -> Result<TypedValue<'ctx>, String> {
         // Parse optional scheduler argument
         let scheduler = if !args.is_empty() {
-            match &args[0].kind {
+            match Self::call_arg_to_expr(args[0]).kind {
                 ExprKind::Ident(s) if s == "io" => 1i64,
                 ExprKind::Ident(s) if s == "cpu" => 2i64,
                 _ => return Err("launch scheduler must be 'io' or 'cpu'".to_string()),
@@ -27,11 +28,9 @@ impl<'ctx> CodeGen<'ctx> {
         } else {
             0i64 // default scheduler
         };
-        let body = trailing
-            .as_ref()
-            .ok_or("launch requires a trailing lambda body")?;
-        let body_expr = match &body.kind {
-            ExprKind::Lambda { params, body, .. } if params.is_empty() => body.as_ref(),
+        let body = trailing.ok_or("launch requires a trailing lambda body")?;
+        let body_expr = match Self::call_arg_to_expr(body).kind {
+            ExprKind::Lambda { params, body, .. } if params.is_empty() => body,
             _ => return Err("launch expects a block body: launch { ... }".to_string()),
         };
 
@@ -123,7 +122,7 @@ impl<'ctx> CodeGen<'ctx> {
         let task_ptr_param = task_fn.get_first_param().unwrap().into_pointer_value();
 
         // Compile the body expression
-        let result = self.compile_expr(body_expr)?;
+        let result = self.compile_expr(body_expr.as_ref())?;
 
         // Create a fresh list INSIDE the thread (avoids cross-thread data issues)
         let cap = self.i64_ty().const_int(1, false);
@@ -255,14 +254,12 @@ impl<'ctx> CodeGen<'ctx> {
     /// coroutineScope { body } — structured concurrency scope with real pthread join.
     pub(super) fn builtin_coroutine_scope(
         &mut self,
-        _args: &[Expr],
-        trailing: &Option<Box<Expr>>,
+        _args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
     ) -> Result<TypedValue<'ctx>, String> {
-        let body = trailing
-            .as_ref()
-            .ok_or("coroutineScope requires a trailing lambda body")?;
-        let body_expr = match &body.kind {
-            ExprKind::Lambda { params, body, .. } if params.is_empty() => body.as_ref(),
+        let body = trailing.ok_or("coroutineScope requires a trailing lambda body")?;
+        let body_expr = match Self::call_arg_to_expr(body).kind {
+            ExprKind::Lambda { params, body, .. } if params.is_empty() => body,
             _ => {
                 return Err(
                     "coroutineScope expects a block body: coroutineScope { ... }".to_string(),
@@ -290,7 +287,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.coroutine_collector = Some(collector_alloca);
 
         // Compile the body (launch calls inside will spawn threads and push task pointers to collector)
-        self.compile_expr(body_expr)?;
+        self.compile_expr(body_expr.as_ref())?;
 
         // Restore previous collector
         self.coroutine_collector = prev_collector;
@@ -588,11 +585,14 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// delay(ms) — suspend coroutine for ms milliseconds using usleep.
-    pub(super) fn builtin_delay(&mut self, args: &[Expr]) -> Result<TypedValue<'ctx>, String> {
+    pub(super) fn builtin_delay(
+        &mut self,
+        args: &[CallArg<'_>],
+    ) -> Result<TypedValue<'ctx>, String> {
         if args.len() != 1 {
             return Err("delay expects 1 argument (ms)".to_string());
         }
-        let ms_val = self.compile_expr(&args[0])?;
+        let ms_val = self.compile_call_arg(args[0])?;
         let ms = match ms_val {
             TypedValue::Int(v) => v,
             _ => return Err("delay: argument must be an Int (milliseconds)".to_string()),
@@ -641,24 +641,22 @@ impl<'ctx> CodeGen<'ctx> {
     /// Returns Ok(result) on success, Err(Timeout) on timeout.
     pub(super) fn builtin_with_timeout(
         &mut self,
-        args: &[Expr],
-        trailing: &Option<Box<Expr>>,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
     ) -> Result<TypedValue<'ctx>, String> {
         if args.len() != 1 {
             return Err(
                 "withTimeout expects 2 arguments: timeout(ms) and a trailing lambda".to_string(),
             );
         }
-        let timeout_ms_val = self.compile_expr(&args[0])?;
+        let timeout_ms_val = self.compile_call_arg(args[0])?;
         let timeout_ms = match &timeout_ms_val {
             TypedValue::Int(v) => *v,
             _ => return Err("withTimeout: first argument must be Int (milliseconds)".to_string()),
         };
-        let body = trailing
-            .as_ref()
-            .ok_or("withTimeout requires a trailing lambda body")?;
-        let body_expr = match &body.kind {
-            ExprKind::Lambda { params, body, .. } if params.is_empty() => body.as_ref().clone(),
+        let body = trailing.ok_or("withTimeout requires a trailing lambda body")?;
+        let body_expr = match Self::call_arg_to_expr(body).kind {
+            ExprKind::Lambda { params, body, .. } if params.is_empty() => *body,
             _ => {
                 return Err("withTimeout expects a block body: withTimeout(ms) { ... }".to_string())
             }

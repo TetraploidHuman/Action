@@ -8,20 +8,21 @@ use action_frontend::ast::*;
 use inkwell::FloatPredicate;
 use inkwell::IntPredicate;
 
+use super::call_arg::CallArg;
 use super::{llvm_err, CodeGen, TypedValue};
 
 impl<'ctx> CodeGen<'ctx> {
     pub(super) fn builtin_stdlib_math(
         &mut self,
         name: &str,
-        args: &[Expr],
+        args: &[CallArg<'_>],
     ) -> Result<TypedValue<'ctx>, String> {
         match name {
             "abs" => {
                 if args.len() != 1 {
                     return Err("abs expects 1 argument".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 match v {
                     TypedValue::Int(iv) => {
                         let zero = self.i64_ty().const_int(0, false);
@@ -58,8 +59,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("min expects 2 arguments".to_string());
                 }
-                let a = self.compile_expr(&args[0])?;
-                let b = self.compile_expr(&args[1])?;
+                let a = self.compile_call_arg(args[0])?;
+                let b = self.compile_call_arg(args[1])?;
                 match (&a, &b) {
                     (TypedValue::Int(av), TypedValue::Int(bv)) => {
                         let is_lt = self
@@ -92,8 +93,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("max expects 2 arguments".to_string());
                 }
-                let a = self.compile_expr(&args[0])?;
-                let b = self.compile_expr(&args[1])?;
+                let a = self.compile_call_arg(args[0])?;
+                let b = self.compile_call_arg(args[1])?;
                 match (&a, &b) {
                     (TypedValue::Int(av), TypedValue::Int(bv)) => {
                         let is_gt = self
@@ -126,7 +127,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("sqrt expects 1 argument".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 let fv = self.typed_to_float(&v)?;
                 let sqrt_fn = self.module.get_function("sqrt").unwrap();
                 let r = self
@@ -143,7 +144,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("cbrt expects 1 argument".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 let fv = self.typed_to_float(&v)?;
                 let cbrt_fn = self.module.get_function("cbrt").unwrap();
                 let r = self
@@ -160,7 +161,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("sin expects 1 argument".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 let fv = self.typed_to_float(&v)?;
                 let f = self.module.get_function("sin").unwrap();
                 let r = self
@@ -177,7 +178,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("cos expects 1 argument".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 let fv = self.typed_to_float(&v)?;
                 let f = self.module.get_function("cos").unwrap();
                 let r = self
@@ -194,7 +195,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("tan expects 1 argument".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 let fv = self.typed_to_float(&v)?;
                 let f = self.module.get_function("tan").unwrap();
                 let r = self
@@ -211,7 +212,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("asin expects 1 argument".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 let fv = self.typed_to_float(&v)?;
                 let f = self.module.get_function("asin").unwrap();
                 let r = self
@@ -228,7 +229,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("acos expects 1 argument".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 let fv = self.typed_to_float(&v)?;
                 let f = self.module.get_function("acos").unwrap();
                 let r = self
@@ -245,7 +246,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("atan expects 1 argument".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 let fv = self.typed_to_float(&v)?;
                 let f = self.module.get_function("atan").unwrap();
                 let r = self
@@ -262,8 +263,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("atan2 expects 2 arguments".to_string());
                 }
-                let y = self.compile_expr(&args[0])?;
-                let x = self.compile_expr(&args[1])?;
+                let y = self.compile_call_arg(args[0])?;
+                let x = self.compile_call_arg(args[1])?;
                 let yv = self.typed_to_float(&y)?;
                 let xv = self.typed_to_float(&x)?;
                 let f = self.module.get_function("atan2").unwrap();
@@ -281,7 +282,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("log expects 1 argument".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 let fv = self.typed_to_float(&v)?;
                 let f = self.module.get_function("log").unwrap();
                 let r = self
@@ -298,7 +299,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("log2 expects 1 argument".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 let fv = self.typed_to_float(&v)?;
                 let f = self.module.get_function("log2").unwrap();
                 let r = self
@@ -315,7 +316,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("log10 expects 1 argument".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 let fv = self.typed_to_float(&v)?;
                 let f = self.module.get_function("log10").unwrap();
                 let r = self
@@ -332,7 +333,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("exp expects 1 argument".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 let fv = self.typed_to_float(&v)?;
                 let f = self.module.get_function("exp").unwrap();
                 let r = self
@@ -349,7 +350,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("floor expects 1 argument".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 let fv = self.typed_to_float(&v)?;
                 let f = self.module.get_function("floor").unwrap();
                 let r = self
@@ -366,7 +367,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("ceil expects 1 argument".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 let fv = self.typed_to_float(&v)?;
                 let f = self.module.get_function("ceil").unwrap();
                 let r = self
@@ -383,7 +384,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("round expects 1 argument".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 let fv = self.typed_to_float(&v)?;
                 let f = self.module.get_function("round").unwrap();
                 let r = self
@@ -414,9 +415,9 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 3 {
                     return Err("clamp expects 3 arguments (value, min, max)".to_string());
                 }
-                let val = self.compile_expr(&args[0])?;
-                let min = self.compile_expr(&args[1])?;
-                let max = self.compile_expr(&args[2])?;
+                let val = self.compile_call_arg(args[0])?;
+                let min = self.compile_call_arg(args[1])?;
+                let max = self.compile_call_arg(args[2])?;
                 match (&val, &min, &max) {
                     (TypedValue::Int(vv), TypedValue::Int(mn), TypedValue::Int(mx)) => {
                         let lt_min = self
@@ -467,7 +468,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("isNaN expects 1 argument".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 let fv = self.typed_to_float(&v)?;
                 let is_nan = self
                     .builder
@@ -479,7 +480,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("isInfinite expects 1 argument".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 let fv = self.typed_to_float(&v)?;
                 let inf = self.f64_ty().const_float(f64::INFINITY);
                 let is_pos_inf = self
@@ -501,8 +502,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("pow expects 2 arguments".to_string());
                 }
-                let base = self.compile_expr(&args[0])?;
-                let exp = self.compile_expr(&args[1])?;
+                let base = self.compile_call_arg(args[0])?;
+                let exp = self.compile_call_arg(args[1])?;
                 match (&base, &exp) {
                     (TypedValue::Float(bv), TypedValue::Float(ev)) => {
                         let cc = self.call_rt("action_pow", &[(*bv).into(), (*ev).into()])?;

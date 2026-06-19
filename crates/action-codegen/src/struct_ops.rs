@@ -626,6 +626,20 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::Struct(alloca, struct_ty))
     }
 
+    pub(super) fn compile_tuple_call_args(
+        &mut self,
+        items: &[(Option<String>, super::call_arg::CallArg<'_>)],
+    ) -> Result<TypedValue<'ctx>, String> {
+        if items.is_empty() {
+            return Ok(TypedValue::Unit);
+        }
+        let mut compiled = Vec::with_capacity(items.len());
+        for (name_opt, arg) in items {
+            compiled.push((name_opt.clone(), self.compile_call_arg(*arg)?));
+        }
+        self.compile_tuple_values(&compiled)
+    }
+
     pub(super) fn compile_tuple(
         &mut self,
         exprs: &[(Option<String>, Expr)],

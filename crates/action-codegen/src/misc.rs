@@ -320,6 +320,14 @@ impl<'ctx> CodeGen<'ctx> {
         idx: &Expr,
     ) -> Result<TypedValue<'ctx>, String> {
         let key_val = self.compile_expr(idx)?;
+        self.compile_map_index_key(map_ptr, key_val)
+    }
+
+    pub(super) fn compile_map_index_key(
+        &mut self,
+        map_ptr: PointerValue<'ctx>,
+        key_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
         let key_fat = self.to_fat_struct(&key_val)?;
 
         let i64 = self.i64_ty();
@@ -435,6 +443,14 @@ impl<'ctx> CodeGen<'ctx> {
         idx: &Expr,
     ) -> Result<TypedValue<'ctx>, String> {
         let elem_val = self.compile_expr(idx)?;
+        self.compile_set_index_key(set_ptr, elem_val)
+    }
+
+    pub(super) fn compile_set_index_key(
+        &mut self,
+        set_ptr: PointerValue<'ctx>,
+        elem_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
         let elem_fat = self.to_fat_struct(&elem_val)?;
 
         let i64 = self.i64_ty();
@@ -658,8 +674,302 @@ impl<'ctx> CodeGen<'ctx> {
             _ => {
                 let v = self.compile_hir_expr(value)?;
                 self.rc_inc_typed_value(&v)?;
-                self.compile_assign_field(&target.as_expr(), &v)
+                self.compile_assign_field_hir(target, &v)
             }
+        }
+    }
+
+    pub(super) fn compile_assign_field_hir(
+        &mut self,
+        target: &action_frontend::hir::HirExpr,
+        v: &TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        use action_frontend::hir::HirExprKind;
+        match &target.kind {
+            HirExprKind::FieldAccess(obj, field) => {
+                let obj_val = self.compile_hir_expr(obj)?;
+                self.assign_field_on_value(obj_val, field, v)
+            }
+            HirExprKind::Tuple(names) => {
+                for (i, (_, name_expr)) in names.iter().enumerate() {
+                    let name = match &name_expr.kind {
+                        HirExprKind::Ident(n) => n,
+                        _ => return Err("Destructuring target must be an identifier".to_string()),
+                    };
+                    let var_ptr = {
+                        let var = self
+                            .scope
+                            .get(name)
+                            .ok_or_else(|| format!("Undefined variable: {}", name))?;
+                        if !var.mutable {
+                            return Err(format!("Cannot assign to immutable variable '{}'", name));
+                        }
+                        var.ptr
+                    };
+                    let field_val = self.extract_field_from_struct(v, i, None)?;
+                    if let Some(bv) = field_val.to_bv() {
+                        self.builder.build_store(var_ptr, bv).map_err(llvm_err)?;
+                    }
+                }
+                Ok(v.clone())
+            }
+            HirExprKind::Index(obj, idx) => self.assign_index_hir(obj, idx, v),
+            _ => Err(format!(
+                "Complex assignment not yet supported: {:?}",
+                target.kind
+            )),
+        }
+    }
+
+    fn assign_index_hir(
+        &mut self,
+        obj: &action_frontend::hir::HirExpr,
+        idx: &action_frontend::hir::HirExpr,
+        elem: &TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        use action_frontend::hir::HirExprKind;
+        let idx_val = self.compile_hir_expr(idx)?;
+        let idx_int = match idx_val {
+            TypedValue::Int(v) => v,
+            _ => return Err("Index must be an integer".to_string()),
+        };
+        let obj_val = self.compile_hir_expr(obj)?;
+        match &obj_val {
+            TypedValue::Struct(ptr, st) => {
+                let index = match &idx.kind {
+                    HirExprKind::Literal(Literal::Int(n)) => *n as u32,
+                    _ => return Err("Tuple/struct index must be an integer literal".to_string()),
+                };
+                let field_ptr = self
+                    .builder
+                    .build_struct_gep(*st, *ptr, index, "tuple_set_gep")
+                    .map_err(llvm_err)?;
+                let field_types = st.get_field_types();
+                if (index as usize) < field_types.len() {
+                    let fk = self.struct_field_val_kind(st, index);
+                    self.rc_dec_field_val(field_ptr, field_types[index as usize], fk)?;
+                }
+                if let Some(bv) = elem.to_bv() {
+                    self.builder.build_store(field_ptr, bv).map_err(llvm_err)?;
+                }
+                self.rc_free_intermediate(&obj_val)?;
+                Ok(elem.clone())
+            }
+            TypedValue::List(lp) => {
+                let new_list = self.list_set_at(*lp, idx_int, elem)?;
+                self.rc_free_intermediate(&obj_val)?;
+                self.write_back_hir_lvalue(obj, new_list)
+            }
+            _ => Err("Cannot assign to index of this type".to_string()),
+        }
+    }
+
+    fn write_back_hir_lvalue(
+        &mut self,
+        target: &action_frontend::hir::HirExpr,
+        new_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        use action_frontend::hir::HirExprKind;
+        match &target.kind {
+            HirExprKind::Ident(name) => self.assign_mutable_ident(name, new_val),
+            HirExprKind::FieldAccess(obj, field) => {
+                let obj_val = self.compile_hir_expr(obj)?;
+                self.assign_field_on_value(obj_val, field, &new_val)
+            }
+            HirExprKind::Index(outer, outer_idx) => {
+                let outer_idx_val = self.compile_hir_expr(outer_idx)?;
+                let outer_idx_int = match outer_idx_val {
+                    TypedValue::Int(v) => v,
+                    _ => return Err("Index must be an integer".to_string()),
+                };
+                let outer_container = self.compile_hir_expr(outer)?;
+                let updated_outer = match &outer_container {
+                    TypedValue::List(lp) => self.list_set_at(*lp, outer_idx_int, &new_val)?,
+                    _ => {
+                        return Err("Nested index assignment requires a list container".to_string())
+                    }
+                };
+                self.rc_free_intermediate(&outer_container)?;
+                self.write_back_hir_lvalue(outer, updated_outer)
+            }
+            _ => Err("Invalid index assignment target".to_string()),
+        }
+    }
+
+    fn assign_index_expr(
+        &mut self,
+        obj: &Expr,
+        idx: &Expr,
+        elem: &TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let idx_val = self.compile_expr(idx)?;
+        let idx_int = match idx_val {
+            TypedValue::Int(v) => v,
+            _ => return Err("Index must be an integer".to_string()),
+        };
+        let obj_val = self.compile_expr(obj)?;
+        match &obj_val {
+            TypedValue::Struct(ptr, st) => {
+                let index = match &idx.kind {
+                    ExprKind::Literal(Literal::Int(n)) => *n as u32,
+                    _ => return Err("Tuple/struct index must be an integer literal".to_string()),
+                };
+                let field_ptr = self
+                    .builder
+                    .build_struct_gep(*st, *ptr, index, "tuple_set_gep")
+                    .map_err(llvm_err)?;
+                let field_types = st.get_field_types();
+                if (index as usize) < field_types.len() {
+                    let fk = self.struct_field_val_kind(st, index);
+                    self.rc_dec_field_val(field_ptr, field_types[index as usize], fk)?;
+                }
+                if let Some(bv) = elem.to_bv() {
+                    self.builder.build_store(field_ptr, bv).map_err(llvm_err)?;
+                }
+                self.rc_free_intermediate(&obj_val)?;
+                Ok(elem.clone())
+            }
+            TypedValue::List(lp) => {
+                let new_list = self.list_set_at(*lp, idx_int, elem)?;
+                self.rc_free_intermediate(&obj_val)?;
+                self.write_back_expr_lvalue(obj, new_list)
+            }
+            _ => Err("Cannot assign to index of this type".to_string()),
+        }
+    }
+
+    fn write_back_expr_lvalue(
+        &mut self,
+        target: &Expr,
+        new_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        match &target.kind {
+            ExprKind::Ident(name) => self.assign_mutable_ident(name, new_val),
+            ExprKind::FieldAccess(obj, field) => {
+                let obj_val = self.compile_expr(obj)?;
+                self.assign_field_on_value(obj_val, field, &new_val)
+            }
+            ExprKind::Index(outer, outer_idx) => {
+                let outer_idx_val = self.compile_expr(outer_idx)?;
+                let outer_idx_int = match outer_idx_val {
+                    TypedValue::Int(v) => v,
+                    _ => return Err("Index must be an integer".to_string()),
+                };
+                let outer_container = self.compile_expr(outer)?;
+                let updated_outer = match &outer_container {
+                    TypedValue::List(lp) => self.list_set_at(*lp, outer_idx_int, &new_val)?,
+                    _ => {
+                        return Err("Nested index assignment requires a list container".to_string())
+                    }
+                };
+                self.rc_free_intermediate(&outer_container)?;
+                self.write_back_expr_lvalue(outer, updated_outer)
+            }
+            _ => Err("Invalid index assignment target".to_string()),
+        }
+    }
+
+    fn list_set_at(
+        &mut self,
+        list_ptr: PointerValue<'ctx>,
+        idx: IntValue<'ctx>,
+        elem: &TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let loaded = self.load_list(list_ptr)?;
+        let fat = self.to_fat_struct(elem)?;
+        let set_fn = self
+            .module
+            .get_function("action_list_set")
+            .ok_or("action_list_set not found")?;
+        let cc = self
+            .builder
+            .build_call(set_fn, &[loaded.into(), idx.into(), fat.into()], "list_set")
+            .map_err(llvm_err)?;
+        let new_list = cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("list_set returned void")?
+            .into_struct_value();
+        let alloca = self
+            .builder
+            .build_alloca(self.list_type, "list_set_out")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(alloca, new_list)
+            .map_err(llvm_err)?;
+        Ok(TypedValue::List(alloca))
+    }
+
+    fn assign_field_on_value(
+        &mut self,
+        obj_val: TypedValue<'ctx>,
+        field: &str,
+        v: &TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        match obj_val {
+            TypedValue::Struct(ptr, st) => {
+                let idx = self.struct_field_index(&st, field)?;
+                let field_ptr = self
+                    .builder
+                    .build_struct_gep(st, ptr, idx, "field_gep")
+                    .map_err(llvm_err)?;
+                let field_types = st.get_field_types();
+                if (idx as usize) < field_types.len() {
+                    let fk = self.struct_field_val_kind(&st, idx);
+                    self.rc_dec_field_val(field_ptr, field_types[idx as usize], fk)?;
+                }
+                if let Some(bv) = v.to_bv() {
+                    self.builder.build_store(field_ptr, bv).map_err(llvm_err)?;
+                }
+                Ok(v.clone())
+            }
+            TypedValue::Nullable(nullable_ptr, inner_bt) => {
+                let loaded = self
+                    .builder
+                    .build_load(inner_bt, nullable_ptr, "asn_nf_ld")
+                    .map_err(llvm_err)?;
+                let nf_struct = loaded.into_struct_value();
+                let inner = self
+                    .builder
+                    .build_extract_value(nf_struct, 1, "asn_inner")
+                    .map_err(llvm_err)?;
+                let inner_typed = self.bv_to_typed(inner)?;
+                match inner_typed {
+                    TypedValue::Struct(ptr, st) => {
+                        let idx = self.struct_field_index(&st, field)?;
+                        let field_ptr = self
+                            .builder
+                            .build_struct_gep(st, ptr, idx, "field_gep2")
+                            .map_err(llvm_err)?;
+                        let field_types = st.get_field_types();
+                        if (idx as usize) < field_types.len() {
+                            let fk = self.struct_field_val_kind(&st, idx);
+                            self.rc_dec_field_val(field_ptr, field_types[idx as usize], fk)?;
+                        }
+                        if let Some(bv) = v.to_bv() {
+                            self.builder.build_store(field_ptr, bv).map_err(llvm_err)?;
+                        }
+                        let inner_st_bt: BasicTypeEnum = st.into();
+                        let updated_inner = self
+                            .builder
+                            .build_load(inner_st_bt, ptr, "asn_upd")
+                            .map_err(llvm_err)?;
+                        let updated_nf = self
+                            .builder
+                            .build_insert_value(nf_struct, updated_inner, 1, "asn_nf_upd")
+                            .map_err(llvm_err)?;
+                        self.builder
+                            .build_store(nullable_ptr, updated_nf)
+                            .map_err(llvm_err)?;
+                        Ok(v.clone())
+                    }
+                    _ => Err(format!(
+                        "Cannot assign to field '{}' of non-struct inner",
+                        field
+                    )),
+                }
+            }
+            _ => Err(format!("Cannot assign to field '{}' of non-struct", field)),
         }
     }
 
@@ -914,79 +1224,7 @@ impl<'ctx> CodeGen<'ctx> {
         match &target.kind {
             ExprKind::FieldAccess(obj, field) => {
                 let obj_val = self.compile_expr(obj)?;
-                match obj_val {
-                    TypedValue::Struct(ptr, st) => {
-                        let idx = self.struct_field_index(&st, field)?;
-                        let field_ptr = self
-                            .builder
-                            .build_struct_gep(st, ptr, idx, "field_gep")
-                            .map_err(llvm_err)?;
-                        // RC-dec old value before overwriting (Bug #6)
-                        let field_types = st.get_field_types();
-                        if (idx as usize) < field_types.len() {
-                            let fk = self.struct_field_val_kind(&st, idx);
-                            self.rc_dec_field_val(field_ptr, field_types[idx as usize], fk)?;
-                        }
-                        if let Some(bv) = v.to_bv() {
-                            self.builder.build_store(field_ptr, bv).map_err(llvm_err)?;
-                        }
-                        Ok(v.clone())
-                    }
-                    TypedValue::Nullable(nullable_ptr, inner_bt) => {
-                        // Extract the inner struct from the nullable wrapper
-                        let loaded = self
-                            .builder
-                            .build_load(inner_bt, nullable_ptr, "asn_nf_ld")
-                            .map_err(llvm_err)?;
-                        let nf_struct = loaded.into_struct_value();
-                        let inner = self
-                            .builder
-                            .build_extract_value(nf_struct, 1, "asn_inner")
-                            .map_err(llvm_err)?;
-                        let inner_typed = self.bv_to_typed(inner)?;
-                        match inner_typed {
-                            TypedValue::Struct(ptr, st) => {
-                                let idx = self.struct_field_index(&st, field)?;
-                                let field_ptr = self
-                                    .builder
-                                    .build_struct_gep(st, ptr, idx, "field_gep2")
-                                    .map_err(llvm_err)?;
-                                // RC-dec old value before overwriting (Bug #6)
-                                let field_types = st.get_field_types();
-                                if (idx as usize) < field_types.len() {
-                                    let fk = self.struct_field_val_kind(&st, idx);
-                                    self.rc_dec_field_val(
-                                        field_ptr,
-                                        field_types[idx as usize],
-                                        fk,
-                                    )?;
-                                }
-                                if let Some(bv) = v.to_bv() {
-                                    self.builder.build_store(field_ptr, bv).map_err(llvm_err)?;
-                                }
-                                // Write back the modified inner struct into the nullable
-                                let inner_st_bt: BasicTypeEnum = st.into();
-                                let updated_inner = self
-                                    .builder
-                                    .build_load(inner_st_bt, ptr, "asn_upd")
-                                    .map_err(llvm_err)?;
-                                let updated_nf = self
-                                    .builder
-                                    .build_insert_value(nf_struct, updated_inner, 1, "asn_nf_upd")
-                                    .map_err(llvm_err)?;
-                                self.builder
-                                    .build_store(nullable_ptr, updated_nf)
-                                    .map_err(llvm_err)?;
-                                Ok(v.clone())
-                            }
-                            _ => Err(format!(
-                                "Cannot assign to field '{}' of non-struct inner",
-                                field
-                            )),
-                        }
-                    }
-                    _ => Err(format!("Cannot assign to field '{}' of non-struct", field)),
-                }
+                self.assign_field_on_value(obj_val, field, v)
             }
             ExprKind::Tuple(names) => {
                 for (i, (_, name_expr)) in names.iter().enumerate() {
@@ -1012,7 +1250,11 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 Ok(v.clone())
             }
-            _ => Err("Complex assignment not yet supported".to_string()),
+            ExprKind::Index(obj, idx) => self.assign_index_expr(obj, idx, v),
+            _ => Err(format!(
+                "Complex assignment not yet supported: {:?}",
+                target.kind
+            )),
         }
     }
 

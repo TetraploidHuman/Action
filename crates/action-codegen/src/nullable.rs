@@ -9,6 +9,7 @@ use inkwell::types::{BasicTypeEnum, StructType};
 use inkwell::values::{BasicValue, BasicValueEnum, PointerValue};
 use inkwell::IntPredicate;
 
+use super::call_arg::CallArg;
 use super::{llvm_err, CodeGen, TypedValue, ValKind};
 
 impl<'ctx> CodeGen<'ctx> {
@@ -44,14 +45,37 @@ impl<'ctx> CodeGen<'ctx> {
     /// Compile a method call on a nullable receiver with auto short-circuit.
     /// If the receiver is null, returns null. Otherwise, extracts the inner
     /// non-null value and calls the method on it, wrapping the result in nullable.
-    pub(super) fn compile_nullable_method_call(
+    pub(super) fn compile_nullable_method_call_call_args(
         &mut self,
         nullable_ptr: PointerValue<'ctx>,
         inner_bt: BasicTypeEnum<'ctx>,
-        _receiver: &Expr,
+        receiver: CallArg<'_>,
         method: &str,
-        args: &[Expr],
-        trailing: &Option<Box<Expr>>,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let receiver_expr = match receiver {
+            CallArg::Ast(e) => e.clone(),
+            CallArg::Hir(h) => h.as_expr(),
+        };
+        self.compile_nullable_method_call_call_args_inner(
+            nullable_ptr,
+            inner_bt,
+            &receiver_expr,
+            method,
+            args,
+            trailing,
+        )
+    }
+
+    fn compile_nullable_method_call_call_args_inner(
+        &mut self,
+        nullable_ptr: PointerValue<'ctx>,
+        inner_bt: BasicTypeEnum<'ctx>,
+        receiver_expr: &Expr,
+        method: &str,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
     ) -> Result<TypedValue<'ctx>, String> {
         let current_fn = self
             .builder
@@ -104,7 +128,7 @@ impl<'ctx> CodeGen<'ctx> {
         // bv_to_typed treats {ptr,i64,i64} as List by default, but the receiver
         // may be a typed nullable (e.g. Map?, Set?).  Look up the AST type
         // annotation to correct the ValKind before we push the synthetic scope var.
-        if let ExprKind::Ident(recv_name) = &_receiver.kind {
+        if let ExprKind::Ident(recv_name) = &receiver_expr.kind {
             if let Some(sv) = self.scope.get(recv_name) {
                 if let Some(Type::Nullable(inner_ast)) = &sv.ast_type {
                     let ptr = match &inner_typed {
@@ -222,15 +246,9 @@ impl<'ctx> CodeGen<'ctx> {
         // If dispatch fails (e.g., inner type is generic i64 from a null literal
         // that lacks concrete type info), use Int(0) as a fallback result.
         // The null path will always be taken at runtime in that case anyway.
-        let syn_func = ExprKind::FieldAccess(
-            Box::new(ExprKind::Ident(synthetic_name.clone()).into()),
-            method.to_string(),
-        )
-        .into();
-        // compile_call may fail when the inner type is generic (e.g. null literal
-        // with no type annotation) because the method can't be resolved on i64.
-        // The null path is always taken at runtime, so the method result is unused.
-        let method_result = match self.compile_call(&syn_func, args, trailing) {
+        let syn_ident = Expr::from(ExprKind::Ident(synthetic_name.clone()));
+        let syn_recv = CallArg::ast(&syn_ident);
+        let method_result = match self.compile_ufcs_method(syn_recv, method, args, trailing) {
             Ok(v) => v,
             Err(_) => TypedValue::Int(self.i64_ty().const_int(0, false)),
         };

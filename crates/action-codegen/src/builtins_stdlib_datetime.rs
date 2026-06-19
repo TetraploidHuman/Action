@@ -8,21 +8,22 @@ use action_frontend::ast::*;
 use inkwell::values::{IntValue, PointerValue};
 use inkwell::IntPredicate;
 
+use super::call_arg::CallArg;
 use super::{llvm_err, CodeGen, GepCursor, InnerType, TypedValue};
 
 impl<'ctx> CodeGen<'ctx> {
     pub(super) fn builtin_stdlib_datetime(
         &mut self,
         name: &str,
-        args: &[Expr],
+        args: &[CallArg<'_>],
     ) -> Result<TypedValue<'ctx>, String> {
         match name {
             "format" => {
                 if args.len() != 2 {
                     return Err("format expects 2 arguments (datetime, format_str)".to_string());
                 }
-                let dt = self.compile_expr(&args[0])?;
-                let fmt = self.compile_expr(&args[1])?;
+                let dt = self.compile_call_arg(args[0])?;
+                let fmt = self.compile_call_arg(args[1])?;
                 match (&dt, &fmt) {
                     (TypedValue::Struct(dt_ptr, dt_st), TypedValue::Str(fmt_ptr)) => {
                         let fmt_val = self.load_string(*fmt_ptr)?;
@@ -196,8 +197,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("parseDate expects 2 arguments (format_str, date_str)".to_string());
                 }
-                let fmt_v = self.compile_expr(&args[0])?;
-                let date_v = self.compile_expr(&args[1])?;
+                let fmt_v = self.compile_call_arg(args[0])?;
+                let date_v = self.compile_call_arg(args[1])?;
                 match (&fmt_v, &date_v) {
                     (TypedValue::Str(_fmt_ptr), TypedValue::Str(date_ptr)) => {
                         let date_val = self.load_string(*date_ptr)?;
@@ -374,9 +375,9 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 3 {
                     return Err("date expects 3 arguments (year, month, day)".to_string());
                 }
-                let yv = self.compile_expr(&args[0])?;
-                let mv = self.compile_expr(&args[1])?;
-                let dv = self.compile_expr(&args[2])?;
+                let yv = self.compile_call_arg(args[0])?;
+                let mv = self.compile_call_arg(args[1])?;
+                let dv = self.compile_call_arg(args[2])?;
                 let y = yv.to_bv().ok_or("year must be Int")?.into_int_value();
                 let m = mv.to_bv().ok_or("month must be Int")?.into_int_value();
                 let d = dv.to_bv().ok_or("day must be Int")?.into_int_value();
@@ -591,12 +592,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .to_string(),
                     );
                 }
-                let yv = self.compile_expr(&args[0])?;
-                let mov = self.compile_expr(&args[1])?;
-                let dv = self.compile_expr(&args[2])?;
-                let hv = self.compile_expr(&args[3])?;
-                let minv = self.compile_expr(&args[4])?;
-                let sv = self.compile_expr(&args[5])?;
+                let yv = self.compile_call_arg(args[0])?;
+                let mov = self.compile_call_arg(args[1])?;
+                let dv = self.compile_call_arg(args[2])?;
+                let hv = self.compile_call_arg(args[3])?;
+                let minv = self.compile_call_arg(args[4])?;
+                let sv = self.compile_call_arg(args[5])?;
                 let y = yv.to_bv().ok_or("year must be Int")?.into_int_value();
                 let mo = mov.to_bv().ok_or("month must be Int")?.into_int_value();
                 let d = dv.to_bv().ok_or("day must be Int")?.into_int_value();
@@ -861,7 +862,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("Random_new expects 1 argument (seed)".to_string());
                 }
-                let seed_v = self.compile_expr(&args[0])?;
+                let seed_v = self.compile_call_arg(args[0])?;
                 let seed = seed_v.to_bv().ok_or("seed must be Int")?.into_int_value();
                 // Random struct is just {i64} wrapping the seed
                 let rand_sty = self.context.struct_type(&[self.i64_ty().into()], false);
@@ -880,9 +881,9 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 3 {
                     return Err("nextInt expects 3 arguments (random, min, max)".to_string());
                 }
-                let rng_v = self.compile_expr(&args[0])?;
-                let min_v = self.compile_expr(&args[1])?;
-                let max_v = self.compile_expr(&args[2])?;
+                let rng_v = self.compile_call_arg(args[0])?;
+                let min_v = self.compile_call_arg(args[1])?;
+                let max_v = self.compile_call_arg(args[2])?;
                 let (rng_ptr, rng_st) = match rng_v {
                     TypedValue::Struct(p, st) => (p, st),
                     _ => return Err("nextInt: first argument must be a Random struct".to_string()),
@@ -995,8 +996,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("randInt expects 2 arguments (min, max)".to_string());
                 }
-                let min = self.compile_expr(&args[0])?;
-                let max = self.compile_expr(&args[1])?;
+                let min = self.compile_call_arg(args[0])?;
+                let max = self.compile_call_arg(args[1])?;
                 let min_bv = min.to_bv().ok_or("min must be a basic value")?;
                 let max_bv = max.to_bv().ok_or("max must be a basic value")?;
                 let cc = self.call_rt("action_rand_int", &[min_bv.into(), max_bv.into()])?;
@@ -1037,7 +1038,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err(format!("{} expects 1 argument", name));
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 match v {
                     TypedValue::Struct(p, st) => {
                         let field_idx = match name {
@@ -1070,8 +1071,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("addDays expects 2 arguments (date, days)".to_string());
                 }
-                let d = self.compile_expr(&args[0])?;
-                let days = self.compile_expr(&args[1])?;
+                let d = self.compile_call_arg(args[0])?;
+                let days = self.compile_call_arg(args[1])?;
                 let days_bv = days.to_bv().ok_or("days must be Int")?;
                 match d {
                     TypedValue::Struct(p, st) => {
@@ -1113,8 +1114,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("addHours expects 2 arguments (datetime, hours)".to_string());
                 }
-                let d = self.compile_expr(&args[0])?;
-                let hours = self.compile_expr(&args[1])?;
+                let d = self.compile_call_arg(args[0])?;
+                let hours = self.compile_call_arg(args[1])?;
                 let hours_bv = hours.to_bv().ok_or("hours must be Int")?;
                 match d {
                     TypedValue::Struct(p, st) => {
@@ -1152,8 +1153,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("diffDays expects 2 arguments (date1, date2)".to_string());
                 }
-                let d1 = self.compile_expr(&args[0])?;
-                let d2 = self.compile_expr(&args[1])?;
+                let d1 = self.compile_call_arg(args[0])?;
+                let d2 = self.compile_call_arg(args[1])?;
                 let (p1, st1) = match d1 {
                     TypedValue::Struct(p, st) => (p, st),
                     _ => return Err("diffDays: arguments must be Date structs".to_string()),
@@ -1333,7 +1334,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("weekday expects 1 argument (date)".to_string());
                 }
-                let d = self.compile_expr(&args[0])?;
+                let d = self.compile_call_arg(args[0])?;
                 match d {
                     TypedValue::Struct(p, st) => {
                         // Use mktime to compute proper weekday
@@ -1554,8 +1555,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("diffSeconds expects 2 arguments (dt1, dt2)".to_string());
                 }
-                let d1 = self.compile_expr(&args[0])?;
-                let d2 = self.compile_expr(&args[1])?;
+                let d1 = self.compile_call_arg(args[0])?;
+                let d2 = self.compile_call_arg(args[1])?;
                 let (p1, st1) = match d1 {
                     TypedValue::Struct(p, st) => (p, st),
                     _ => return Err("diffSeconds: arguments must be DateTime structs".to_string()),

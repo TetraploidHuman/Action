@@ -3,10 +3,14 @@
 use action_frontend::ast::*;
 use inkwell::IntPredicate;
 
+use super::call_arg::CallArg;
 use super::{llvm_err, CodeGen, TypedValue};
 
 impl<'ctx> CodeGen<'ctx> {
-    pub(super) fn builtin_list(&mut self, args: &[Expr]) -> Result<TypedValue<'ctx>, String> {
+    pub(super) fn builtin_list(
+        &mut self,
+        args: &[CallArg<'_>],
+    ) -> Result<TypedValue<'ctx>, String> {
         let len = self.i64_ty().const_int(args.len() as u64, false);
         let cc = self.call_rt("action_list_create", &[len.into()])?;
         let list_bv = cc
@@ -22,7 +26,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
 
         for arg in args {
-            let v = self.compile_expr(arg)?;
+            let v = self.compile_call_arg(*arg)?;
             // action_list_push handles rc_inc of the element data_ptr internally
             let elem_fat = self.to_fat_struct(&v)?;
             let list_val = self.load_list(list_alloca)?;
@@ -40,13 +44,13 @@ impl<'ctx> CodeGen<'ctx> {
     /// lazy_list(seed) { fn } - create a lazy list with seed and step function
     pub(super) fn builtin_lazy_list(
         &mut self,
-        args: &[Expr],
-        trailing: &Option<Box<Expr>>,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
     ) -> Result<TypedValue<'ctx>, String> {
         if args.is_empty() {
             return Err("lazy_list expects at least 1 argument (seed)".to_string());
         }
-        let seed = self.compile_expr(&args[0])?;
+        let seed = self.compile_call_arg(args[0])?;
         let seed_i64 = match &seed {
             TypedValue::Int(v) => *v,
             _ => return Err("lazy_list: seed must be an Int".to_string()),
@@ -54,7 +58,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Compile step function if provided
         let (step_fn_ptr, state, take_count) = if let Some(lam) = trailing {
-            let step_fn_val = self.compile_lambda_for_lazy(lam)?;
+            let step_fn_val = self.compile_lambda_for_lazy(&Self::call_arg_to_expr(lam))?;
             // -1 means "infinite" — only bounded by explicit take()
             (
                 step_fn_val,

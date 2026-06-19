@@ -4,6 +4,7 @@ use action_frontend::ast::*;
 use inkwell::values::BasicValue;
 use inkwell::IntPredicate;
 
+use super::call_arg::CallArg;
 use super::{llvm_err, CodeGen, TypedValue};
 
 impl<'ctx> CodeGen<'ctx> {
@@ -11,20 +12,20 @@ impl<'ctx> CodeGen<'ctx> {
     /// Predicate takes (key_tag, val_tag) -> Bool (fat {i64,ptr} with tag=1 true, 0 false)
     pub(super) fn builtin_map_filter(
         &mut self,
-        args: &[Expr],
-        trailing: &Option<Box<Expr>>,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
     ) -> Result<TypedValue<'ctx>, String> {
         let (fn_ptr, map_ptr) = if let Some(lam) = trailing {
             if args.len() != 1 {
                 return Err("mapFilter with trailing lambda expects 1 argument (map)".to_string());
             }
-            let mv = self.compile_expr(&args[0])?;
-            let fv = self.compile_expr(lam)?;
+            let mv = self.compile_call_arg(args[0])?;
+            let fv = self.compile_call_arg(lam)?;
             (fv, mv)
         } else if args.len() == 2 {
             // Could be mapFilter(map, fn) or mapFilter(fn, map) - check types
-            let a0 = self.compile_expr(&args[0])?;
-            let a1 = self.compile_expr(&args[1])?;
+            let a0 = self.compile_call_arg(args[0])?;
+            let a1 = self.compile_call_arg(args[1])?;
             if matches!(a0, TypedValue::Map(_)) {
                 (a1, a0)
             } else {
@@ -258,8 +259,8 @@ impl<'ctx> CodeGen<'ctx> {
     /// Transform takes val_tag -> new_val (fat {i64, ptr})
     pub(super) fn builtin_map_map_values(
         &mut self,
-        args: &[Expr],
-        trailing: &Option<Box<Expr>>,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
     ) -> Result<TypedValue<'ctx>, String> {
         let (fn_ptr, map_ptr) = if let Some(lam) = trailing {
             if args.len() != 1 {
@@ -267,12 +268,12 @@ impl<'ctx> CodeGen<'ctx> {
                     "mapMapValues with trailing lambda expects 1 argument (map)".to_string()
                 );
             }
-            let mv = self.compile_expr(&args[0])?;
-            let fv = self.compile_expr(lam)?;
+            let mv = self.compile_call_arg(args[0])?;
+            let fv = self.compile_call_arg(lam)?;
             (fv, mv)
         } else if args.len() == 2 {
-            let a0 = self.compile_expr(&args[0])?;
-            let a1 = self.compile_expr(&args[1])?;
+            let a0 = self.compile_call_arg(args[0])?;
+            let a1 = self.compile_call_arg(args[1])?;
             if matches!(a0, TypedValue::Map(_)) {
                 (a1, a0)
             } else {
@@ -485,8 +486,8 @@ impl<'ctx> CodeGen<'ctx> {
     /// Folder takes (acc_tag, key_tag, val_tag) -> new_acc (fat {i64, ptr})
     pub(super) fn builtin_map_fold(
         &mut self,
-        args: &[Expr],
-        trailing: &Option<Box<Expr>>,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
     ) -> Result<TypedValue<'ctx>, String> {
         let (fn_ptr, init_val, map_ptr) = if let Some(lam) = trailing {
             if args.len() != 2 {
@@ -494,9 +495,9 @@ impl<'ctx> CodeGen<'ctx> {
                     "mapFold with trailing lambda expects 2 arguments (map, init)".to_string(),
                 );
             }
-            let a0 = self.compile_expr(&args[0])?;
-            let a1 = self.compile_expr(&args[1])?;
-            let fv = self.compile_expr(lam)?;
+            let a0 = self.compile_call_arg(args[0])?;
+            let a1 = self.compile_call_arg(args[1])?;
+            let fv = self.compile_call_arg(lam)?;
             if matches!(a0, TypedValue::Map(_)) {
                 (fv, a1, a0)
             } else {
@@ -505,9 +506,9 @@ impl<'ctx> CodeGen<'ctx> {
         } else if args.len() == 3 {
             // Could be mapFold(fn, init, map) or mapFold(init, fn, map) or mapFold(init, map, fn)
             // Try to determine by checking which arg is a map
-            let a0 = self.compile_expr(&args[0])?;
-            let a1 = self.compile_expr(&args[1])?;
-            let a2 = self.compile_expr(&args[2])?;
+            let a0 = self.compile_call_arg(args[0])?;
+            let a1 = self.compile_call_arg(args[1])?;
+            let a2 = self.compile_call_arg(args[2])?;
             if matches!(a2, TypedValue::Map(_)) {
                 // Last is map, first two are fn+init or init+fn
                 if matches!(a1, TypedValue::Fn(_, _)) {

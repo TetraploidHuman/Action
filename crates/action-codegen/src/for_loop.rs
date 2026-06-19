@@ -977,16 +977,6 @@ impl<'ctx> CodeGen<'ctx> {
             return Ok(None);
         }
 
-        let current_fn = self
-            .builder
-            .get_insert_block()
-            .and_then(|b| b.get_parent())
-            .ok_or("Cannot compile for outside function")?;
-
-        let i64 = self.i64_ty();
-        let zero = i64.const_int(0, false);
-        let one = i64.const_int(1, false);
-
         let list_val = self.compile_expr(&list_expr)?;
         let list_ptr = match &list_val {
             TypedValue::List(p) => *p,
@@ -999,6 +989,23 @@ impl<'ctx> CodeGen<'ctx> {
             _ => return Ok(None),
         };
 
+        self.compile_sequential_list_get_loop(list_ptr, end_bound)
+            .map(Some)
+    }
+
+    fn compile_sequential_list_get_loop(
+        &mut self,
+        list_ptr: inkwell::values::PointerValue<'ctx>,
+        end_bound: inkwell::values::IntValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("Cannot compile for outside function")?;
+        let i64 = self.i64_ty();
+        let zero = i64.const_int(0, false);
+        let one = i64.const_int(1, false);
         let idx_alloca = self
             .builder
             .build_alloca(i64, "seq_idx")
@@ -1011,16 +1018,13 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_alloca(i64, "seq_tmp")
             .map_err(llvm_err)?;
-
         let header = self.context.append_basic_block(current_fn, "seq_hdr");
         let body_bb = self.context.append_basic_block(current_fn, "seq_body");
         let exit = self.context.append_basic_block(current_fn, "seq_exit");
-
         let saved_continue = self.continue_target;
         let saved_break = self.break_target;
         self.continue_target = Some(header);
         self.break_target = Some(exit);
-
         self.builder
             .build_unconditional_branch(header)
             .map_err(llvm_err)?;
@@ -1037,7 +1041,6 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_conditional_branch(cond, body_bb, exit)
             .map_err(llvm_err)?;
-
         self.builder.position_at_end(body_bb);
         let tag = self.list_get_cached_tag(list_ptr, cur, cache)?;
         self.builder
@@ -1053,12 +1056,10 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_unconditional_branch(header)
             .map_err(llvm_err)?;
-
         self.builder.position_at_end(exit);
         self.continue_target = saved_continue;
         self.break_target = saved_break;
-
-        Ok(Some(TypedValue::Unit))
+        Ok(TypedValue::Unit)
     }
 
     fn find_list_get_in_expr(body: &Expr) -> Option<(Expr, String)> {
@@ -1349,9 +1350,119 @@ impl<'ctx> CodeGen<'ctx> {
 
     fn try_compile_for_sequential_list_get_hir(
         &mut self,
-        condition: &action_frontend::hir::HirExpr,
-        body: &action_frontend::hir::HirExpr,
+        condition: &HirExpr,
+        body: &HirExpr,
     ) -> Result<Option<TypedValue<'ctx>>, String> {
-        self.try_compile_for_sequential_list_get(&condition.as_expr(), &body.as_expr())
+        use action_frontend::ast::BinaryOp;
+        use action_frontend::hir::HirExprKind;
+        let (idx_var, end_hir): (String, HirExpr) = match &condition.kind {
+            HirExprKind::Binary(lhs, BinaryOp::Lt, rhs) => match (&lhs.kind, &rhs.kind) {
+                (HirExprKind::Ident(v), _) => (v.clone(), rhs.as_ref().clone()),
+                _ => return Ok(None),
+            },
+            _ => return Ok(None),
+        };
+        let (list_hir, get_idx_var) = match Self::find_list_get_in_hir(body) {
+            Some(v) => v,
+            None => return Ok(None),
+        };
+        if get_idx_var != idx_var {
+            return Ok(None);
+        }
+        if !Self::body_increments_var_hir(body, &idx_var) {
+            return Ok(None);
+        }
+        let list_val = self.compile_hir_expr(&list_hir)?;
+        let list_ptr = match &list_val {
+            TypedValue::List(p) => *p,
+            _ => return Ok(None),
+        };
+        let end_val = self.compile_hir_expr(&end_hir)?;
+        let end_bound = match end_val {
+            TypedValue::Int(v) => v,
+            _ => return Ok(None),
+        };
+        self.compile_sequential_list_get_loop(list_ptr, end_bound)
+            .map(Some)
+    }
+
+    fn find_list_get_in_hir(body: &HirExpr) -> Option<(HirExpr, String)> {
+        use action_frontend::hir::{HirExprKind, HirStmt};
+        match &body.kind {
+            HirExprKind::Block(stmts) => {
+                for stmt in stmts {
+                    if let Some(v) = Self::find_list_get_in_hir_stmt(stmt) {
+                        return Some(v);
+                    }
+                }
+                None
+            }
+            _ => Self::find_list_get_in_hir_inner(body),
+        }
+    }
+
+    fn find_list_get_in_hir_stmt(
+        stmt: &action_frontend::hir::HirStmt,
+    ) -> Option<(HirExpr, String)> {
+        use action_frontend::hir::{HirExprKind, HirStmt};
+        match stmt {
+            HirStmt::Let { value, .. } => Self::find_list_get_in_hir_inner(value),
+            HirStmt::Expr { expr, .. } => Self::find_list_get_in_hir_inner(expr),
+            _ => None,
+        }
+    }
+
+    fn find_list_get_in_hir_inner(expr: &HirExpr) -> Option<(HirExpr, String)> {
+        use action_frontend::hir::HirExprKind;
+        match &expr.kind {
+            HirExprKind::Call { func, args, .. } => {
+                if let HirExprKind::FieldAccess(obj, method) = &func.kind {
+                    if method == "get" && args.len() == 1 {
+                        if let HirExprKind::Ident(idx) = &args[0].kind {
+                            return Some((obj.as_ref().clone(), idx.clone()));
+                        }
+                    }
+                }
+                None
+            }
+            HirExprKind::Block(stmts) => Self::find_list_get_in_hir(expr),
+            _ => None,
+        }
+    }
+
+    fn body_increments_var_hir(body: &HirExpr, var: &str) -> bool {
+        use action_frontend::hir::{HirExprKind, HirStmt};
+        match &body.kind {
+            HirExprKind::Block(stmts) => {
+                stmts.iter().any(|s| Self::hir_stmt_increments_var(s, var))
+            }
+            HirExprKind::Assign { target, value } => Self::is_var_increment_hir(target, value, var),
+            _ => false,
+        }
+    }
+
+    fn hir_stmt_increments_var(stmt: &action_frontend::hir::HirStmt, var: &str) -> bool {
+        use action_frontend::hir::{HirExprKind, HirStmt};
+        match stmt {
+            HirStmt::Expr { expr, .. } => match &expr.kind {
+                HirExprKind::Assign { target, value } => {
+                    Self::is_var_increment_hir(target, value, var)
+                }
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
+    fn is_var_increment_hir(target: &HirExpr, value: &HirExpr, var: &str) -> bool {
+        use action_frontend::ast::BinaryOp;
+        use action_frontend::hir::HirExprKind;
+        match (&target.kind, &value.kind) {
+            (HirExprKind::Ident(t), HirExprKind::Binary(lhs, BinaryOp::Add, rhs)) if t == var => {
+                matches!(&lhs.kind, HirExprKind::Ident(v) if v == var)
+                    || matches!(&rhs.kind, HirExprKind::Ident(v) if v == var)
+            }
+            _ => false,
+        }
     }
 }

@@ -7,13 +7,14 @@
 use action_frontend::ast::*;
 use inkwell::IntPredicate;
 
+use super::call_arg::CallArg;
 use super::{llvm_err, CodeGen, TypedValue};
 
 impl<'ctx> CodeGen<'ctx> {
     pub(super) fn builtin_stdlib_io(
         &mut self,
         name: &str,
-        args: &[Expr],
+        args: &[CallArg<'_>],
     ) -> Result<TypedValue<'ctx>, String> {
         match name {
             "readLine" => {
@@ -75,7 +76,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("readFile expects 1 argument (path)".to_string());
                 }
-                let path = self.compile_expr(&args[0])?;
+                let path = self.compile_call_arg(args[0])?;
                 match path {
                     TypedValue::Str(pp) => {
                         let pv = self.load_string(pp)?;
@@ -95,8 +96,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("writeFile expects 2 arguments (path, content)".to_string());
                 }
-                let path = self.compile_expr(&args[0])?;
-                let content = self.compile_expr(&args[1])?;
+                let path = self.compile_call_arg(args[0])?;
+                let content = self.compile_call_arg(args[1])?;
                 match (&path, &content) {
                     (TypedValue::Str(pp), TypedValue::Str(cp)) => {
                         let pv = self.load_string(*pp)?;
@@ -116,8 +117,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("appendFile expects 2 arguments (path, content)".to_string());
                 }
-                let path = self.compile_expr(&args[0])?;
-                let content = self.compile_expr(&args[1])?;
+                let path = self.compile_call_arg(args[0])?;
+                let content = self.compile_call_arg(args[1])?;
                 match (&path, &content) {
                     (TypedValue::Str(pp), TypedValue::Str(cp)) => {
                         let pv = self.load_string(*pp)?;
@@ -137,7 +138,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("exists expects 1 argument (path)".to_string());
                 }
-                let path = self.compile_expr(&args[0])?;
+                let path = self.compile_call_arg(args[0])?;
                 match path {
                     TypedValue::Str(pp) => {
                         let pv = self.load_string(pp)?;
@@ -156,7 +157,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("deleteFile expects 1 argument (path)".to_string());
                 }
-                let path = self.compile_expr(&args[0])?;
+                let path = self.compile_call_arg(args[0])?;
                 match path {
                     TypedValue::Str(pp) => {
                         let pv = self.load_string(pp)?;
@@ -176,8 +177,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("openFile expects 2 arguments (path, mode)".to_string());
                 }
-                let path = self.compile_expr(&args[0])?;
-                let mode = self.compile_expr(&args[1])?;
+                let path = self.compile_call_arg(args[0])?;
+                let mode = self.compile_call_arg(args[1])?;
                 match (&path, &mode) {
                     (TypedValue::Str(pp), TypedValue::Str(mp)) => {
                         let path_s = self.load_string(*pp)?;
@@ -198,7 +199,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("closeFile expects 1 argument (file)".to_string());
                 }
-                let file = self.compile_expr(&args[0])?;
+                let file = self.compile_call_arg(args[0])?;
                 match file {
                     TypedValue::FileHandle(p) => {
                         let cc = self.call_rt("action_file_close", &[p.into()])?;
@@ -225,7 +226,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("isEof expects 1 argument (file)".to_string());
                 }
-                let file = self.compile_expr(&args[0])?;
+                let file = self.compile_call_arg(args[0])?;
                 match file {
                     TypedValue::FileHandle(p) => {
                         let cc = self.call_rt("action_file_eof", &[p.into()])?;
@@ -243,7 +244,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("fileReadLine expects 1 argument (file)".to_string());
                 }
-                let file = self.compile_expr(&args[0])?;
+                let file = self.compile_call_arg(args[0])?;
                 match file {
                     TypedValue::FileHandle(p) => {
                         let cc = self.call_rt("action_file_read_line", &[p.into()])?;
@@ -285,8 +286,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("fileReadBytes expects 2 arguments (file, size)".to_string());
                 }
-                let file = self.compile_expr(&args[0])?;
-                let size = self.compile_expr(&args[1])?;
+                let file = self.compile_call_arg(args[0])?;
+                let size = self.compile_call_arg(args[1])?;
                 match (&file, &size) {
                     (TypedValue::FileHandle(p), TypedValue::Int(s)) => {
                         let cc =
@@ -328,8 +329,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("fileWrite expects 2 arguments (file, data)".to_string());
                 }
-                let file = self.compile_expr(&args[0])?;
-                let data = self.compile_expr(&args[1])?;
+                let file = self.compile_call_arg(args[0])?;
+                let data = self.compile_call_arg(args[1])?;
                 match (&file, &data) {
                     (TypedValue::FileHandle(fp), TypedValue::Str(dp)) => {
                         let data_s = self.load_string(*dp)?;
@@ -361,8 +362,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("fileWriteLine expects 2 arguments (file, data)".to_string());
                 }
-                let file = self.compile_expr(&args[0])?;
-                let data = self.compile_expr(&args[1])?;
+                let file = self.compile_call_arg(args[0])?;
+                let data = self.compile_call_arg(args[1])?;
                 match (&file, &data) {
                     (TypedValue::FileHandle(fp), TypedValue::Str(dp)) => {
                         let data_s = self.load_string(*dp)?;
@@ -416,7 +417,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("fileFlush expects 1 argument (file)".to_string());
                 }
-                let file = self.compile_expr(&args[0])?;
+                let file = self.compile_call_arg(args[0])?;
                 match file {
                     TypedValue::FileHandle(p) => {
                         let cc = self.call_rt("action_file_flush", &[p.into()])?;
@@ -434,9 +435,9 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 3 {
                     return Err("fileSeek expects 3 arguments (file, offset, whence)".to_string());
                 }
-                let file = self.compile_expr(&args[0])?;
-                let offset = self.compile_expr(&args[1])?;
-                let whence = self.compile_expr(&args[2])?;
+                let file = self.compile_call_arg(args[0])?;
+                let offset = self.compile_call_arg(args[1])?;
+                let whence = self.compile_call_arg(args[2])?;
                 match (&file, &offset, &whence) {
                     (TypedValue::FileHandle(p), TypedValue::Int(o), TypedValue::Int(w)) => {
                         let w32 = self
@@ -459,7 +460,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("fileTell expects 1 argument (file)".to_string());
                 }
-                let file = self.compile_expr(&args[0])?;
+                let file = self.compile_call_arg(args[0])?;
                 match file {
                     TypedValue::FileHandle(p) => {
                         let cc = self.call_rt("action_file_tell", &[p.into()])?;
@@ -480,7 +481,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if self.module.get_function("action_read_dir").is_none() {
                     self.emit_read_dir_runtime()?;
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 match v {
                     TypedValue::Str(p) => {
                         let s = self.load_string(p)?;

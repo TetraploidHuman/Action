@@ -517,9 +517,44 @@ impl<'ctx> CodeGen<'ctx> {
         obj: &HirExpr,
         idx: &HirExpr,
     ) -> Result<TypedValue<'ctx>, String> {
+        use action_frontend::ast::Literal;
+        use action_frontend::hir::HirExprKind;
+
         let obj_val = self.compile_hir_expr(obj)?;
-        let idx_val = self.compile_hir_expr(idx)?;
-        self.compile_index_values(obj_val, idx_val)
+        if matches!(obj_val, TypedValue::Nullable(_, _)) {
+            return self.compile_index(&obj.as_expr(), &idx.as_expr());
+        }
+        match obj_val {
+            TypedValue::Map(map_ptr) => {
+                let key_val = self.compile_hir_expr(idx)?;
+                self.compile_map_index_key(map_ptr, key_val)
+            }
+            TypedValue::Set(set_ptr) => {
+                let elem_val = self.compile_hir_expr(idx)?;
+                self.compile_set_index_key(set_ptr, elem_val)
+            }
+            TypedValue::Struct(ptr, struct_ty) => {
+                let index = match &idx.kind {
+                    HirExprKind::Literal(Literal::Int(n)) => *n as u32,
+                    _ => return Err("Tuple/struct index must be an integer literal".to_string()),
+                };
+                let bt: inkwell::types::BasicTypeEnum = struct_ty.into();
+                let loaded = self
+                    .builder
+                    .build_load(bt, ptr, "tuple_ld")
+                    .map_err(super::llvm_err)?;
+                let struct_val = loaded.into_struct_value();
+                let field_val = self
+                    .builder
+                    .build_extract_value(struct_val, index, "tuple_idx")
+                    .map_err(super::llvm_err)?;
+                self.bv_to_typed(field_val)
+            }
+            other => {
+                let idx_val = self.compile_hir_expr(idx)?;
+                self.compile_index_values(other, idx_val)
+            }
+        }
     }
 
     fn compile_hir_range(
@@ -643,22 +678,7 @@ impl<'ctx> CodeGen<'ctx> {
         args: &[HirExpr],
         trailing_lambda: Option<&Box<HirExpr>>,
     ) -> Result<TypedValue<'ctx>, String> {
-        let ast_args: Vec<Expr> = args.iter().map(HirExpr::as_expr).collect();
-        let ast_trailing = trailing_lambda.map(|b| Box::new(b.as_expr()));
-        match &func.kind {
-            HirExprKind::Ident(name) => {
-                let ast_func = ExprKind::Ident(name.clone()).into();
-                self.compile_call(&ast_func, &ast_args, &ast_trailing)
-            }
-            HirExprKind::FieldAccess(obj, field) => {
-                let ast_func = ExprKind::FieldAccess(Box::new(obj.as_expr()), field.clone()).into();
-                self.compile_call(&ast_func, &ast_args, &ast_trailing)
-            }
-            _ => {
-                let target = self.compile_hir_expr(func)?;
-                self.compile_indirect_call(target, &ast_args, &ast_trailing)
-            }
-        }
+        self.compile_call_hir(func, args, trailing_lambda)
     }
 
     fn compile_destructure_hir(
@@ -1303,36 +1323,92 @@ impl<'ctx> CodeGen<'ctx> {
         self.compile_field_access_on_typed_value(&obj_val, field, val_bt)
     }
 
-    /// Compile index access on already-compiled values.
+    /// Compile index access on already-compiled values (list/lazy list/string).
     fn compile_index_values(
         &mut self,
         obj_val: TypedValue<'ctx>,
         idx_val: TypedValue<'ctx>,
     ) -> Result<TypedValue<'ctx>, String> {
-        let idx_int = match &idx_val {
-            TypedValue::Int(v) => *v,
+        use inkwell::IntPredicate;
+
+        let index_val = match idx_val {
+            TypedValue::Int(v) => v,
             _ => return Err("Index must be an integer".to_string()),
         };
-        match &obj_val {
-            TypedValue::List(ptr) | TypedValue::Map(ptr) | TypedValue::Set(ptr) => {
-                let loaded = self.load_list(*ptr)?;
-                let cc = self.call_rt("action_list_get", &[loaded.into(), idx_int.into()])?;
-                let bv = cc.try_as_basic_value().basic().ok_or("list_get failed")?;
-                let alloca = self
+        match obj_val {
+            TypedValue::List(list_ptr) | TypedValue::LazyList(list_ptr) => {
+                let list_val = self.load_list(list_ptr)?;
+                let cc = self.call_rt("action_list_get", &[list_val.into(), index_val.into()])?;
+                match cc.try_as_basic_value().basic() {
+                    Some(bv) => {
+                        let fat = bv.into_struct_value();
+                        let alloca = self
+                            .builder
+                            .build_alloca(self.string_type, "list_elem")
+                            .map_err(llvm_err)?;
+                        self.builder.build_store(alloca, fat).map_err(llvm_err)?;
+                        Ok(TypedValue::Str(alloca))
+                    }
+                    None => Err("list_get failed".to_string()),
+                }
+            }
+            TypedValue::Str(str_ptr) => {
+                let str_val = self.load_string(str_ptr)?;
+                let len_val = self
                     .builder
-                    .build_alloca(self.string_type, "index_res")
+                    .build_extract_value(str_val, 0, "slen")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                let data = self
+                    .builder
+                    .build_extract_value(str_val, 1, "data")
+                    .map_err(llvm_err)?
+                    .into_pointer_value();
+                let zero = self.i64_ty().const_int(0, false);
+                let len_minus1 = self
+                    .builder
+                    .build_int_sub(len_val, self.i64_ty().const_int(1, false), "len1")
                     .map_err(llvm_err)?;
-                self.builder.build_store(alloca, bv).map_err(llvm_err)?;
-                Ok(TypedValue::Str(alloca))
+                let in_bounds = self
+                    .builder
+                    .build_and(
+                        self.builder
+                            .build_int_compare(IntPredicate::SGE, index_val, zero, "ge0")
+                            .map_err(llvm_err)?,
+                        self.builder
+                            .build_int_compare(IntPredicate::SLE, index_val, len_minus1, "le_len")
+                            .map_err(llvm_err)?,
+                        "in_bounds",
+                    )
+                    .map_err(llvm_err)?;
+                let safe_idx = self
+                    .builder
+                    .build_select(in_bounds, index_val, zero, "safe_idx")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                let i8 = self.context.i8_type();
+                let char_ptr = unsafe {
+                    self.builder
+                        .build_gep(i8, data, &[safe_idx], "char_ptr")
+                        .map_err(llvm_err)
+                }?;
+                let char_val = self
+                    .builder
+                    .build_load(i8, char_ptr, "Char")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                let raw = self
+                    .builder
+                    .build_int_z_extend(char_val, self.i64_ty(), "char_ext")
+                    .map_err(llvm_err)?;
+                let result = self
+                    .builder
+                    .build_select(in_bounds, raw, zero, "idx_result")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                Ok(TypedValue::Int(result))
             }
-            _ => {
-                let idx_expr_val = action_frontend::ast::Literal::Int(
-                    idx_int.get_zero_extended_constant().unwrap_or(0) as i64,
-                );
-                let fake_obj = ExprKind::Ident("it".to_string()).into();
-                let fake_idx = ExprKind::Literal(idx_expr_val).into();
-                self.compile_index(&fake_obj, &fake_idx)
-            }
+            _ => Err("Index access not supported for this type".to_string()),
         }
     }
 

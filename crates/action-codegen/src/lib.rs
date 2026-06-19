@@ -712,8 +712,11 @@ impl<'ctx> CodeGen<'ctx> {
     // Write LLVM bitcode to a file
 }
 
+mod call_arg;
+mod call_hir;
 mod compile;
 mod hir_compile;
+mod ufcs;
 // ---- Submodules ----
 mod builtin_dispatch;
 mod builtins_call;

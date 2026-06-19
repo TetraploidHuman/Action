@@ -8,6 +8,7 @@ use action_frontend::ast::*;
 use inkwell::values::{BasicValue, IntValue, StructValue};
 use inkwell::IntPredicate;
 
+use super::call_arg::CallArg;
 use super::{llvm_err, CodeGen, TypedValue};
 
 impl<'ctx> CodeGen<'ctx> {
@@ -93,14 +94,14 @@ impl<'ctx> CodeGen<'ctx> {
     pub(super) fn builtin_stdlib_collection(
         &mut self,
         name: &str,
-        args: &[Expr],
+        args: &[CallArg<'_>],
     ) -> Result<TypedValue<'ctx>, String> {
         match name {
             "head" => {
                 if args.len() != 1 {
                     return Err("head expects 1 argument".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 match v {
                     TypedValue::List(lp) | TypedValue::LazyList(lp) => {
                         let list_val = self.load_list(lp)?;
@@ -194,7 +195,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("last expects 1 argument".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 match v {
                     TypedValue::List(lp) | TypedValue::LazyList(lp) => {
                         let list_val = self.load_list(lp)?;
@@ -291,8 +292,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("get expects 2 arguments (list, index)".to_string());
                 }
-                let list_val = self.compile_expr(&args[0])?;
-                let idx_val = self.compile_expr(&args[1])?;
+                let list_val = self.compile_call_arg(args[0])?;
+                let idx_val = self.compile_call_arg(args[1])?;
                 match (&list_val, &idx_val) {
                     (TypedValue::List(lp), TypedValue::Int(iv)) => {
                         let lv = self.load_list(*lp)?;
@@ -382,8 +383,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("remove expects 2 arguments (list, index)".to_string());
                 }
-                let list_val = self.compile_expr(&args[0])?;
-                let idx_val = self.compile_expr(&args[1])?;
+                let list_val = self.compile_call_arg(args[0])?;
+                let idx_val = self.compile_call_arg(args[1])?;
                 match (&list_val, &idx_val) {
                     (TypedValue::List(lp), TypedValue::Int(iv)) => {
                         let lv = self.load_list(*lp)?;
@@ -404,7 +405,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("reverse expects 1 argument".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 match v {
                     TypedValue::List(lp) => {
                         let lv = self.load_list(lp)?;
@@ -424,8 +425,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("contains expects 2 arguments (list, element)".to_string());
                 }
-                let list_val = self.compile_expr(&args[0])?;
-                let elem_val = self.compile_expr(&args[1])?;
+                let list_val = self.compile_call_arg(args[0])?;
+                let elem_val = self.compile_call_arg(args[1])?;
                 match (&list_val, &elem_val) {
                     (TypedValue::List(lp), _) => {
                         let lv = self.load_list(*lp)?;
@@ -456,8 +457,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("containsKey expects 2 arguments (map, key)".to_string());
                 }
-                let map_val = self.compile_expr(&args[0])?;
-                let key_val = self.compile_expr(&args[1])?;
+                let map_val = self.compile_call_arg(args[0])?;
+                let key_val = self.compile_call_arg(args[1])?;
                 match &map_val {
                     TypedValue::Map(mp) => {
                         let lv = self.load_list(*mp)?;
@@ -478,8 +479,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("prepend expects 2 arguments (element, list)".to_string());
                 }
-                let elem_val = self.compile_expr(&args[0])?;
-                let list_val = self.compile_expr(&args[1])?;
+                let elem_val = self.compile_call_arg(args[0])?;
+                let list_val = self.compile_call_arg(args[1])?;
                 match list_val {
                     TypedValue::List(lp) => {
                         let lv = self.load_list(lp)?;
@@ -567,8 +568,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("take expects 2 arguments (list, n)".to_string());
                 }
-                let list_val = self.compile_expr(&args[0])?;
-                let n_val = self.compile_expr(&args[1])?;
+                let list_val = self.compile_call_arg(args[0])?;
+                let n_val = self.compile_call_arg(args[1])?;
                 match (&list_val, &n_val) {
                     (TypedValue::List(lp), TypedValue::Int(nv)) => {
                         let lv = self.load_list(*lp)?;
@@ -588,8 +589,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("drop expects 2 arguments (list, n)".to_string());
                 }
-                let list_val = self.compile_expr(&args[0])?;
-                let n_val = self.compile_expr(&args[1])?;
+                let list_val = self.compile_call_arg(args[0])?;
+                let n_val = self.compile_call_arg(args[1])?;
                 match (&list_val, &n_val) {
                     (TypedValue::List(lp), TypedValue::Int(nv)) => {
                         let lv = self.load_list(*lp)?;
@@ -609,8 +610,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("range expects 2 arguments (start, end)".to_string());
                 }
-                let start = self.compile_expr(&args[0])?;
-                let end = self.compile_expr(&args[1])?;
+                let start = self.compile_call_arg(args[0])?;
+                let end = self.compile_call_arg(args[1])?;
                 match (&start, &end) {
                     (TypedValue::Int(sv), TypedValue::Int(ev)) => {
                         let cc =
@@ -630,8 +631,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("repeat expects 2 arguments (value, count)".to_string());
                 }
-                let val = self.compile_expr(&args[0])?;
-                let count = self.compile_expr(&args[1])?;
+                let val = self.compile_call_arg(args[0])?;
+                let count = self.compile_call_arg(args[1])?;
                 match count {
                     TypedValue::Int(cv) => {
                         let cap = self.i64_ty().const_int(4, false);
@@ -696,7 +697,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("tail expects 1 argument (list)".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 match v {
                     TypedValue::List(lp) => {
                         let lv = self.load_list(lp)?;
@@ -729,8 +730,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("zip expects 2 arguments (list1, list2)".to_string());
                 }
-                let v1 = self.compile_expr(&args[0])?;
-                let v2 = self.compile_expr(&args[1])?;
+                let v1 = self.compile_call_arg(args[0])?;
+                let v2 = self.compile_call_arg(args[1])?;
                 match (&v1, &v2) {
                     (TypedValue::List(lp1), TypedValue::List(lp2)) => {
                         let lv1 = self.load_list(*lp1)?;
@@ -751,9 +752,9 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 3 {
                     return Err("insert expects 3 arguments (list, index, elem)".to_string());
                 }
-                let list_val = self.compile_expr(&args[0])?;
-                let idx_val = self.compile_expr(&args[1])?;
-                let elem_val = self.compile_expr(&args[2])?;
+                let list_val = self.compile_call_arg(args[0])?;
+                let idx_val = self.compile_call_arg(args[1])?;
+                let elem_val = self.compile_call_arg(args[2])?;
                 match (&list_val, &idx_val) {
                     (TypedValue::List(lp), TypedValue::Int(iv)) => {
                         let lv = self.load_list(*lp)?;
@@ -777,7 +778,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("init expects 1 argument (list)".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 match v {
                     TypedValue::List(lp) => {
                         let lv = self.load_list(lp)?;
@@ -810,7 +811,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("setToList expects 1 argument (set)".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 match v {
                     TypedValue::Set(p) => Ok(TypedValue::List(p)),
                     _ => Err("setToList: argument must be a set".to_string()),
@@ -820,7 +821,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("randChoice expects 1 argument (list)".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 match v {
                     TypedValue::List(lp) => {
                         let lv = self.load_list(lp)?;
@@ -951,7 +952,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("withIndex expects 1 argument (list)".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 match v {
                     TypedValue::List(lp) => {
                         let lv = self.load_list(lp)?;
@@ -971,7 +972,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("unique expects 1 argument (list)".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 match v {
                     TypedValue::List(lp) => {
                         let lv = self.load_list(lp)?;
@@ -991,9 +992,9 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 3 {
                     return Err("slice expects 3 arguments (collection, start, end)".to_string());
                 }
-                let coll_v = self.compile_expr(&args[0])?;
-                let start_v = self.compile_expr(&args[1])?;
-                let end_v = self.compile_expr(&args[2])?;
+                let coll_v = self.compile_call_arg(args[0])?;
+                let start_v = self.compile_call_arg(args[1])?;
+                let end_v = self.compile_call_arg(args[2])?;
                 match (&coll_v, &start_v, &end_v) {
                     // slice(List<T>, Int, Int) -> List<T>  with [start, end) semantics
                     (TypedValue::List(lp), TypedValue::Int(sv), TypedValue::Int(ev)) => {
@@ -1039,7 +1040,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("flatten expects 1 argument (list)".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 match v {
                     TypedValue::List(lp) => {
                         let lv = self.load_list(lp)?;
@@ -1059,8 +1060,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("splitAt expects 2 arguments (list, index)".to_string());
                 }
-                let list_v = self.compile_expr(&args[0])?;
-                let idx_v = self.compile_expr(&args[1])?;
+                let list_v = self.compile_call_arg(args[0])?;
+                let idx_v = self.compile_call_arg(args[1])?;
                 match (&list_v, &idx_v) {
                     (TypedValue::List(lp), TypedValue::Int(iv)) => {
                         let lv = self.load_list(*lp)?;
@@ -1081,8 +1082,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("chunks expects 2 arguments (list, size)".to_string());
                 }
-                let list_v = self.compile_expr(&args[0])?;
-                let size_v = self.compile_expr(&args[1])?;
+                let list_v = self.compile_call_arg(args[0])?;
+                let size_v = self.compile_call_arg(args[1])?;
                 match (&list_v, &size_v) {
                     (TypedValue::List(lp), TypedValue::Int(sv)) => {
                         let lv = self.load_list(*lp)?;
@@ -1102,8 +1103,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("windows expects 2 arguments (list, size)".to_string());
                 }
-                let list_v = self.compile_expr(&args[0])?;
-                let size_v = self.compile_expr(&args[1])?;
+                let list_v = self.compile_call_arg(args[0])?;
+                let size_v = self.compile_call_arg(args[1])?;
                 match (&list_v, &size_v) {
                     (TypedValue::List(lp), TypedValue::Int(sv)) => {
                         let lv = self.load_list(*lp)?;
@@ -1123,7 +1124,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("mapKeys expects 1 argument (map)".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 match v {
                     TypedValue::Map(mp) => {
                         let mv = self.load_list(mp)?;
@@ -1143,7 +1144,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("mapValues expects 1 argument (map)".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 match v {
                     TypedValue::Map(mp) => {
                         let mv = self.load_list(mp)?;
@@ -1163,7 +1164,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("mapEntries expects 1 argument (map)".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 match v {
                     TypedValue::Map(mp) => {
                         let mv = self.load_list(mp)?;
@@ -1183,8 +1184,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("map.union expects 2 arguments (map1, map2)".to_string());
                 }
-                let v1 = self.compile_expr(&args[0])?;
-                let v2 = self.compile_expr(&args[1])?;
+                let v1 = self.compile_call_arg(args[0])?;
+                let v2 = self.compile_call_arg(args[1])?;
                 match (&v1, &v2) {
                     (TypedValue::Map(mp1), TypedValue::Map(mp2)) => {
                         let mv1 = self.load_list(*mp1)?;
@@ -1205,8 +1206,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("set.union expects 2 arguments (set1, set2)".to_string());
                 }
-                let v1 = self.compile_expr(&args[0])?;
-                let v2 = self.compile_expr(&args[1])?;
+                let v1 = self.compile_call_arg(args[0])?;
+                let v2 = self.compile_call_arg(args[1])?;
                 match (&v1, &v2) {
                     (TypedValue::Set(sp1), TypedValue::Set(sp2)) => {
                         let sv1 = self.load_list(*sp1)?;
@@ -1227,8 +1228,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("set.intersection expects 2 arguments (set1, set2)".to_string());
                 }
-                let v1 = self.compile_expr(&args[0])?;
-                let v2 = self.compile_expr(&args[1])?;
+                let v1 = self.compile_call_arg(args[0])?;
+                let v2 = self.compile_call_arg(args[1])?;
                 match (&v1, &v2) {
                     (TypedValue::Set(sp1), TypedValue::Set(sp2)) => {
                         let sv1 = self.load_list(*sp1)?;
@@ -1253,8 +1254,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("set.difference expects 2 arguments (set1, set2)".to_string());
                 }
-                let v1 = self.compile_expr(&args[0])?;
-                let v2 = self.compile_expr(&args[1])?;
+                let v1 = self.compile_call_arg(args[0])?;
+                let v2 = self.compile_call_arg(args[1])?;
                 match (&v1, &v2) {
                     (TypedValue::Set(sp1), TypedValue::Set(sp2)) => {
                         let sv1 = self.load_list(*sp1)?;
@@ -1279,8 +1280,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("set.isSubset expects 2 arguments (set1, set2)".to_string());
                 }
-                let v1 = self.compile_expr(&args[0])?;
-                let v2 = self.compile_expr(&args[1])?;
+                let v1 = self.compile_call_arg(args[0])?;
+                let v2 = self.compile_call_arg(args[1])?;
                 match (&v1, &v2) {
                     (TypedValue::Set(sp1), TypedValue::Set(sp2)) => {
                         let sv1 = self.load_list(*sp1)?;
@@ -1300,7 +1301,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("randShuffle expects 1 argument (list)".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 match v {
                     TypedValue::List(lp) => {
                         let lv = self.load_list(lp)?;
@@ -1323,7 +1324,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("sorted expects 1 argument (list)".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 match v {
                     TypedValue::List(lp) => {
                         let lv = self.load_list(lp)?;
@@ -1343,7 +1344,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("sum expects 1 argument (list)".to_string());
                 }
-                let list_val = self.compile_expr(&args[0])?;
+                let list_val = self.compile_call_arg(args[0])?;
                 let list_ptr = match list_val {
                     TypedValue::List(p) => p,
                     _ => return Err("sum: argument must be a list".to_string()),
@@ -1356,7 +1357,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("product expects 1 argument (list)".to_string());
                 }
-                let list_val = self.compile_expr(&args[0])?;
+                let list_val = self.compile_call_arg(args[0])?;
                 let list_ptr = match list_val {
                     TypedValue::List(p) => p,
                     _ => return Err("product: argument must be a list".to_string()),
@@ -1443,7 +1444,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("digits expects 1 argument (int)".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 let n = match v {
                     TypedValue::Int(iv) => iv,
                     _ => return Err("digits: argument must be an int".to_string()),

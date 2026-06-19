@@ -161,7 +161,7 @@ pub use span::Span;
 | R5d | Codegen reads HIR directly (`compile_hir`); REPL via `compile_checked` | ✅ |
 | R6 | Cargo workspace：`action-frontend` / `action-codegen` 独立 crate | ✅ |
 | R6b | driver 独立 crate (`action-driver`)：`compile_checked` / `load_checked` / `emit_hir` | ✅ |
-| R5e | 去掉 HIR bridge：`compile_hir_block/when/for/stmt` 原生；`compile(&Program)` 仅 test | ✅ |
+| R5e | 去掉 HIR bridge：`compile_hir_call`/`assign`/`lambda`/`for` 原生；`compile(&Program)` 仅 test | ✅ |
 | R7 | REPL/LSP 统一 `FrontendSession` + `CompilerError` 诊断；消除 regex re-parse | ✅ |
 | P1 | `Expr { kind: ExprKind, span: Span }` 结构迁移；parser/typecheck/codegen/LSP 全路径 | ✅ |
 
@@ -172,8 +172,10 @@ pub use span::Span;
 | ConcatNode balance | `depth > 32` 时 flatten；修复 `cc_small_merge` 双 leaf 判定 | ✅ |
 | Map Robin-Hood | 40B entry + probe distance；insert/get/rehash | ✅ |
 | Lambda mono | map/filter btree walk；fold/any/all 单态化 | ✅ |
-| Fused map+filter | 单遍组合 `filter(map(lst){f}){g}` 避免中间 ListNode 分配 | ✅ AOT `-O2`（2026-06-19）：`bench_concat_depth` 15–16 ms；IR 调用 `action_list_map_filter_walk`（3 处）；语义输出 chained len **500**、nested fold **30300**。UFCS `.map{}.filter{}` 仍走 lambda mono，未融合 |
-| `list_get_cached` helper | 序贯 `get` 缓存 leaf/pos，避免重复 B-tree  descent | ✅ 运行时已定义；`builtins_iter` 序贯遍历（find/fold/any/all 等 7 路径）与 `for_loop` 已接入；fused walk 与 lambda mono 使用运行时 B-tree walk，不经 codegen 缓存 |
+| Fused map+filter | 单遍组合 `filter(map(lst){f}){g}` 与 UFCS `.map{}.filter{}` → `action_list_map_filter_walk` | ✅ |
+| Fused map+takeWhile | UFCS/函数式 `map { }.takeWhile { }` 单循环 codegen（无中间 List） | ✅ |
+| Fused flatMap+filter | UFCS/函数式 `flatMap { }.filter { }` 嵌套序贯 walk（无 materialized flatMap） | ✅ |
+| `list_get_cached` helper | 序贯 `get` 缓存 leaf/pos；`for` 条件循环 HIR 原生优化路径 | ✅ |
 
 ## 语义测试覆盖（P0）
 

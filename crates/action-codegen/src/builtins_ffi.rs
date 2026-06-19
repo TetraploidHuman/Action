@@ -4,9 +4,38 @@ use action_frontend::ast::*;
 use inkwell::values::BasicValue;
 use inkwell::IntPredicate;
 
+use super::call_arg::CallArg;
 use super::{llvm_err, CodeGen, TypedValue};
 
 impl<'ctx> CodeGen<'ctx> {
+    pub(super) fn builtin_to_cstring_call_arg(
+        &mut self,
+        arg: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        self.builtin_to_cstring(&Self::call_arg_to_expr(arg))
+    }
+
+    pub(super) fn builtin_from_cstring_call_arg(
+        &mut self,
+        arg: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        self.builtin_from_cstring(&Self::call_arg_to_expr(arg))
+    }
+
+    pub(super) fn builtin_is_null_call_arg(
+        &mut self,
+        arg: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        self.builtin_is_null(&Self::call_arg_to_expr(arg))
+    }
+
+    pub(super) fn builtin_deref_call_arg(
+        &mut self,
+        arg: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        self.builtin_deref(&Self::call_arg_to_expr(arg))
+    }
+
     /// toCString(str) -> CString: allocate a null-terminated copy of the string
     pub(super) fn builtin_to_cstring(&mut self, expr: &Expr) -> Result<TypedValue<'ctx>, String> {
         let val = self.compile_expr(expr)?;
@@ -203,6 +232,21 @@ impl<'ctx> CodeGen<'ctx> {
             }
             _ => Err("deref: argument must be a Ptr".to_string()),
         }
+    }
+
+    pub(super) fn builtin_http_request_call_args(
+        &mut self,
+        a: CallArg<'_>,
+        b: CallArg<'_>,
+        c: CallArg<'_>,
+        d: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        self.builtin_http_request(
+            &Self::call_arg_to_expr(a),
+            &Self::call_arg_to_expr(b),
+            &Self::call_arg_to_expr(c),
+            &Self::call_arg_to_expr(d),
+        )
     }
 
     /// httpRequest(method: String, url: String, headers: String, body: String) -> String

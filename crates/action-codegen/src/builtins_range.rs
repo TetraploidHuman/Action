@@ -4,17 +4,18 @@ use action_frontend::ast::*;
 use inkwell::types::BasicTypeEnum;
 use inkwell::IntPredicate;
 
+use super::call_arg::CallArg;
 use super::{llvm_err, CodeGen, TypedValue};
 
 impl<'ctx> CodeGen<'ctx> {
     /// range.contains(value): check if value is within the range [start, end) or [start, end]
-    pub(super) fn builtin_range_contains(
+    pub(super) fn builtin_range_contains_call_args(
         &mut self,
-        range_expr: &Expr,
-        val_expr: &Expr,
+        range_arg: CallArg<'_>,
+        val_arg: CallArg<'_>,
     ) -> Result<TypedValue<'ctx>, String> {
-        let range_val = self.compile_expr(range_expr)?;
-        let val_val = self.compile_expr(val_expr)?;
+        let range_val = self.compile_call_arg(range_arg)?;
+        let val_val = self.compile_call_arg(val_arg)?;
         let (ptr, st) = match range_val {
             TypedValue::Struct(p, s) => (p, s),
             _ => return Err("range.contains requires a range value".to_string()),
@@ -61,11 +62,11 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// range.toList(): expand the range into a List<Int> of all values
-    pub(super) fn builtin_range_to_list(
+    pub(super) fn builtin_range_to_list_call_args(
         &mut self,
-        range_expr: &Expr,
+        range_arg: CallArg<'_>,
     ) -> Result<TypedValue<'ctx>, String> {
-        let range_val = self.compile_expr(range_expr)?;
+        let range_val = self.compile_call_arg(range_arg)?;
         let (ptr, st) = match range_val {
             TypedValue::Struct(p, s) => (p, s),
             _ => return Err("range.toList requires a range value".to_string()),

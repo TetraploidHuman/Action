@@ -2,9 +2,24 @@
 
 use action_frontend::ast::*;
 
+use super::call_arg::CallArg;
 use super::{llvm_err, CodeGen, TypedValue};
 
 impl<'ctx> CodeGen<'ctx> {
+    pub(super) fn builtin_to_list_call_arg(
+        &mut self,
+        arg: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        self.builtin_to_list(&Self::call_arg_to_expr(arg))
+    }
+
+    pub(super) fn builtin_to_lazy_list_call_arg(
+        &mut self,
+        arg: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        self.builtin_to_lazy_list(&Self::call_arg_to_expr(arg))
+    }
+
     /// toList(lazy_or_set) - convert a LazyList or Set to a List
     pub(super) fn builtin_to_list(&mut self, expr: &Expr) -> Result<TypedValue<'ctx>, String> {
         let val = self.compile_expr(expr)?;

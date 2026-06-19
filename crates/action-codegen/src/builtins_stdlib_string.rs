@@ -7,20 +7,21 @@
 use action_frontend::ast::*;
 use inkwell::IntPredicate;
 
+use super::call_arg::CallArg;
 use super::{llvm_err, CodeGen, TypedValue};
 
 impl<'ctx> CodeGen<'ctx> {
     pub(super) fn builtin_stdlib_string(
         &mut self,
         name: &str,
-        args: &[Expr],
+        args: &[CallArg<'_>],
     ) -> Result<TypedValue<'ctx>, String> {
         match name {
             "toUpper" => {
                 if args.len() != 1 {
                     return Err("toUpper expects 1 argument".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 match v {
                     TypedValue::Str(p) => {
                         let s = self.load_string(p)?;
@@ -40,7 +41,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("toLower expects 1 argument".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 match v {
                     TypedValue::Str(p) => {
                         let s = self.load_string(p)?;
@@ -60,7 +61,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("trim expects 1 argument".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 match v {
                     TypedValue::Str(p) => {
                         let s = self.load_string(p)?;
@@ -80,8 +81,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("startsWith expects 2 arguments".to_string());
                 }
-                let s = self.compile_expr(&args[0])?;
-                let prefix = self.compile_expr(&args[1])?;
+                let s = self.compile_call_arg(args[0])?;
+                let prefix = self.compile_call_arg(args[1])?;
                 match (&s, &prefix) {
                     (TypedValue::Str(sp), TypedValue::Str(pp)) => {
                         let sv = self.load_string(*sp)?;
@@ -102,8 +103,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("endsWith expects 2 arguments".to_string());
                 }
-                let s = self.compile_expr(&args[0])?;
-                let suffix = self.compile_expr(&args[1])?;
+                let s = self.compile_call_arg(args[0])?;
+                let suffix = self.compile_call_arg(args[1])?;
                 match (&s, &suffix) {
                     (TypedValue::Str(sp), TypedValue::Str(sup)) => {
                         let sv = self.load_string(*sp)?;
@@ -124,9 +125,9 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 3 {
                     return Err("substring expects 3 arguments (str, start, len)".to_string());
                 }
-                let s = self.compile_expr(&args[0])?;
-                let start = self.compile_expr(&args[1])?;
-                let len = self.compile_expr(&args[2])?;
+                let s = self.compile_call_arg(args[0])?;
+                let start = self.compile_call_arg(args[1])?;
+                let len = self.compile_call_arg(args[2])?;
                 match s {
                     TypedValue::Str(sp) => {
                         let sv = self.load_string(sp)?;
@@ -151,7 +152,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("parseInt expects 1 argument".to_string());
                 }
-                let s = self.compile_expr(&args[0])?;
+                let s = self.compile_call_arg(args[0])?;
                 match s {
                     TypedValue::Str(sp) => {
                         let sv = self.load_string(sp)?;
@@ -180,8 +181,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("split expects 2 arguments (string, delimiter)".to_string());
                 }
-                let s = self.compile_expr(&args[0])?;
-                let delim = self.compile_expr(&args[1])?;
+                let s = self.compile_call_arg(args[0])?;
+                let delim = self.compile_call_arg(args[1])?;
                 match (&s, &delim) {
                     (TypedValue::Str(sp), TypedValue::Str(dp)) => {
                         let sv = self.load_string(*sp)?;
@@ -202,8 +203,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("join expects 2 arguments (list, delimiter)".to_string());
                 }
-                let list_val = self.compile_expr(&args[0])?;
-                let delim = self.compile_expr(&args[1])?;
+                let list_val = self.compile_call_arg(args[0])?;
+                let delim = self.compile_call_arg(args[1])?;
                 match (&list_val, &delim) {
                     (TypedValue::List(lp), TypedValue::Str(dp)) => {
                         let lv = self.load_list(*lp)?;
@@ -224,9 +225,9 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 3 {
                     return Err("replace expects 3 arguments (string, from, to)".to_string());
                 }
-                let s = self.compile_expr(&args[0])?;
-                let from = self.compile_expr(&args[1])?;
-                let to = self.compile_expr(&args[2])?;
+                let s = self.compile_call_arg(args[0])?;
+                let from = self.compile_call_arg(args[1])?;
+                let to = self.compile_call_arg(args[2])?;
                 match (&s, &from, &to) {
                     (TypedValue::Str(sp), TypedValue::Str(fp), TypedValue::Str(tp)) => {
                         let sv = self.load_string(*sp)?;
@@ -249,7 +250,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("trimStart expects 1 argument".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 match v {
                     TypedValue::Str(p) => {
                         let s = self.load_string(p)?;
@@ -269,7 +270,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("trimEnd expects 1 argument".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 match v {
                     TypedValue::Str(p) => {
                         let s = self.load_string(p)?;
@@ -289,8 +290,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("stringContains expects 2 arguments (str, substr)".to_string());
                 }
-                let s = self.compile_expr(&args[0])?;
-                let sub = self.compile_expr(&args[1])?;
+                let s = self.compile_call_arg(args[0])?;
+                let sub = self.compile_call_arg(args[1])?;
                 match (&s, &sub) {
                     (TypedValue::Str(sp), TypedValue::Str(subp)) => {
                         let sv = self.load_string(*sp)?;
@@ -311,8 +312,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("stringRepeat expects 2 arguments (str, count)".to_string());
                 }
-                let s = self.compile_expr(&args[0])?;
-                let count = self.compile_expr(&args[1])?;
+                let s = self.compile_call_arg(args[0])?;
+                let count = self.compile_call_arg(args[1])?;
                 match (s, count) {
                     (TypedValue::Str(sp), TypedValue::Int(cv)) => {
                         let sv = self.load_string(sp)?;
@@ -337,7 +338,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("splitLines expects 1 argument (string)".to_string());
                 }
-                let s = self.compile_expr(&args[0])?;
+                let s = self.compile_call_arg(args[0])?;
                 match s {
                     TypedValue::Str(sp) => {
                         let sv = self.load_string(sp)?;
@@ -357,8 +358,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("indexOf expects 2 arguments".to_string());
                 }
-                let v1 = self.compile_expr(&args[0])?;
-                let v2 = self.compile_expr(&args[1])?;
+                let v1 = self.compile_call_arg(args[0])?;
+                let v2 = self.compile_call_arg(args[1])?;
                 match (&v1, &v2) {
                     // indexOf(element, list) -> Option<Int>
                     (elem, TypedValue::List(lp)) => {
@@ -410,7 +411,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("chars expects 1 argument (string)".to_string());
                 }
-                let s = self.compile_expr(&args[0])?;
+                let s = self.compile_call_arg(args[0])?;
                 match s {
                     TypedValue::Str(sp) => {
                         let sv = self.load_string(sp)?;
@@ -430,7 +431,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("toChar expects 1 argument (int)".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 match v {
                     TypedValue::Int(iv) => {
                         // Validate: code point must be in valid Unicode range
@@ -449,7 +450,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("charCode expects 1 argument (char)".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 match v {
                     TypedValue::Int(iv) => Ok(TypedValue::Int(iv)),
                     _ => Err("charCode: argument must be a Char".to_string()),
@@ -459,8 +460,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 2 {
                     return Err("charAt expects 2 arguments (string, index)".to_string());
                 }
-                let s = self.compile_expr(&args[0])?;
-                let idx = self.compile_expr(&args[1])?;
+                let s = self.compile_call_arg(args[0])?;
+                let idx = self.compile_call_arg(args[1])?;
                 let s_ptr = match s {
                     TypedValue::Str(p) => p,
                     _ => return Err("charAt: first argument must be a string".to_string()),
@@ -565,7 +566,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("isAlpha expects 1 argument (char)".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 let ch = match v {
                     TypedValue::Int(iv) => iv,
                     _ => return Err("isAlpha: argument must be a char code (int)".to_string()),
@@ -608,7 +609,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("codeToChar expects 1 argument (int)".to_string());
                 }
-                let v = self.compile_expr(&args[0])?;
+                let v = self.compile_call_arg(args[0])?;
                 let code = match v {
                     TypedValue::Int(iv) => iv,
                     _ => return Err("codeToChar: argument must be an int".to_string()),
