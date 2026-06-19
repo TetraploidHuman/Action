@@ -1,35 +1,25 @@
 name: Benchmark
 
-# Full 30× JIT + 30× AOT suite. Does NOT block push CI wall time:
-# triggered after CI succeeds (workflow_run) or on schedule / manual.
+# Push/PR full suite runs in CI (parallel benchmark job on runner-6).
+# This workflow is for scheduled / manual reruns only.
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
   schedule:
     - cron: '0 18 * * *' # daily 02:00 CST (UTC 18:00)
   workflow_dispatch:
 
 env:
   LINUX_TARGET: x86_64-unknown-linux-gnu
-  CARGO_TARGET_DIR: /home/miaox99/桌面/Runner/ci-target
+  CARGO_TARGET_DIR: /home/miaox99/桌面/Runner/ci-target-benchmark
 
 jobs:
   linux-benchmark:
     name: Linux Benchmark (full)
-    # Runner 6 is reserved with the `benchmark` label so CI jobs never queue behind this.
     runs-on: [self-hosted, linux, benchmark]
-    # Only run after green CI (skip failed/cancelled pushes).
-    if: >-
-      github.event_name != 'workflow_run' ||
-      github.event.workflow_run.conclusion == 'success'
     env:
       CARGO_INCREMENTAL: 1
       CARGO_BUILD_JOBS: 16
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -44,10 +34,10 @@ jobs:
         run: nix-shell --run "bash scripts/ci-linux.sh benchmark"
 
       - name: Check AOT benchmark regression
-        continue-on-error: true
         run: python3 scripts/benchmark_regression.py benchmark_results_aot_o2.txt benchmark_results_aot_o2_ci.txt
 
       - name: Upload benchmark results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-results-${{ github.run_id }}

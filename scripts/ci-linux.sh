@@ -96,7 +96,7 @@ run_debug() {
     "$ACTION" run examples/hello.at
 }
 
-# Push CI: build once, test, frontend, lite perf (clippy in lint.yml).
+# Push CI: build once, test, frontend, debug perf smoke (full suite in parallel benchmark job).
 run_core() {
     verify_env
     cargo build --target "$TARGET"
@@ -110,7 +110,6 @@ run_core() {
     run_perf_smoke_debug
     cargo build -p action-frontend --target "$TARGET"
     cargo test -p action-frontend --target "$TARGET"
-    run_perf_quick
 }
 
 usage() {
