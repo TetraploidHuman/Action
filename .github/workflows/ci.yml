@@ -11,57 +11,105 @@ env:
   LLVM_VERSION: '21.1.8'
   LLVM_TAG: llvmorg-21.1.8
   ACTION_FORCE_LINK: true
+  LINUX_TARGET: x86_64-unknown-linux-gnu
 
 jobs:
-  test:
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Linux x64
-            os: [self-hosted, linux]
-            target: x86_64-unknown-linux-gnu
-
-          - name: Windows x64
-            os: windows-2025
-            target: x86_64-pc-windows-msvc
-            llvm_archive: clang+llvm-21.1.8-x86_64-pc-windows-msvc.tar.xz
-
+  # Linux: 2 jobs max on self-hosted (core + benchmark), share rust-cache.
+  linux:
+    name: Linux CI
+    runs-on: [self-hosted, linux]
     steps:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ env.LINUX_TARGET }}
+          components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@v2
-        if: runner.os == 'Windows'
         with:
-          key: ${{ matrix.name }}
+          shared-key: linux-x64
+          key: core
+          cache-bin: false
 
-      # ── LLVM cache (Windows) ──────────────────────────
+      - name: Format check
+        run: cargo fmt -- --check
+
+      - name: Core CI (single nix-shell)
+        env:
+          PROPTEST_CASES: '50'
+        run: nix-shell --run "bash scripts/ci-linux.sh core"
+
+      - name: Debug run output
+        if: failure()
+        run: nix-shell --run "bash scripts/ci-linux.sh debug" 2>&1 | tee action_run_output.txt
+
+      - name: Upload run output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-output-Linux-CI-${{ github.run_id }}
+          path: action_run_output.txt
+
+  linux-benchmark:
+    name: Linux Benchmark
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.LINUX_TARGET }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: linux-x64
+          key: benchmark
+          cache-bin: false
+
+      - name: Benchmark (single nix-shell)
+        run: nix-shell --run "bash scripts/ci-linux.sh benchmark"
+
+      - name: Check AOT benchmark regression
+        continue-on-error: true
+        run: python3 scripts/benchmark_regression.py benchmark_results_aot_o2.txt benchmark_results_aot_o2_ci.txt
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ github.run_id }}
+          path: |
+            benchmark_results.txt
+            benchmark_results_aot_o2_ci.txt
+
+  test:
+    name: Windows x64
+    runs-on: windows-2025
+    env:
+      TARGET: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.TARGET }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: Windows x64
+
       - name: Cache LLVM (Windows)
-        if: runner.os == 'Windows'
         id: llvm-cache
         uses: actions/cache@v4
         with:
           path: C:\llvm
-          key: llvm-${{ env.LLVM_VERSION }}-${{ matrix.target }}
-
-      # ── Nix shell (self-hosted Linux) ─────────────────
-      - name: Verify nix-shell (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          test -f shell.nix || { echo "::error::shell.nix not found"; exit 1; }
-          nix-shell --run "echo 'LLVM:' && llvm-config --version && echo 'Rust:' && rustc --version"
+          key: llvm-${{ env.LLVM_VERSION }}-${{ env.TARGET }}
 
       - name: Download LLVM (Windows)
-        if: runner.os == 'Windows' && steps.llvm-cache.outputs.cache-hit != 'true'
+        if: steps.llvm-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          $URL = "https://github.com/llvm/llvm-project/releases/download/${{ env.LLVM_TAG }}/${{ matrix.llvm_archive }}"
+          $URL = "https://github.com/llvm/llvm-project/releases/download/${{ env.LLVM_TAG }}/clang+llvm-21.1.8-x86_64-pc-windows-msvc.tar.xz"
           Write-Host "Downloading $URL"
           curl.exe -fSL --retry 3 --connect-timeout 30 -o C:\llvm.tar.xz "$URL"
           Write-Host "Extracting..."
@@ -77,14 +125,12 @@ jobs:
           Remove-Item C:\llvm-extract -Recurse -Force -ErrorAction SilentlyContinue
 
       - name: Set LLVM env (Windows)
-        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           echo "LLVM_SYS_211_PREFIX=C:\llvm" >> $env:GITHUB_ENV
           echo "C:\llvm\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Create libxml2 stub (Windows)
-        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $libExe = Get-ChildItem "${env:ProgramFiles}\Microsoft Visual Studio" -Recurse -Filter "lib.exe" -Depth 8 -ErrorAction SilentlyContinue | Where-Object { $_.Directory.Name -eq "x64" -and $_.Directory.Parent.Name -eq "HostX64" } | Select-Object -First 1
@@ -100,186 +146,85 @@ jobs:
           & $libExe.FullName /DEF:C:\llvm\lib\libxml2s.def /OUT:C:\llvm\lib\libxml2s.lib /MACHINE:X64
           Remove-Item C:\llvm\lib\libxml2s.def -Force
 
-      # ── Build ─────────────────────────────────────────
-      - name: Build (Windows)
-        if: runner.os == 'Windows'
-        run: cargo build --target ${{ matrix.target }}
-      - name: Build (Linux)
-        if: runner.os == 'Linux'
-        run: nix-shell --run "cargo build --target ${{ matrix.target }}"
+      - name: Build
+        run: cargo build --target ${{ env.TARGET }}
 
-      # ── Smoke: check ─────────────────────────────────
-      - name: Check examples/hello.at (Windows)
-        if: runner.os == 'Windows'
+      - name: Check examples/hello.at
         shell: bash
         run: |
-          ACTION="target/${{ matrix.target }}/debug/action.exe"
+          ACTION="target/${{ env.TARGET }}/debug/action.exe"
           echo "Running $ACTION check examples/hello.at"
           "$ACTION" check examples/hello.at
-      - name: Check examples/hello.at (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          nix-shell --run './target/${{ matrix.target }}/debug/action check examples/hello.at'
 
-      # ── Smoke: run ───────────────────────────────────
-      - name: Run examples/hello.at (Windows)
-        if: runner.os == 'Windows'
+      - name: Run examples/hello.at
         shell: bash
         run: |
-          ACTION="target/${{ matrix.target }}/debug/action.exe"
+          ACTION="target/${{ env.TARGET }}/debug/action.exe"
           echo "Running $ACTION run examples/hello.at"
           OUTPUT="$("$ACTION" run examples/hello.at 2>&1)"
           echo "$OUTPUT"
-          # Verify the JIT actually ran (hello.at should print "Hello, world!")
           if ! echo "$OUTPUT" | grep -qi "hello"; then
             echo "::warning::'hello.at' run output did not contain expected output"
           fi
-      - name: Run examples/hello.at (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          nix-shell --run './target/${{ matrix.target }}/debug/action run examples/hello.at'
 
-      # ── Smoke: LSP binary starts and responds ────────
-      - name: LSP smoke test (Windows)
-        if: runner.os == 'Windows'
+      - name: LSP smoke test
         shell: bash
         run: |
-          ACTION="target/${{ matrix.target }}/debug/action.exe"
+          ACTION="target/${{ env.TARGET }}/debug/action.exe"
           echo "Testing LSP binary starts: $ACTION lsp"
           timeout 5 "$ACTION" lsp < /dev/null 2>&1 && true
           echo "LSP binary smoke test passed (expected graceful exit or timeout before stdin EOF)"
-      - name: LSP smoke test (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"capabilities":{}}}' | timeout 5 nix-shell --run './target/${{ matrix.target }}/debug/action lsp' 2>&1 || true
 
-      # ── Lib unit tests (integration is a separate job) ─
-      - name: Test lib (Windows)
-        if: runner.os == 'Windows'
+      - name: Test lib
         env:
           PROPTEST_CASES: '50'
-        run: cargo test --lib --target ${{ matrix.target }} -- --test-threads=1
-      - name: Test lib (Linux)
-        if: runner.os == 'Linux'
-        env:
-          PROPTEST_CASES: '50'
-        run: nix-shell --run "cargo test --lib --target ${{ matrix.target }} -- --test-threads=1"
+        run: cargo test --lib --target ${{ env.TARGET }} -- --test-threads=1
 
-      # ── Debug on failure ──────────────────────────────
-      - name: Debug run output (Windows)
-        if: failure() && runner.os == 'Windows'
+      - name: Debug run output
+        if: failure()
         shell: pwsh
         run: |
-          $action = "target/${{ matrix.target }}/debug/action.exe"
+          $action = "target/${{ env.TARGET }}/debug/action.exe"
           Write-Host "Running $action run examples/hello.at"
           & $action run examples/hello.at *>&1 | Tee-Object -FilePath action_run_output.txt
           Write-Host "Exit code: $LASTEXITCODE"
           Get-Content action_run_output.txt
-      - name: Debug run output (Linux)
-        if: failure() && runner.os == 'Linux'
-        run: |
-          nix-shell --run './target/${{ matrix.target }}/debug/action run examples/hello.at' 2>&1 | tee action_run_output.txt
+
       - name: Upload run output
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: run-output-${{ matrix.name }}-${{ github.run_id }}
+          name: run-output-Windows-x64-${{ github.run_id }}
           path: action_run_output.txt
 
-  # ── Lint & format ─────────────────────────────────────
-  lint:
-    name: Lint & fmt
-    # Need the self-hosted runner so nix-shell provides LLVM for clippy.
-    # (cargo-fmt does not need compilation, but splitting the two adds
-    #  complexity with no real gain.)
-    runs-on: [self-hosted, linux]
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      - name: Verify nix-shell
-        run: |
-          test -f shell.nix || { echo "::error::shell.nix not found"; exit 1; }
-          nix-shell --run "echo 'LLVM:' && llvm-config --version && echo 'Rust:' && rustc --version"
-
-      - name: Format check
-        run: cargo fmt -- --check
-
-      # Use nix LLVM + nix-matched clippy (avoid rustup/nix rustc mismatch on self-hosted).
-      - name: Clippy
-        run: |
-          nix-shell --run 'export PATH=$(echo "$PATH" | tr ":" "\n" | grep -v ".cargo/bin" | tr "\n" ":"); cargo clippy -- -W clippy::all'
-
-  # ── Build action-frontend standalone (no LLVM dependency) ────
-  build-frontend:
-    name: Frontend standalone build
-    runs-on: [self-hosted, linux]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Verify nix-shell
-        run: |
-          test -f shell.nix || { echo "::error::shell.nix not found"; exit 1; }
-          nix-shell --run "echo 'LLVM:' && llvm-config --version"
-      - name: Build action-frontend (no LLVM)
-        run: |
-          nix-shell --run "cargo build -p action-frontend --target x86_64-unknown-linux-gnu"
-      - name: Check action-frontend tests
-        run: |
-          nix-shell --run "cargo test -p action-frontend --target x86_64-unknown-linux-gnu"
-
-  # ── Integration tests (semantic / example coverage) ───────────
-  # Includes: bench_concat_depth, test_cow_properties, test_ufcs_chain, and ~140+ other tests.
   integration:
-    name: Integration (${{ matrix.name }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Linux x64
-            os: [self-hosted, linux]
-            target: x86_64-unknown-linux-gnu
-
-          - name: Windows x64
-            os: windows-2025
-            target: x86_64-pc-windows-msvc
-            llvm_archive: clang+llvm-21.1.8-x86_64-pc-windows-msvc.tar.xz
-
+    name: Integration (Windows x64)
+    runs-on: windows-2025
+    env:
+      TARGET: x86_64-pc-windows-msvc
     steps:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ env.TARGET }}
 
       - uses: Swatinem/rust-cache@v2
-        if: runner.os == 'Windows'
         with:
-          key: integration-${{ matrix.name }}
+          key: integration-Windows x64
 
       - name: Cache LLVM (Windows)
-        if: runner.os == 'Windows'
         id: llvm-cache
         uses: actions/cache@v4
         with:
           path: C:\llvm
-          key: llvm-${{ env.LLVM_VERSION }}-${{ matrix.target }}
-
-      - name: Verify nix-shell (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          test -f shell.nix || { echo "::error::shell.nix not found"; exit 1; }
-          nix-shell --run "llvm-config --version"
+          key: llvm-${{ env.LLVM_VERSION }}-${{ env.TARGET }}
 
       - name: Download LLVM (Windows)
-        if: runner.os == 'Windows' && steps.llvm-cache.outputs.cache-hit != 'true'
+        if: steps.llvm-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          $URL = "https://github.com/llvm/llvm-project/releases/download/${{ env.LLVM_TAG }}/${{ matrix.llvm_archive }}"
+          $URL = "https://github.com/llvm/llvm-project/releases/download/${{ env.LLVM_TAG }}/clang+llvm-21.1.8-x86_64-pc-windows-msvc.tar.xz"
           curl.exe -fSL --retry 3 --connect-timeout 30 -o C:\llvm.tar.xz "$URL"
           New-Item -Force -ItemType Directory -Path C:\llvm-extract | Out-Null
           tar -xf C:\llvm.tar.xz -C C:\llvm-extract
@@ -290,14 +235,12 @@ jobs:
           Remove-Item C:\llvm-extract -Recurse -Force -ErrorAction SilentlyContinue
 
       - name: Set LLVM env (Windows)
-        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           echo "LLVM_SYS_211_PREFIX=C:\llvm" >> $env:GITHUB_ENV
           echo "C:\llvm\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Create libxml2 stub (Windows)
-        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $libExe = Get-ChildItem "${env:ProgramFiles}\Microsoft Visual Studio" -Recurse -Filter "lib.exe" -Depth 8 -ErrorAction SilentlyContinue | Where-Object { $_.Directory.Name -eq "x64" -and $_.Directory.Parent.Name -eq "HostX64" } | Select-Object -First 1
@@ -313,46 +256,8 @@ jobs:
           & $libExe.FullName /DEF:C:\llvm\lib\libxml2s.def /OUT:C:\llvm\lib\libxml2s.lib /MACHINE:X64
           Remove-Item C:\llvm\lib\libxml2s.def -Force
 
-      - name: Build (Windows)
-        if: runner.os == 'Windows'
-        run: cargo build --target ${{ matrix.target }}
-      - name: Build (Linux)
-        if: runner.os == 'Linux'
-        run: nix-shell --run "cargo build --target ${{ matrix.target }}"
+      - name: Build
+        run: cargo build --target ${{ env.TARGET }}
 
-      - name: Integration tests (Windows)
-        if: runner.os == 'Windows'
-        run: cargo test --test integration --target ${{ matrix.target }} -- --test-threads=1
-      - name: Integration tests (Linux)
-        if: runner.os == 'Linux'
-        run: nix-shell --run "cargo test --test integration --target ${{ matrix.target }} -- --test-threads=1"
-
-  # ── Benchmark ────────────────────────────────────────────────
-  benchmark:
-    name: Benchmark
-    runs-on: [self-hosted, linux]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Verify nix-shell
-        run: |
-          test -f shell.nix || { echo "::error::shell.nix not found"; exit 1; }
-          nix-shell --run "echo 'LLVM:' && llvm-config --version"
-      - name: Build release binary
-        run: nix-shell --run "cargo build --release --target x86_64-unknown-linux-gnu"
-      - name: Run benchmarks (JIT, 3 iterations each)
-        run: |
-          nix-shell --run "./benchmark.sh --build --iterations 3"
-      - name: Run benchmarks (AOT -O2, 3 iterations each)
-        run: |
-          nix-shell --run "./benchmark.sh --mode aot --opt 2 --iterations 3 --results benchmark_results_aot_o2_ci.txt"
-      - name: Check AOT benchmark regression
-        continue-on-error: true
-        run: python3 scripts/benchmark_regression.py benchmark_results_aot_o2.txt benchmark_results_aot_o2_ci.txt
-      - name: Upload benchmark results
-        uses: actions/upload-artifact@v4
-        with:
-          name: benchmark-results-${{ github.run_id }}
-          path: |
-            benchmark_results.txt
-            benchmark_results_aot_o2_ci.txt
+      - name: Integration tests
+        run: cargo test --test integration --target ${{ env.TARGET }} -- --test-threads=1
