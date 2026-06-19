@@ -186,7 +186,20 @@ impl Parser {
                     break;
                 }
                 self.advance();
-                let right = self.parse_pratt(prec.next())?;
+                let mut right = self.parse_pratt(prec.next())?;
+                loop {
+                    let next_kind = self.current_kind();
+                    if let Some(op2) = token_to_binary_op(&next_kind) {
+                        let prec2 = Precedence::of_binary(&op2);
+                        if prec2 == prec && is_left_associative(&op2) {
+                            self.advance();
+                            let r2 = self.parse_pratt(prec.next())?;
+                            right = ExprKind::Binary(Box::new(right), op2, Box::new(r2)).into();
+                            continue;
+                        }
+                    }
+                    break;
+                }
                 if op == BinaryOp::Assign {
                     left = ExprKind::Assign {
                         target: Box::new(left),
@@ -413,7 +426,11 @@ impl Parser {
             TokenKind::Unsafe => {
                 self.advance();
                 self.expect(TokenKind::LBrace)?;
-                let body = self.parse_block_body()?;
+                self.block_parse_stack.push(BlockFrame::new(
+                    BlockFrameKind::PlainBlock,
+                    !self.block_parse_stack.is_empty(),
+                ));
+                let body = self.run_block_parse_loop()?;
                 Ok(ExprKind::Unsafe(Box::new(body)).into())
             }
             TokenKind::LBrace => self.parse_lambda_or_struct(),
@@ -760,13 +777,10 @@ impl Parser {
         }
 
         // { stmts } — no-param lambda with block body (handles both single expr and multi-stmt)
-        let body = self.parse_block_body()?;
-        Ok(ExprKind::Lambda {
-            params: vec![],
-            body: Box::new(body),
-            implicit_it: false,
-        }
-        .into())
+        let return_on_close = !self.block_parse_stack.is_empty();
+        self.block_parse_stack
+            .push(BlockFrame::new(BlockFrameKind::LambdaBody, return_on_close));
+        self.run_block_parse_loop()
     }
 
     pub(crate) fn parse_struct_literal(&mut self) -> Result<Expr, ParseError> {
@@ -846,31 +860,115 @@ impl Parser {
         .into())
     }
 
-    pub(crate) fn parse_block_body(&mut self) -> Result<Expr, ParseError> {
-        let mut stmts = Vec::new();
+    fn brace_starts_block_body(&self) -> bool {
+        if self.current_kind() != TokenKind::LBrace {
+            return false;
+        }
+        let inner_pos = self.pos + 1;
+        if inner_pos >= self.tokens.len() {
+            return false;
+        }
+        match &self.tokens[inner_pos].kind {
+            TokenKind::RBrace | TokenKind::Colon => false,
+            TokenKind::Ident(name) => match self.tokens.get(inner_pos + 1).map(|t| &t.kind) {
+                Some(TokenKind::Eq) | Some(TokenKind::Colon) => false,
+                Some(TokenKind::Comma) => !self.scan_ahead_for_arrow_from(inner_pos),
+                Some(TokenKind::Arrow) => false,
+                _ => name != "it",
+            },
+            _ => true,
+        }
+    }
 
+    fn scan_ahead_for_arrow_from(&self, start_pos: usize) -> bool {
+        let mut brace_depth = 0;
+        for token in self.tokens.iter().skip(start_pos) {
+            match &token.kind {
+                TokenKind::LBrace => brace_depth += 1,
+                TokenKind::RBrace => {
+                    if brace_depth == 0 {
+                        return false;
+                    }
+                    brace_depth -= 1;
+                }
+                TokenKind::Arrow => {
+                    if brace_depth == 0 {
+                        return true;
+                    }
+                }
+                _ => {}
+            }
+        }
+        false
+    }
+
+    fn frame_into_expr(frame: BlockFrame) -> Expr {
+        let block = ExprKind::Block(frame.stmts).into();
+        match frame.kind {
+            BlockFrameKind::PlainBlock => block,
+            BlockFrameKind::LambdaBody => ExprKind::Lambda {
+                params: vec![],
+                body: Box::new(block),
+                implicit_it: false,
+            }
+            .into(),
+        }
+    }
+
+    pub(crate) fn run_block_parse_loop(&mut self) -> Result<Expr, ParseError> {
         loop {
             if self.current_kind() == TokenKind::RBrace {
                 self.advance();
-                break;
+                let frame = self
+                    .block_parse_stack
+                    .pop()
+                    .ok_or_else(|| self.error("Unmatched '}'"))?;
+                let return_on_close = frame.return_on_close;
+                let expr = Self::frame_into_expr(frame);
+                if self.block_parse_stack.is_empty() || return_on_close {
+                    return Ok(expr);
+                }
+                let span = expr.span;
+                self.block_parse_stack
+                    .last_mut()
+                    .expect("block stack non-empty")
+                    .stmts
+                    .push(Stmt::Expr { expr, span });
+                continue;
             }
 
-            stmts.push(self.parse_statement()?);
-            self.skip(TokenKind::Semicolon);
-
-            // Check if this is the last expression (without semicolon)
-            // If we hit a closing brace, we're done
-            if self.current_kind() == TokenKind::RBrace {
+            if self.current_kind() == TokenKind::LBrace && self.brace_starts_block_body() {
                 self.advance();
-                break;
+                if self.skip(TokenKind::RBrace) {
+                    let unit: Expr = ExprKind::Tuple(vec![]).into();
+                    let span = unit.span;
+                    self.block_parse_stack
+                        .last_mut()
+                        .expect("block stack non-empty")
+                        .stmts
+                        .push(Stmt::Expr { expr: unit, span });
+                    continue;
+                }
+                self.block_parse_stack
+                    .push(BlockFrame::new(BlockFrameKind::LambdaBody, false));
+                continue;
             }
-        }
 
-        Ok(ExprKind::Block(stmts).into())
+            let stmt = self.parse_statement()?;
+            self.block_parse_stack
+                .last_mut()
+                .expect("block stack non-empty")
+                .stmts
+                .push(stmt);
+            self.skip(TokenKind::Semicolon);
+        }
     }
 
     pub(crate) fn parse_block_expr(&mut self) -> Result<Expr, ParseError> {
         self.expect(TokenKind::LBrace)?;
-        self.parse_block_body()
+        let return_on_close = !self.block_parse_stack.is_empty();
+        self.block_parse_stack
+            .push(BlockFrame::new(BlockFrameKind::PlainBlock, return_on_close));
+        self.run_block_parse_loop()
     }
 }
