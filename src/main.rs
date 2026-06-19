@@ -413,13 +413,40 @@ fn emit_output(
 
 fn find_aot_host_staticlib() -> Option<String> {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let candidates = [
-        manifest.join("target/host_rt_build/release/libaction_host_rt.a"),
-        manifest.join("target/host_rt_build/debug/libaction_host_rt.a"),
-        manifest.join("target/release/libaction_host_rt.a"),
-        manifest.join("target/debug/libaction_host_rt.a"),
-    ];
-    for path in &candidates {
+    let profiles = ["release", "debug"];
+    let mut candidates = Vec::new();
+
+    if let Ok(target_dir) = std::env::var("CARGO_TARGET_DIR") {
+        let root = PathBuf::from(target_dir);
+        for profile in profiles {
+            candidates.push(
+                root.join(format!("host_rt_build/{profile}/libaction_host_rt.a")),
+            );
+        }
+    }
+
+    if let Ok(exe) = std::env::current_exe() {
+        let mut dir = exe.parent().map(|p| p.to_path_buf());
+        for _ in 0..5 {
+            if let Some(ref d) = dir {
+                for profile in profiles {
+                    candidates.push(
+                        d.join(format!("host_rt_build/{profile}/libaction_host_rt.a")),
+                    );
+                }
+                dir = d.parent().map(|p| p.to_path_buf());
+            }
+        }
+    }
+
+    for profile in profiles {
+        candidates.push(
+            manifest.join(format!("target/host_rt_build/{profile}/libaction_host_rt.a")),
+        );
+        candidates.push(manifest.join(format!("target/{profile}/libaction_host_rt.a")));
+    }
+
+    for path in candidates {
         if path.exists() {
             return Some(path.to_string_lossy().into_owned());
         }
