@@ -4,8 +4,12 @@
 // declaration passes, and top-level compilation orchestration.
 
 use super::CodeGen;
+
+#[cfg(test)]
 use action_frontend::ast::*;
+#[cfg(test)]
 use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
+#[cfg(test)]
 use std::collections::HashMap;
 
 impl<'ctx> CodeGen<'ctx> {
