@@ -85,8 +85,8 @@ pub fn start_lsp() -> Result<(), Box<dyn std::error::Error>> {
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .flatten();
 
-    // Load stdlib
-    let search_dirs = build_search_dirs(root_uri.as_ref(), workspace_folders.as_deref());
+    // Load stdlib via shared frontend session search-dir strategy
+    let search_dirs = workspace_search_dirs(root_uri.as_ref(), workspace_folders.as_deref());
     let (stdlib_registry, stdlib_type_env) = FrontendSession::load_stdlib_context(&search_dirs);
     let session = FrontendSession::with_context(search_dirs, stdlib_registry, stdlib_type_env)
         .expect("stdlib load should not fail after context build");
@@ -231,41 +231,23 @@ fn parse_params<T: serde::de::DeserializeOwned>(req: &Request) -> Result<T, Resp
 
 // ---- Stdlib loading ----
 
-/// Build a list of directories to search for stdlib files.
-/// Uses the same multi-path strategy as `load_program()` in main.rs:
-/// workspace root lib/, cwd lib/, exe-relative lib/ and stdlib/.
-fn build_search_dirs(
+/// Workspace lib/ roots plus shared frontend fallback dirs (cwd, exe-relative).
+fn workspace_search_dirs(
     root_uri: Option<&lsp_types::Url>,
     workspace_folders: Option<&[lsp_types::WorkspaceFolder]>,
 ) -> Vec<PathBuf> {
-    let mut dirs: Vec<PathBuf> = Vec::new();
-
-    // Workspace roots from the client
+    let mut extra: Vec<PathBuf> = Vec::new();
     if let Some(folders) = workspace_folders {
         for wf in folders {
             if let Ok(path) = wf.uri.to_file_path() {
-                dirs.push(path.join("lib"));
+                extra.push(path.join("lib"));
             }
         }
     }
     if let Some(uri) = root_uri {
         if let Ok(path) = uri.to_file_path() {
-            dirs.push(path.join("lib"));
+            extra.push(path.join("lib"));
         }
     }
-
-    // CWD lib/ (fallback for editors launched from project root)
-    if let Ok(cwd) = std::env::current_dir() {
-        dirs.push(cwd.join("lib"));
-    }
-
-    // Exe-relative dirs (for release packages)
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(exe_dir) = exe.parent() {
-            dirs.push(exe_dir.join("..").join("lib"));
-            dirs.push(exe_dir.join("..").join("stdlib"));
-        }
-    }
-
-    dirs
+    FrontendSession::search_dirs_for_workspace(extra)
 }

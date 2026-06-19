@@ -24,7 +24,7 @@ pub struct Document {
 
 impl Document {
     pub fn new(uri: Url, source: String, _version: i32) -> Self {
-        let mut doc = Document {
+        Document {
             uri,
             source,
             tokens: Vec::new(),
@@ -33,9 +33,7 @@ impl Document {
             type_env: HashMap::new(),
             type_errors: Vec::new(),
             definition_map: HashMap::new(),
-        };
-        doc.recheck_with_session(&empty_session());
-        doc
+        }
     }
 }
 
@@ -82,52 +80,66 @@ impl Document {
         self.recheck_with_session(&session);
     }
 
-    /// Get all diagnostics (parse errors + type errors) as LSP diagnostics
+    /// Get all diagnostics (parse + type errors) as LSP diagnostics.
     pub fn get_diagnostics(&self) -> Vec<Diagnostic> {
-        let mut diags = Vec::new();
-
-        for e in &self.parse_errors {
-            let range = position::span_to_lsp_range(&e.span, &self.source);
-            diags.push(Diagnostic {
-                range,
-                severity: Some(DiagnosticSeverity::ERROR),
-                code: Some(NumberOrString::String("parse-error".to_string())),
-                source: Some("action".to_string()),
-                message: e.message.clone(),
-                ..Default::default()
-            });
-        }
-
-        for e in &self.type_errors {
-            let range = match &e.span {
-                Some(span) => position::span_to_lsp_range(span, &self.source),
-                None => Range {
-                    start: Position {
-                        line: 0,
-                        character: 0,
-                    },
-                    end: Position {
-                        line: 0,
-                        character: 0,
-                    },
-                },
-            };
-            let mut diag = Diagnostic {
-                range,
-                severity: Some(DiagnosticSeverity::ERROR),
-                code: Some(NumberOrString::String("type-error".to_string())),
-                source: Some("action".to_string()),
-                message: e.message.clone(),
-                ..Default::default()
-            };
-            if let Some(help) = &e.help {
-                diag.data = Some(serde_json::json!({ "help": help }));
-            }
-            diags.push(diag);
-        }
-
+        let mut diags: Vec<Diagnostic> = self
+            .parse_errors
+            .iter()
+            .map(|e| {
+                compiler_error_to_lsp_diagnostic(
+                    &e.to_compiler_error(),
+                    &self.source,
+                    "parse-error",
+                )
+            })
+            .collect();
+        diags.extend(
+            self.type_errors
+                .iter()
+                .map(|e| compiler_error_to_lsp_diagnostic(e, &self.source, "type-error")),
+        );
         diags
     }
+}
+
+/// Convert structured [`CompilerError`] values to LSP diagnostics using span info.
+pub fn compiler_errors_to_lsp_diagnostics(
+    errors: &[CompilerError],
+    source: &str,
+) -> Vec<Diagnostic> {
+    errors
+        .iter()
+        .map(|e| compiler_error_to_lsp_diagnostic(e, source, "type-error"))
+        .collect()
+}
+
+fn compiler_error_to_lsp_diagnostic(error: &CompilerError, source: &str, code: &str) -> Diagnostic {
+    let range = match &error.span {
+        Some(span) => position::span_to_lsp_range(span, source),
+        None => Range {
+            start: Position {
+                line: 0,
+                character: 0,
+            },
+            end: Position {
+                line: 0,
+                character: 0,
+            },
+        },
+    };
+
+    let mut diag = Diagnostic {
+        range,
+        severity: Some(DiagnosticSeverity::ERROR),
+        code: Some(NumberOrString::String(code.to_string())),
+        source: Some("action".to_string()),
+        message: error.message.clone(),
+        ..Default::default()
+    };
+    if let Some(help) = &error.help {
+        diag.data = Some(serde_json::json!({ "help": help }));
+    }
+    diag
 }
 
 /// Build a map from definition name to its span
@@ -184,7 +196,9 @@ mod tests {
 
     fn make_doc(source: &str) -> Document {
         let uri = Url::parse("file:///test.at").unwrap();
-        Document::new(uri, source.to_string(), 1)
+        let mut doc = Document::new(uri, source.to_string(), 1);
+        doc.recheck_with_session(&empty_session());
+        doc
     }
 
     #[test]
@@ -251,38 +265,37 @@ mod tests {
     fn test_recheck_updates_state() {
         let uri = Url::parse("file:///test.at").unwrap();
         let mut doc = Document::new(uri.clone(), "val x = 1".to_string(), 1);
-        let initial_ast_len = doc.ast.len();
+        assert!(
+            doc.ast.is_empty(),
+            "new document should not parse until recheck"
+        );
 
         doc.recheck(&TypeRegistry::new(), &HashMap::new());
-        assert_eq!(doc.ast.len(), initial_ast_len);
+        assert!(!doc.ast.is_empty(), "recheck should populate AST");
         assert!(doc.parse_errors.is_empty());
     }
 
     #[test]
     fn test_build_definition_map_fun() {
-        let uri = Url::parse("file:///test.at").unwrap();
-        let doc = Document::new(uri, "fun hello() {}".to_string(), 1);
+        let doc = make_doc("fun hello() {}");
         assert!(doc.definition_map.contains_key("hello"));
     }
 
     #[test]
     fn test_build_definition_map_let() {
-        let uri = Url::parse("file:///test.at").unwrap();
-        let doc = Document::new(uri, "val x = 42".to_string(), 1);
+        let doc = make_doc("val x = 42");
         assert!(doc.definition_map.contains_key("x"));
     }
 
     #[test]
     fn test_build_definition_map_enum() {
-        let uri = Url::parse("file:///test.at").unwrap();
-        let doc = Document::new(uri, "enum Color { Red, Blue }".to_string(), 1);
+        let doc = make_doc("enum Color { Red, Blue }");
         assert!(doc.definition_map.contains_key("Color"));
     }
 
     #[test]
     fn test_build_definition_map_module() {
-        let uri = Url::parse("file:///test.at").unwrap();
-        let doc = Document::new(uri, "module foo { val x = 1 }".to_string(), 1);
+        let doc = make_doc("module foo { val x = 1 }");
         assert!(doc.definition_map.contains_key("foo"));
     }
 

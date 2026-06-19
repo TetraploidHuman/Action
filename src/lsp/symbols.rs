@@ -401,6 +401,7 @@ fn type_to_detail(ty: &Type) -> String {
 mod tests {
     use super::*;
     use crate::lexer::{Lexer, TokenKind};
+    use std::collections::HashMap;
 
     fn tokenize(source: &str) -> Vec<Token> {
         let mut lexer = Lexer::new(source);
@@ -549,10 +550,14 @@ mod tests {
     #[test]
     fn test_extract_document_symbols_fun() {
         let source = "fun hello() {}";
-        let tokens = tokenize(source);
-        let mut parser = crate::parser::Parser::new(tokens);
-        let (stmts, _) = parser.parse_program_recover();
-        let symbols = extract_document_symbols(&stmts, source);
+        let session = crate::session::FrontendSession::with_context(
+            Vec::new(),
+            crate::typecheck::TypeRegistry::new(),
+            HashMap::new(),
+        )
+        .unwrap();
+        let result = session.compile_recover_buffer(source);
+        let symbols = extract_document_symbols(&result.stmts, source);
         assert!(!symbols.is_empty(), "should extract function symbol");
         assert_eq!(symbols[0].name, "hello");
         assert_eq!(symbols[0].kind, SymbolKind::FUNCTION);
@@ -561,10 +566,14 @@ mod tests {
     #[test]
     fn test_extract_document_symbols_val() {
         let source = "val x = 42";
-        let tokens = tokenize(source);
-        let mut parser = crate::parser::Parser::new(tokens);
-        let (stmts, _) = parser.parse_program_recover();
-        let symbols = extract_document_symbols(&stmts, source);
+        let session = crate::session::FrontendSession::with_context(
+            Vec::new(),
+            crate::typecheck::TypeRegistry::new(),
+            HashMap::new(),
+        )
+        .unwrap();
+        let result = session.compile_recover_buffer(source);
+        let symbols = extract_document_symbols(&result.stmts, source);
         assert!(!symbols.is_empty(), "should extract val symbol");
         assert_eq!(symbols[0].name, "x");
         assert_eq!(symbols[0].kind, SymbolKind::VARIABLE);
