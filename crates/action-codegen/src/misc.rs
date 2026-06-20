@@ -5,17 +5,17 @@
 // that don't belong to a single domain.
 //
 
+use action_frontend::ast::Literal;
 #[cfg(test)]
 use action_frontend::ast::*;
-use action_frontend::ast::Literal;
 use inkwell::types::{BasicType, BasicTypeEnum};
 use inkwell::values::{GlobalValue, IntValue, PointerValue};
 use inkwell::IntPredicate;
 
 use super::call_arg::CallArg;
-use super::{llvm_err, CodeGen, TypedValue, ValKind};
 #[cfg(test)]
 use super::Scope;
+use super::{llvm_err, CodeGen, TypedValue, ValKind};
 
 impl<'ctx> CodeGen<'ctx> {
     /// Park the IR builder in `__cg_anchor` so module-level mutations do not touch

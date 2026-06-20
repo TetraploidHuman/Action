@@ -158,7 +158,10 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
 
         // Create result list
-        let cc = self.builder.build_call(list_create_fn, &[final_count.into()], "ll_create").map_err(llvm_err)?;
+        let cc = self
+            .builder
+            .build_call(list_create_fn, &[final_count.into()], "ll_create")
+            .map_err(llvm_err)?;
         let list_bv = cc
             .try_as_basic_value()
             .basic()
@@ -277,9 +280,21 @@ impl<'ctx> CodeGen<'ctx> {
 
         // ---- head_push_bb: push head, i=1 ----
         self.builder.position_at_end(head_push_bb);
-        let head_fat = make_int_fat(&self.builder, self.string_type, self.ptr_ty(), candidate_head)?;
+        let head_fat = make_int_fat(
+            &self.builder,
+            self.string_type,
+            self.ptr_ty(),
+            candidate_head,
+        )?;
         let cur_list_h = load_list(&self.builder, self.list_type, result_alloca)?;
-        let cc_h = self.builder.build_call(list_push_fn, &[cur_list_h.into(), head_fat.into()], "ll_push_h").map_err(llvm_err)?;
+        let cc_h = self
+            .builder
+            .build_call(
+                list_push_fn,
+                &[cur_list_h.into(), head_fat.into()],
+                "ll_push_h",
+            )
+            .map_err(llvm_err)?;
         let new_list_h = cc_h
             .try_as_basic_value()
             .basic()
@@ -489,9 +504,21 @@ impl<'ctx> CodeGen<'ctx> {
 
         // ---- elem_pass_bb: push element, increment i ----
         self.builder.position_at_end(elem_pass_bb);
-        let elem_fat = make_int_fat(&self.builder, self.string_type, self.ptr_ty(), candidate_elem)?;
+        let elem_fat = make_int_fat(
+            &self.builder,
+            self.string_type,
+            self.ptr_ty(),
+            candidate_elem,
+        )?;
         let cur_list2 = load_list(&self.builder, self.list_type, result_alloca)?;
-        let cc2 = self.builder.build_call(list_push_fn, &[cur_list2.into(), elem_fat.into()], "ll_push_e").map_err(llvm_err)?;
+        let cc2 = self
+            .builder
+            .build_call(
+                list_push_fn,
+                &[cur_list2.into(), elem_fat.into()],
+                "ll_push_e",
+            )
+            .map_err(llvm_err)?;
         let new_list2 = cc2.try_as_basic_value().basic().ok_or("push2 failed")?;
         self.builder
             .build_store(result_alloca, new_list2)

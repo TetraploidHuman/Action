@@ -316,10 +316,7 @@ pub fn lookup_ufcs(kind: UfcsReceiverKind, method: &str) -> Option<&'static Buil
 
 /// All UFCS methods applicable to a receiver kind (for LSP completion).
 pub fn ufcs_methods_for_kind(kind: UfcsReceiverKind) -> Vec<&'static BuiltinDef> {
-    all()
-        .iter()
-        .filter(|d| ufcs_matches(d, kind))
-        .collect()
+    all().iter().filter(|d| ufcs_matches(d, kind)).collect()
 }
 
 /// Format a UFCS method signature for LSP detail text.

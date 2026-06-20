@@ -24,9 +24,7 @@ fn find_fun_param_names_in_stmts(stmts: &[HirStmt], name: &str) -> Option<Vec<St
 fn find_fun_param_names_in_stmt(stmt: &HirStmt, name: &str) -> Option<Vec<String>> {
     match stmt {
         HirStmt::Fun {
-            name: n,
-            params,
-            ..
+            name: n, params, ..
         } if n == name => Some(params.iter().map(|p| p.name.clone()).collect()),
         HirStmt::Module { body, .. } => find_fun_param_names_in_stmts(body, name),
         HirStmt::Export { stmt, .. } => find_fun_param_names_in_stmt(stmt, name),

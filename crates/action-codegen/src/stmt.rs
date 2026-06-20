@@ -6,9 +6,9 @@ use inkwell::values::PointerValue;
 #[cfg(test)]
 use inkwell::IntPredicate;
 
-use super::{llvm_err, CodeGen, Scope, TypedValue, ValKind};
 #[cfg(test)]
 use super::TcoState;
+use super::{llvm_err, CodeGen, Scope, TypedValue, ValKind};
 
 enum FunBody<'a> {
     #[cfg(test)]

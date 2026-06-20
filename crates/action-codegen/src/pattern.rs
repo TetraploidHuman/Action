@@ -639,9 +639,9 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
             #[cfg(not(test))]
-            Pattern::Range(_, _) => Err(
-                "Pattern::Range in production requires compile_hir_pattern_match".to_string(),
-            ),
+            Pattern::Range(_, _) => {
+                Err("Pattern::Range in production requires compile_hir_pattern_match".to_string())
+            }
             Pattern::IsType(type_name) => {
                 // Enum variant check: `is Some` on an Option enum value
                 if let Some((_, variant)) = self.registry.lookup_variant(type_name) {
@@ -731,9 +731,9 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
             #[cfg(not(test))]
-            Pattern::Expr(_) => Err(
-                "Pattern::Expr in production requires compile_hir_pattern_match".to_string(),
-            ),
+            Pattern::Expr(_) => {
+                Err("Pattern::Expr in production requires compile_hir_pattern_match".to_string())
+            }
         }
     }
 

@@ -465,8 +465,8 @@ impl<'ctx> CodeGen<'ctx> {
 // ---- Submodules ----
 mod define_file_parse;
 mod define_hash_table;
-mod define_list_core;
 mod define_lazy_list;
+mod define_list_core;
 mod define_list_extra;
 mod define_list_insert_rec;
 mod define_list_iter;

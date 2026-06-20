@@ -19,7 +19,6 @@ impl<'a> ForExprSrc<'a> {
     fn compile<'ctx>(&self, gen: &mut CodeGen<'ctx>) -> Result<TypedValue<'ctx>, String> {
         match self {
             #[cfg(test)]
-
             ForExprSrc::Ast(e) => gen.compile_expr(e),
             ForExprSrc::Hir(h) => gen.compile_hir_expr(h),
         }
@@ -31,7 +30,6 @@ impl<'a> ForExprSrc<'a> {
     ) -> Result<Option<(IntValue<'ctx>, IntValue<'ctx>)>, String> {
         match self {
             #[cfg(test)]
-
             ForExprSrc::Ast(e) => match &e.kind {
                 ExprKind::Binary(lhs, BinaryOp::Range, rhs)
                 | ExprKind::Binary(lhs, BinaryOp::RangeExclusive, rhs) => {

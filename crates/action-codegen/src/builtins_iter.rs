@@ -261,21 +261,21 @@ impl<'ctx> CodeGen<'ctx> {
 
         let CallArg::Hir(list_hir) = list_arg;
         if let Some((map_fn, inner)) = Self::extract_map_call_args_hir(list_hir) {
-                let filter_fn_val = if let Some(lam) = trailing {
-                    self.compile_call_arg(lam)?
-                } else {
-                    self.compile_call_arg(args[0])?
-                };
-                return self.fused_map_filter_hir(map_fn, inner, filter_fn_val);
-            }
-            if let Some((flat_fn, inner)) = Self::extract_flatmap_call_args_hir(list_hir) {
-                let filter_fn_val = if let Some(lam) = trailing {
-                    self.compile_call_arg(lam)?
-                } else {
-                    self.compile_call_arg(args[0])?
-                };
-                return self.fused_flatmap_filter_hir(flat_fn, inner, filter_fn_val);
-            }
+            let filter_fn_val = if let Some(lam) = trailing {
+                self.compile_call_arg(lam)?
+            } else {
+                self.compile_call_arg(args[0])?
+            };
+            return self.fused_map_filter_hir(map_fn, inner, filter_fn_val);
+        }
+        if let Some((flat_fn, inner)) = Self::extract_flatmap_call_args_hir(list_hir) {
+            let filter_fn_val = if let Some(lam) = trailing {
+                self.compile_call_arg(lam)?
+            } else {
+                self.compile_call_arg(args[0])?
+            };
+            return self.fused_flatmap_filter_hir(flat_fn, inner, filter_fn_val);
+        }
 
         #[cfg(test)]
         if let CallArg::Ast(list_expr) = list_arg {

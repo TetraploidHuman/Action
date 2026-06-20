@@ -1470,9 +1470,7 @@ fn lookup_function_signature(
     stdlib_type_env: &HashMap<String, Type>,
     hir: Option<&crate::hir::HirModule>,
 ) -> Option<String> {
-    let func_type = type_env
-        .get(name)
-        .or_else(|| stdlib_type_env.get(name))?;
+    let func_type = type_env.get(name).or_else(|| stdlib_type_env.get(name))?;
     match func_type {
         Type::Function(param_types, ret_type) => {
             let param_names = hir.and_then(|h| super::hir_lookup::find_fun_param_names(h, name));
