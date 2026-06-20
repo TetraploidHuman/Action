@@ -40,7 +40,11 @@ fn line_brace_counts_from_tokens(source: &str, tokens: &[Token]) -> HashMap<usiz
             _ => continue,
         };
         // span.start is captured before skip_whitespace; use last byte of the token.
-        let anchor = tok.span.end.saturating_sub(1).min(source.len().saturating_sub(1));
+        let anchor = tok
+            .span
+            .end
+            .saturating_sub(1)
+            .min(source.len().saturating_sub(1));
         let line = line_of(anchor);
         let entry = line_braces.entry(line).or_insert((0, 0));
         entry.0 += open;
