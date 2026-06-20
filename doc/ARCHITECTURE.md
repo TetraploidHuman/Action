@@ -132,7 +132,7 @@ pub use action_lsp as lsp;
 
 | 项 | 说明 | 状态 |
 |----|------|------|
-| `insert_rec` 路径拷贝 | 中间索引 insert（`define_list_insert_rec.rs` 已实现，接入待 RC 审计） | ⏳ |
+| `insert_rec` 路径拷贝 | 中间索引 insert（`li_split_bb` 优先 `action_list_insert_rec`，null 回退 concat） | ✅ |
 | `remove(0)` 快速路径 | h>0 树 `remove(0)` → `drop(list,1)` | ✅ |
 | `list_get_cached` | for / reduce / iter 序贯 get 缓存 | ✅ |
 | ConcatNode balance | depth > 32 flatten | ✅ |

@@ -469,6 +469,50 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::Nullable(null_alloca, null_bt))
     }
 
+    /// UFCS mutators used as statements (`m.insert(k, v)` without assignment) must write
+    /// the new collection back into the receiver lvalue.
+    pub(super) fn try_compile_mutating_ufcs_stmt_writeback(
+        &mut self,
+        expr: &action_frontend::hir::HirExpr,
+    ) -> Result<bool, String> {
+        use action_frontend::hir::HirExprKind;
+
+        let HirExprKind::Call {
+            func,
+            args: _,
+            trailing_lambda: _,
+        } = &expr.kind
+        else {
+            return Ok(false);
+        };
+        let HirExprKind::FieldAccess(receiver, method) = &func.kind else {
+            return Ok(false);
+        };
+        if !Self::is_mutating_collection_ufcs_method(method) {
+            return Ok(false);
+        };
+        if !Self::hir_lvalue_is_assignable(receiver) {
+            return Ok(false);
+        }
+        let result = self.compile_hir_expr(expr)?;
+        self.write_back_hir_lvalue(receiver, result)?;
+        Ok(true)
+    }
+
+    fn is_mutating_collection_ufcs_method(method: &str) -> bool {
+        matches!(method, "insert" | "remove" | "append" | "prepend")
+    }
+
+    fn hir_lvalue_is_assignable(expr: &action_frontend::hir::HirExpr) -> bool {
+        use action_frontend::hir::HirExprKind;
+        match &expr.kind {
+            HirExprKind::Ident(_) => true,
+            HirExprKind::FieldAccess(obj, _) => Self::hir_lvalue_is_assignable(obj),
+            HirExprKind::Index(obj, _) => Self::hir_lvalue_is_assignable(obj),
+            _ => false,
+        }
+    }
+
     pub(super) fn compile_assign_hir(
         &mut self,
         target: &action_frontend::hir::HirExpr,

@@ -293,6 +293,9 @@ impl<'ctx> CodeGen<'ctx> {
                 let _ = mutable;
             }
             HirStmt::Expr { expr, .. } => {
+                if self.try_compile_mutating_ufcs_stmt_writeback(expr)? {
+                    return Ok(());
+                }
                 let result = self.compile_hir_expr(expr)?;
                 self.rc_discard_value(&result)?;
             }
@@ -647,6 +650,10 @@ impl<'ctx> CodeGen<'ctx> {
         for s in stmts {
             match s {
                 HirStmt::Expr { expr, .. } => {
+                    if self.try_compile_mutating_ufcs_stmt_writeback(expr)? {
+                        last = TypedValue::Unit;
+                        continue;
+                    }
                     self.rc_discard_value(&last)?;
                     last = self.compile_hir_expr(expr)?;
                 }

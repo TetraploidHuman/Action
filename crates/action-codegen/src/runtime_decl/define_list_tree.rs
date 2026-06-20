@@ -1080,8 +1080,63 @@ impl<'ctx> CodeGen<'ctx> {
             .try_as_basic_value()
             .unwrap_basic();
         let _ = self.builder.build_return(Some(&li_push_rv));
-        // Split: take + push + drop + concat (insert_rec available but RC path needs audit)
+        // Split: try insert_rec (path-copy CoW); null → take + push + drop + concat
         self.builder.position_at_end(li_split_bb);
+        let li_insert_rec_fn = self
+            .module
+            .get_function("action_list_insert_rec")
+            .unwrap();
+        let li_rec_root = self
+            .builder
+            .build_call(
+                li_insert_rec_fn,
+                &[
+                    li_node.into(),
+                    li_height.into(),
+                    li_idx3.into(),
+                    li_elem.into(),
+                ],
+                "rec_root",
+            )
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_pointer_value();
+        let li_rec_null = self
+            .builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                li_rec_root,
+                ptr.const_null(),
+                "rec_null",
+            )
+            .map_err(llvm_err)?;
+        let li_rec_ok_bb = self.context.append_basic_block(li_fn, "rec_ok");
+        let li_rec_fallback_bb = self.context.append_basic_block(li_fn, "rec_fallback");
+        let _ = self.builder.build_conditional_branch(
+            li_rec_null,
+            li_rec_fallback_bb,
+            li_rec_ok_bb,
+        );
+        self.builder.position_at_end(li_rec_ok_bb);
+        let li_rec_new_len = self
+            .builder
+            .build_int_add(li_len, one, "rec_new_len")
+            .map_err(llvm_err)?;
+        let li_rec_r1 = self
+            .builder
+            .build_insert_value(self.list_type.get_undef(), li_rec_root, 0, "rec_r1")
+            .map_err(llvm_err)?;
+        let li_rec_r2 = self
+            .builder
+            .build_insert_value(li_rec_r1, li_rec_new_len, 1, "rec_r2")
+            .map_err(llvm_err)?;
+        let li_rec_r3 = self
+            .builder
+            .build_insert_value(li_rec_r2, li_height, 2, "rec_r3")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_return(Some(&li_rec_r3));
+        self.builder.position_at_end(li_rec_fallback_bb);
         let li_take_fn = self.module.get_function("action_list_take").unwrap();
         let li_drop_fn = self.module.get_function("action_list_drop").unwrap();
         let li_concat_fn = self.module.get_function("action_list_concat").unwrap();

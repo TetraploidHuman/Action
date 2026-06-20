@@ -13,6 +13,7 @@ impl<'ctx> CodeGen<'ctx> {
         let null_ptr = ptr.const_null();
         let malloc_rc_fn = self.module.get_function("action_malloc_rc").unwrap();
         let memcpy_fn = self.module.get_function("memcpy").unwrap();
+        let rc_inc_fn = self.module.get_function("action_rc_inc").unwrap();
 
         let lir_fn = self.module.add_function(
             "action_list_insert_rec",
@@ -38,6 +39,9 @@ impl<'ctx> CodeGen<'ctx> {
         let int_scan_next = self.context.append_basic_block(lir_fn, "int_scan_next");
         let int_cow = self.context.append_basic_block(lir_fn, "int_cow");
         let int_cow_copy = self.context.append_basic_block(lir_fn, "int_cow_copy");
+        let int_inc_loop = self.context.append_basic_block(lir_fn, "int_inc_loop");
+        let int_inc_body = self.context.append_basic_block(lir_fn, "int_inc_body");
+        let int_inc_done = self.context.append_basic_block(lir_fn, "int_inc_done");
         let int_update = self.context.append_basic_block(lir_fn, "int_update");
         let int_ret = self.context.append_basic_block(lir_fn, "int_ret");
         let dec_old = self.context.append_basic_block(lir_fn, "dec_old");
@@ -129,6 +133,14 @@ impl<'ctx> CodeGen<'ctx> {
                 &[new_leaf.into(), lir_node.into(), leaf_sz.into()],
                 "",
             )
+            .map_err(llvm_err)?;
+        let new_leaf_rc = self
+            .builder
+            .build_int_sub(leaf_rc, one, "new_leaf_rc")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_store(leaf_rc_p, new_leaf_rc)
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(leaf_ready);
 
@@ -420,11 +432,82 @@ impl<'ctx> CodeGen<'ctx> {
                 "",
             )
             .map_err(llvm_err)?;
+        let new_int_rc = self
+            .builder
+            .build_int_sub(int_rc, one, "new_int_rc")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_store(int_rc_p, new_int_rc)
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(int_inc_loop);
+
+        // memcpy duplicates child pointers — bump each child's RC in the copy.
+        self.builder.position_at_end(int_inc_loop);
+        let inc_i_phi = self.builder.build_phi(i64, "inc_i").map_err(llvm_err)?;
+        inc_i_phi.add_incoming(&[(&zero, int_cow_copy)]);
+        let inc_i = inc_i_phi.as_basic_value().into_int_value();
+        let new_int_i8 = self
+            .builder
+            .build_pointer_cast(new_int, ptr, "ni_i8")
+            .map_err(llvm_err)?;
+        let new_int_count_raw = self
+            .builder
+            .build_load(self.context.i32_type(), new_int_i8, "ni_count")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let new_int_count = self
+            .builder
+            .build_int_z_extend(new_int_count_raw, i64, "ni_cnt")
+            .map_err(llvm_err)?;
+        let inc_done = self
+            .builder
+            .build_int_compare(IntPredicate::SGE, inc_i, new_int_count, "inc_done")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(inc_done, int_inc_done, int_inc_body);
+
+        self.builder.position_at_end(int_inc_body);
+        let inc_cb = unsafe {
+            self.builder
+                .build_gep(i8, new_int_i8, &[i64.const_int(16, false)], "inc_cb")
+                .map_err(llvm_err)
+        }?;
+        let inc_cep = unsafe {
+            self.builder
+                .build_gep(self.child_entry_type, inc_cb, &[inc_i], "inc_cep")
+                .map_err(llvm_err)
+        }?;
+        let inc_child = self
+            .builder
+            .build_extract_value(
+                self.builder
+                    .build_load(self.child_entry_type, inc_cep, "inc_ce")
+                    .map_err(llvm_err)?
+                    .into_struct_value(),
+                0,
+                "inc_ch",
+            )
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let _ = self
+            .builder
+            .build_call(rc_inc_fn, &[inc_child.into()], "")
+            .map_err(llvm_err)?;
+        let inc_next = self
+            .builder
+            .build_int_add(inc_i, one, "inc_next")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(int_inc_loop);
+        inc_i_phi.add_incoming(&[(&inc_next, int_inc_body)]);
+
+        self.builder.position_at_end(int_inc_done);
         let _ = self.builder.build_unconditional_branch(int_update);
 
         self.builder.position_at_end(int_update);
         let work_phi = self.builder.build_phi(ptr, "work_phi").map_err(llvm_err)?;
-        work_phi.add_incoming(&[(&lir_node, int_cow), (&new_int, int_cow_copy)]);
+        work_phi.add_incoming(&[(&lir_node, int_cow), (&new_int, int_inc_done)]);
         let work_node = work_phi.as_basic_value().into_pointer_value();
         let work_i8 = self
             .builder
@@ -444,9 +527,51 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_pointer_cast(upd_ce_ptr, ptr, "child_slot")
             .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(store_child);
+        let child_changed = self
+            .builder
+            .build_int_compare(
+                IntPredicate::NE,
+                self.builder
+                    .build_ptr_to_int(new_child, i64, "nc_i")
+                    .map_err(llvm_err)?,
+                self.builder
+                    .build_ptr_to_int(old_child, i64, "oc_i")
+                    .map_err(llvm_err)?,
+                "child_changed",
+            )
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(child_changed, dec_old, store_child);
 
         self.builder.position_at_end(dec_old);
+        let old_child_rc_a = self
+            .builder
+            .build_int_sub(
+                self.builder
+                    .build_ptr_to_int(old_child, i64, "oc_int")
+                    .map_err(llvm_err)?,
+                i64.const_int(8, false),
+                "oc_rc_a",
+            )
+            .map_err(llvm_err)?;
+        let old_child_rc_p = self
+            .builder
+            .build_int_to_ptr(old_child_rc_a, ptr, "oc_rc_p")
+            .map_err(llvm_err)?;
+        let old_child_rc = self
+            .builder
+            .build_load(i64, old_child_rc_p, "oc_rc")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let old_child_rc_dec = self
+            .builder
+            .build_int_sub(old_child_rc, one, "oc_rc_dec")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_store(old_child_rc_p, old_child_rc_dec)
+            .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(store_child);
 
         self.builder.position_at_end(store_child);

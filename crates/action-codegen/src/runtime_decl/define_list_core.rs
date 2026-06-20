@@ -2103,6 +2103,9 @@ impl<'ctx> CodeGen<'ctx> {
         let lsr_int_scan_next = self.context.append_basic_block(lsr_fn, "int_scan_next");
         let lsr_int_cow = self.context.append_basic_block(lsr_fn, "int_cow");
         let lsr_int_cow_copy = self.context.append_basic_block(lsr_fn, "int_cow_copy");
+        let lsr_int_inc_loop = self.context.append_basic_block(lsr_fn, "int_inc_loop");
+        let lsr_int_inc_body = self.context.append_basic_block(lsr_fn, "int_inc_body");
+        let lsr_int_inc_done = self.context.append_basic_block(lsr_fn, "int_inc_done");
         let lsr_int_update = self.context.append_basic_block(lsr_fn, "int_update");
         let lsr_int_ret = self.context.append_basic_block(lsr_fn, "int_ret");
         self.builder.position_at_end(lsr_entry);
@@ -2425,11 +2428,86 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_store(lsr_int_rc_p, lsr_new_int_rc)
             .map_err(llvm_err)?;
+        let lsr_rc_inc_fn = self.module.get_function("action_rc_inc").unwrap();
+        let _ = self.builder.build_unconditional_branch(lsr_int_inc_loop);
+
+        self.builder.position_at_end(lsr_int_inc_loop);
+        let lsr_inc_i_phi = self.builder.build_phi(i64, "inc_i").map_err(llvm_err)?;
+        lsr_inc_i_phi.add_incoming(&[(&zero, lsr_int_cow_copy)]);
+        let lsr_inc_i = lsr_inc_i_phi.as_basic_value().into_int_value();
+        let lsr_new_int_i8 = self
+            .builder
+            .build_pointer_cast(lsr_new_int, ptr, "ni_i8")
+            .map_err(llvm_err)?;
+        let lsr_new_int_count_raw = self
+            .builder
+            .build_load(i32, lsr_new_int_i8, "ni_count")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let lsr_new_int_count = self
+            .builder
+            .build_int_z_extend(lsr_new_int_count_raw, i64, "ni_cnt")
+            .map_err(llvm_err)?;
+        let lsr_inc_done = self
+            .builder
+            .build_int_compare(
+                IntPredicate::SGE,
+                lsr_inc_i,
+                lsr_new_int_count,
+                "inc_done",
+            )
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_conditional_branch(
+            lsr_inc_done,
+            lsr_int_inc_done,
+            lsr_int_inc_body,
+        );
+
+        self.builder.position_at_end(lsr_int_inc_body);
+        let lsr_inc_cb = unsafe {
+            self.builder
+                .build_gep(i8, lsr_new_int_i8, &[i64.const_int(16, false)], "inc_cb")
+                .map_err(llvm_err)?
+        };
+        let lsr_inc_cep = unsafe {
+            self.builder
+                .build_gep(
+                    self.child_entry_type,
+                    lsr_inc_cb,
+                    &[lsr_inc_i],
+                    "inc_cep",
+                )
+                .map_err(llvm_err)?
+        };
+        let lsr_inc_child = self
+            .builder
+            .build_extract_value(
+                self.builder
+                    .build_load(self.child_entry_type, lsr_inc_cep, "inc_ce")
+                    .map_err(llvm_err)?
+                    .into_struct_value(),
+                0,
+                "inc_ch",
+            )
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let _ = self
+            .builder
+            .build_call(lsr_rc_inc_fn, &[lsr_inc_child.into()], "")
+            .map_err(llvm_err)?;
+        let lsr_inc_next = self
+            .builder
+            .build_int_add(lsr_inc_i, i64.const_int(1, false), "inc_next")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(lsr_int_inc_loop);
+        lsr_inc_i_phi.add_incoming(&[(&lsr_inc_next, lsr_int_inc_body)]);
+
+        self.builder.position_at_end(lsr_int_inc_done);
         let _ = self.builder.build_unconditional_branch(lsr_int_update);
 
         self.builder.position_at_end(lsr_int_update);
         let lsr_work_phi = self.builder.build_phi(ptr, "work_phi").map_err(llvm_err)?;
-        lsr_work_phi.add_incoming(&[(&lsr_node, lsr_int_cow), (&lsr_new_int, lsr_int_cow_copy)]);
+        lsr_work_phi.add_incoming(&[(&lsr_node, lsr_int_cow), (&lsr_new_int, lsr_int_inc_done)]);
         let lsr_work_node = lsr_work_phi.as_basic_value().into_pointer_value();
         let lsr_work_i8 = self
             .builder
