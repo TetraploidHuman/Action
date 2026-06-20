@@ -1,0 +1,7 @@
+fun main() {
+    val base = List[10, 20, 30]
+    var ins = base
+    ins = ins.insert(0, 9999)
+    println(base.get(0))
+    println(ins.get(0))
+}

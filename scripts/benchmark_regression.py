@@ -109,6 +109,12 @@ def main() -> int:
         current = {k: v for k, v in current.items() if k in only_set}
 
     regressions = compare(baseline, current, args.threshold, args.min_delta_ms)
+    fail_rows = [name for name, (_, _, _, st) in sorted(current.items()) if st == "FAIL"]
+    if fail_rows:
+        print(f"ERROR: {len(fail_rows)} benchmark(s) with FAIL status:", file=sys.stderr)
+        for name in fail_rows:
+            print(f"  - {name}", file=sys.stderr)
+        return 1
     if not regressions:
         print(
             f"OK: {len(current)} benchmarks within {args.threshold * 100:.0f}% "

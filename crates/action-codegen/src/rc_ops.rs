@@ -861,6 +861,31 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(acc)
     }
 
+    /// True when another List binding exists in the scope chain (any root).
+    pub(super) fn any_other_list_var_in_scope(
+        &self,
+        exclude_ptr: PointerValue<'ctx>,
+    ) -> Result<inkwell::values::IntValue<'ctx>, String> {
+        let mut acc = self.context.bool_type().const_int(0, false);
+        let mut scope = &self.scope;
+        loop {
+            for var in scope.local_variables().values() {
+                if var.ptr == exclude_ptr || var.kind != ValKind::List {
+                    continue;
+                }
+                acc = self
+                    .builder
+                    .build_or(acc, self.context.bool_type().const_int(1, false), "ol_or")
+                    .map_err(llvm_err)?;
+            }
+            match &scope.parent {
+                Some(p) => scope = p.as_ref(),
+                None => break,
+            }
+        }
+        Ok(acc)
+    }
+
     /// Free an intermediate heap-typed value that is not a scope variable.
     /// Uses rc_inc+rc_dec to safely release. For tree values (List/Map/Set) with RC=1,
     /// this keeps the node alive (1→2→1) — the final scope cleanup handles actual freeing.

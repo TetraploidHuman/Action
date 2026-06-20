@@ -1135,6 +1135,21 @@ fn test_insert_exit() {
     assert_eq!(out.trim(), "2010\n2000");
 }
 
+#[test]
+fn test_cow_insert_isolation() {
+    let out = run_example("test_cow_insert_isolation.at");
+    assert_eq!(out.trim(), "10\n9999");
+}
+
+#[test]
+fn test_list_cow_property() {
+    let out = run_example("test_list_cow_property.at");
+    assert_eq!(
+        out.trim(),
+        "4\n3\n3\n10\n30\n2\n4\n3\n20\n4\n3\n20\n3\n11\n22\n33\nCoW property ok"
+    );
+}
+
 // ---- UFCS chain regression test ----
 
 #[test]

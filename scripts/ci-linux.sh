@@ -77,6 +77,24 @@ run_perf_smoke_debug() {
     done
 }
 
+run_perf_smoke_release() {
+    echo "=== perf smoke (release JIT) ==="
+    cargo build --release --target "$TARGET"
+    test -x "$RELEASE_ACTION"
+    local out b
+    out=$("$RELEASE_ACTION" run examples/bench_cow.at 2>&1) || return 1
+    echo "$out" | tail -1 | grep -qx '11' || {
+        echo "bench_cow (release): expected 11, got: $out" >&2
+        return 1
+    }
+    for b in bench_insert2 bench_insert10 bench_insert100 test_insert_exit; do
+        "$RELEASE_ACTION" run "examples/${b}.at" >/dev/null || {
+            echo "release smoke failed: ${b}" >&2
+            return 1
+        }
+    done
+}
+
 run_perf_quick() {
     echo "=== perf quick (release JIT, subset) ==="
     cargo build --release --target "$TARGET"
@@ -116,6 +134,7 @@ run_core() {
         cargo test --lib --target "$TARGET" -- --test-threads=1 --skip proptest
     cargo test --test integration --target "$TARGET" -- --test-threads=1
     run_perf_smoke_debug
+    run_perf_smoke_release
     cargo build -p action-frontend --target "$TARGET"
     cargo test -p action-frontend --target "$TARGET" -- --skip proptest
 }

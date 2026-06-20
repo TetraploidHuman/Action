@@ -1,4 +1,4 @@
-// B-tree path-copy insert (CoW when rc > 1). Returns null ptr if target leaf is full.
+// B-tree path-copy insert (CoW when rc > 1 or list root is shared). Returns null if leaf full.
 
 use super::{llvm_err, CodeGen};
 use inkwell::IntPredicate;
@@ -18,7 +18,13 @@ impl<'ctx> CodeGen<'ctx> {
         let lir_fn = self.module.add_function(
             "action_list_insert_rec",
             ptr.fn_type(
-                &[ptr.into(), i64.into(), i64.into(), self.string_type.into()],
+                &[
+                    ptr.into(),
+                    i64.into(),
+                    i64.into(),
+                    self.string_type.into(),
+                    i64.into(),
+                ],
                 false,
             ),
             None,
@@ -29,6 +35,8 @@ impl<'ctx> CodeGen<'ctx> {
         let leaf_full = self.context.append_basic_block(lir_fn, "leaf_full");
         let leaf_cow = self.context.append_basic_block(lir_fn, "leaf_cow");
         let leaf_cow_copy = self.context.append_basic_block(lir_fn, "leaf_cow_copy");
+        let leaf_xfer = self.context.append_basic_block(lir_fn, "leaf_xfer");
+        let leaf_no_xfer = self.context.append_basic_block(lir_fn, "leaf_no_xfer");
         let leaf_ready = self.context.append_basic_block(lir_fn, "leaf_ready");
         let leaf_shift_loop = self.context.append_basic_block(lir_fn, "leaf_shift_loop");
         let leaf_shift_body = self.context.append_basic_block(lir_fn, "leaf_shift_body");
@@ -39,19 +47,24 @@ impl<'ctx> CodeGen<'ctx> {
         let int_scan_next = self.context.append_basic_block(lir_fn, "int_scan_next");
         let int_cow = self.context.append_basic_block(lir_fn, "int_cow");
         let int_cow_copy = self.context.append_basic_block(lir_fn, "int_cow_copy");
+        let int_xfer = self.context.append_basic_block(lir_fn, "int_xfer");
+        let int_no_xfer = self.context.append_basic_block(lir_fn, "int_no_xfer");
         let int_inc_loop = self.context.append_basic_block(lir_fn, "int_inc_loop");
         let int_inc_body = self.context.append_basic_block(lir_fn, "int_inc_body");
         let int_inc_done = self.context.append_basic_block(lir_fn, "int_inc_done");
+        let int_prep_recurse = self.context.append_basic_block(lir_fn, "int_prep_recurse");
         let int_update = self.context.append_basic_block(lir_fn, "int_update");
         let int_ret = self.context.append_basic_block(lir_fn, "int_ret");
         let dec_old = self.context.append_basic_block(lir_fn, "dec_old");
         let store_child = self.context.append_basic_block(lir_fn, "store_child");
+        let fail_ret = self.context.append_basic_block(lir_fn, "fail_ret");
 
         self.builder.position_at_end(entry);
         let lir_node = lir_fn.get_first_param().unwrap().into_pointer_value();
         let lir_height = lir_fn.get_nth_param(1).unwrap().into_int_value();
         let lir_idx = lir_fn.get_nth_param(2).unwrap().into_int_value();
         let lir_val = lir_fn.get_nth_param(3).unwrap().into_struct_value();
+        let list_root_rc = lir_fn.get_nth_param(4).unwrap().into_int_value();
         let is_leaf = self
             .builder
             .build_int_compare(IntPredicate::EQ, lir_height, zero, "is_leaf")
@@ -111,7 +124,15 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
         let leaf_shared = self
             .builder
-            .build_int_compare(IntPredicate::SGT, leaf_rc, one, "leaf_shared")
+            .build_or(
+                self.builder
+                    .build_int_compare(IntPredicate::SGT, leaf_rc, one, "leaf_sh_rc")
+                    .map_err(llvm_err)?,
+                self.builder
+                    .build_int_compare(IntPredicate::SGT, list_root_rc, one, "leaf_sh_root")
+                    .map_err(llvm_err)?,
+                "leaf_shared",
+            )
             .map_err(llvm_err)?;
         let _ = self
             .builder
@@ -134,6 +155,14 @@ impl<'ctx> CodeGen<'ctx> {
                 "",
             )
             .map_err(llvm_err)?;
+        let leaf_do_xfer = self
+            .builder
+            .build_int_compare(IntPredicate::SGT, leaf_rc, one, "leaf_do_xfer")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(leaf_do_xfer, leaf_xfer, leaf_no_xfer);
+        self.builder.position_at_end(leaf_xfer);
         let new_leaf_rc = self
             .builder
             .build_int_sub(leaf_rc, one, "new_leaf_rc")
@@ -143,10 +172,16 @@ impl<'ctx> CodeGen<'ctx> {
             .build_store(leaf_rc_p, new_leaf_rc)
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(leaf_ready);
+        self.builder.position_at_end(leaf_no_xfer);
+        let _ = self.builder.build_unconditional_branch(leaf_ready);
 
         self.builder.position_at_end(leaf_ready);
         let leaf_phi = self.builder.build_phi(ptr, "leaf_phi").map_err(llvm_err)?;
-        leaf_phi.add_incoming(&[(&lir_node, leaf_cow), (&new_leaf, leaf_cow_copy)]);
+        leaf_phi.add_incoming(&[
+            (&lir_node, leaf_cow),
+            (&new_leaf, leaf_xfer),
+            (&new_leaf, leaf_no_xfer),
+        ]);
         let work_leaf = leaf_phi.as_basic_value().into_pointer_value();
         let work_i8 = self
             .builder
@@ -252,7 +287,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self.builder.build_return(Some(&work_leaf));
 
-        // ---- internal: scan, recurse, path-copy, bump totals ----
+        // ---- internal: scan, path-copy, recurse, update ----
         self.builder.position_at_end(int_scan_loop);
         let phi_i = self.builder.build_phi(i64, "phi_i").map_err(llvm_err)?;
         let phi_acc = self.builder.build_phi(i64, "phi_acc").map_err(llvm_err)?;
@@ -332,28 +367,6 @@ impl<'ctx> CodeGen<'ctx> {
         phi_found_acc.add_incoming(&[(&scan_acc, int_scan_body), (&scan_acc, int_scan_loop)]);
         let found_i = phi_found_i.as_basic_value().into_int_value();
         let offset_before = phi_found_acc.as_basic_value().into_int_value();
-        let found_ce_base = unsafe {
-            self.builder
-                .build_gep(i8, int_i8, &[i64.const_int(16, false)], "fceb")
-                .map_err(llvm_err)
-        }?;
-        let found_ce_ptr = unsafe {
-            self.builder
-                .build_gep(self.child_entry_type, found_ce_base, &[found_i], "fcep")
-                .map_err(llvm_err)
-        }?;
-        let old_child = self
-            .builder
-            .build_extract_value(
-                self.builder
-                    .build_load(self.child_entry_type, found_ce_ptr, "fce")
-                    .map_err(llvm_err)?
-                    .into_struct_value(),
-                0,
-                "old_child",
-            )
-            .map_err(llvm_err)?
-            .into_pointer_value();
         let local_idx = self
             .builder
             .build_int_sub(lir_idx, offset_before, "local_idx")
@@ -362,32 +375,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_sub(lir_height, one, "child_h")
             .map_err(llvm_err)?;
-        let new_child = self
-            .builder
-            .build_call(
-                lir_fn,
-                &[
-                    old_child.into(),
-                    child_h.into(),
-                    local_idx.into(),
-                    lir_val.into(),
-                ],
-                "new_child",
-            )
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .unwrap_basic()
-            .into_pointer_value();
-        let child_failed = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, new_child, null_ptr, "child_fail")
-            .map_err(llvm_err)?;
-        let fail_ret = self.context.append_basic_block(lir_fn, "fail_ret");
-        let _ = self
-            .builder
-            .build_conditional_branch(child_failed, fail_ret, int_cow);
-        self.builder.position_at_end(fail_ret);
-        let _ = self.builder.build_return(Some(&null_ptr));
+        let _ = self.builder.build_unconditional_branch(int_cow);
 
         self.builder.position_at_end(int_cow);
         let int_int = self
@@ -409,11 +397,19 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
         let int_shared = self
             .builder
-            .build_int_compare(IntPredicate::SGT, int_rc, one, "int_shared")
+            .build_or(
+                self.builder
+                    .build_int_compare(IntPredicate::SGT, int_rc, one, "int_sh_rc")
+                    .map_err(llvm_err)?,
+                self.builder
+                    .build_int_compare(IntPredicate::SGT, list_root_rc, one, "int_sh_root")
+                    .map_err(llvm_err)?,
+                "int_shared",
+            )
             .map_err(llvm_err)?;
         let _ = self
             .builder
-            .build_conditional_branch(int_shared, int_cow_copy, int_update);
+            .build_conditional_branch(int_shared, int_cow_copy, int_prep_recurse);
 
         self.builder.position_at_end(int_cow_copy);
         let int_sz = self.internal_type.size_of().ok_or("internal size")?;
@@ -432,6 +428,14 @@ impl<'ctx> CodeGen<'ctx> {
                 "",
             )
             .map_err(llvm_err)?;
+        let int_do_xfer = self
+            .builder
+            .build_int_compare(IntPredicate::SGT, int_rc, one, "int_do_xfer")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(int_do_xfer, int_xfer, int_no_xfer);
+        self.builder.position_at_end(int_xfer);
         let new_int_rc = self
             .builder
             .build_int_sub(int_rc, one, "new_int_rc")
@@ -441,11 +445,13 @@ impl<'ctx> CodeGen<'ctx> {
             .build_store(int_rc_p, new_int_rc)
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(int_inc_loop);
+        self.builder.position_at_end(int_no_xfer);
+        let _ = self.builder.build_unconditional_branch(int_inc_loop);
 
         // memcpy duplicates child pointers — bump each child's RC in the copy.
         self.builder.position_at_end(int_inc_loop);
         let inc_i_phi = self.builder.build_phi(i64, "inc_i").map_err(llvm_err)?;
-        inc_i_phi.add_incoming(&[(&zero, int_cow_copy)]);
+        inc_i_phi.add_incoming(&[(&zero, int_xfer), (&zero, int_no_xfer)]);
         let inc_i = inc_i_phi.as_basic_value().into_int_value();
         let new_int_i8 = self
             .builder
@@ -503,12 +509,66 @@ impl<'ctx> CodeGen<'ctx> {
         inc_i_phi.add_incoming(&[(&inc_next, int_inc_body)]);
 
         self.builder.position_at_end(int_inc_done);
-        let _ = self.builder.build_unconditional_branch(int_update);
+        let _ = self.builder.build_unconditional_branch(int_prep_recurse);
 
-        self.builder.position_at_end(int_update);
+        self.builder.position_at_end(int_prep_recurse);
         let work_phi = self.builder.build_phi(ptr, "work_phi").map_err(llvm_err)?;
         work_phi.add_incoming(&[(&lir_node, int_cow), (&new_int, int_inc_done)]);
         let work_node = work_phi.as_basic_value().into_pointer_value();
+        let prep_i8 = self
+            .builder
+            .build_pointer_cast(work_node, ptr, "prep_i8")
+            .map_err(llvm_err)?;
+        let prep_ce_base = unsafe {
+            self.builder
+                .build_gep(i8, prep_i8, &[i64.const_int(16, false)], "prep_ceb")
+                .map_err(llvm_err)
+        }?;
+        let prep_ce_ptr = unsafe {
+            self.builder
+                .build_gep(self.child_entry_type, prep_ce_base, &[found_i], "prep_cep")
+                .map_err(llvm_err)
+        }?;
+        let work_child = self
+            .builder
+            .build_extract_value(
+                self.builder
+                    .build_load(self.child_entry_type, prep_ce_ptr, "prep_ce")
+                    .map_err(llvm_err)?
+                    .into_struct_value(),
+                0,
+                "work_child",
+            )
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let new_child = self
+            .builder
+            .build_call(
+                lir_fn,
+                &[
+                    work_child.into(),
+                    child_h.into(),
+                    local_idx.into(),
+                    lir_val.into(),
+                    list_root_rc.into(),
+                ],
+                "new_child",
+            )
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_pointer_value();
+        let child_failed = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, new_child, null_ptr, "child_fail")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(child_failed, fail_ret, int_update);
+        self.builder.position_at_end(fail_ret);
+        let _ = self.builder.build_return(Some(&null_ptr));
+
+        self.builder.position_at_end(int_update);
         let work_i8 = self
             .builder
             .build_pointer_cast(work_node, ptr, "work_i8")
@@ -535,7 +595,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_ptr_to_int(new_child, i64, "nc_i")
                     .map_err(llvm_err)?,
                 self.builder
-                    .build_ptr_to_int(old_child, i64, "oc_i")
+                    .build_ptr_to_int(work_child, i64, "wc_i")
                     .map_err(llvm_err)?,
                 "child_changed",
             )
@@ -549,7 +609,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_sub(
                 self.builder
-                    .build_ptr_to_int(old_child, i64, "oc_int")
+                    .build_ptr_to_int(work_child, i64, "wc_int")
                     .map_err(llvm_err)?,
                 i64.const_int(8, false),
                 "oc_rc_a",
@@ -590,7 +650,6 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(after_inc_bb);
         self.builder.position_at_end(after_inc_bb);
-        // bump child subtree_total (+1)
         let st_ptr = unsafe {
             self.builder
                 .build_gep(i64, upd_ce_ptr, &[i64.const_int(1, false)], "st_ptr")
@@ -606,7 +665,6 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_add(st_val, one, "st_new")
             .map_err(llvm_err)?;
         self.builder.build_store(st_ptr, st_new).map_err(llvm_err)?;
-        // bump internal node total (+1)
         let total_ptr = unsafe {
             self.builder
                 .build_gep(i64, work_i8, &[i64.const_int(1, false)], "total_ptr")

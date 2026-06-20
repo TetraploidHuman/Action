@@ -65,7 +65,7 @@ include/
   action_rt.h               # Runtime C ABI（scripts/generate_action_rt_header.py）
 
 tests/
-  integration.rs            # 语义 oracle（140+ 项）
+  integration.rs            # 语义 oracle（153 项）
   hir_golden.rs
   diagnostics_json.rs
   fixtures/                 # 多文件 compile-error 夹具
@@ -144,7 +144,7 @@ pub use action_lsp as lsp;
 
 | 类别 | 说明 | 覆盖 |
 |------|------|------|
-| List/Map CoW | 写时复制、共享引用隔离、语句形式 mutating UFCS | ✅ + `test_map_cow_properties` / `test_collection_stmt_mut` |
+| List/Map CoW | 写时复制、共享引用隔离、语句形式 mutating UFCS | ✅ + `test_map_cow_properties` / `test_collection_stmt_mut` / `test_list_cow_property` / `test_insert_exit` |
 | compile-error oracle | import 循环/非法名、泛型、重载 | ✅ |
 | diagnostics JSON | `tests/diagnostics_json.rs` | ✅ |
 | Nullable / UFCS / TCO / 泛型 | 见 integration.rs | ✅ |
@@ -157,7 +157,9 @@ nix-shell --run 'cargo test --release --test diagnostics_json -- --test-threads=
 ./target/release/action run examples/bench_cow.at   # 预期 11
 ```
 
-集成测试 **140+ 项**为语义权威；重构不得降低通过数。
+**CI（`scripts/ci-linux.sh core`）**：debug 冒烟（`bench_cow` / `bench_all` / `bench_concat_depth` / `bench_insert100`）+ **release 冒烟**（`bench_insert2/10/100` + `test_insert_exit`）。Benchmark job 全量 JIT/AOT + `benchmark_regression.py`（含 FAIL 行检测）。
+
+集成测试 **153 项**为语义权威；重构不得降低通过数。
 
 ## 与自举的关系
 

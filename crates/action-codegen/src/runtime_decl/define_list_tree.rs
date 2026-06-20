@@ -1082,10 +1082,28 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self.builder.build_return(Some(&li_push_rv));
         // Split: try insert_rec (path-copy CoW); null → take + push + drop + concat
         self.builder.position_at_end(li_split_bb);
-        let li_insert_rec_fn = self
-            .module
-            .get_function("action_list_insert_rec")
-            .unwrap();
+        let li_insert_rec_fn = self.module.get_function("action_list_insert_rec").unwrap();
+        let li_root_rc_p = self
+            .builder
+            .build_int_to_ptr(
+                self.builder
+                    .build_int_sub(
+                        self.builder
+                            .build_ptr_to_int(li_node, self.i64_ty(), "li_root_pi")
+                            .map_err(llvm_err)?,
+                        self.i64_ty().const_int(8, false),
+                        "li_root_ra",
+                    )
+                    .map_err(llvm_err)?,
+                self.ptr_ty(),
+                "li_root_rp",
+            )
+            .map_err(llvm_err)?;
+        let li_root_rc = self
+            .builder
+            .build_load(self.i64_ty(), li_root_rc_p, "li_root_rc")
+            .map_err(llvm_err)?
+            .into_int_value();
         let li_rec_root = self
             .builder
             .build_call(
@@ -1095,6 +1113,7 @@ impl<'ctx> CodeGen<'ctx> {
                     li_height.into(),
                     li_idx3.into(),
                     li_elem.into(),
+                    li_root_rc.into(),
                 ],
                 "rec_root",
             )
@@ -1104,20 +1123,13 @@ impl<'ctx> CodeGen<'ctx> {
             .into_pointer_value();
         let li_rec_null = self
             .builder
-            .build_int_compare(
-                IntPredicate::EQ,
-                li_rec_root,
-                ptr.const_null(),
-                "rec_null",
-            )
+            .build_int_compare(IntPredicate::EQ, li_rec_root, ptr.const_null(), "rec_null")
             .map_err(llvm_err)?;
         let li_rec_ok_bb = self.context.append_basic_block(li_fn, "rec_ok");
         let li_rec_fallback_bb = self.context.append_basic_block(li_fn, "rec_fallback");
-        let _ = self.builder.build_conditional_branch(
-            li_rec_null,
-            li_rec_fallback_bb,
-            li_rec_ok_bb,
-        );
+        let _ =
+            self.builder
+                .build_conditional_branch(li_rec_null, li_rec_fallback_bb, li_rec_ok_bb);
         self.builder.position_at_end(li_rec_ok_bb);
         let li_rec_new_len = self
             .builder
