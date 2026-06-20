@@ -1,6 +1,6 @@
 // Submodule: builtins_call
 
-use super::call_arg::CallArg;
+#[cfg(test)]
 use action_frontend::ast::*;
 use action_frontend::builtin::UfcsReceiverKind;
 use inkwell::values::{BasicValueEnum, PointerValue};
@@ -9,6 +9,8 @@ use inkwell::IntPredicate;
 use super::{llvm_err, CodeGen, TypedValue};
 
 impl<'ctx> CodeGen<'ctx> {
+    /// AST call compilation (test-only; production uses [`compile_call_hir`]).
+    #[cfg(test)]
     pub(super) fn compile_call(
         &mut self,
         func: &Expr,
@@ -126,6 +128,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Perform an indirect function call through a TypedValue::Fn, TypedValue::Closure, or TypedValue::Int.
+    #[cfg(test)]
     pub(super) fn compile_indirect_call(
         &mut self,
         target: TypedValue<'ctx>,

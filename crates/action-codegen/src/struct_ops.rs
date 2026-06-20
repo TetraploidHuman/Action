@@ -3,9 +3,11 @@
 // Extracted from misc.rs.
 //
 
+#[cfg(test)]
 use action_frontend::ast::*;
 use inkwell::types::{BasicTypeEnum, StructType};
 use inkwell::values::{BasicValue, BasicValueEnum, PointerValue};
+#[cfg(test)]
 use inkwell::IntPredicate;
 
 use super::{llvm_err, CodeGen, InnerType, TypedValue, ValKind};
@@ -18,7 +20,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<u32, String> {
         // Find the named struct whose LLVM type matches st
         for (name, named_st) in &self.named_structs {
-            if *named_st == *st {
+            if named_st == st {
                 if let Some(si) = self.registry.structs.values().find(|si| si.name == *name) {
                     return si
                         .fields
@@ -37,7 +39,7 @@ impl<'ctx> CodeGen<'ctx> {
     /// ValKind for a struct field from the type registry (List vs Map vs Set).
     pub(super) fn struct_field_val_kind(&self, st: &StructType<'ctx>, field_idx: u32) -> ValKind {
         for (name, named_st) in &self.named_structs {
-            if *named_st == *st {
+            if named_st == st {
                 if let Some(si) = self.registry.structs.get(name) {
                     if let Some((_, ty)) = si.fields.get(field_idx as usize) {
                         return self.param_val_kind(Some(ty));
@@ -98,6 +100,8 @@ impl<'ctx> CodeGen<'ctx> {
             _ => Err("Cannot extract field from non-struct value".to_string()),
         }
     }
+
+    #[cfg(test)]
 
     pub(super) fn compile_string_interp(
         &mut self,
@@ -329,6 +333,8 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    #[cfg(test)]
+
     pub(super) fn compile_field_access(
         &mut self,
         obj: &Expr,
@@ -519,6 +525,8 @@ impl<'ctx> CodeGen<'ctx> {
         vec![]
     }
 
+    #[cfg(test)]
+
     pub(super) fn compile_struct_lit(
         &mut self,
         fields: &[(String, Expr)],
@@ -639,6 +647,8 @@ impl<'ctx> CodeGen<'ctx> {
         }
         self.compile_tuple_values(&compiled)
     }
+
+    #[cfg(test)]
 
     pub(super) fn compile_tuple(
         &mut self,

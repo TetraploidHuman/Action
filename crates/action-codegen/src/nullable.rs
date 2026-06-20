@@ -348,6 +348,7 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// Compile or-block: nullable or { fallback }
     /// If nullable is null (flag=1), return fallback; otherwise return inner value
+    #[cfg(test)]
     pub(super) fn compile_or_block(
         &mut self,
         nullable: &Expr,
@@ -1059,6 +1060,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Wrap a TypedValue in a nullable struct of matching LLVM type.
+    #[cfg(test)]
     pub(super) fn wrap_in_typed_nullable(
         &mut self,
         value: &TypedValue<'ctx>,

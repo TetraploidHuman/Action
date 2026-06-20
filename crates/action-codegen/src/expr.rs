@@ -9,6 +9,8 @@ use inkwell::{FloatPredicate, IntPredicate};
 use super::{llvm_err, CodeGen, InnerType, Scope, TypedValue, ValKind};
 
 impl<'ctx> CodeGen<'ctx> {
+    /// AST expression compilation (test-only; production uses [`compile_hir_expr`]).
+    #[cfg(test)]
     pub(super) fn compile_expr(&mut self, expr: &Expr) -> Result<TypedValue<'ctx>, String> {
         match &expr.kind {
             ExprKind::Literal(lit) => self.compile_literal(lit),
@@ -197,6 +199,8 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
     }
+
+    #[cfg(test)]
 
     pub(super) fn compile_lambda(
         &mut self,
@@ -1202,6 +1206,8 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    #[cfg(test)]
+
     pub(super) fn compile_binary(
         &mut self,
         lhs: &Expr,
@@ -1313,6 +1319,7 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// Short-circuit AND: evaluate left; if false, result is false; else evaluate right
     /// Short-circuit AND: evaluate left; if false, result is false; else evaluate right
+    #[cfg(test)]
     pub(super) fn compile_and(
         &mut self,
         lhs: &Expr,
@@ -1361,6 +1368,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Short-circuit OR: evaluate left; if true, result is true; else evaluate right
+    #[cfg(test)]
     pub(super) fn compile_or(
         &mut self,
         lhs: &Expr,
@@ -1868,6 +1876,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// `in` operator: value in range, value in list, value in set, key in map
+    #[cfg(test)]
     pub(super) fn bin_in(&mut self, lhs: &Expr, rhs: &Expr) -> Result<TypedValue<'ctx>, String> {
         let value = self.compile_expr(lhs)?;
         // Check if rhs is a range expression
@@ -1985,6 +1994,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// `is` operator: expr is Type — runtime type check
+    #[cfg(test)]
     pub(super) fn bin_is(&mut self, lhs: &Expr, rhs: &Expr) -> Result<TypedValue<'ctx>, String> {
         let type_name = match &rhs.kind {
             ExprKind::Ident(name) => name.clone(),
@@ -2185,6 +2195,8 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    #[cfg(test)]
+
     pub(super) fn compile_unary(
         &mut self,
         op: UnaryOp,
@@ -2294,6 +2306,7 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// Compile an expression and load the result as a BasicValueEnum for passing as a call argument.
     /// Handles loading from alloca pointers for enum, struct, and string types.
+    #[cfg(test)]
     pub(super) fn compile_and_load(&mut self, expr: &Expr) -> Result<BasicValueEnum<'ctx>, String> {
         let v = self.compile_expr(expr)?;
         self.typed_value_to_bv_for_call(&v)
@@ -2514,6 +2527,7 @@ impl<'ctx> CodeGen<'ctx> {
 }
 
 /// Collect free variables in `expr` that are NOT bound by `params` or local let/destructure.
+#[cfg(test)]
 pub(super) fn collect_free_vars(
     expr: &Expr,
     params: &[String],
@@ -2614,6 +2628,7 @@ pub(super) fn collect_free_vars(
 }
 
 /// Visit a When expression for free vars, handling arm pattern bindings.
+#[cfg(test)]
 fn visit_when_free_vars(
     w: &When,
     params: &[String],
@@ -2661,6 +2676,7 @@ fn visit_when_free_vars(
 }
 
 /// Visit a For expression for free vars, handling loop variable bindings.
+#[cfg(test)]
 fn visit_for_free_vars(
     f: &For,
     params: &[String],
@@ -2718,6 +2734,7 @@ fn visit_for_free_vars(
 }
 
 /// Visit a Stmt for free vars in its sub-expressions.
+#[cfg(test)]
 fn visit_stmt_free_vars(
     stmt: &Stmt,
     params: &[String],
@@ -3047,6 +3064,7 @@ fn collect_hir_pattern_vars(pat: &action_frontend::hir::HirPattern) -> Vec<Strin
 }
 
 /// Collect variable names bound by a pattern.
+#[cfg(test)]
 fn collect_pattern_vars(pat: &Pattern) -> Vec<String> {
     match pat {
         Pattern::Variable(name) => vec![name.clone()],

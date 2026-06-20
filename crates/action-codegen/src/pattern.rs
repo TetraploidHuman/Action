@@ -1,7 +1,7 @@
 // Submodule: pattern
 
 use action_frontend::ast::*;
-use action_frontend::hir::HirExprKind;
+use action_frontend::hir::{HirExprKind, HirPattern};
 use inkwell::types::BasicTypeEnum;
 use inkwell::values::{IntValue, PointerValue};
 use inkwell::FloatPredicate;
@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use super::{llvm_err, CodeGen, GepCursor, InnerType, Scope, TypedValue};
 
 impl<'ctx> CodeGen<'ctx> {
+    #[cfg(test)]
     pub(super) fn compile_when(&mut self, w: &When) -> Result<TypedValue<'ctx>, String> {
         match &w.kind {
             WhenKind::OneLine {
@@ -63,6 +64,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Compile a guard expression and return the boolean result.
+    #[cfg(test)]
     fn compile_guard(&mut self, guard: &Option<Box<Expr>>) -> Result<IntValue<'ctx>, String> {
         match guard {
             Some(expr) => {
@@ -85,6 +87,8 @@ impl<'ctx> CodeGen<'ctx> {
             None => Ok(self.bool_ty().const_int(1, false)),
         }
     }
+
+    #[cfg(test)]
 
     pub(super) fn compile_condition_chain(
         &mut self,
@@ -212,6 +216,8 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         self.bv_to_typed(loaded)
     }
+
+    #[cfg(test)]
 
     pub(super) fn compile_value_match(
         &mut self,
@@ -419,6 +425,8 @@ impl<'ctx> CodeGen<'ctx> {
             Pattern::Constructor { .. } => Ok(b1.const_int(1, false)),
             Pattern::Tuple(_) => Ok(b1.const_int(1, false)),
             Pattern::Null => Ok(b1.const_int(0, false)),
+            #[cfg(test)]
+            #[cfg(test)]
             Pattern::Expr(expr) => {
                 let val = self.compile_expr(expr)?;
                 match val {
@@ -431,6 +439,10 @@ impl<'ctx> CodeGen<'ctx> {
                     _ => Ok(b1.const_int(1, false)),
                 }
             }
+            #[cfg(not(test))]
+            Pattern::Expr(_) => Err(
+                "Pattern::Expr in production requires compile_hir_pattern_condition".to_string(),
+            ),
         }
     }
 
@@ -601,6 +613,7 @@ impl<'ctx> CodeGen<'ctx> {
                     Ok(b1.const_int(0, false))
                 }
             }
+            #[cfg(test)]
             Pattern::Range(start, end) => {
                 if let TypedValue::Int(iv) = val {
                     let s = self.compile_expr(start)?;
@@ -625,6 +638,10 @@ impl<'ctx> CodeGen<'ctx> {
                     Ok(b1.const_int(0, false))
                 }
             }
+            #[cfg(not(test))]
+            Pattern::Range(_, _) => Err(
+                "Pattern::Range in production requires compile_hir_pattern_match".to_string(),
+            ),
             Pattern::IsType(type_name) => {
                 // Enum variant check: `is Some` on an Option enum value
                 if let Some((_, variant)) = self.registry.lookup_variant(type_name) {
@@ -696,6 +713,7 @@ impl<'ctx> CodeGen<'ctx> {
                     Ok(b1.const_int(0, false))
                 }
             }
+            #[cfg(test)]
             Pattern::Expr(expr) => {
                 // In value-match context, evaluate expression as a condition.
                 // If the value matches (truthy), the expression acts as a guard.
@@ -712,6 +730,10 @@ impl<'ctx> CodeGen<'ctx> {
                     _ => Ok(b1.const_int(1, false)),
                 }
             }
+            #[cfg(not(test))]
+            Pattern::Expr(_) => Err(
+                "Pattern::Expr in production requires compile_hir_pattern_match".to_string(),
+            ),
         }
     }
 
@@ -1068,6 +1090,8 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
+    #[cfg(test)]
+
     pub(super) fn compile_when_branch_lazy(
         &mut self,
         c: IntValue<'ctx>,
@@ -1203,6 +1227,77 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    pub(super) fn compile_hir_pattern_match(
+        &mut self,
+        pattern: &HirPattern,
+        val: &TypedValue<'ctx>,
+    ) -> Result<IntValue<'ctx>, String> {
+        match pattern {
+            HirPattern::Range(start, end) => {
+                if let TypedValue::Int(iv) = val {
+                    let s = self.compile_hir_expr(start)?;
+                    let e = self.compile_hir_expr(end)?;
+                    let (sv, ev) = match (&s, &e) {
+                        (TypedValue::Int(a), TypedValue::Int(b)) => (*a, *b),
+                        _ => return Err("Range bounds must be integers".to_string()),
+                    };
+                    let ge = self
+                        .builder
+                        .build_int_compare(IntPredicate::SGE, *iv, sv, "range_lo")
+                        .map_err(llvm_err)?;
+                    let lt = self
+                        .builder
+                        .build_int_compare(IntPredicate::SLT, *iv, ev, "range_hi")
+                        .map_err(llvm_err)?;
+                    Ok(self
+                        .builder
+                        .build_and(ge, lt, "range_match")
+                        .map_err(llvm_err)?)
+                } else {
+                    Ok(self.bool_ty().const_int(0, false))
+                }
+            }
+            HirPattern::Expr(expr) => {
+                let compiled = self.compile_hir_expr(expr)?;
+                match compiled {
+                    TypedValue::Bool(b) => Ok(b),
+                    TypedValue::Int(i) => {
+                        let zero = self.i64_ty().const_int(0, false);
+                        Ok(self
+                            .builder
+                            .build_int_compare(IntPredicate::NE, i, zero, "pat_expr")
+                            .map_err(llvm_err)?)
+                    }
+                    _ => Ok(self.bool_ty().const_int(1, false)),
+                }
+            }
+            other => self.compile_pattern_match(&other.to_pattern(), val),
+        }
+    }
+
+    pub(super) fn compile_hir_pattern_condition(
+        &mut self,
+        pattern: &HirPattern,
+    ) -> Result<IntValue<'ctx>, String> {
+        match pattern {
+            HirPattern::Expr(expr) => {
+                let compiled = self.compile_hir_expr(expr)?;
+                match compiled {
+                    TypedValue::Bool(b) => Ok(b),
+                    TypedValue::Int(i) => {
+                        let zero = self.i64_ty().const_int(0, false);
+                        Ok(self
+                            .builder
+                            .build_int_compare(IntPredicate::NE, i, zero, "cond_expr")
+                            .map_err(llvm_err)?)
+                    }
+                    _ => Ok(self.bool_ty().const_int(1, false)),
+                }
+            }
+            other => self.compile_pattern_condition(&other.to_pattern(), None),
+        }
+    }
+
     pub(super) fn compile_hir_when(
         &mut self,
         w: &action_frontend::hir::HirWhen,
@@ -1311,7 +1406,7 @@ impl<'ctx> CodeGen<'ctx> {
             let is_last = i == arms.len() - 1;
             self.builder.position_at_end(next_check);
 
-            let matches = self.compile_pattern_match(&arm.pattern, &matched_val)?;
+            let matches = self.compile_hir_pattern_match(&hir_arm.pattern, &matched_val)?;
             let matches = if hir_arm.guard.is_some() {
                 let mut saved_scope = Scope::new();
                 std::mem::swap(&mut self.scope, &mut saved_scope);
@@ -1455,7 +1550,7 @@ impl<'ctx> CodeGen<'ctx> {
             let is_last = i == arms.len() - 1;
             self.builder.position_at_end(next_check);
 
-            let matches = self.compile_pattern_condition(&arm.pattern, None)?;
+            let matches = self.compile_hir_pattern_condition(&hir_arm.pattern)?;
             let matches = if arm.guard.is_some() {
                 let mut saved_scope = Scope::new();
                 std::mem::swap(&mut self.scope, &mut saved_scope);

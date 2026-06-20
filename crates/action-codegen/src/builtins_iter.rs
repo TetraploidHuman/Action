@@ -1,5 +1,6 @@
 // Submodule: builtins_iter
 
+#[cfg(test)]
 use action_frontend::ast::*;
 use inkwell::values::{IntValue, PointerValue};
 use inkwell::IntPredicate;
@@ -64,6 +65,8 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::List(result_alloca))
     }
 
+    #[cfg(test)]
+
     pub(super) fn extract_map_call_args(expr: &Expr) -> Option<(&Expr, &Expr)> {
         let ExprKind::Call {
             func,
@@ -96,6 +99,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Fused map+filter: single tree walk over inner list.
+    #[cfg(test)]
     pub(super) fn fused_map_filter(
         &mut self,
         map_fn_expr: &Expr,
@@ -106,6 +110,8 @@ impl<'ctx> CodeGen<'ctx> {
         let inner_list_val = self.compile_expr(inner_list_expr)?;
         self.fused_map_filter_values(map_fn_val, inner_list_val, filter_fn_val)
     }
+
+    #[cfg(test)]
 
     pub(super) fn extract_filter_call_args(expr: &Expr) -> Option<(&Expr, &Expr)> {
         let ExprKind::Call {
@@ -139,6 +145,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Fused filter+map: single B-tree walk (filter then map on survivors).
+    #[cfg(test)]
     pub(super) fn fused_filter_map(
         &mut self,
         filter_fn_expr: &Expr,
@@ -200,6 +207,8 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::List(res_a))
     }
 
+    #[cfg(test)]
+
     pub(super) fn extract_flatmap_call_args(expr: &Expr) -> Option<(&Expr, &Expr)> {
         let ExprKind::Call {
             func,
@@ -250,8 +259,8 @@ impl<'ctx> CodeGen<'ctx> {
             return Err("filter expects 2 arguments (fn, list)".to_string());
         };
 
-        if let CallArg::Hir(list_hir) = list_arg {
-            if let Some((map_fn, inner)) = Self::extract_map_call_args_hir(list_hir) {
+        let CallArg::Hir(list_hir) = list_arg;
+        if let Some((map_fn, inner)) = Self::extract_map_call_args_hir(list_hir) {
                 let filter_fn_val = if let Some(lam) = trailing {
                     self.compile_call_arg(lam)?
                 } else {
@@ -267,8 +276,8 @@ impl<'ctx> CodeGen<'ctx> {
                 };
                 return self.fused_flatmap_filter_hir(flat_fn, inner, filter_fn_val);
             }
-        }
 
+        #[cfg(test)]
         if let CallArg::Ast(list_expr) = list_arg {
             if let Some((map_fn_expr, inner_list_expr)) = Self::extract_map_call_args(list_expr) {
                 let filter_fn_val = if let Some(lam) = trailing {
@@ -1400,6 +1409,8 @@ impl<'ctx> CodeGen<'ctx> {
         Ok((fn_ptr, list_ptr, init_val))
     }
 
+    #[cfg(test)]
+
     pub(super) fn fused_flatmap_filter_ast(
         &mut self,
         flat_fn_expr: &Expr,
@@ -1578,6 +1589,8 @@ impl<'ctx> CodeGen<'ctx> {
 
         Ok(TypedValue::List(result_alloca))
     }
+
+    #[cfg(test)]
 
     pub(super) fn fused_map_take_while(
         &mut self,

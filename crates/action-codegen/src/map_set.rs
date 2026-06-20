@@ -1,5 +1,6 @@
 // Submodule: map_set
 
+#[cfg(test)]
 use action_frontend::ast::*;
 use inkwell::types::BasicTypeEnum;
 use inkwell::values::{BasicValue, BasicValueEnum, PointerValue};
@@ -19,6 +20,8 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?
             .into_int_value())
     }
+
+    #[cfg(test)]
 
     pub(super) fn compile_map_lit(
         &mut self,
@@ -70,6 +73,8 @@ impl<'ctx> CodeGen<'ctx> {
 
         Ok(TypedValue::Map(alloca))
     }
+
+    #[cfg(test)]
 
     pub(super) fn compile_set_lit(
         &mut self,
@@ -132,6 +137,7 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::Set(alloca))
     }
 
+    #[cfg(test)]
     pub(super) fn builtin_set_of(
         &mut self,
         args: &[CallArg<'_>],

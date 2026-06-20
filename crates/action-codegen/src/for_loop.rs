@@ -10,6 +10,7 @@ use inkwell::IntPredicate;
 use super::{llvm_err, CodeGen, Scope, TypedValue, ValKind};
 
 pub(super) enum ForExprSrc<'a> {
+    #[cfg(test)]
     Ast(&'a Expr),
     Hir(&'a HirExpr),
 }
@@ -17,6 +18,8 @@ pub(super) enum ForExprSrc<'a> {
 impl<'a> ForExprSrc<'a> {
     fn compile<'ctx>(&self, gen: &mut CodeGen<'ctx>) -> Result<TypedValue<'ctx>, String> {
         match self {
+            #[cfg(test)]
+
             ForExprSrc::Ast(e) => gen.compile_expr(e),
             ForExprSrc::Hir(h) => gen.compile_hir_expr(h),
         }
@@ -27,6 +30,8 @@ impl<'a> ForExprSrc<'a> {
         gen: &mut CodeGen<'ctx>,
     ) -> Result<Option<(IntValue<'ctx>, IntValue<'ctx>)>, String> {
         match self {
+            #[cfg(test)]
+
             ForExprSrc::Ast(e) => match &e.kind {
                 ExprKind::Binary(lhs, BinaryOp::Range, rhs)
                 | ExprKind::Binary(lhs, BinaryOp::RangeExclusive, rhs) => {
@@ -200,6 +205,8 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
+    #[cfg(test)]
+
     pub(super) fn compile_for(&mut self, f: &For) -> Result<TypedValue<'ctx>, String> {
         match &f.kind {
             ForKind::Iterate {
@@ -244,6 +251,8 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
     }
+
+    #[cfg(test)]
 
     pub(super) fn compile_for_condition(
         &mut self,
@@ -296,6 +305,8 @@ impl<'ctx> CodeGen<'ctx> {
 
         Ok(TypedValue::Unit)
     }
+
+    #[cfg(test)]
 
     pub(super) fn compile_for_infinite(&mut self, body: &Expr) -> Result<TypedValue<'ctx>, String> {
         let current_fn = self
@@ -954,6 +965,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// `for idx < end { lst.get(idx); idx = idx + 1 }` — cached sequential walk.
+    #[cfg(test)]
     fn try_compile_for_sequential_list_get(
         &mut self,
         condition: &Expr,
@@ -1062,6 +1074,7 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::Unit)
     }
 
+    #[cfg(test)]
     fn find_list_get_in_expr(body: &Expr) -> Option<(Expr, String)> {
         match &body.kind {
             ExprKind::Block(stmts) => {
@@ -1076,6 +1089,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    #[cfg(test)]
     fn find_list_get_in_stmt(stmt: &Stmt) -> Option<(Expr, String)> {
         match stmt {
             Stmt::Let { value, .. } => Self::find_list_get_in_expr_inner(&value.kind),
@@ -1084,6 +1098,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    #[cfg(test)]
     fn find_list_get_in_expr_inner(kind: &ExprKind) -> Option<(Expr, String)> {
         match kind {
             ExprKind::Call { func, args, .. } => {
@@ -1103,6 +1118,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    #[cfg(test)]
     fn body_increments_var(body: &Expr, var: &str) -> bool {
         match &body.kind {
             ExprKind::Block(stmts) => stmts.iter().any(|s| Self::stmt_increments_var(s, var)),
@@ -1111,6 +1127,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    #[cfg(test)]
     fn stmt_increments_var(stmt: &Stmt, var: &str) -> bool {
         match stmt {
             Stmt::Expr { expr, .. } => match &expr.kind {
@@ -1121,6 +1138,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    #[cfg(test)]
     fn is_var_increment(target: &Expr, value: &Expr, var: &str) -> bool {
         match (&target.kind, &value.kind) {
             (ExprKind::Ident(t), ExprKind::Binary(lhs, BinaryOp::Add, rhs)) if t == var => {

@@ -5,13 +5,17 @@
 // that don't belong to a single domain.
 //
 
+#[cfg(test)]
 use action_frontend::ast::*;
+use action_frontend::ast::Literal;
 use inkwell::types::{BasicType, BasicTypeEnum};
 use inkwell::values::{GlobalValue, IntValue, PointerValue};
 use inkwell::IntPredicate;
 
 use super::call_arg::CallArg;
-use super::{llvm_err, CodeGen, Scope, TypedValue, ValKind};
+use super::{llvm_err, CodeGen, TypedValue, ValKind};
+#[cfg(test)]
+use super::Scope;
 
 impl<'ctx> CodeGen<'ctx> {
     /// Park the IR builder in `__cg_anchor` so module-level mutations do not touch
@@ -79,6 +83,8 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.clear_insertion_position();
         Ok(())
     }
+
+    #[cfg(test)]
 
     pub(super) fn compile_index(
         &mut self,
@@ -305,6 +311,8 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    #[cfg(test)]
+
     pub(super) fn compile_map_index(
         &mut self,
         map_ptr: PointerValue<'ctx>,
@@ -428,6 +436,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Set indexing: set[elem] -> T? (nullable)
+    #[cfg(test)]
     pub(super) fn compile_set_index(
         &mut self,
         set_ptr: PointerValue<'ctx>,
@@ -535,6 +544,8 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::Nullable(null_alloca, null_bt))
     }
 
+    #[cfg(test)]
+
     pub(super) fn compile_range(
         &mut self,
         start: &Expr,
@@ -577,6 +588,8 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         Ok(TypedValue::Struct(alloca, range_ty))
     }
+
+    #[cfg(test)]
 
     pub(super) fn compile_block(&mut self, stmts: &[Stmt]) -> Result<TypedValue<'ctx>, String> {
         let mut saved = Scope::new();
@@ -632,6 +645,8 @@ impl<'ctx> CodeGen<'ctx> {
         }
         Ok(last)
     }
+
+    #[cfg(test)]
 
     pub(super) fn compile_assign(
         &mut self,
@@ -787,6 +802,8 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    #[cfg(test)]
+
     fn assign_index_expr(
         &mut self,
         obj: &Expr,
@@ -828,6 +845,8 @@ impl<'ctx> CodeGen<'ctx> {
             _ => Err("Cannot assign to index of this type".to_string()),
         }
     }
+
+    #[cfg(test)]
 
     fn write_back_expr_lvalue(
         &mut self,
@@ -1207,6 +1226,7 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(v)
     }
 
+    #[cfg(test)]
     fn compile_assign_field(
         &mut self,
         target: &Expr,

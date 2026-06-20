@@ -195,27 +195,6 @@ impl<'ctx> Scope<'ctx> {
             },
         );
     }
-    #[allow(dead_code)]
-    fn set_val(
-        &mut self,
-        name: String,
-        ptr: PointerValue<'ctx>,
-        ty: inkwell::types::BasicTypeEnum<'ctx>,
-        kind: ValKind,
-    ) {
-        self.set(name, ptr, ty, kind);
-    }
-    #[allow(dead_code)]
-    fn set_mutable_val(
-        &mut self,
-        name: String,
-        ptr: PointerValue<'ctx>,
-        ty: inkwell::types::BasicTypeEnum<'ctx>,
-        kind: ValKind,
-        fn_type: Option<FunctionType<'ctx>>,
-    ) {
-        self.set_mutable(name, ptr, ty, kind, fn_type);
-    }
     fn set_lazy(
         &mut self,
         name: String,
@@ -405,14 +384,6 @@ pub struct CodeGen<'ctx> {
     pub(crate) internal_type: StructType<'ctx>,
     /// Child entry in internal node: {ptr child, i64 subtree_total}
     pub(crate) child_entry_type: StructType<'ctx>,
-    /// List iterator cursor: {ptr leaf, i64 pos, ptr internal, i64 leaf_count, i64 child_idx}
-    #[allow(dead_code)]
-    pub(crate) cursor_type: StructType<'ctx>,
-    /// ConcatNode: {i64 depth, i64 total_len, list_type left, list_type right}
-    /// height = -1 is the sentinel; node_ptr points to this heap-allocated struct
-    /// TODO: reserved for lazy list concatenation — remove once full lazy-list codegen is wired
-    #[allow(dead_code)]
-    pub(crate) concat_node_type: StructType<'ctx>,
     pub(crate) lambda_count: usize,
     pub(crate) str_pat_counter: usize,
     pub(crate) registry: TypeRegistry,
@@ -427,7 +398,8 @@ pub struct CodeGen<'ctx> {
     pub(crate) break_target: Option<inkwell::basic_block::BasicBlock<'ctx>>,
     /// Extension method mapping: "TypeName.method" → "TypeName_method"
     pub(crate) extension_methods: HashMap<String, String>,
-    /// TCO (Tail Call Optimization) state for the current function
+    /// TCO (Tail Call Optimization) state for the current function (test-only AST path).
+    #[cfg(test)]
     pub(crate) tco_state: Option<TcoState<'ctx>>,
     /// Coroutine: list alloca where launch results are collected inside coroutineScope.
     /// None means we are not inside a coroutineScope.
@@ -458,10 +430,6 @@ pub struct CodeGen<'ctx> {
     pub(crate) overloaded_functions: HashMap<String, Vec<(Vec<Type>, String)>>,
     /// Whether we are currently compiling inside an `unsafe { }` block
     pub(crate) in_unsafe: bool,
-    /// External C functions declared via `external fun`: name → LLVM function value
-    /// TODO: reserved for cross-module FFI — remove once external fun codegen is fully wired
-    #[allow(dead_code)]
-    pub(crate) external_fns: HashMap<String, inkwell::values::FunctionValue<'ctx>>,
     /// Builtin wrappers needed for :: function references (e.g., List::head)
     pub(crate) builtin_wrappers_needed: HashSet<String>,
     /// LLVM optimization level (0-3)
@@ -488,6 +456,7 @@ pub struct CodeGen<'ctx> {
     pub(crate) block_did_rc_inc: bool,
 }
 
+#[cfg(test)]
 pub(crate) struct TcoState<'ctx> {
     /// Target block to jump to for tail-recursive calls
     tail_entry: inkwell::basic_block::BasicBlock<'ctx>,
@@ -557,27 +526,6 @@ impl<'ctx> CodeGen<'ctx> {
             ],
             false,
         );
-        // ConcatNode for lazy concatenation: {i64 depth, i64 total_len, list_type left, list_type right}
-        let concat_node_type = context.struct_type(
-            &[
-                context.i64_type().into(), // depth
-                context.i64_type().into(), // total_len
-                list_type.into(),          // left: {ptr, i64, i64}
-                list_type.into(),          // right: {ptr, i64, i64}
-            ],
-            false,
-        );
-        // List iterator cursor: {ptr leaf, i64 pos, ptr internal, i64 leaf_count, i64 child_idx}
-        let cursor_type = context.struct_type(
-            &[
-                context.ptr_type(inkwell::AddressSpace::default()).into(), // leaf_ptr
-                context.i64_type().into(),                                 // pos
-                context.ptr_type(inkwell::AddressSpace::default()).into(), // internal_ptr
-                context.i64_type().into(),                                 // leaf_count
-                context.i64_type().into(),                                 // child_idx
-            ],
-            false,
-        );
         // Task type: {pthread: i64, done: i64, cancelled: i64, scheduler: i64, result_list: {ptr, i64, i64}}
         let task_type = context.struct_type(
             &[
@@ -638,8 +586,6 @@ impl<'ctx> CodeGen<'ctx> {
             leaf_type,
             internal_type,
             child_entry_type,
-            concat_node_type,
-            cursor_type,
             lambda_count: 0,
             str_pat_counter: 0,
             registry,
@@ -650,6 +596,7 @@ impl<'ctx> CodeGen<'ctx> {
             continue_target: None,
             break_target: None,
             extension_methods: HashMap::new(),
+            #[cfg(test)]
             tco_state: None,
             coroutine_collector: None,
             task_type,
@@ -661,7 +608,6 @@ impl<'ctx> CodeGen<'ctx> {
             last_enum_inner: None,
             overloaded_functions: HashMap::new(),
             in_unsafe: false,
-            external_fns: HashMap::new(),
             builtin_wrappers_needed: HashSet::new(),
             opt_level: 0,
             target_triple,

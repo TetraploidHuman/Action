@@ -46,7 +46,6 @@ pub struct GepCursor<'ctx> {
     last_offset: u64,
 }
 
-#[allow(dead_code)]
 impl<'ctx> GepCursor<'ctx> {
     /// Create a new GEP cursor anchored at `base_ptr`.
     pub fn new(base_ptr: PointerValue<'ctx>) -> Self {
@@ -55,46 +54,6 @@ impl<'ctx> GepCursor<'ctx> {
             chained_ptr: base_ptr,
             last_offset: 0,
         }
-    }
-
-    /// Create a new GEP cursor with the base pointer and an initial byte offset.
-    /// Equivalent to `new(base_ptr)` followed by `offset_gep(builder, i8_ty, initial_offset, name)`.
-    pub fn new_at_offset(
-        builder: &inkwell::builder::Builder<'ctx>,
-        base_ptr: PointerValue<'ctx>,
-        i8_ty: inkwell::types::IntType<'ctx>,
-        initial_offset: u64,
-        name: &str,
-    ) -> Result<Self, String> {
-        let ptr = if initial_offset == 0 {
-            base_ptr
-        } else {
-            unsafe {
-                builder
-                    .build_gep(
-                        i8_ty,
-                        base_ptr,
-                        &[i8_ty.const_int(initial_offset, false)],
-                        name,
-                    )
-                    .map_err(llvm_err)?
-            }
-        };
-        Ok(GepCursor {
-            base_ptr,
-            chained_ptr: ptr,
-            last_offset: initial_offset,
-        })
-    }
-
-    /// Get the original base pointer.
-    pub fn base(&self) -> PointerValue<'ctx> {
-        self.base_ptr
-    }
-
-    /// Get the current chained pointer.
-    pub fn current(&self) -> PointerValue<'ctx> {
-        self.chained_ptr
     }
 
     /// Generate a struct field GEP from the **original base pointer**.
@@ -150,31 +109,5 @@ impl<'ctx> GepCursor<'ctx> {
         self.chained_ptr = ptr;
         self.last_offset = offset;
         Ok(ptr)
-    }
-
-    /// Generate a chained byte-offset GEP relative to the previous cursor position,
-    /// using `i8` as the element type (convenience wrapper).
-    pub fn offset_gep_i8(
-        &mut self,
-        builder: &inkwell::builder::Builder<'ctx>,
-        context: &'ctx inkwell::context::Context,
-        offset: u64,
-        name: &str,
-    ) -> Result<PointerValue<'ctx>, String> {
-        self.offset_gep(builder, context.i8_type(), offset, name)
-    }
-
-    /// Reset the chained pointer back to the base pointer (and offset to 0).
-    pub fn reset(&mut self) {
-        self.chained_ptr = self.base_ptr;
-        self.last_offset = 0;
-    }
-
-    /// Reset the chained pointer to a specific offset from base.
-    /// This does NOT generate a GEP — use `offset_gep` to compute the pointer.
-    pub fn reset_to_offset(&mut self, _offset: u64) {
-        // Force next offset_gep to recompute from base
-        self.chained_ptr = self.base_ptr;
-        self.last_offset = 0;
     }
 }

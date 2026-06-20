@@ -381,15 +381,14 @@ impl<'ctx> CodeGen<'ctx> {
         });
         if is_list_op && name == "takeWhile" {
             if let Some(list_arg) = list_arg_idx.map(|i| args[i]) {
-                if let CallArg::Hir(list_hir) = list_arg {
-                    if let Some((map_fn, inner)) = Self::extract_map_call_args_hir(list_hir) {
-                        let tw_fn = if let Some(lam) = trailing {
-                            self.compile_call_arg(lam)?
-                        } else {
-                            self.compile_call_arg(args[0])?
-                        };
-                        return self.fused_map_take_while_hir(map_fn, inner, tw_fn);
-                    }
+                let CallArg::Hir(list_hir) = list_arg;
+                if let Some((map_fn, inner)) = Self::extract_map_call_args_hir(list_hir) {
+                    let tw_fn = if let Some(lam) = trailing {
+                        self.compile_call_arg(lam)?
+                    } else {
+                        self.compile_call_arg(args[0])?
+                    };
+                    return self.fused_map_take_while_hir(map_fn, inner, tw_fn);
                 }
             }
         }

@@ -1,13 +1,17 @@
 // Submodule: stmt
 
 use action_frontend::ast::*;
-use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
+use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
 use inkwell::values::PointerValue;
+#[cfg(test)]
 use inkwell::IntPredicate;
 
-use super::{llvm_err, CodeGen, Scope, TcoState, TypedValue, ValKind};
+use super::{llvm_err, CodeGen, Scope, TypedValue, ValKind};
+#[cfg(test)]
+use super::TcoState;
 
 enum FunBody<'a> {
+    #[cfg(test)]
     Ast(&'a Expr),
     Hir(&'a action_frontend::hir::HirExpr),
 }
@@ -15,6 +19,7 @@ enum FunBody<'a> {
 impl<'a> FunBody<'a> {
     fn compile<'ctx>(&self, cg: &mut CodeGen<'ctx>) -> Result<TypedValue<'ctx>, String> {
         match self {
+            #[cfg(test)]
             FunBody::Ast(e) => cg.compile_expr(e),
             FunBody::Hir(e) => cg.compile_hir_expr(e),
         }
@@ -22,6 +27,8 @@ impl<'a> FunBody<'a> {
 }
 
 impl<'ctx> CodeGen<'ctx> {
+    /// AST statement compilation (test-only; production uses [`compile_hir_stmt`]).
+    #[cfg(test)]
     pub(super) fn compile_stmt(&mut self, stmt: &Stmt) -> Result<(), String> {
         match stmt {
             Stmt::Let {
@@ -767,6 +774,7 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
+    #[cfg(test)]
     fn rename_module_stmt(&self, stmt: &Stmt, prefix: &str) -> Stmt {
         match stmt {
             Stmt::Fun {
@@ -805,6 +813,7 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// Extract TCO state if `expr` is a tail-recursive self-call.
     /// Returns (param_slots clone, tail_entry block).
+    #[cfg(test)]
     pub(super) fn extract_tco_info(
         &self,
         expr: &Expr,
@@ -836,6 +845,7 @@ impl<'ctx> CodeGen<'ctx> {
     /// Compile `when cond then then_expr else else_expr` where at least one branch is a TCO call.
     /// The non-TCO branch is compiled normally and returned; the TCO branch stores args
     /// and branches to tail_entry.
+    #[cfg(test)]
     pub(super) fn compile_tco_when(
         &mut self,
         condition: &Expr,
@@ -937,6 +947,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Emit a return instruction for a TypedValue, handling all types.
+    #[cfg(test)]
     pub(super) fn build_return_for_value(&self, v: &TypedValue<'ctx>) -> Result<(), String> {
         if let Some(bv) = v.to_bv() {
             let _ = self.builder.build_return(Some(&bv));
@@ -999,6 +1010,7 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
+    #[cfg(test)]
     pub(super) fn compile_fun_def(
         &mut self,
         name: &str,
@@ -1024,7 +1036,7 @@ impl<'ctx> CodeGen<'ctx> {
     fn compile_fun_def_inner(
         &mut self,
         name: &str,
-        original_name: &str,
+        _original_name: &str,
         params: &[Param],
         _return_type: Option<&Type>,
         body: FunBody<'_>,
@@ -1174,11 +1186,14 @@ impl<'ctx> CodeGen<'ctx> {
         let tail_entry = self.context.append_basic_block(function, "tail_entry");
         let _ = self.builder.build_unconditional_branch(tail_entry);
         self.builder.position_at_end(tail_entry);
-        self.tco_state = Some(TcoState {
-            tail_entry,
-            param_slots,
-            fn_name: original_name.to_string(),
-        });
+        #[cfg(test)]
+        {
+            self.tco_state = Some(TcoState {
+                tail_entry,
+                param_slots,
+                fn_name: _original_name.to_string(),
+            });
+        }
 
         let result = body.compile(self)?;
 
@@ -1430,7 +1445,10 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Note: don't call add_function here — it was already declared in Pass 1
 
-        self.tco_state = None;
+        #[cfg(test)]
+        {
+            self.tco_state = None;
+        }
         self.scope = saved_scope;
 
         // Restore builder position
