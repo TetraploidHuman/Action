@@ -63,9 +63,7 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::List(result_alloca))
     }
 
-
     /// Fused map+filter: single tree walk over inner list.
-
 
     /// Fused filter+map: single B-tree walk (filter then map on survivors).
 
@@ -119,7 +117,6 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::List(res_a))
     }
 
-
     pub(super) fn builtin_filter(
         &mut self,
         args: &[CallArg<'_>],
@@ -156,7 +153,6 @@ impl<'ctx> CodeGen<'ctx> {
             };
             return self.fused_flatmap_filter_hir(flat_fn, inner, filter_fn_val);
         }
-
 
         // Standard filter path
         let (fn_ptr, list_val) = if let Some(lam) = trailing {
@@ -1263,7 +1259,6 @@ impl<'ctx> CodeGen<'ctx> {
         Ok((fn_ptr, list_ptr, init_val))
     }
 
-
     pub(super) fn extract_filter_call_args_hir(
         expr: &action_frontend::hir::HirExpr,
     ) -> Option<(
@@ -1431,7 +1426,6 @@ impl<'ctx> CodeGen<'ctx> {
 
         Ok(TypedValue::List(result_alloca))
     }
-
 
     pub(super) fn fused_map_take_while_hir(
         &mut self,

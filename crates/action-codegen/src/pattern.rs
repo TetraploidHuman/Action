@@ -11,10 +11,7 @@ use std::collections::HashMap;
 use super::{llvm_err, CodeGen, GepCursor, InnerType, Scope, TypedValue};
 
 impl<'ctx> CodeGen<'ctx> {
-
     /// Compile a guard expression and return the boolean result.
-
-
 
     /// Compile a pattern as a boolean condition (for ConditionChain).
     /// For ConditionChain, patterns act as conditions: Literal/Ident/Variable are truthy,
@@ -662,7 +659,6 @@ impl<'ctx> CodeGen<'ctx> {
         }
         Ok(())
     }
-
 
     pub(super) fn compile_hir_pattern_match(
         &mut self,

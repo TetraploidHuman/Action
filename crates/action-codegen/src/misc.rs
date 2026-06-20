@@ -80,7 +80,6 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
-
     pub(super) fn compile_nullable_index_values(
         &mut self,
         nullable_ptr: PointerValue<'ctx>,
@@ -256,7 +255,6 @@ impl<'ctx> CodeGen<'ctx> {
             _ => Err("Index access not supported for this type".to_string()),
         }
     }
-
 
     pub(super) fn compile_map_index_key(
         &mut self,
@@ -471,9 +469,6 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::Nullable(null_alloca, null_bt))
     }
 
-
-
-
     pub(super) fn compile_assign_hir(
         &mut self,
         target: &action_frontend::hir::HirExpr,
@@ -609,8 +604,6 @@ impl<'ctx> CodeGen<'ctx> {
             _ => Err("Invalid index assignment target".to_string()),
         }
     }
-
-
 
     fn list_set_at(
         &mut self,
@@ -958,7 +951,6 @@ impl<'ctx> CodeGen<'ctx> {
         }
         Ok(v)
     }
-
 
     /// Load a string struct value from its alloca pointer
     pub(super) fn load_string(

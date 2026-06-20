@@ -1309,7 +1309,10 @@ impl<'a> ScopeWalker<'a> {
     }
 }
 
-fn collect_pattern_bindings(pattern: &action_frontend::ast::Pattern, map: &mut HashMap<String, Span>) {
+fn collect_pattern_bindings(
+    pattern: &action_frontend::ast::Pattern,
+    map: &mut HashMap<String, Span>,
+) {
     use action_frontend::ast::Pattern;
     match pattern {
         Pattern::Variable(name) => {

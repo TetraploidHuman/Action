@@ -97,7 +97,6 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-
     pub(super) fn compile_string_interp_hir(
         &mut self,
         parts: &[action_frontend::hir::HirStringPart],
@@ -252,7 +251,6 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-
     pub(super) fn lookup_struct_field_names(&self, struct_ty: StructType<'ctx>) -> Vec<String> {
         for (name, st) in &self.named_structs {
             if *st == struct_ty {
@@ -268,7 +266,6 @@ impl<'ctx> CodeGen<'ctx> {
         }
         vec![]
     }
-
 
     pub(super) fn compile_struct_lit_values(
         &mut self,
@@ -378,7 +375,6 @@ impl<'ctx> CodeGen<'ctx> {
         }
         self.compile_tuple_values(&compiled)
     }
-
 
     pub(super) fn compile_tuple_values(
         &mut self,

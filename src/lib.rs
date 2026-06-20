@@ -26,9 +26,9 @@ pub use action_lsp as lsp;
 
 // JIT host symbols (JSON/HTTP/threading). Sources live in `crates/host-rt/`; also
 // compiled into `libaction_host_rt.a` for AOT via build.rs.
-#[path = "../crates/host-rt/runtime_json.rs"]
-mod runtime_json;
 #[path = "../crates/host-rt/http_runtime.rs"]
 mod http_runtime;
+#[path = "../crates/host-rt/runtime_json.rs"]
+mod runtime_json;
 #[path = "../crates/host-rt/runtime_threading.rs"]
 mod runtime_threading;

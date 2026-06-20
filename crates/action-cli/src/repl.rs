@@ -118,8 +118,7 @@ pub fn eval_repl_line(
             }],
         };
     } else {
-        let mut parser2 =
-            action::parser::Parser::new(action::lexer::Lexer::new(input).tokenize());
+        let mut parser2 = action::parser::Parser::new(action::lexer::Lexer::new(input).tokenize());
         match parser2.parse_statement() {
             Ok(stmt) => {
                 program = Program { stmts: vec![stmt] };

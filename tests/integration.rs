@@ -877,16 +877,12 @@ fn test_error_generic_type_mismatch() {
 
 #[test]
 fn test_error_overload_no_match() {
-    assert_compile_error(
-        "test_error_overload_no_match.at",
-        "No matching overload",
-    );
+    assert_compile_error("test_error_overload_no_match.at", "No matching overload");
 }
 
 #[test]
 fn test_error_import_cycle() {
-    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/import_cycle/main.at");
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/import_cycle/main.at");
     assert_compile_error_at(&p, "Circular import detected");
 }
 

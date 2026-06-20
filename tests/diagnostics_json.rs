@@ -10,8 +10,8 @@ fn action_binary() -> PathBuf {
 
 #[test]
 fn test_check_format_json_reports_type_error() {
-    let file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("examples/test_error_generic_mismatch.at");
+    let file =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/test_error_generic_mismatch.at");
     let output = Command::new(action_binary())
         .args([
             "check",

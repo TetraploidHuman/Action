@@ -24,7 +24,6 @@ impl<'a> FunBody<'a> {
 impl<'ctx> CodeGen<'ctx> {
     /// AST statement compilation (test-only; production uses [`compile_hir_stmt`]).
 
-
     /// Extract TCO state if `expr` is a tail-recursive self-call.
     /// Returns (param_slots clone, tail_entry block).
 
@@ -260,7 +259,6 @@ impl<'ctx> CodeGen<'ctx> {
 
         Ok(())
     }
-
 
     pub(super) fn compile_fun_def_hir(
         &mut self,

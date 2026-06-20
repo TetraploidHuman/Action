@@ -186,9 +186,6 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
-
-
-
     pub(super) fn compile_for_iterate(
         &mut self,
         variable: &str,
@@ -887,12 +884,6 @@ impl<'ctx> CodeGen<'ctx> {
         self.break_target = saved_break;
         Ok(TypedValue::Unit)
     }
-
-
-
-
-
-
 
     pub(super) fn compile_hir_for(
         &mut self,

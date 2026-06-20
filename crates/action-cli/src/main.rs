@@ -178,9 +178,7 @@ fn main() {
                             std::process::exit(1);
                         }
                     } else if fmt == "diagnostics" {
-                        if let Err(e) =
-                            driver::emit_diagnostics_json(&[], &file, explain, false)
-                        {
+                        if let Err(e) = driver::emit_diagnostics_json(&[], &file, explain, false) {
                             eprintln!("Error: {}", e);
                             std::process::exit(1);
                         }
@@ -195,8 +193,12 @@ fn main() {
                 if format == "json" {
                     println!(
                         "{}",
-                        action_frontend::error::diagnostics_to_json_pretty(&[], &file.to_string_lossy(), explain)
-                            .unwrap_or_else(|_| "{\"version\":1,\"diagnostics\":[]}".to_string())
+                        action_frontend::error::diagnostics_to_json_pretty(
+                            &[],
+                            &file.to_string_lossy(),
+                            explain
+                        )
+                        .unwrap_or_else(|_| "{\"version\":1,\"diagnostics\":[]}".to_string())
                     );
                 } else {
                     println!("Type checking passed. No errors found.");

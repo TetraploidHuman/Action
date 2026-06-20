@@ -5,9 +5,19 @@ alwaysApply: true
 
 # AI 代理工作流（Action 项目）
 
+## 效率优先（不计 token · 强烈建议 SubAgent 并行）
+
+用户**只在乎墙钟效率，不在乎 token**。
+
+- 无依赖小类 **≥2 时，默认同一条消息内并发多个 Task**（如 explore + shell）；**强烈建议**多开，非强制。
+- 若只开 1 个或串行，须有充分理由（任务极小 / 强依赖 / 单路径更快），并在汇报中说明。
+- 探索 / 测试 / CI 诊断**首选** `explore` / `shell` / `ci-investigator` SubAgent，与主 Agent 写码并行。
+- 细则见 `phased-optimization-workflow.mdc` §0、§2。
+
 ## 必须亲自执行
 
 - **自己跑命令**，不要只告诉用户「请你运行」；`nix-shell` 等命令异常失败时再试 `required_permissions: ["all"]`，不要误判为「环境跑不了」。
+- 长耗时命令**强烈建议**交给 **`shell` SubAgent**；主 Agent **应同时**推进不依赖该结果的改码，勿空等。
 - 改动编译器/运行时代码后，**必须**完成：build → 集成测试 → 语义回归 →（涉及性能时）benchmark。
 
 ## 环境与路径
@@ -157,12 +167,13 @@ self.builder.position_at_end(leaf_next);
 
 改完若报 `Basic Block ... does not have terminator`，检查 `leaf_chk`、`int_child` 等循环体末尾。
 
-## 并行加速
+## 并行加速（强烈建议同轮多开）
 
-- 大范围探索可用 **Task 子代理**（`explore` / `shell`）并行：一边跑测试，一边分析热点。
-- 子代理结论需在本机编译/测试验证，不要直接采信未跑过的性能数字。
+- **默认**同轮并发多个 Task：`explore` + `shell`（+ 更多）放在**同一 assistant 消息**；无依赖 ≥2 小类时**不要习惯性只开 1 个**。
+- 任务极小或强依赖时可串行 / 单 SubAgent，但须在汇报中说明理由。
+- 子代理结论在关键路径上由主 Agent 复验。
 
 ## Git
 
 - **未经用户明确要求不要 commit / push**。
-- push 用 `./scripts/git-push.sh origin main`（优先直连 GitHub）。
+- push 用 `./scripts/git-push.sh origin main`（FlClash 优先，直连备选）。

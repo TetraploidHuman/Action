@@ -1001,7 +1001,6 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-
     /// Short-circuit AND: evaluate left; if false, result is false; else evaluate right
     /// Short-circuit AND: evaluate left; if false, result is false; else evaluate right
 
@@ -1619,7 +1618,6 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
     }
-
 
     /// Map a TypedValue to its type name string for UFCS lookup
     pub(super) fn type_name_from_typed_value(&self, v: &TypedValue<'ctx>) -> String {

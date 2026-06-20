@@ -19,7 +19,6 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value())
     }
 
-
     pub(super) fn compile_map_lit_values(
         &mut self,
         keys: &[TypedValue<'ctx>],
@@ -57,7 +56,6 @@ impl<'ctx> CodeGen<'ctx> {
 
         Ok(TypedValue::Map(alloca))
     }
-
 
     pub(super) fn compile_set_lit_values(
         &mut self,
@@ -108,7 +106,6 @@ impl<'ctx> CodeGen<'ctx> {
 
         Ok(TypedValue::Set(alloca))
     }
-
 
     /// map.insert(key, val) — receiver alloca is pre-compiled to avoid double compilation.
     pub(super) fn builtin_map_insert(

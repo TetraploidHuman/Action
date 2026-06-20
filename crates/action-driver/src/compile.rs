@@ -85,8 +85,7 @@ pub fn emit_diagnostics_json(
         print!("{}", json);
     } else {
         let out = src_path.with_extension("diagnostics.json");
-        fs::write(&out, json)
-            .map_err(|e| format!("Cannot write to '{}': {}", out.display(), e))?;
+        fs::write(&out, json).map_err(|e| format!("Cannot write to '{}': {}", out.display(), e))?;
         eprintln!("Diagnostics written to: {}", out.display());
     }
     Ok(())
