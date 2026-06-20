@@ -314,6 +314,30 @@ pub fn lookup_ufcs(kind: UfcsReceiverKind, method: &str) -> Option<&'static Buil
     lookup(method).filter(|d| ufcs_matches(d, kind))
 }
 
+/// All UFCS methods applicable to a receiver kind (for LSP completion).
+pub fn ufcs_methods_for_kind(kind: UfcsReceiverKind) -> Vec<&'static BuiltinDef> {
+    all()
+        .iter()
+        .filter(|d| ufcs_matches(d, kind))
+        .collect()
+}
+
+/// Format a UFCS method signature for LSP detail text.
+pub fn format_ufcs_method_detail(def: &BuiltinDef) -> String {
+    let params: Vec<String> = def
+        .param_types
+        .iter()
+        .skip(1) // UFCS: first param is receiver
+        .enumerate()
+        .map(|(i, ty)| format!("arg{}: {}", i, ty))
+        .collect();
+    if params.is_empty() {
+        format!("{}() -> {}", def.name, def.return_type)
+    } else {
+        format!("{}({}) -> {}", def.name, params.join(", "), def.return_type)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

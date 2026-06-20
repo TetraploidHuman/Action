@@ -14,6 +14,7 @@ use lsp_types::{
 };
 
 use crate::ast::{Expr, ExprKind, Stmt, Type};
+use crate::builtin::{format_ufcs_method_detail, receiver_kind_from_type, ufcs_methods_for_kind};
 use crate::fmt::{self, FormatOptions};
 use crate::lexer::{Span, Token, TokenKind};
 use crate::typecheck::TypeRegistry;
@@ -94,8 +95,13 @@ pub fn handle_hover(state: &ServerState, params: HoverParams) -> Option<Hover> {
     // Extract doc comment from source
     let doc_comment = extract_doc_comment(&doc.source, &doc.ast, &name);
 
-    // Get function signature if applicable
-    let signature = extract_function_signature(&doc.ast, &name);
+    // Get function signature from type_env / HIR param names
+    let signature = lookup_function_signature(
+        &name,
+        &doc.type_env,
+        &state.project.session.base_type_env,
+        doc.hir.as_ref(),
+    );
 
     // Build markdown content
     let mut parts: Vec<String> = Vec::new();
@@ -178,6 +184,7 @@ pub fn handle_completion(
         &pos,
         &doc.type_env,
         &state.project.session.base_type_env,
+        &doc.registry,
         &state.project.session.base_registry,
         &prefix,
     ) {
@@ -314,40 +321,54 @@ pub fn handle_signature_help(
     let pos = params.text_document_position_params.position;
     let uri = &params.text_document_position_params.text_document.uri;
     let doc = state.project.documents.get(uri)?;
-    let func_name = find_call_target(&doc.tokens, &doc.source, &pos)?;
 
-    let func_type = doc
-        .type_env
-        .get(&func_name)
-        .or_else(|| state.project.session.base_type_env.get(&func_name));
+    let (lookup_key, func_type) = resolve_call_type(
+        &doc.tokens,
+        &doc.source,
+        &pos,
+        &doc.type_env,
+        &state.project.session.base_type_env,
+    )?;
+
+    let display_name = lookup_key
+        .rsplit_once('.')
+        .map(|(_, method)| method.to_string())
+        .unwrap_or_else(|| lookup_key.clone());
 
     match func_type {
-        Some(Type::Function(param_types, ret_type)) => {
-            let label = format!(
-                "{}({}) -> {}",
-                func_name,
-                param_types
-                    .iter()
-                    .enumerate()
-                    .map(|(i, t)| format!("p{}: {}", i, t))
-                    .collect::<Vec<_>>()
-                    .join(", "),
-                ret_type
+        Type::Function(param_types, ret_type) => {
+            let param_names = doc
+                .hir
+                .as_ref()
+                .and_then(|hir| super::hir_lookup::find_fun_param_names(hir, &lookup_key))
+                .or_else(|| {
+                    doc.hir
+                        .as_ref()
+                        .and_then(|hir| super::hir_lookup::find_fun_param_names(hir, &display_name))
+                });
+            let label = format_function_signature(
+                &display_name,
+                &param_types,
+                ret_type.as_ref(),
+                param_names.as_deref(),
             );
+            let parameters: Vec<lsp_types::ParameterInformation> = param_types
+                .iter()
+                .enumerate()
+                .map(|(i, t)| lsp_types::ParameterInformation {
+                    label: lsp_types::ParameterLabel::Simple(format_param_label(
+                        i,
+                        t,
+                        param_names.as_deref(),
+                    )),
+                    documentation: None,
+                })
+                .collect();
             Some(SignatureHelp {
                 signatures: vec![lsp_types::SignatureInformation {
                     label,
                     documentation: None,
-                    parameters: Some(
-                        param_types
-                            .iter()
-                            .enumerate()
-                            .map(|(i, t)| lsp_types::ParameterInformation {
-                                label: lsp_types::ParameterLabel::Simple(format!("p{}: {}", i, t)),
-                                documentation: None,
-                            })
-                            .collect(),
-                    ),
+                    parameters: Some(parameters),
                     active_parameter: Some(0),
                 }],
                 active_signature: Some(0),
@@ -356,7 +377,7 @@ pub fn handle_signature_help(
         }
         _ => Some(SignatureHelp {
             signatures: vec![lsp_types::SignatureInformation {
-                label: format!("{}()", func_name),
+                label: format!("{}()", display_name),
                 documentation: None,
                 parameters: None,
                 active_parameter: None,
@@ -707,7 +728,8 @@ fn member_completion_items(
     pos: &Position,
     type_env: &HashMap<String, Type>,
     stdlib_type_env: &HashMap<String, Type>,
-    _registry: &TypeRegistry,
+    file_registry: &TypeRegistry,
+    stdlib_registry: &TypeRegistry,
     prefix: &str,
 ) -> Option<Vec<CompletionItem>> {
     let offset = position::lsp_position_to_offset(source, pos);
@@ -743,9 +765,16 @@ fn member_completion_items(
         .or_else(|| stdlib_type_env.get(&receiver_name))?;
 
     let items = if is_dot {
-        dot_member_items(receiver_type, prefix)
+        dot_member_items(
+            receiver_type,
+            prefix,
+            type_env,
+            stdlib_type_env,
+            file_registry,
+            stdlib_registry,
+        )
     } else {
-        Vec::new()
+        colon_member_items(receiver_type, prefix, file_registry, stdlib_registry)
     };
 
     if items.is_empty() {
@@ -755,172 +784,194 @@ fn member_completion_items(
     }
 }
 
-fn dot_member_items(receiver_type: &Type, prefix: &str) -> Vec<CompletionItem> {
+fn dot_member_items(
+    receiver_type: &Type,
+    prefix: &str,
+    type_env: &HashMap<String, Type>,
+    stdlib_type_env: &HashMap<String, Type>,
+    file_registry: &TypeRegistry,
+    stdlib_registry: &TypeRegistry,
+) -> Vec<CompletionItem> {
     let mut items = Vec::new();
+    let mut seen = std::collections::HashSet::new();
 
-    match receiver_type {
-        Type::Named(type_name) => {
-            // Suggest UFCS methods for known types
-            let struct_name = type_name.as_str();
-            let methods = known_type_methods(struct_name);
-            for (method, detail) in &methods {
-                if method.starts_with(prefix) {
-                    items.push(CompletionItem {
-                        label: method.clone(),
-                        detail: Some(detail.clone()),
-                        kind: Some(CompletionItemKind::METHOD),
-                        ..Default::default()
-                    });
-                }
-            }
+    if let Type::Nullable(inner) = receiver_type {
+        if "or".starts_with(prefix) {
+            items.push(CompletionItem {
+                label: "or".to_string(),
+                detail: Some("or { fallback } -> T".to_string()),
+                kind: Some(CompletionItemKind::METHOD),
+                ..Default::default()
+            });
         }
-        Type::Map(_, v) => {
-            let methods: Vec<(&str, String)> = vec![
-                ("contains", format!("contains(key) -> Bool")),
-                ("isEmpty", "isEmpty -> Bool".to_string()),
-                ("insert", format!("insert(key, value)")),
-                ("remove", format!("remove(key) -> {}?", v)),
-                ("get", format!("get(key) -> {}?", v)),
-            ];
-            for (name, detail) in &methods {
-                if name.starts_with(prefix) {
-                    items.push(CompletionItem {
-                        label: name.to_string(),
-                        detail: Some(detail.clone()),
-                        kind: Some(CompletionItemKind::METHOD),
-                        ..Default::default()
-                    });
-                }
-            }
-        }
-        Type::Set(e) => {
-            let methods: Vec<(&str, String)> = vec![
-                ("contains", format!("contains(elem) -> Bool")),
-                ("isEmpty", "isEmpty -> Bool".to_string()),
-                ("insert", format!("insert(elem)")),
-                ("remove", format!("remove(elem) -> {}?", e)),
-            ];
-            for (name, detail) in &methods {
-                if name.starts_with(prefix) {
-                    items.push(CompletionItem {
-                        label: name.to_string(),
-                        detail: Some(detail.clone()),
-                        kind: Some(CompletionItemKind::METHOD),
-                        ..Default::default()
-                    });
-                }
-            }
-        }
-        Type::Stream(_) => {
-            let methods = ["send", "receive", "close"];
-            for name in &methods {
-                if name.starts_with(prefix) {
-                    items.push(CompletionItem {
-                        label: name.to_string(),
-                        kind: Some(CompletionItemKind::METHOD),
-                        ..Default::default()
-                    });
-                }
-            }
-        }
-        Type::Task(_) => {
-            let methods = ["cancel", "is_done", "is_cancelled", "wait"];
-            for name in &methods {
-                if name.starts_with(prefix) {
-                    items.push(CompletionItem {
-                        label: name.to_string(),
-                        kind: Some(CompletionItemKind::METHOD),
-                        ..Default::default()
-                    });
-                }
-            }
-        }
-        Type::Nullable(inner) => {
-            if "or".starts_with(prefix) {
+        items.extend(dot_member_items(
+            inner,
+            prefix,
+            type_env,
+            stdlib_type_env,
+            file_registry,
+            stdlib_registry,
+        ));
+        return items;
+    }
+
+    if let Some(kind) = receiver_kind_from_type(receiver_type) {
+        for def in ufcs_methods_for_kind(kind) {
+            if def.name.starts_with(prefix) && seen.insert(def.name.to_string()) {
                 items.push(CompletionItem {
-                    label: "or".to_string(),
-                    detail: Some("or { fallback } -> T".to_string()),
+                    label: def.name.to_string(),
+                    detail: Some(format_ufcs_method_detail(def)),
                     kind: Some(CompletionItemKind::METHOD),
                     ..Default::default()
                 });
             }
-            let inner_items = dot_member_items(inner, prefix);
-            items.extend(inner_items);
         }
+    }
+
+    push_extension_methods(
+        &mut items,
+        &mut seen,
+        receiver_type,
+        prefix,
+        type_env,
+        stdlib_type_env,
+    );
+
+    if let Some(type_name) = named_type_key(receiver_type) {
+        for registry in [file_registry, stdlib_registry] {
+            if let Some(st) = registry.get_struct(&type_name) {
+                for (field, fty) in &st.fields {
+                    if field.starts_with(prefix) && seen.insert(format!("field:{field}")) {
+                        items.push(CompletionItem {
+                            label: field.clone(),
+                            detail: Some(format!("{}: {}", field, fty)),
+                            kind: Some(CompletionItemKind::FIELD),
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    match receiver_type {
+        Type::Stream(_) => push_method_labels(
+            &mut items,
+            &mut seen,
+            prefix,
+            &[
+                ("send", "send(value)"),
+                ("receive", "receive() -> T"),
+                ("close", "close()"),
+            ],
+        ),
+        Type::Task(_) => push_method_labels(
+            &mut items,
+            &mut seen,
+            prefix,
+            &[
+                ("cancel", "cancel()"),
+                ("is_done", "is_done() -> Bool"),
+                ("is_cancelled", "is_cancelled() -> Bool"),
+                ("wait", "wait() -> T"),
+            ],
+        ),
         _ => {}
     }
 
     items
 }
 
-fn known_type_methods(type_name: &str) -> Vec<(String, String)> {
-    match type_name {
-        "String" | "Str" => vec![
-            ("len".into(), "len() -> Int".into()),
-            ("contains".into(), "contains(substr: String) -> Bool".into()),
-            (
-                "startsWith".into(),
-                "startsWith(prefix: String) -> Bool".into(),
-            ),
-            ("endsWith".into(), "endsWith(suffix: String) -> Bool".into()),
-            (
-                "substring".into(),
-                "substring(start: Int, end: Int) -> String".into(),
-            ),
-            ("toUpper".into(), "toUpper() -> String".into()),
-            ("toLower".into(), "toLower() -> String".into()),
-            ("trim".into(), "trim() -> String".into()),
-            (
-                "split".into(),
-                "split(delim: String) -> List<String>".into(),
-            ),
-            (
-                "replace".into(),
-                "replace(old: String, new: String) -> String".into(),
-            ),
-            ("isEmpty".into(), "isEmpty() -> Bool".into()),
-        ],
-        "Int" => vec![
-            ("toFloat".into(), "toFloat() -> Float".into()),
-            ("toString".into(), "toString() -> String".into()),
-            ("abs".into(), "abs() -> Int".into()),
-            ("min".into(), "min(other: Int) -> Int".into()),
-            ("max".into(), "max(other: Int) -> Int".into()),
-        ],
-        "Float" | "Double" => vec![
-            ("toInt".into(), "toInt() -> Int".into()),
-            ("toString".into(), "toString() -> String".into()),
-            ("round".into(), "round() -> Int".into()),
-            ("floor".into(), "floor() -> Int".into()),
-            ("ceil".into(), "ceil() -> Int".into()),
-        ],
-        _ if type_name.starts_with("List")
-            || type_name.starts_with("list")
-            || type_name.starts_with("Array")
-            || type_name.starts_with("Vec") =>
-        {
-            vec![
-                ("len".into(), "len() -> Int".into()),
-                ("isEmpty".into(), "isEmpty() -> Bool".into()),
-                ("push".into(), "push(value: T)".into()),
-                ("pop".into(), "pop() -> T".into()),
-                ("get".into(), "get(index: Int) -> T".into()),
-                ("map".into(), "map(fn: T -> U) -> List<U>".into()),
-                ("filter".into(), "filter(fn: T -> Bool) -> List<T>".into()),
-                ("reduce".into(), "reduce(fn: (T, T) -> T) -> T".into()),
-                (
-                    "fold".into(),
-                    "fold(initial: T, fn: (T, T) -> T) -> T".into(),
-                ),
-                ("any".into(), "any(fn: T -> Bool) -> Bool".into()),
-                ("all".into(), "all(fn: T -> Bool) -> Bool".into()),
-                ("find".into(), "find(fn: T -> Bool) -> T?".into()),
-                ("contains".into(), "contains(value: T) -> Bool".into()),
-                ("sorted".into(), "sorted() -> List<T>".into()),
-                ("reversed".into(), "reversed() -> List<T>".into()),
-            ]
+fn colon_member_items(
+    receiver_type: &Type,
+    prefix: &str,
+    file_registry: &TypeRegistry,
+    stdlib_registry: &TypeRegistry,
+) -> Vec<CompletionItem> {
+    let mut items = Vec::new();
+    let Some(type_name) = named_type_key(receiver_type) else {
+        return items;
+    };
+
+    for registry in [file_registry, stdlib_registry] {
+        if let Some(enum_info) = registry.enums.get(&type_name) {
+            for variant in &enum_info.variants {
+                if variant.name.starts_with(prefix) {
+                    items.push(CompletionItem {
+                        label: variant.name.clone(),
+                        detail: Some(format!("enum {}::{}", type_name, variant.name)),
+                        kind: Some(CompletionItemKind::ENUM_MEMBER),
+                        ..Default::default()
+                    });
+                }
+            }
         }
-        _ => vec![],
+    }
+    items
+}
+
+fn named_type_key(ty: &Type) -> Option<String> {
+    match ty {
+        Type::Named(name) => Some(name.clone()),
+        Type::Generic(base, _) => named_type_key(base),
+        Type::LazyList(inner) => named_type_key(inner),
+        _ => None,
+    }
+}
+
+fn push_extension_methods(
+    items: &mut Vec<CompletionItem>,
+    seen: &mut std::collections::HashSet<String>,
+    receiver_type: &Type,
+    prefix: &str,
+    type_env: &HashMap<String, Type>,
+    stdlib_type_env: &HashMap<String, Type>,
+) {
+    let Some(type_name) = named_type_key(receiver_type) else {
+        return;
+    };
+    let lookup_prefix = format!("{type_name}.");
+    for env in [type_env, stdlib_type_env] {
+        for (key, fn_ty) in env {
+            if let Some(method) = key.strip_prefix(&lookup_prefix) {
+                if !method.contains('.') && method.starts_with(prefix) && seen.insert(key.clone()) {
+                    items.push(CompletionItem {
+                        label: method.to_string(),
+                        detail: Some(format_method_type(method, fn_ty)),
+                        kind: Some(CompletionItemKind::METHOD),
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+    }
+}
+
+fn format_method_type(name: &str, ty: &Type) -> String {
+    match ty {
+        Type::Function(params, ret) => {
+            let ps: Vec<String> = params.iter().map(|p| format!("{}", p)).collect();
+            format!("{}({}) -> {}", name, ps.join(", "), ret)
+        }
+        other => format!("{}: {}", name, other),
+    }
+}
+
+fn push_method_labels(
+    items: &mut Vec<CompletionItem>,
+    seen: &mut std::collections::HashSet<String>,
+    prefix: &str,
+    methods: &[(&str, &str)],
+) {
+    for (name, detail) in methods {
+        if name.starts_with(prefix) && seen.insert(name.to_string()) {
+            items.push(CompletionItem {
+                label: name.to_string(),
+                detail: Some(detail.to_string()),
+                kind: Some(CompletionItemKind::METHOD),
+                ..Default::default()
+            });
+        }
     }
 }
 
@@ -1413,45 +1464,114 @@ fn find_stmt_span_for_name(stmts: &[Stmt], name: &str) -> Option<Span> {
     None
 }
 
-fn extract_function_signature(stmts: &[Stmt], name: &str) -> Option<String> {
-    for stmt in stmts {
-        match stmt {
-            Stmt::Fun {
-                name: n,
-                params,
-                return_type,
-                ..
-            } if n == name => {
-                let params_str: Vec<String> = params
-                    .iter()
-                    .map(|p| {
-                        if let Some(ty) = &p.ty {
-                            format!("{}: {}", p.name, ty)
-                        } else {
-                            p.name.clone()
-                        }
-                    })
-                    .collect();
-                let ret = return_type
-                    .as_ref()
-                    .map(|t| format!("{}", t))
-                    .unwrap_or_else(|| "?".to_string());
-                return Some(format!(
-                    "fun {}({}) -> {}",
-                    name,
-                    params_str.join(", "),
-                    ret
-                ));
-            }
-            Stmt::Module { body, .. } => {
-                if let Some(sig) = extract_function_signature(body, name) {
-                    return Some(sig);
-                }
-            }
-            _ => {}
+fn lookup_function_signature(
+    name: &str,
+    type_env: &HashMap<String, Type>,
+    stdlib_type_env: &HashMap<String, Type>,
+    hir: Option<&crate::hir::HirModule>,
+) -> Option<String> {
+    let func_type = type_env
+        .get(name)
+        .or_else(|| stdlib_type_env.get(name))?;
+    match func_type {
+        Type::Function(param_types, ret_type) => {
+            let param_names = hir.and_then(|h| super::hir_lookup::find_fun_param_names(h, name));
+            Some(format_function_signature(
+                name,
+                param_types,
+                ret_type.as_ref(),
+                param_names.as_deref(),
+            ))
+        }
+        _ => None,
+    }
+}
+
+fn format_param_label(i: usize, ty: &Type, param_names: Option<&[String]>) -> String {
+    if let Some(names) = param_names {
+        if let Some(n) = names.get(i) {
+            return format!("{}: {}", n, ty);
         }
     }
+    format!("p{}: {}", i, ty)
+}
+
+fn format_function_signature(
+    name: &str,
+    param_types: &[Type],
+    ret_type: &Type,
+    param_names: Option<&[String]>,
+) -> String {
+    let params_str: Vec<String> = param_types
+        .iter()
+        .enumerate()
+        .map(|(i, t)| format_param_label(i, t, param_names))
+        .collect();
+    format!("fun {}({}) -> {}", name, params_str.join(", "), ret_type)
+}
+
+fn resolve_call_type(
+    tokens: &[crate::lexer::Token],
+    source: &str,
+    pos: &Position,
+    type_env: &HashMap<String, Type>,
+    stdlib_type_env: &HashMap<String, Type>,
+) -> Option<(String, Type)> {
+    let method_name = find_call_target(tokens, source, pos)?;
+
+    if let Some(ty) = lookup_type(type_env, stdlib_type_env, &method_name) {
+        return Some((method_name, ty.clone()));
+    }
+
+    if let Some(key) = find_ufcs_type_env_key(tokens, source, pos, type_env, stdlib_type_env) {
+        if let Some(ty) = lookup_type(type_env, stdlib_type_env, &key) {
+            return Some((key, ty.clone()));
+        }
+    }
+
     None
+}
+
+fn lookup_type<'a>(
+    type_env: &'a HashMap<String, Type>,
+    stdlib_type_env: &'a HashMap<String, Type>,
+    key: &str,
+) -> Option<&'a Type> {
+    type_env.get(key).or_else(|| stdlib_type_env.get(key))
+}
+
+fn find_ufcs_type_env_key(
+    tokens: &[crate::lexer::Token],
+    source: &str,
+    pos: &Position,
+    type_env: &HashMap<String, Type>,
+    stdlib_type_env: &HashMap<String, Type>,
+) -> Option<String> {
+    let offset = position::lsp_position_to_offset(source, pos);
+    let method_name = find_call_target(tokens, source, pos)?;
+
+    let method_idx = tokens.iter().position(|t| {
+        matches!(&t.kind, TokenKind::Ident(n) if n == &method_name)
+            && t.span.start <= offset
+            && offset <= t.span.end + 1
+    })?;
+    if method_idx == 0 {
+        return None;
+    }
+    let dot_idx = method_idx - 1;
+    if !matches!(tokens[dot_idx].kind, TokenKind::Dot) {
+        return None;
+    }
+    if dot_idx == 0 {
+        return None;
+    }
+    let receiver_name = match &tokens[dot_idx - 1].kind {
+        TokenKind::Ident(name) => name.clone(),
+        _ => return None,
+    };
+    let receiver_type = lookup_type(type_env, stdlib_type_env, &receiver_name)?;
+    let type_name = named_type_key(receiver_type)?;
+    Some(format!("{type_name}.{method_name}"))
 }
 
 // ---- Helpers ----

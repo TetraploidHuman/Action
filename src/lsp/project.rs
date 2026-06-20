@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 use lsp_types::Url;
 
@@ -10,6 +11,26 @@ use crate::typecheck::TypeRegistry;
 
 use super::document::Document;
 use super::position;
+
+fn blank_symbol_information() -> lsp_types::SymbolInformation {
+    static BLANK: OnceLock<lsp_types::SymbolInformation> = OnceLock::new();
+    BLANK
+        .get_or_init(|| {
+            serde_json::from_value(serde_json::json!({
+                "name": "",
+                "kind": 3,
+                "location": {
+                    "uri": "file:///blank",
+                    "range": {
+                        "start": {"line": 0, "character": 0},
+                        "end": {"line": 0, "character": 0}
+                    }
+                }
+            }))
+            .expect("blank SymbolInformation")
+        })
+        .clone()
+}
 
 /// Symbol kind for cross-file indexing
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -184,7 +205,6 @@ impl Project {
     }
 
     /// Search workspace symbols by query string
-    #[allow(deprecated)]
     pub fn workspace_symbols(&self, query: &str) -> Vec<lsp_types::SymbolInformation> {
         let mut results = Vec::new();
         let lower_query = query.to_lowercase();
@@ -201,7 +221,7 @@ impl Project {
 
                         container_name: None,
                         tags: None,
-                        deprecated: None,
+                        ..blank_symbol_information()
                     });
                 }
             }

@@ -63,26 +63,6 @@ impl Document {
         self.hir = result.hir;
     }
 
-    #[allow(dead_code)]
-    pub fn recheck(
-        &mut self,
-        stdlib_registry: &crate::typecheck::TypeRegistry,
-        stdlib_type_env: &HashMap<String, Type>,
-    ) {
-        let session = FrontendSession::with_context(
-            Vec::new(),
-            stdlib_registry.clone(),
-            stdlib_type_env.clone(),
-        )
-        .unwrap_or_else(|_| FrontendSession {
-            stdlib_stmts: Vec::new(),
-            search_dirs: Vec::new(),
-            base_registry: stdlib_registry.clone(),
-            base_type_env: stdlib_type_env.clone(),
-        });
-        self.recheck_with_session(&session);
-    }
-
     /// Get all diagnostics (parse + type errors) as LSP diagnostics.
     pub fn get_diagnostics(&self) -> Vec<Diagnostic> {
         let mut diags: Vec<Diagnostic> = self
@@ -283,7 +263,7 @@ mod tests {
             "new document should not parse until recheck"
         );
 
-        doc.recheck(&TypeRegistry::new(), &HashMap::new());
+        doc.recheck_with_session(&test_session());
         assert!(!doc.ast.is_empty(), "recheck should populate AST");
         assert!(doc.parse_errors.is_empty());
     }

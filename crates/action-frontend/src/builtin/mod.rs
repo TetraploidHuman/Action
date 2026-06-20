@@ -5,5 +5,6 @@
 mod registry;
 
 pub use registry::{
-    all, lookup, lookup_ufcs, receiver_kind_from_type, BuiltinDef, UfcsReceiverKind,
+    all, format_ufcs_method_detail, lookup, lookup_ufcs, receiver_kind_from_type,
+    ufcs_methods_for_kind, BuiltinDef, UfcsReceiverKind,
 };

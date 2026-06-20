@@ -1,9 +1,31 @@
 use lsp_types::{DocumentSymbol, SemanticToken, SemanticTokenType, SymbolKind};
+use std::sync::OnceLock;
 
 use crate::ast::*;
 use crate::lexer::{Token, TokenKind};
 
 use super::position;
+
+fn blank_document_symbol() -> DocumentSymbol {
+    static BLANK: OnceLock<DocumentSymbol> = OnceLock::new();
+    BLANK
+        .get_or_init(|| {
+            serde_json::from_value(serde_json::json!({
+                "name": "",
+                "kind": 3,
+                "range": {
+                    "start": {"line": 0, "character": 0},
+                    "end": {"line": 0, "character": 0}
+                },
+                "selectionRange": {
+                    "start": {"line": 0, "character": 0},
+                    "end": {"line": 0, "character": 0}
+                },
+            }))
+            .expect("blank DocumentSymbol")
+        })
+        .clone()
+}
 
 /// Legend for semantic tokens
 pub fn get_semantic_tokens_legend() -> lsp_types::SemanticTokensLegend {
@@ -187,7 +209,6 @@ pub fn extract_document_symbols(stmts: &[Stmt], source: &str) -> Vec<DocumentSym
         .collect()
 }
 
-#[allow(deprecated)]
 fn stmt_to_document_symbol(stmt: &Stmt, source: &str) -> Option<DocumentSymbol> {
     match stmt {
         Stmt::Fun {
@@ -226,7 +247,7 @@ fn stmt_to_document_symbol(stmt: &Stmt, source: &str) -> Option<DocumentSymbol> 
                 selection_range: position::span_to_lsp_range(span, source),
                 children: Some(children),
                 tags: None,
-                deprecated: None,
+                ..blank_document_symbol()
             })
         }
         Stmt::Let {
@@ -241,7 +262,7 @@ fn stmt_to_document_symbol(stmt: &Stmt, source: &str) -> Option<DocumentSymbol> 
                 selection_range: position::span_to_lsp_range(span, source),
                 children: None,
                 tags: None,
-                deprecated: None,
+                ..blank_document_symbol()
             })
         }
         Stmt::Const {
@@ -256,7 +277,7 @@ fn stmt_to_document_symbol(stmt: &Stmt, source: &str) -> Option<DocumentSymbol> 
                 selection_range: position::span_to_lsp_range(span, source),
                 children: None,
                 tags: None,
-                deprecated: None,
+                ..blank_document_symbol()
             })
         }
         Stmt::Enum {
@@ -288,7 +309,7 @@ fn stmt_to_document_symbol(stmt: &Stmt, source: &str) -> Option<DocumentSymbol> 
                         selection_range: position::span_to_lsp_range(span, source),
                         children: None,
                         tags: None,
-                        deprecated: None,
+                        ..blank_document_symbol()
                     }
                 })
                 .collect();
@@ -300,7 +321,7 @@ fn stmt_to_document_symbol(stmt: &Stmt, source: &str) -> Option<DocumentSymbol> 
                 selection_range: position::span_to_lsp_range(span, source),
                 children: Some(children),
                 tags: None,
-                deprecated: None,
+                ..blank_document_symbol()
             })
         }
         Stmt::TypeAlias { name, span, .. } => Some(DocumentSymbol {
@@ -311,7 +332,7 @@ fn stmt_to_document_symbol(stmt: &Stmt, source: &str) -> Option<DocumentSymbol> 
             selection_range: position::span_to_lsp_range(span, source),
             children: None,
             tags: None,
-            deprecated: None,
+            ..blank_document_symbol()
         }),
         Stmt::Module {
             name, body, span, ..
@@ -325,7 +346,7 @@ fn stmt_to_document_symbol(stmt: &Stmt, source: &str) -> Option<DocumentSymbol> 
                 selection_range: position::span_to_lsp_range(span, source),
                 children: Some(children),
                 tags: None,
-                deprecated: None,
+                ..blank_document_symbol()
             })
         }
         Stmt::Destructure { names, span, .. } => Some(DocumentSymbol {
@@ -336,7 +357,7 @@ fn stmt_to_document_symbol(stmt: &Stmt, source: &str) -> Option<DocumentSymbol> 
             selection_range: position::span_to_lsp_range(span, source),
             children: None,
             tags: None,
-            deprecated: None,
+            ..blank_document_symbol()
         }),
         _ => None,
     }

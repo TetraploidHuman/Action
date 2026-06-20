@@ -7,6 +7,33 @@ use lsp_types::Position;
 
 use super::position;
 
+/// Find parameter names for a top-level or module-scoped function by name.
+pub fn find_fun_param_names(hir: &HirModule, name: &str) -> Option<Vec<String>> {
+    find_fun_param_names_in_stmts(&hir.stmts, name)
+}
+
+fn find_fun_param_names_in_stmts(stmts: &[HirStmt], name: &str) -> Option<Vec<String>> {
+    for stmt in stmts {
+        if let Some(names) = find_fun_param_names_in_stmt(stmt, name) {
+            return Some(names);
+        }
+    }
+    None
+}
+
+fn find_fun_param_names_in_stmt(stmt: &HirStmt, name: &str) -> Option<Vec<String>> {
+    match stmt {
+        HirStmt::Fun {
+            name: n,
+            params,
+            ..
+        } if n == name => Some(params.iter().map(|p| p.name.clone()).collect()),
+        HirStmt::Module { body, .. } => find_fun_param_names_in_stmts(body, name),
+        HirStmt::Export { stmt, .. } => find_fun_param_names_in_stmt(stmt, name),
+        _ => None,
+    }
+}
+
 /// Find the innermost HIR expression whose span contains `pos`.
 pub fn find_hir_expr_type(hir: &HirModule, source: &str, pos: &Position) -> Option<Type> {
     let offset = position::lsp_position_to_offset(source, pos);
