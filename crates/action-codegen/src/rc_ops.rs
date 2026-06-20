@@ -65,150 +65,221 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
+    /// Release one list-variable reference to `data_ptr` (root node).
+    /// When root RC>1 only drops the ref; when RC==1 recursively frees the tree.
+    pub(super) fn emit_rc_release_list_root(
+        &self,
+        data_ptr: PointerValue<'ctx>,
+        height: inkwell::values::IntValue<'ctx>,
+    ) -> Result<(), String> {
+        use inkwell::IntPredicate;
+        let i64 = self.i64_ty();
+        let ptr = self.ptr_ty();
+        let fn_val = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("not in fn")?;
+        let rc_p = self
+            .builder
+            .build_int_to_ptr(
+                self.builder
+                    .build_int_sub(
+                        self.builder
+                            .build_ptr_to_int(data_ptr, i64, "lr_pi")
+                            .map_err(llvm_err)?,
+                        i64.const_int(8, false),
+                        "lr_rc_a",
+                    )
+                    .map_err(llvm_err)?,
+                ptr,
+                "lr_rc_p",
+            )
+            .map_err(llvm_err)?;
+        let rc = self
+            .builder
+            .build_load(i64, rc_p, "lr_rc")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let shared = self
+            .builder
+            .build_int_compare(IntPredicate::SGT, rc, i64.const_int(1, false), "lr_sh")
+            .map_err(llvm_err)?;
+        let dec_only_bb = self.context.append_basic_block(fn_val, "lr_dec");
+        let dec_tree_bb = self.context.append_basic_block(fn_val, "lr_tree");
+        let done_bb = self.context.append_basic_block(fn_val, "lr_done");
+        let _ = self
+            .builder
+            .build_conditional_branch(shared, dec_only_bb, dec_tree_bb);
+        self.builder.position_at_end(dec_only_bb);
+        self.rc_dec(data_ptr)?;
+        let _ = self.builder.build_unconditional_branch(done_bb);
+        self.builder.position_at_end(dec_tree_bb);
+        let rdl_fn = self
+            .module
+            .get_function("action_rc_dec_list_node")
+            .ok_or("action_rc_dec_list_node not found")?;
+        let _ = self
+            .builder
+            .build_call(rdl_fn, &[data_ptr.into(), height.into()], "")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(done_bb);
+        self.builder.position_at_end(done_bb);
+        Ok(())
+    }
+
     /// Emit RC decrement for all heap-typed variables in the current scope.
     pub(super) fn emit_scope_cleanup(&self) -> Result<(), String> {
-        for (_name, var) in self.scope.local_variables() {
-            match var.kind {
-                ValKind::Str => {
-                    let str_val = self.load_string(var.ptr)?;
-                    self.rc_dec_string_val(str_val)?;
+        let mut vars: Vec<_> = self.scope.local_variables().iter().collect();
+        vars.sort_by(|(a, _), (b, _)| a.cmp(b));
+        let mut list_vars: Vec<_> = vars
+            .iter()
+            .filter(|(_, v)| v.kind == ValKind::List)
+            .copied()
+            .collect();
+        list_vars.sort_by(|(a, _), (b, _)| b.cmp(a)); // derived bindings (e.g. ins) before originals (lst)
+        for (_name, var) in vars
+            .iter()
+            .copied()
+            .filter(|(_, v)| v.kind != ValKind::List)
+        {
+            self.emit_scope_cleanup_var(var)?;
+        }
+        for (_, var) in list_vars {
+            let list_val = self.load_list(var.ptr)?;
+            let data_ptr = self
+                .builder
+                .build_extract_value(list_val, 0, "data")
+                .map_err(llvm_err)?
+                .into_pointer_value();
+            let height = self
+                .builder
+                .build_extract_value(list_val, 2, "height")
+                .map_err(llvm_err)?
+                .into_int_value();
+            self.emit_rc_release_list_root(data_ptr, height)?;
+        }
+        Ok(())
+    }
+
+    fn emit_scope_cleanup_var(&self, var: &super::ScopeVar<'ctx>) -> Result<(), String> {
+        match var.kind {
+            ValKind::Str => {
+                let str_val = self.load_string(var.ptr)?;
+                self.rc_dec_string_val(str_val)?;
+            }
+            ValKind::Map | ValKind::Set => {
+                let list_val = self.load_list(var.ptr)?;
+                let data_ptr = self
+                    .builder
+                    .build_extract_value(list_val, 0, "data")
+                    .map_err(llvm_err)?
+                    .into_pointer_value();
+                let len = self
+                    .builder
+                    .build_extract_value(list_val, 1, "len")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                let cap = self
+                    .builder
+                    .build_extract_value(list_val, 2, "cap")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                let rht_fn = self.module.get_function("action_rc_dec_ht").unwrap();
+                let _ = self
+                    .builder
+                    .build_call(rht_fn, &[data_ptr.into(), cap.into(), len.into()], "")
+                    .map_err(llvm_err)?;
+            }
+            ValKind::LazyList => {}
+            ValKind::Stream => {
+                let stream_heap_ptr = self
+                    .builder
+                    .build_load(var.ty, var.ptr, "stream_cleanup_ptr")
+                    .map_err(llvm_err)?
+                    .into_pointer_value();
+                let stream_typed = self
+                    .builder
+                    .build_pointer_cast(stream_heap_ptr, self.ptr_ty(), "stream_typed")
+                    .map_err(llvm_err)?;
+                let list_gep = self
+                    .builder
+                    .build_struct_gep(self.stream_type, stream_typed, 3, "slist_gep")
+                    .map_err(llvm_err)?;
+                let list_val = self
+                    .builder
+                    .build_load(self.list_type, list_gep, "slist")
+                    .map_err(llvm_err)?;
+                let data_ptr = self
+                    .builder
+                    .build_extract_value(list_val.into_struct_value(), 0, "sdata")
+                    .map_err(llvm_err)?
+                    .into_pointer_value();
+                self.rc_dec(data_ptr)?;
+            }
+            ValKind::Task => {
+                let task_heap_ptr = self
+                    .builder
+                    .build_load(self.ptr_ty(), var.ptr, "task_cleanup_ptr")
+                    .map_err(llvm_err)?
+                    .into_pointer_value();
+                let task_typed = self
+                    .builder
+                    .build_pointer_cast(task_heap_ptr, self.ptr_ty(), "task_typed")
+                    .map_err(llvm_err)?;
+                let list_gep = self
+                    .builder
+                    .build_struct_gep(self.task_type, task_typed, 4, "tlist_gep")
+                    .map_err(llvm_err)?;
+                let list_val = self
+                    .builder
+                    .build_load(self.list_type, list_gep, "tlist")
+                    .map_err(llvm_err)?;
+                let data_ptr = self
+                    .builder
+                    .build_extract_value(list_val.into_struct_value(), 0, "tdata")
+                    .map_err(llvm_err)?
+                    .into_pointer_value();
+                self.rc_dec(data_ptr)?;
+            }
+            ValKind::Enum if var.enum_data_rc_managed => {
+                let loaded = self
+                    .builder
+                    .build_load(var.ty, var.ptr, "enum_cleanup")
+                    .map_err(llvm_err)?;
+                let data_ptr = self
+                    .builder
+                    .build_extract_value(loaded.into_struct_value(), 1, "edata")
+                    .map_err(llvm_err)?
+                    .into_pointer_value();
+                self.rc_dec(data_ptr)?;
+            }
+            ValKind::Fn if var.is_closure => {
+                let cap_ptr = self
+                    .builder
+                    .build_load(self.ptr_ty(), var.ptr, "closure_cleanup")
+                    .map_err(llvm_err)?
+                    .into_pointer_value();
+                if let Some(closure_ty) = var.closure_ty {
+                    self.rc_dec_closure_captures(cap_ptr, closure_ty)?;
+                } else {
+                    self.rc_dec(cap_ptr)?;
                 }
-                ValKind::List => {
-                    let list_val = self.load_list(var.ptr)?;
-                    let data_ptr = self
-                        .builder
-                        .build_extract_value(list_val, 0, "data")
-                        .map_err(llvm_err)?
-                        .into_pointer_value();
-                    let height = self
-                        .builder
-                        .build_extract_value(list_val, 2, "height")
-                        .map_err(llvm_err)?
-                        .into_int_value();
-                    let rdl_fn = self.module.get_function("action_rc_dec_list_node").unwrap();
-                    let _ = self
-                        .builder
-                        .build_call(rdl_fn, &[data_ptr.into(), height.into()], "")
-                        .map_err(llvm_err)?;
-                }
-                ValKind::Map | ValKind::Set => {
-                    let list_val = self.load_list(var.ptr)?;
-                    let data_ptr = self
-                        .builder
-                        .build_extract_value(list_val, 0, "data")
-                        .map_err(llvm_err)?
-                        .into_pointer_value();
-                    let len = self
-                        .builder
-                        .build_extract_value(list_val, 1, "len")
-                        .map_err(llvm_err)?
-                        .into_int_value();
-                    let cap = self
-                        .builder
-                        .build_extract_value(list_val, 2, "cap")
-                        .map_err(llvm_err)?
-                        .into_int_value();
-                    let rht_fn = self.module.get_function("action_rc_dec_ht").unwrap();
-                    let _ = self
-                        .builder
-                        .build_call(rht_fn, &[data_ptr.into(), cap.into(), len.into()], "")
-                        .map_err(llvm_err)?;
-                }
-                ValKind::LazyList => {
-                    // LazyList is stack-only, no heap data to clean up
-                }
-                ValKind::Stream => {
-                    let stream_heap_ptr = self
-                        .builder
-                        .build_load(var.ty, var.ptr, "stream_cleanup_ptr")
-                        .map_err(llvm_err)?
-                        .into_pointer_value();
-                    let stream_typed = self
-                        .builder
-                        .build_pointer_cast(stream_heap_ptr, self.ptr_ty(), "stream_typed")
-                        .map_err(llvm_err)?;
-                    let list_gep = self
-                        .builder
-                        .build_struct_gep(self.stream_type, stream_typed, 3, "slist_gep")
-                        .map_err(llvm_err)?;
-                    let list_val = self
-                        .builder
-                        .build_load(self.list_type, list_gep, "slist")
-                        .map_err(llvm_err)?;
-                    let data_ptr = self
-                        .builder
-                        .build_extract_value(list_val.into_struct_value(), 0, "sdata")
-                        .map_err(llvm_err)?
-                        .into_pointer_value();
-                    self.rc_dec(data_ptr)?;
-                }
-                ValKind::Task => {
-                    let task_heap_ptr = self
-                        .builder
-                        .build_load(self.ptr_ty(), var.ptr, "task_cleanup_ptr")
-                        .map_err(llvm_err)?
-                        .into_pointer_value();
-                    let task_typed = self
-                        .builder
-                        .build_pointer_cast(task_heap_ptr, self.ptr_ty(), "task_typed")
-                        .map_err(llvm_err)?;
-                    let list_gep = self
-                        .builder
-                        .build_struct_gep(self.task_type, task_typed, 4, "tlist_gep")
-                        .map_err(llvm_err)?;
-                    let list_val = self
-                        .builder
-                        .build_load(self.list_type, list_gep, "tlist")
-                        .map_err(llvm_err)?;
-                    let data_ptr = self
-                        .builder
-                        .build_extract_value(list_val.into_struct_value(), 0, "tdata")
-                        .map_err(llvm_err)?
-                        .into_pointer_value();
-                    self.rc_dec(data_ptr)?;
-                }
-                ValKind::Enum if var.enum_data_rc_managed => {
+            }
+            ValKind::Struct => {
+                if let BasicTypeEnum::StructType(st) = var.ty {
                     let loaded = self
                         .builder
-                        .build_load(var.ty, var.ptr, "enum_cleanup")
-                        .map_err(llvm_err)?;
-                    let data_ptr = self
-                        .builder
-                        .build_extract_value(loaded.into_struct_value(), 1, "edata")
+                        .build_load(st, var.ptr, "struct_cleanup")
                         .map_err(llvm_err)?
-                        .into_pointer_value();
-                    self.rc_dec(data_ptr)?;
+                        .into_struct_value();
+                    self.rc_struct_fields(loaded, st, false)?;
                 }
-                ValKind::Fn if var.is_closure => {
-                    // Closure: the alloca stores a pointer to the captures struct.
-                    // First rc_dec captured heap values inside, then rc_dec the struct.
-                    let cap_ptr = self
-                        .builder
-                        .build_load(self.ptr_ty(), var.ptr, "closure_cleanup")
-                        .map_err(llvm_err)?
-                        .into_pointer_value();
-                    if let Some(closure_ty) = var.closure_ty {
-                        self.rc_dec_closure_captures(cap_ptr, closure_ty)?;
-                    } else {
-                        self.rc_dec(cap_ptr)?;
-                    }
-                }
-                ValKind::Struct => {
-                    // Struct has heap-typed fields stored inline; rc_dec each
-                    if let BasicTypeEnum::StructType(st) = var.ty {
-                        let loaded = self
-                            .builder
-                            .build_load(st, var.ptr, "struct_cleanup")
-                            .map_err(llvm_err)?
-                            .into_struct_value();
-                        self.rc_struct_fields(loaded, st, false)?;
-                    }
-                }
-                ValKind::Nullable => {
-                    self.rc_nullable_inner(var.ptr, var.ty, false)?;
-                }
-                _ => {}
             }
+            ValKind::Nullable => {
+                self.rc_nullable_inner(var.ptr, var.ty, false)?;
+            }
+            _ => {}
         }
         Ok(())
     }

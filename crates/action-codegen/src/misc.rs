@@ -886,10 +886,7 @@ impl<'ctx> CodeGen<'ctx> {
                     self.rc_dec(data_ptr)?;
                     let _ = self.builder.build_unconditional_branch(list_dec_done);
                     self.builder.position_at_end(list_ex_bb);
-                    let rdl_fn = self.module.get_function("action_rc_dec_list_node").unwrap();
-                    let _ = self
-                        .builder
-                        .build_call(rdl_fn, &[data_ptr.into(), height.into()], "");
+                    self.emit_rc_release_list_root(data_ptr, height)?;
                     let _ = self.builder.build_unconditional_branch(list_dec_done);
                     self.builder.position_at_end(list_dec_done);
                 }

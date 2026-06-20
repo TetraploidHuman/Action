@@ -2572,6 +2572,18 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_store(lsr_child_slot, lsr_new_child)
             .map_err(llvm_err)?;
+        let lsr_inc_child = self.context.append_basic_block(lsr_fn, "inc_child");
+        let lsr_after_inc = self.context.append_basic_block(lsr_fn, "after_inc");
+        let _ =
+            self.builder
+                .build_conditional_branch(lsr_child_changed, lsr_inc_child, lsr_after_inc);
+        self.builder.position_at_end(lsr_inc_child);
+        let _ = self
+            .builder
+            .build_call(lsr_rc_inc_fn, &[lsr_new_child.into()], "")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(lsr_after_inc);
+        self.builder.position_at_end(lsr_after_inc);
         let _ = self.builder.build_unconditional_branch(lsr_int_ret);
 
         self.builder.position_at_end(lsr_int_ret);

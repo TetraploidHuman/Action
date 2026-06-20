@@ -1128,6 +1128,13 @@ fn test_collection_stmt_mut() {
     assert_eq!(out.trim(), "3\n4\n4\n2\n3\n3\n2\n777");
 }
 
+#[test]
+fn test_insert_exit() {
+    // Large append + alias + repeated insert; must exit cleanly (no heap corruption).
+    let out = run_example("test_insert_exit.at");
+    assert_eq!(out.trim(), "2010\n2000");
+}
+
 // ---- UFCS chain regression test ----
 
 #[test]

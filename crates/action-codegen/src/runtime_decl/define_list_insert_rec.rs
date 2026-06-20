@@ -578,6 +578,18 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(child_slot, new_child)
             .map_err(llvm_err)?;
+        let inc_child_bb = self.context.append_basic_block(lir_fn, "inc_child");
+        let after_inc_bb = self.context.append_basic_block(lir_fn, "after_inc");
+        let _ = self
+            .builder
+            .build_conditional_branch(child_changed, inc_child_bb, after_inc_bb);
+        self.builder.position_at_end(inc_child_bb);
+        let _ = self
+            .builder
+            .build_call(rc_inc_fn, &[new_child.into()], "")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(after_inc_bb);
+        self.builder.position_at_end(after_inc_bb);
         // bump child subtree_total (+1)
         let st_ptr = unsafe {
             self.builder
