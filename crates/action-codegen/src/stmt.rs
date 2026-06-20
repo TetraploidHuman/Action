@@ -1,12 +1,11 @@
 // Submodule: stmt
 
 use action_frontend::ast::*;
+use action_frontend::hir::{HirExpr, HirExprKind, HirWhenKind};
 use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
 use inkwell::values::PointerValue;
-#[cfg(test)]
 use inkwell::IntPredicate;
 
-#[cfg(test)]
 use super::TcoState;
 use super::{llvm_err, CodeGen, Scope, TypedValue, ValKind};
 
@@ -947,7 +946,6 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Emit a return instruction for a TypedValue, handling all types.
-    #[cfg(test)]
     pub(super) fn build_return_for_value(&self, v: &TypedValue<'ctx>) -> Result<(), String> {
         if let Some(bv) = v.to_bv() {
             let _ = self.builder.build_return(Some(&bv));
@@ -1007,6 +1005,172 @@ impl<'ctx> CodeGen<'ctx> {
                 let _ = self.builder.build_return(None);
             }
         }
+        Ok(())
+    }
+
+    /// Extract TCO state if `expr` is a tail-recursive self-call (HIR).
+    pub(super) fn extract_tco_info_hir(
+        &self,
+        expr: &HirExpr,
+    ) -> Option<(
+        Vec<(
+            inkwell::values::PointerValue<'ctx>,
+            inkwell::types::BasicTypeEnum<'ctx>,
+            ValKind,
+        )>,
+        inkwell::basic_block::BasicBlock<'ctx>,
+    )> {
+        if let HirExprKind::Call {
+            func,
+            args,
+            trailing_lambda: None,
+        } = &expr.kind
+        {
+            if let HirExprKind::Ident(fn_name) = &func.kind {
+                if let Some(ref tco) = self.tco_state {
+                    if *fn_name == tco.fn_name && args.len() <= tco.param_slots.len() {
+                        return Some((tco.param_slots.clone(), tco.tail_entry));
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Compile tail-recursive `return` without growing the stack (HIR).
+    pub(super) fn try_compile_hir_return_tco(&mut self, expr: &HirExpr) -> Result<bool, String> {
+        if let Some((param_slots, tail_entry)) = self.extract_tco_info_hir(expr) {
+            if let HirExprKind::Call { args, .. } = &expr.kind {
+                let arg_vals: Vec<TypedValue<'ctx>> = args
+                    .iter()
+                    .map(|a| self.compile_hir_expr(a))
+                    .collect::<Result<_, _>>()?;
+                for (i, arg_val) in arg_vals.iter().enumerate() {
+                    let (alloca, ty, _kind) = &param_slots[i];
+                    self.store_typed_value(arg_val, *alloca, *ty)?;
+                }
+                self.builder
+                    .build_unconditional_branch(tail_entry)
+                    .map_err(llvm_err)?;
+                return Ok(true);
+            }
+        }
+
+        if let HirExprKind::When(w) = &expr.kind {
+            if let HirWhenKind::OneLine {
+                condition,
+                then_expr,
+                else_expr,
+            } = &w.kind
+            {
+                let then_tco = self.extract_tco_info_hir(then_expr);
+                let else_tco = self.extract_tco_info_hir(else_expr);
+                if then_tco.is_some() || else_tco.is_some() {
+                    self.compile_tco_when_hir(
+                        condition, then_expr, else_expr, &then_tco, &else_tco,
+                    )?;
+                    return Ok(true);
+                }
+            }
+        }
+
+        Ok(false)
+    }
+
+    /// HIR variant of [`Self::compile_tco_when`].
+    pub(super) fn compile_tco_when_hir(
+        &mut self,
+        condition: &HirExpr,
+        then_expr: &HirExpr,
+        else_expr: &HirExpr,
+        then_tco: &Option<(
+            Vec<(
+                inkwell::values::PointerValue<'ctx>,
+                inkwell::types::BasicTypeEnum<'ctx>,
+                ValKind,
+            )>,
+            inkwell::basic_block::BasicBlock<'ctx>,
+        )>,
+        else_tco: &Option<(
+            Vec<(
+                inkwell::values::PointerValue<'ctx>,
+                inkwell::types::BasicTypeEnum<'ctx>,
+                ValKind,
+            )>,
+            inkwell::basic_block::BasicBlock<'ctx>,
+        )>,
+    ) -> Result<(), String> {
+        let cond_val = self.compile_hir_expr(condition)?;
+        let cond_as_bool = match cond_val {
+            TypedValue::Bool(b) => b,
+            _ => {
+                let bv = cond_val
+                    .to_bv()
+                    .ok_or("When condition must be a basic value")?;
+                self.builder
+                    .build_int_compare(
+                        IntPredicate::NE,
+                        bv.into_int_value(),
+                        self.i64_ty().const_int(0, false),
+                        "when_cond",
+                    )
+                    .map_err(llvm_err)?
+            }
+        };
+
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .unwrap()
+            .get_parent()
+            .unwrap();
+        let then_block = self.context.append_basic_block(current_fn, "tco_when_then");
+        let else_block = self.context.append_basic_block(current_fn, "tco_when_else");
+
+        self.builder
+            .build_conditional_branch(cond_as_bool, then_block, else_block)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(else_block);
+        if let Some((ref param_slots, tail_entry)) = else_tco {
+            if let HirExprKind::Call { args, .. } = &else_expr.kind {
+                let arg_vals: Vec<TypedValue<'ctx>> = args
+                    .iter()
+                    .map(|a| self.compile_hir_expr(a))
+                    .collect::<Result<_, _>>()?;
+                for (i, arg_val) in arg_vals.iter().enumerate() {
+                    let (alloca, ty, _kind) = &param_slots[i];
+                    self.store_typed_value(arg_val, *alloca, *ty)?;
+                }
+                self.builder
+                    .build_unconditional_branch(*tail_entry)
+                    .map_err(llvm_err)?;
+            }
+        } else {
+            let v = self.compile_hir_expr(else_expr)?;
+            self.build_return_for_value(&v)?;
+        }
+
+        self.builder.position_at_end(then_block);
+        if let Some((ref param_slots, tail_entry)) = then_tco {
+            if let HirExprKind::Call { args, .. } = &then_expr.kind {
+                let arg_vals: Vec<TypedValue<'ctx>> = args
+                    .iter()
+                    .map(|a| self.compile_hir_expr(a))
+                    .collect::<Result<_, _>>()?;
+                for (i, arg_val) in arg_vals.iter().enumerate() {
+                    let (alloca, ty, _kind) = &param_slots[i];
+                    self.store_typed_value(arg_val, *alloca, *ty)?;
+                }
+                self.builder
+                    .build_unconditional_branch(*tail_entry)
+                    .map_err(llvm_err)?;
+            }
+        } else {
+            let v = self.compile_hir_expr(then_expr)?;
+            self.build_return_for_value(&v)?;
+        }
+
         Ok(())
     }
 
@@ -1186,14 +1350,11 @@ impl<'ctx> CodeGen<'ctx> {
         let tail_entry = self.context.append_basic_block(function, "tail_entry");
         let _ = self.builder.build_unconditional_branch(tail_entry);
         self.builder.position_at_end(tail_entry);
-        #[cfg(test)]
-        {
-            self.tco_state = Some(TcoState {
-                tail_entry,
-                param_slots,
-                fn_name: _original_name.to_string(),
-            });
-        }
+        self.tco_state = Some(TcoState {
+            tail_entry,
+            param_slots,
+            fn_name: _original_name.to_string(),
+        });
 
         let result = body.compile(self)?;
 
@@ -1445,10 +1606,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Note: don't call add_function here — it was already declared in Pass 1
 
-        #[cfg(test)]
-        {
-            self.tco_state = None;
-        }
+        self.tco_state = None;
         self.scope = saved_scope;
 
         // Restore builder position

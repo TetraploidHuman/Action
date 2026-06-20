@@ -297,6 +297,9 @@ impl<'ctx> CodeGen<'ctx> {
                 self.rc_discard_value(&result)?;
             }
             HirStmt::Return { value: Some(v), .. } => {
+                if self.try_compile_hir_return_tco(v)? {
+                    return Ok(());
+                }
                 let val = self.compile_hir_expr(v)?;
                 let _ = self.compile_return_value(val);
             }

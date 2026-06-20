@@ -398,8 +398,7 @@ pub struct CodeGen<'ctx> {
     pub(crate) break_target: Option<inkwell::basic_block::BasicBlock<'ctx>>,
     /// Extension method mapping: "TypeName.method" → "TypeName_method"
     pub(crate) extension_methods: HashMap<String, String>,
-    /// TCO (Tail Call Optimization) state for the current function (test-only AST path).
-    #[cfg(test)]
+    /// TCO (Tail Call Optimization) state for the current function.
     pub(crate) tco_state: Option<TcoState<'ctx>>,
     /// Coroutine: list alloca where launch results are collected inside coroutineScope.
     /// None means we are not inside a coroutineScope.
@@ -456,7 +455,6 @@ pub struct CodeGen<'ctx> {
     pub(crate) block_did_rc_inc: bool,
 }
 
-#[cfg(test)]
 pub(crate) struct TcoState<'ctx> {
     /// Target block to jump to for tail-recursive calls
     tail_entry: inkwell::basic_block::BasicBlock<'ctx>,
@@ -596,7 +594,6 @@ impl<'ctx> CodeGen<'ctx> {
             continue_target: None,
             break_target: None,
             extension_methods: HashMap::new(),
-            #[cfg(test)]
             tco_state: None,
             coroutine_collector: None,
             task_type,
