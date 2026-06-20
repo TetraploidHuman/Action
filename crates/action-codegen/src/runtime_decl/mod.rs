@@ -71,11 +71,6 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(cg.module.write_bitcode_to_memory().as_slice().to_vec())
     }
 
-    #[allow(dead_code)]
-    fn link_runtime_bitcode(&self, bitcode: &[u8]) -> Result<(), String> {
-        link_runtime_bitcode_into(&self.module, self.context, bitcode)
-    }
-
     fn define_runtime_generate(&self) -> Result<(), String> {
         #![allow(unused_macros)]
         let i64 = self.i64_ty();
@@ -447,6 +442,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.define_print()?;
         self.define_str_basic()?;
         self.define_list_core()?;
+        self.define_lazy_list()?;
         self.define_list_insert_rec()?;
         self.define_list_iter()?;
         self.define_list_xform()?;
@@ -470,6 +466,7 @@ impl<'ctx> CodeGen<'ctx> {
 mod define_file_parse;
 mod define_hash_table;
 mod define_list_core;
+mod define_lazy_list;
 mod define_list_extra;
 mod define_list_insert_rec;
 mod define_list_iter;
