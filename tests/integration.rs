@@ -1121,6 +1121,13 @@ fn test_map_cow_properties() {
     assert_eq!(out.trim(), "2\n2\n3\n1\n2\n999");
 }
 
+#[test]
+fn test_collection_stmt_mut() {
+    // Stmt-form mutating UFCS (no assignment) must update var binding, preserve CoW.
+    let out = run_example("test_collection_stmt_mut.at");
+    assert_eq!(out.trim(), "3\n4\n4\n2\n3\n3\n2\n777");
+}
+
 // ---- UFCS chain regression test ----
 
 #[test]

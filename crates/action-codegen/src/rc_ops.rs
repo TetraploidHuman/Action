@@ -744,6 +744,52 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
+    /// True when another binding in the scope chain holds the same collection heap root.
+    pub(super) fn collection_root_shared_in_scope(
+        &self,
+        exclude_ptr: PointerValue<'ctx>,
+        old_data_ptr: PointerValue<'ctx>,
+    ) -> Result<inkwell::values::IntValue<'ctx>, String> {
+        use inkwell::IntPredicate;
+        let i64 = self.i64_ty();
+        let mut acc = self.context.bool_type().const_int(0, false);
+        let mut scope = &self.scope;
+        let old_i = self
+            .builder
+            .build_ptr_to_int(old_data_ptr, i64, "sh_old_i")
+            .map_err(llvm_err)?;
+        loop {
+            for var in scope.local_variables().values() {
+                if var.ptr == exclude_ptr {
+                    continue;
+                }
+                if !matches!(var.kind, ValKind::List | ValKind::Map | ValKind::Set) {
+                    continue;
+                }
+                let lv = self.load_list(var.ptr)?;
+                let dp = self
+                    .builder
+                    .build_extract_value(lv, 0, "sh_dp")
+                    .map_err(llvm_err)?
+                    .into_pointer_value();
+                let dp_i = self
+                    .builder
+                    .build_ptr_to_int(dp, i64, "sh_dp_i")
+                    .map_err(llvm_err)?;
+                let eq = self
+                    .builder
+                    .build_int_compare(IntPredicate::EQ, dp_i, old_i, "sh_eq")
+                    .map_err(llvm_err)?;
+                acc = self.builder.build_or(acc, eq, "sh_or").map_err(llvm_err)?;
+            }
+            match &scope.parent {
+                Some(p) => scope = p.as_ref(),
+                None => break,
+            }
+        }
+        Ok(acc)
+    }
+
     /// Free an intermediate heap-typed value that is not a scope variable.
     /// Uses rc_inc+rc_dec to safely release. For tree values (List/Map/Set) with RC=1,
     /// this keeps the node alive (1→2→1) — the final scope cleanup handles actual freeing.

@@ -875,10 +875,23 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_extract_value(old, 2, "old_h")
                         .map_err(llvm_err)?
                         .into_int_value();
+                    let is_shared = self.collection_root_shared_in_scope(var_ptr, data_ptr)?;
+                    let list_sh_bb = self.context.append_basic_block(fn_val, "asg_list_sh");
+                    let list_ex_bb = self.context.append_basic_block(fn_val, "asg_list_ex");
+                    let list_dec_done = self.context.append_basic_block(fn_val, "asg_list_done");
+                    let _ = self
+                        .builder
+                        .build_conditional_branch(is_shared, list_sh_bb, list_ex_bb);
+                    self.builder.position_at_end(list_sh_bb);
+                    self.rc_dec(data_ptr)?;
+                    let _ = self.builder.build_unconditional_branch(list_dec_done);
+                    self.builder.position_at_end(list_ex_bb);
                     let rdl_fn = self.module.get_function("action_rc_dec_list_node").unwrap();
                     let _ = self
                         .builder
                         .build_call(rdl_fn, &[data_ptr.into(), height.into()], "");
+                    let _ = self.builder.build_unconditional_branch(list_dec_done);
+                    self.builder.position_at_end(list_dec_done);
                 }
                 ValKind::Map | ValKind::Set => {
                     let data_ptr = self
@@ -896,12 +909,25 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_extract_value(old, 2, "old_cap")
                         .map_err(llvm_err)?
                         .into_int_value();
+                    let is_shared = self.collection_root_shared_in_scope(var_ptr, data_ptr)?;
+                    let ht_sh_bb = self.context.append_basic_block(fn_val, "asg_ht_sh");
+                    let ht_ex_bb = self.context.append_basic_block(fn_val, "asg_ht_ex");
+                    let ht_dec_done = self.context.append_basic_block(fn_val, "asg_ht_done");
+                    let _ = self
+                        .builder
+                        .build_conditional_branch(is_shared, ht_sh_bb, ht_ex_bb);
+                    self.builder.position_at_end(ht_sh_bb);
+                    self.rc_dec(data_ptr)?;
+                    let _ = self.builder.build_unconditional_branch(ht_dec_done);
+                    self.builder.position_at_end(ht_ex_bb);
                     let rht_fn = self.module.get_function("action_rc_dec_ht").unwrap();
                     let _ = self.builder.build_call(
                         rht_fn,
                         &[data_ptr.into(), cap.into(), len.into()],
                         "",
                     );
+                    let _ = self.builder.build_unconditional_branch(ht_dec_done);
+                    self.builder.position_at_end(ht_dec_done);
                 }
                 _ => {}
             }

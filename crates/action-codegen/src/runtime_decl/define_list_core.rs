@@ -2450,18 +2450,11 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let lsr_inc_done = self
             .builder
-            .build_int_compare(
-                IntPredicate::SGE,
-                lsr_inc_i,
-                lsr_new_int_count,
-                "inc_done",
-            )
+            .build_int_compare(IntPredicate::SGE, lsr_inc_i, lsr_new_int_count, "inc_done")
             .map_err(llvm_err)?;
-        let _ = self.builder.build_conditional_branch(
-            lsr_inc_done,
-            lsr_int_inc_done,
-            lsr_int_inc_body,
-        );
+        let _ =
+            self.builder
+                .build_conditional_branch(lsr_inc_done, lsr_int_inc_done, lsr_int_inc_body);
 
         self.builder.position_at_end(lsr_int_inc_body);
         let lsr_inc_cb = unsafe {
@@ -2471,12 +2464,7 @@ impl<'ctx> CodeGen<'ctx> {
         };
         let lsr_inc_cep = unsafe {
             self.builder
-                .build_gep(
-                    self.child_entry_type,
-                    lsr_inc_cb,
-                    &[lsr_inc_i],
-                    "inc_cep",
-                )
+                .build_gep(self.child_entry_type, lsr_inc_cb, &[lsr_inc_i], "inc_cep")
                 .map_err(llvm_err)?
         };
         let lsr_inc_child = self

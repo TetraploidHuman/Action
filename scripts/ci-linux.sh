@@ -34,7 +34,7 @@ run_test() {
     echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"capabilities":{}}}' \
         | timeout 5 "$ACTION" lsp 2>&1 || true
     PROPTEST_CASES="${PROPTEST_CASES:-50}" \
-        cargo test --lib --target "$TARGET" -- --test-threads=1
+        cargo test --lib --target "$TARGET" -- --test-threads=1 --skip proptest
     cargo test --test integration --target "$TARGET" -- --test-threads=1
 }
 
@@ -47,7 +47,7 @@ run_clippy() {
 run_frontend() {
     verify_env
     cargo build -p action-frontend --target "$TARGET"
-    cargo test -p action-frontend --target "$TARGET"
+    cargo test -p action-frontend --target "$TARGET" -- --skip proptest
 }
 
 run_benchmark() {
@@ -91,6 +91,12 @@ run_perf_quick() {
         --min-delta-ms 15
 }
 
+run_proptest() {
+    verify_env
+    PROPTEST_CASES="${PROPTEST_CASES:-256}" \
+        cargo test -p action-frontend --target "$TARGET" proptest -- --test-threads=1
+}
+
 run_debug() {
     verify_env
     "$ACTION" run examples/hello.at
@@ -107,15 +113,15 @@ run_core() {
     echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"capabilities":{}}}' \
         | timeout 5 "$ACTION" lsp 2>&1 || true
     PROPTEST_CASES="${PROPTEST_CASES:-50}" \
-        cargo test --lib --target "$TARGET" -- --test-threads=1
+        cargo test --lib --target "$TARGET" -- --test-threads=1 --skip proptest
     cargo test --test integration --target "$TARGET" -- --test-threads=1
     run_perf_smoke_debug
     cargo build -p action-frontend --target "$TARGET"
-    cargo test -p action-frontend --target "$TARGET"
+    cargo test -p action-frontend --target "$TARGET" -- --skip proptest
 }
 
 usage() {
-    echo "usage: $0 {test|clippy|frontend|benchmark|debug|core}" >&2
+    echo "usage: $0 {test|clippy|frontend|benchmark|proptest|debug|core}" >&2
     exit 1
 }
 
@@ -124,6 +130,7 @@ case "${1:-}" in
     clippy) run_clippy ;;
     frontend) run_frontend ;;
     benchmark) run_benchmark ;;
+    proptest) run_proptest ;;
     debug) run_debug ;;
     core) run_core ;;
     *) usage ;;

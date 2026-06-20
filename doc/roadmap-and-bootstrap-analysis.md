@@ -261,7 +261,7 @@ runtime_decl/define_*.rs (LLVM 实现)
 | 高 | compile-error：import 循环/非法名、泛型、重载 | ✅ |
 | 中 | Map CoW oracle（`test_map_cow_properties`） | ✅ |
 | 中 | diagnostics JSON 测试 | ✅ |
-| 低 | lib proptest 与 merge gate 解耦 | 进行中 |
+| 低 | lib proptest 与 merge gate 解耦 | ✅（core CI `--skip proptest`；独立非阻塞 job） |
 
 ### 4.5 P4 — 开发者体验
 

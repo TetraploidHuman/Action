@@ -57,6 +57,31 @@ jobs:
           name: run-output-linux-${{ github.run_id }}
           path: action_run_output.txt
 
+  proptest:
+    name: Linux Proptest
+    runs-on: [self-hosted, linux, ci]
+    continue-on-error: true
+    env:
+      CARGO_TARGET_DIR: /home/miaox99/桌面/Runner/ci-target
+      CARGO_INCREMENTAL: 1
+      CARGO_BUILD_JOBS: 16
+      RUSTFLAGS: -C debuginfo=0
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.LINUX_TARGET }}
+
+      - name: Ensure persistent target dir
+        run: mkdir -p "$CARGO_TARGET_DIR"
+
+      - name: Frontend proptest (non-blocking)
+        env:
+          PROPTEST_CASES: '256'
+          TARGET: ${{ env.LINUX_TARGET }}
+        run: nix-shell --run "bash scripts/ci-linux.sh proptest"
+
   benchmark:
     name: Linux Benchmark
     # Dedicated runner-6; parallel with linux/windows (wall ≈ max of the three).
@@ -167,7 +192,7 @@ jobs:
           Write-Host $out
           if ($out -notmatch 'hello') { Write-Warning "hello.at output unexpected" }
           try { '{}' | & $Action lsp 2>&1 | Out-Null } catch { Write-Host "lsp smoke: $_" }
-          cargo test --lib --target $env:TARGET -- --test-threads=1
+          cargo test --lib --target $env:TARGET -- --test-threads=1 --skip proptest
           cargo test --test integration --target $env:TARGET -- --test-threads=1
 
       - name: Debug run output

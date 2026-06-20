@@ -144,7 +144,7 @@ pub use action_lsp as lsp;
 
 | 类别 | 说明 | 覆盖 |
 |------|------|------|
-| List/Map CoW | 写时复制、共享引用隔离 | ✅ + `test_map_cow_properties` |
+| List/Map CoW | 写时复制、共享引用隔离、语句形式 mutating UFCS | ✅ + `test_map_cow_properties` / `test_collection_stmt_mut` |
 | compile-error oracle | import 循环/非法名、泛型、重载 | ✅ |
 | diagnostics JSON | `tests/diagnostics_json.rs` | ✅ |
 | Nullable / UFCS / TCO / 泛型 | 见 integration.rs | ✅ |

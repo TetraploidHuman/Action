@@ -1,0 +1,26 @@
+// Stmt-form mutating UFCS (no assignment): write back into var binding.
+fun main() {
+    // List append statement
+    val la = List[1, 2, 3]
+    var lb = la
+    lb.append(4)
+    println(la.len())
+    println(lb.len())
+    println(lb.get(3))
+
+    // Map insert statement
+    val m1 = Map["x": 10, "y": 20]
+    var m2 = m1
+    m2.insert("z", 30)
+    println(m1.len())
+    println(m2.len())
+
+    // Map remove statement
+    val m3 = Map["a": 1, "b": 2, "c": 3]
+    var m4 = m3
+    m4.remove("a")
+    println(m3.len())
+    println(m4.len())
+
+    println(777)
+}
