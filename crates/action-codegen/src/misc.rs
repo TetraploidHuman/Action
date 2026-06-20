@@ -6,15 +6,11 @@
 //
 
 use action_frontend::ast::Literal;
-#[cfg(test)]
-use action_frontend::ast::*;
 use inkwell::types::{BasicType, BasicTypeEnum};
 use inkwell::values::{GlobalValue, IntValue, PointerValue};
 use inkwell::IntPredicate;
 
 use super::call_arg::CallArg;
-#[cfg(test)]
-use super::Scope;
 use super::{llvm_err, CodeGen, TypedValue, ValKind};
 
 impl<'ctx> CodeGen<'ctx> {
@@ -84,56 +80,6 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
-    #[cfg(test)]
-
-    pub(super) fn compile_index(
-        &mut self,
-        obj: &Expr,
-        idx: &Expr,
-    ) -> Result<TypedValue<'ctx>, String> {
-        let o = self.compile_expr(obj)?;
-
-        if let TypedValue::Nullable(nullable_ptr, inner_bt) = o {
-            return self.compile_nullable_index_values(nullable_ptr, inner_bt, CallArg::ast(idx));
-        }
-
-        // Tuple/struct indexing: requires compile-time constant integer index
-        if let TypedValue::Struct(ptr, struct_ty) = &o {
-            let index = match &idx.kind {
-                ExprKind::Literal(Literal::Int(n)) => *n as u32,
-                _ => return Err("Tuple/struct index must be an integer literal".to_string()),
-            };
-            let bt: BasicTypeEnum = (*struct_ty).into();
-            let loaded = self
-                .builder
-                .build_load(bt, *ptr, "tuple_ld")
-                .map_err(llvm_err)?;
-            let struct_val = loaded.into_struct_value();
-            let field_val = self
-                .builder
-                .build_extract_value(struct_val, index, "tuple_idx")
-                .map_err(llvm_err)?;
-            return self.bv_to_typed(field_val);
-        }
-
-        // Map indexing: map[key] -> Option<V>
-        if let TypedValue::Map(map_ptr) = &o {
-            return self.compile_map_index(*map_ptr, idx);
-        }
-
-        // Set indexing: set[elem] -> Option<T>
-        if let TypedValue::Set(set_ptr) = &o {
-            return self.compile_set_index(*set_ptr, idx);
-        }
-
-        let i = self.compile_expr(idx)?;
-        let index_val = match i {
-            TypedValue::Int(v) => v,
-            _ => return Err("Index must be an integer".to_string()),
-        };
-
-        self.compile_index_values(o, TypedValue::Int(index_val))
-    }
 
     pub(super) fn compile_nullable_index_values(
         &mut self,
@@ -311,16 +257,6 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    #[cfg(test)]
-
-    pub(super) fn compile_map_index(
-        &mut self,
-        map_ptr: PointerValue<'ctx>,
-        idx: &Expr,
-    ) -> Result<TypedValue<'ctx>, String> {
-        let key_val = self.compile_expr(idx)?;
-        self.compile_map_index_key(map_ptr, key_val)
-    }
 
     pub(super) fn compile_map_index_key(
         &mut self,
@@ -436,15 +372,6 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Set indexing: set[elem] -> T? (nullable)
-    #[cfg(test)]
-    pub(super) fn compile_set_index(
-        &mut self,
-        set_ptr: PointerValue<'ctx>,
-        idx: &Expr,
-    ) -> Result<TypedValue<'ctx>, String> {
-        let elem_val = self.compile_expr(idx)?;
-        self.compile_set_index_key(set_ptr, elem_val)
-    }
 
     pub(super) fn compile_set_index_key(
         &mut self,
@@ -544,127 +471,8 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::Nullable(null_alloca, null_bt))
     }
 
-    #[cfg(test)]
 
-    pub(super) fn compile_range(
-        &mut self,
-        start: &Expr,
-        end: &Expr,
-    ) -> Result<TypedValue<'ctx>, String> {
-        // Create a range struct {start: i64, end: i64, inclusive: i64}
-        let start_v = self.compile_expr(start)?;
-        let end_v = self.compile_expr(end)?;
-        let start_int = match start_v {
-            TypedValue::Int(v) => v,
-            _ => return Err("Range start must be integer".into()),
-        };
-        let end_int = match end_v {
-            TypedValue::Int(v) => v,
-            _ => return Err("Range end must be integer".into()),
-        };
-        let range_ty = self.range_type;
-        let alloca = self
-            .builder
-            .build_alloca(range_ty, "range")
-            .map_err(llvm_err)?;
-        let sptr = self
-            .builder
-            .build_struct_gep(range_ty, alloca, 0, "r_start")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(sptr, start_int)
-            .map_err(llvm_err)?;
-        let eptr = self
-            .builder
-            .build_struct_gep(range_ty, alloca, 1, "r_end")
-            .map_err(llvm_err)?;
-        self.builder.build_store(eptr, end_int).map_err(llvm_err)?;
-        let iptr = self
-            .builder
-            .build_struct_gep(range_ty, alloca, 2, "r_inc")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(iptr, self.i64_ty().const_int(1, false))
-            .map_err(llvm_err)?;
-        Ok(TypedValue::Struct(alloca, range_ty))
-    }
 
-    #[cfg(test)]
-
-    pub(super) fn compile_block(&mut self, stmts: &[Stmt]) -> Result<TypedValue<'ctx>, String> {
-        let mut saved = Scope::new();
-        std::mem::swap(&mut self.scope, &mut saved);
-        self.scope = Scope::with_parent(saved);
-
-        // Reset the flag — it will be set by inner compile_block calls for
-        // Stmt::Expr that are themselves blocks, and by the final handling below.
-        self.block_did_rc_inc = false;
-
-        let mut last = TypedValue::Unit;
-        for (_i, s) in stmts.iter().enumerate() {
-            match s {
-                Stmt::Expr { expr: e, .. } => {
-                    // Discard the previous expression result before overwriting it.
-                    // Non-last statement values are not used; heap-typed intermediates
-                    // (RC=0) need rc_inc+rc_dec to trigger free, and scope-variable
-                    // returns from inner blocks need rc_dec to drop the protection ref.
-                    self.rc_discard_value(&last)?;
-                    last = self.compile_expr(e)?;
-                }
-                _ => self.compile_stmt(s)?,
-            }
-        }
-
-        // If a Return/Break/Continue was already emitted, the current block already
-        // has a terminator and cleanup was done by that handler — skip to avoid
-        // double rc_dec on scope variables.
-        let current_block = self
-            .builder
-            .get_insert_block()
-            .ok_or("compile_block: builder has no insert block")?;
-        if current_block.get_terminator().is_none() {
-            // RC inc the return value before cleaning up the scope — but only when
-            // the last expression is a local variable that cleanup would decrement.
-            // Literals and non-variable expressions don't need protection.
-            if self.is_scope_variable(&last) {
-                self.rc_inc_typed_value(&last)?;
-                self.block_did_rc_inc = true;
-            } else {
-                self.block_did_rc_inc = false;
-            }
-            // RC cleanup: decrement refcounts on heap-typed variables in this scope
-            self.emit_scope_cleanup()?;
-        } else {
-            self.block_did_rc_inc = false;
-        }
-
-        let mut parent = Scope::new();
-        std::mem::swap(&mut self.scope, &mut parent);
-        if let Some(p) = parent.parent {
-            self.scope = *p;
-        }
-        Ok(last)
-    }
-
-    #[cfg(test)]
-
-    pub(super) fn compile_assign(
-        &mut self,
-        target: &Expr,
-        value: &Expr,
-    ) -> Result<TypedValue<'ctx>, String> {
-        match &target.kind {
-            ExprKind::Ident(name) => {
-                let v = self.compile_expr(value)?;
-                self.assign_mutable_ident(name, v)
-            }
-            _ => {
-                let v = self.compile_expr(value)?;
-                self.rc_inc_typed_value(&v)?;
-                self.compile_assign_field(target, &v)
-            }
-        }
-    }
 
     pub(super) fn compile_assign_hir(
         &mut self,
@@ -802,82 +610,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    #[cfg(test)]
 
-    fn assign_index_expr(
-        &mut self,
-        obj: &Expr,
-        idx: &Expr,
-        elem: &TypedValue<'ctx>,
-    ) -> Result<TypedValue<'ctx>, String> {
-        let idx_val = self.compile_expr(idx)?;
-        let idx_int = match idx_val {
-            TypedValue::Int(v) => v,
-            _ => return Err("Index must be an integer".to_string()),
-        };
-        let obj_val = self.compile_expr(obj)?;
-        match &obj_val {
-            TypedValue::Struct(ptr, st) => {
-                let index = match &idx.kind {
-                    ExprKind::Literal(Literal::Int(n)) => *n as u32,
-                    _ => return Err("Tuple/struct index must be an integer literal".to_string()),
-                };
-                let field_ptr = self
-                    .builder
-                    .build_struct_gep(*st, *ptr, index, "tuple_set_gep")
-                    .map_err(llvm_err)?;
-                let field_types = st.get_field_types();
-                if (index as usize) < field_types.len() {
-                    let fk = self.struct_field_val_kind(st, index);
-                    self.rc_dec_field_val(field_ptr, field_types[index as usize], fk)?;
-                }
-                if let Some(bv) = elem.to_bv() {
-                    self.builder.build_store(field_ptr, bv).map_err(llvm_err)?;
-                }
-                self.rc_free_intermediate(&obj_val)?;
-                Ok(elem.clone())
-            }
-            TypedValue::List(lp) => {
-                let new_list = self.list_set_at(*lp, idx_int, elem)?;
-                self.rc_free_intermediate(&obj_val)?;
-                self.write_back_expr_lvalue(obj, new_list)
-            }
-            _ => Err("Cannot assign to index of this type".to_string()),
-        }
-    }
-
-    #[cfg(test)]
-
-    fn write_back_expr_lvalue(
-        &mut self,
-        target: &Expr,
-        new_val: TypedValue<'ctx>,
-    ) -> Result<TypedValue<'ctx>, String> {
-        match &target.kind {
-            ExprKind::Ident(name) => self.assign_mutable_ident(name, new_val),
-            ExprKind::FieldAccess(obj, field) => {
-                let obj_val = self.compile_expr(obj)?;
-                self.assign_field_on_value(obj_val, field, &new_val)
-            }
-            ExprKind::Index(outer, outer_idx) => {
-                let outer_idx_val = self.compile_expr(outer_idx)?;
-                let outer_idx_int = match outer_idx_val {
-                    TypedValue::Int(v) => v,
-                    _ => return Err("Index must be an integer".to_string()),
-                };
-                let outer_container = self.compile_expr(outer)?;
-                let updated_outer = match &outer_container {
-                    TypedValue::List(lp) => self.list_set_at(*lp, outer_idx_int, &new_val)?,
-                    _ => {
-                        return Err("Nested index assignment requires a list container".to_string())
-                    }
-                };
-                self.rc_free_intermediate(&outer_container)?;
-                self.write_back_expr_lvalue(outer, updated_outer)
-            }
-            _ => Err("Invalid index assignment target".to_string()),
-        }
-    }
 
     fn list_set_at(
         &mut self,
@@ -1226,48 +959,6 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(v)
     }
 
-    #[cfg(test)]
-    fn compile_assign_field(
-        &mut self,
-        target: &Expr,
-        v: &TypedValue<'ctx>,
-    ) -> Result<TypedValue<'ctx>, String> {
-        match &target.kind {
-            ExprKind::FieldAccess(obj, field) => {
-                let obj_val = self.compile_expr(obj)?;
-                self.assign_field_on_value(obj_val, field, v)
-            }
-            ExprKind::Tuple(names) => {
-                for (i, (_, name_expr)) in names.iter().enumerate() {
-                    let name = match &name_expr.kind {
-                        ExprKind::Ident(n) => n,
-                        _ => return Err("Destructuring target must be an identifier".to_string()),
-                    };
-                    // Collect var info before mutable self call
-                    let var_ptr = {
-                        let var = self
-                            .scope
-                            .get(name)
-                            .ok_or_else(|| format!("Undefined variable: {}", name))?;
-                        if !var.mutable {
-                            return Err(format!("Cannot assign to immutable variable '{}'", name));
-                        }
-                        var.ptr
-                    };
-                    let field_val = self.extract_field_from_struct(&v, i, None)?;
-                    if let Some(bv) = field_val.to_bv() {
-                        self.builder.build_store(var_ptr, bv).map_err(llvm_err)?;
-                    }
-                }
-                Ok(v.clone())
-            }
-            ExprKind::Index(obj, idx) => self.assign_index_expr(obj, idx, v),
-            _ => Err(format!(
-                "Complex assignment not yet supported: {:?}",
-                target.kind
-            )),
-        }
-    }
 
     /// Load a string struct value from its alloca pointer
     pub(super) fn load_string(

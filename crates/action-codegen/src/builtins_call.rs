@@ -1,7 +1,5 @@
 // Submodule: builtins_call
 
-#[cfg(test)]
-use action_frontend::ast::*;
 use action_frontend::builtin::UfcsReceiverKind;
 use inkwell::values::{BasicValueEnum, PointerValue};
 use inkwell::IntPredicate;
@@ -10,135 +8,8 @@ use super::{llvm_err, CodeGen, TypedValue};
 
 impl<'ctx> CodeGen<'ctx> {
     /// AST call compilation (test-only; production uses [`compile_call_hir`]).
-    #[cfg(test)]
-    pub(super) fn compile_call(
-        &mut self,
-        func: &Expr,
-        args: &[Expr],
-        trailing: &Option<Box<Expr>>,
-    ) -> Result<TypedValue<'ctx>, String> {
-        let call_args = Self::call_args_from_ast(args);
-        let trailing_ca = Self::trailing_call_arg(trailing);
-        // Named calls: shared router (HIR/AST) with fallthrough for higher-order targets
-        if let ExprKind::Ident(name) = &func.kind {
-            match self.dispatch_named_call(name, &call_args, trailing_ca) {
-                Ok(v) => return Ok(v),
-                Err(e) if e.starts_with("Unknown function or builtin:") => {}
-                Err(e) => return Err(e),
-            }
-        }
-
-        // Module-qualified call: module.function(args) → module_function(args)
-        if let ExprKind::FieldAccess(module_expr, method) = &func.kind {
-            if let ExprKind::Ident(module_name) = &module_expr.kind {
-                // List.of(...) → List[...] (equivalent to list literal)
-                if module_name == "list" && method == "of" {
-                    return self.builtin_list(&call_args);
-                }
-                // Set.of(...) → Set literal
-                if module_name == "set" && method == "of" {
-                    return self.builtin_set_of(&call_args);
-                }
-                let mangled = format!("{}_{}", module_name, method);
-                match self.dispatch_named_call(&mangled, &call_args, trailing_ca) {
-                    Ok(v) => return Ok(v),
-                    Err(e) if e.starts_with("Unknown function or builtin:") => {}
-                    Err(e) => return Err(e),
-                }
-            }
-        }
-
-        // UFCS method call: receiver.method(args) → TypeName_method(receiver, args)
-        if let ExprKind::FieldAccess(receiver, method) = &func.kind {
-            // Fuse `.map { }.filter { }` before compiling the map receiver (avoids mono_map + walk).
-            if method == "filter" {
-                if let Some((map_fn_expr, inner_list_expr)) = Self::extract_map_call_args(receiver)
-                {
-                    let filter_fn_val = if let Some(lam) = trailing {
-                        self.compile_expr(lam)?
-                    } else if args.len() == 1 {
-                        self.compile_expr(&args[0])?
-                    } else {
-                        return Err(
-                            "filter with trailing lambda expects 0 args; filter(fn, list) expects 2"
-                                .to_string(),
-                        );
-                    };
-                    return self.fused_map_filter(map_fn_expr, inner_list_expr, filter_fn_val);
-                }
-                if let Some((flat_fn_expr, inner_list_expr)) =
-                    Self::extract_flatmap_call_args(receiver)
-                {
-                    let filter_fn_val = if let Some(lam) = trailing {
-                        self.compile_expr(lam)?
-                    } else if args.len() == 1 {
-                        self.compile_expr(&args[0])?
-                    } else {
-                        return Err(
-                            "filter with trailing lambda expects 0 args; filter(fn, list) expects 2"
-                                .to_string(),
-                        );
-                    };
-                    return self.fused_flatmap_filter_ast(
-                        flat_fn_expr,
-                        inner_list_expr,
-                        filter_fn_val,
-                    );
-                }
-            }
-            if method == "map" {
-                if let Some((filter_fn_expr, inner_list_expr)) =
-                    Self::extract_filter_call_args(receiver)
-                {
-                    let map_fn_val = if let Some(lam) = trailing {
-                        self.compile_expr(lam)?
-                    } else if args.len() == 1 {
-                        self.compile_expr(&args[0])?
-                    } else {
-                        return Err("map with trailing lambda expects 0 args".to_string());
-                    };
-                    return self.fused_filter_map(filter_fn_expr, inner_list_expr, map_fn_val);
-                }
-            }
-            if method == "takeWhile" {
-                if let Some((map_fn_expr, inner_list_expr)) = Self::extract_map_call_args(receiver)
-                {
-                    let tw_fn_val = if let Some(lam) = trailing {
-                        self.compile_expr(lam)?
-                    } else if args.len() == 1 {
-                        self.compile_expr(&args[0])?
-                    } else {
-                        return Err("takeWhile with trailing lambda expects 0 args".to_string());
-                    };
-                    return self.fused_map_take_while(map_fn_expr, inner_list_expr, tw_fn_val);
-                }
-            }
-
-            return self.compile_ufcs_method(
-                CallArg::ast(receiver.as_ref()),
-                method,
-                &call_args,
-                trailing_ca,
-            );
-        }
-
-        // Higher-order call: compile the call target expression
-        let target = self.compile_expr(func)?;
-        self.compile_indirect_call(target, args, trailing)
-    }
 
     /// Perform an indirect function call through a TypedValue::Fn, TypedValue::Closure, or TypedValue::Int.
-    #[cfg(test)]
-    pub(super) fn compile_indirect_call(
-        &mut self,
-        target: TypedValue<'ctx>,
-        args: &[Expr],
-        trailing: &Option<Box<Expr>>,
-    ) -> Result<TypedValue<'ctx>, String> {
-        let call_args = Self::call_args_from_ast(args);
-        let trailing_ca = Self::trailing_call_arg(trailing);
-        self.compile_indirect_call_impl(target, &call_args, trailing_ca)
-    }
 
     /// Read-only List UFCS methods using the already-compiled receiver value.
     /// Returns `None` when `method` is not handled here.

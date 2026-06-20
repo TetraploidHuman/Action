@@ -136,29 +136,9 @@ impl TypeChecker {
             ExprKind::Call { func, args, .. } => {
                 if let ExprKind::Ident(name) = &func.kind {
                     match name.as_str() {
-                        "print" | "println" | "send" | "close" | "cancel" => Ok(Type::Unit),
-                        "toCString" => Ok(Type::Named("CString".into())),
-                        "fromCString" => Ok(Type::Named("String".into())),
-                        "readLine" => Ok(Type::Nullable(Box::new(Type::Named("String".into())))),
-                        "httpRequest" | "jsonEscape" | "unwrapOr" | "substring" | "str" => {
-                            Ok(Type::Named("String".into()))
-                        }
-                        "toString" | "toUpper" | "toLower" => Ok(Type::Named("String".into())),
-                        "receive" | "wait" => Ok(Type::Named("Int".into())),
                         "launch" => Ok(Type::Task(Box::new(Type::Named("Int".into())))),
                         "Stream" => Ok(Type::Stream(Box::new(Type::Named("Int".into())))),
-                        "is_done" | "is_cancelled" => Ok(Type::Named("Bool".into())),
-                        "withTimeout" => Ok(Type::Nullable(Box::new(Type::Named("Int".into())))),
-                        "__list" | "coroutineScope" => Ok(Type::Named("list".into())),
-                        "find" | "findIndex" | "reduce" => {
-                            Ok(Type::Nullable(Box::new(Type::Named("Int".into()))))
-                        }
-                        "foldRight" => Ok(Type::Named("Int".into())),
-                        "takeWhile" | "dropWhile" | "sortedBy" => Ok(Type::Named("list".into())),
                         _ => {
-                            if let Some(def) = builtin::lookup(name) {
-                                return Ok(def.return_type.clone());
-                            }
                             if self.registry.lookup_variant(name).is_some() {
                                 let enum_name = self
                                     .registry
@@ -166,61 +146,39 @@ impl TypeChecker {
                                     .get(name)
                                     .cloned()
                                     .unwrap_or_default();
-                                Ok(Type::Named(enum_name))
-                            } else if let Some(generic_stmt) = self.generic_funs.get(name) {
-                                // Generic function: infer type args and resolve return type
-                                Ok(self.infer_generic_return_type(generic_stmt, args))
-                            } else if let Some(Type::Function(_, ret)) = self.type_env.get(name) {
-                                Ok(*ret.clone())
-                            } else {
-                                Ok(Type::Named("Int".into()))
+                                return Ok(Type::Named(enum_name));
                             }
+                            if let Some(generic_stmt) = self.generic_funs.get(name) {
+                                return Ok(self.infer_generic_return_type(generic_stmt, args));
+                            }
+                            if let Some(Type::Function(_, ret)) = self.type_env.get(name) {
+                                return Ok(*ret.clone());
+                            }
+                            if let Some(ty) = builtin::lookup_return_type(name) {
+                                return Ok(ty);
+                            }
+                            Ok(Type::Named("Int".into()))
                         }
                     }
                 } else if let ExprKind::FieldAccess(receiver, method) = &func.kind {
                     let recv_type = self.infer_expr_type_with_locals(receiver, locals)?;
                     if let Some(kind) = builtin::receiver_kind_from_type(&recv_type) {
-                        if let Some(def) = builtin::lookup_ufcs(kind, method) {
-                            return Ok(def.return_type.clone());
+                        if let Some(ty) = builtin::lookup_ufcs_return_type(kind, method) {
+                            return Ok(ty);
                         }
                     }
-                    match (recv_type, method.as_str()) {
-                        // Map/Set UFCS methods
-                        (Type::Map(_, _), "contains")
-                        | (Type::Set(_), "contains")
-                        | (Type::Map(_, _), "isEmpty")
-                        | (Type::Set(_), "isEmpty") => Ok(Type::Named("Bool".into())),
-                        (Type::Map(_, _), "insert") | (Type::Set(_), "insert") => Ok(Type::Unit),
-                        (Type::Map(_, _), "remove")
-                        | (Type::Map(_, _), "get")
-                        | (Type::Set(_), "remove") => {
-                            Ok(Type::Nullable(Box::new(Type::Named("Int".into()))))
+                    // UFCS fallback: receiver.method(args) → method(receiver, args)
+                    let mut all_args = vec![receiver.as_ref().clone()];
+                    all_args.extend(args.iter().cloned());
+                    self.infer_expr_type_with_locals(
+                        &ExprKind::Call {
+                            func: Box::new(Expr::ident(&method)),
+                            args: all_args,
+                            trailing_lambda: None,
                         }
-                        // Stream UFCS methods
-                        (Type::Stream(_), "send") => Ok(Type::Unit),
-                        (Type::Stream(_), "receive") => Ok(Type::Named("Int".into())),
-                        (Type::Stream(_), "close") => Ok(Type::Unit),
-                        // Task UFCS methods
-                        (Type::Task(_), "cancel") => Ok(Type::Unit),
-                        (Type::Task(_), "is_done") | (Type::Task(_), "is_cancelled") => {
-                            Ok(Type::Named("Bool".into()))
-                        }
-                        (Type::Task(_), "wait") => Ok(Type::Named("Int".into())),
-                        _ => {
-                            // UFCS fallback: receiver.method(args) → method(receiver, args)
-                            let mut all_args = vec![receiver.as_ref().clone()];
-                            all_args.extend(args.iter().cloned());
-                            self.infer_expr_type_with_locals(
-                                &ExprKind::Call {
-                                    func: Box::new(Expr::ident(&method)),
-                                    args: all_args,
-                                    trailing_lambda: None,
-                                }
-                                .into(),
-                                locals,
-                            )
-                        }
-                    }
+                        .into(),
+                        locals,
+                    )
                 } else {
                     Ok(Type::Named("Int".into()))
                 }

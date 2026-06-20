@@ -2,6 +2,12 @@
 //!
 //! Encapsulates stdlib injection, import resolution, and type-checking so
 //! strict (fail-fast) and recover (LSP) paths share the same pipeline.
+//!
+//! ## Unified entry points
+//!
+//! - [`FrontendSession::compile_source_strict`] — CLI / loader (fail-fast parse)
+//! - [`FrontendSession::compile_source_recover`] — LSP / REPL buffers (recovering parse)
+//! - [`FrontendSession::for_repl`] — REPL session with stdlib type context
 
 use crate::ast::*;
 use crate::checked::CheckedProgram;
@@ -142,6 +148,28 @@ impl FrontendSession {
     ) -> Result<TypeRegistry, Vec<CompilerError>> {
         self.typecheck_with_checker(program, explain)
             .map(|(registry, _)| registry)
+    }
+
+    /// REPL session with stdlib type context (mirrors LSP startup).
+    pub fn for_repl() -> Result<Self, String> {
+        let search_dirs = Self::search_dirs_for_workspace([]);
+        let (base_registry, base_type_env) = Self::load_stdlib_context(&search_dirs);
+        Self::with_context(search_dirs, base_registry, base_type_env)
+    }
+
+    /// Unified strict compile: lex → parse (fail-fast) → assemble → typecheck → HIR.
+    pub fn compile_source_strict(
+        &self,
+        source: &str,
+        path: &Path,
+        explain: bool,
+    ) -> Result<CheckedProgram, Vec<CompilerError>> {
+        self.compile_checked_source(source, path, explain)
+    }
+
+    /// Unified recovering compile for editor / REPL buffers.
+    pub fn compile_source_recover(&self, source: &str, path: Option<&Path>) -> RecoverResult {
+        self.compile_recover_for_path(source, path)
     }
 
     /// Strict compile with HIR lowering.

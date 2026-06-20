@@ -9,6 +9,7 @@ dependencies = [
  "action-codegen",
  "action-driver",
  "action-frontend",
+ "action-lsp",
  "action-span",
  "ariadne",
  "clap",
@@ -57,6 +58,18 @@ dependencies = [
 name = "action-host-rt"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
+]
+
+[[package]]
+name = "action-lsp"
+version = "0.5.2"
+dependencies = [
+ "action-frontend",
+ "action-span",
+ "lsp-server",
+ "lsp-types",
+ "serde",
  "serde_json",
 ]
 

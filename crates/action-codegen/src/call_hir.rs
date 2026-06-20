@@ -73,6 +73,34 @@ impl<'ctx> CodeGen<'ctx> {
             return self.builtin_task_op(name, args);
         }
 
+        if matches!(
+            name,
+            "find"
+                | "findIndex"
+                | "reduce"
+                | "foldRight"
+                | "takeWhile"
+                | "dropWhile"
+                | "sortedBy"
+                | "partition"
+                | "count"
+        ) {
+            return self.maybe_builtin_callback_list_call_args(name, args, trailing);
+        }
+
+        if let Some(generic_stmt) = self.generic_fun_defs.get(name).cloned() {
+            if let HirStmt::Fun { type_params, .. } = &generic_stmt {
+                if !type_params.is_empty() {
+                    return self.compile_generic_call_from_call_args(
+                        &generic_stmt,
+                        name,
+                        args,
+                        trailing,
+                    );
+                }
+            }
+        }
+
         if let Some(def) = action_frontend::builtin::lookup(name) {
             match BuiltinDispatch::for_builtin(def) {
                 BuiltinDispatch::Print => return self.builtin_print(name, args),
@@ -114,39 +142,12 @@ impl<'ctx> CodeGen<'ctx> {
         if name == "flatMap" {
             return self.maybe_builtin_flat_map_call_args(args, trailing);
         }
-        if matches!(
-            name,
-            "find"
-                | "findIndex"
-                | "reduce"
-                | "foldRight"
-                | "takeWhile"
-                | "dropWhile"
-                | "sortedBy"
-                | "partition"
-                | "count"
-        ) {
-            return self.maybe_builtin_callback_list_call_args(name, args, trailing);
-        }
         if matches!(name, "mapFilter" | "mapMapValues" | "mapFold") {
             return self.builtin_callback_map(name, args, trailing);
         }
 
         if let Some(overloads) = self.overloaded_functions.get(name).cloned() {
             return self.compile_overloaded_call_from_call_args(name, &overloads, args, trailing);
-        }
-
-        if let Some(generic_stmt) = self.generic_fun_defs.get(name).cloned() {
-            if let HirStmt::Fun { type_params, .. } = &generic_stmt {
-                if !type_params.is_empty() {
-                    return self.compile_generic_call_from_call_args(
-                        &generic_stmt,
-                        name,
-                        args,
-                        trailing,
-                    );
-                }
-            }
         }
 
         // Stdlib builtins before runtime LLVM symbols (abs/min/max/pow share names with lib helpers).
@@ -324,7 +325,6 @@ impl<'ctx> CodeGen<'ctx> {
             .iter()
             .find(|(_, mn)| mn == &mangled)
             .map(|(_, mn)| mn.as_str())
-            .or_else(|| overloads.first().map(|(_, mn)| mn.as_str()))
             .ok_or_else(|| {
                 format!(
                     "No matching overload of '{}' for argument types: {:?}",

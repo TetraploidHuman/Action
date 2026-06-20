@@ -1,8 +1,6 @@
-//! Unified call-argument source for AST and HIR codegen paths.
+//! Unified call-argument source for HIR codegen.
 
 use action_frontend::ast::Type;
-#[cfg(test)]
-use action_frontend::ast::{Expr, ExprKind};
 use action_frontend::hir::{HirExpr, HirExprKind};
 
 use super::{CodeGen, TypedValue};
@@ -20,20 +18,13 @@ fn default_hir_span() -> action_frontend::lexer::Span {
     action_frontend::lexer::Span::default()
 }
 
-/// A call argument compiled from either AST or HIR.
+/// A call argument compiled from HIR.
 #[derive(Clone, Copy)]
 pub enum CallArg<'a> {
-    #[cfg(test)]
-    Ast(&'a Expr),
     Hir(&'a HirExpr),
 }
 
 impl<'a> CallArg<'a> {
-    #[cfg(test)]
-    pub fn ast(e: &'a Expr) -> Self {
-        CallArg::Ast(e)
-    }
-
     pub fn hir(e: &'a HirExpr) -> Self {
         CallArg::Hir(e)
     }
@@ -41,8 +32,6 @@ impl<'a> CallArg<'a> {
 
 /// Trailing block body extracted from a zero-param lambda CallArg.
 pub enum TrailingBody<'a> {
-    #[cfg(test)]
-    Ast(&'a Expr),
     Hir(&'a HirExpr),
 }
 
@@ -52,8 +41,6 @@ impl<'ctx> CodeGen<'ctx> {
         arg: CallArg<'_>,
     ) -> Result<TypedValue<'ctx>, String> {
         match arg {
-            #[cfg(test)]
-            CallArg::Ast(e) => self.compile_expr(e),
             CallArg::Hir(e) => self.compile_hir_expr(e),
         }
     }
@@ -63,24 +50,12 @@ impl<'ctx> CodeGen<'ctx> {
         arg: CallArg<'_>,
     ) -> Result<inkwell::values::BasicValueEnum<'ctx>, String> {
         match arg {
-            #[cfg(test)]
-            CallArg::Ast(e) => self.compile_and_load(e),
             CallArg::Hir(e) => self.compile_and_load_hir(e),
         }
     }
 
-    #[cfg(test)]
-    pub(super) fn call_args_from_ast(args: &[Expr]) -> Vec<CallArg<'_>> {
-        args.iter().map(CallArg::ast).collect()
-    }
-
     pub(super) fn call_args_from_hir(args: &[HirExpr]) -> Vec<CallArg<'_>> {
         args.iter().map(CallArg::hir).collect()
-    }
-
-    #[cfg(test)]
-    pub(super) fn trailing_call_arg(trailing: &Option<Box<Expr>>) -> Option<CallArg<'_>> {
-        trailing.as_ref().map(|b| CallArg::ast(b.as_ref()))
     }
 
     pub(super) fn trailing_call_arg_hir(trailing: Option<&Box<HirExpr>>) -> Option<CallArg<'_>> {
@@ -89,11 +64,6 @@ impl<'ctx> CodeGen<'ctx> {
 
     pub(super) fn call_arg_ident_name(arg: CallArg<'_>) -> Option<&str> {
         match arg {
-            #[cfg(test)]
-            CallArg::Ast(e) => match &e.kind {
-                ExprKind::Ident(name) => Some(name.as_str()),
-                _ => None,
-            },
             CallArg::Hir(h) => match &h.kind {
                 HirExprKind::Ident(name) => Some(name.as_str()),
                 _ => None,
@@ -105,13 +75,6 @@ impl<'ctx> CodeGen<'ctx> {
         trailing: CallArg<'_>,
     ) -> Result<TrailingBody<'_>, String> {
         match trailing {
-            #[cfg(test)]
-            CallArg::Ast(e) => match &e.kind {
-                ExprKind::Lambda { params, body, .. } if params.is_empty() => {
-                    Ok(TrailingBody::Ast(body))
-                }
-                _ => Err("expected a block body: trailing `{ ... }`".to_string()),
-            },
             CallArg::Hir(h) => match &h.kind {
                 HirExprKind::Lambda { params, body, .. } if params.is_empty() => {
                     Ok(TrailingBody::Hir(body))
@@ -126,20 +89,12 @@ impl<'ctx> CodeGen<'ctx> {
         body: TrailingBody<'_>,
     ) -> Result<TypedValue<'ctx>, String> {
         match body {
-            #[cfg(test)]
-            TrailingBody::Ast(e) => self.compile_expr(e),
             TrailingBody::Hir(h) => self.compile_hir_expr(h),
         }
     }
 
     pub(super) fn parse_launch_scheduler(arg: CallArg<'_>) -> Result<i64, String> {
         match arg {
-            #[cfg(test)]
-            CallArg::Ast(e) => match &e.kind {
-                ExprKind::Ident(s) if s == "io" => Ok(1),
-                ExprKind::Ident(s) if s == "cpu" => Ok(2),
-                _ => Err("launch scheduler must be 'io' or 'cpu'".to_string()),
-            },
             CallArg::Hir(h) => match &h.kind {
                 HirExprKind::Ident(s) if s == "io" => Ok(1),
                 HirExprKind::Ident(s) if s == "cpu" => Ok(2),
@@ -213,8 +168,6 @@ impl<'ctx> CodeGen<'ctx> {
         free: &mut Vec<String>,
     ) {
         match arg {
-            #[cfg(test)]
-            CallArg::Ast(e) => super::expr::collect_free_vars(e, params, bound, free),
             CallArg::Hir(h) => super::expr::collect_free_vars_hir(h, params, bound, free),
         }
     }

@@ -1080,7 +1080,7 @@ impl<'ctx> CodeGen<'ctx> {
             .try_as_basic_value()
             .unwrap_basic();
         let _ = self.builder.build_return(Some(&li_push_rv));
-        // Split: take + push + drop + concat (insert_rec path-copy: see define_list_insert_rec)
+        // Split: take + push + drop + concat (insert_rec available but RC path needs audit)
         self.builder.position_at_end(li_split_bb);
         let li_take_fn = self.module.get_function("action_list_take").unwrap();
         let li_drop_fn = self.module.get_function("action_list_drop").unwrap();
@@ -1579,6 +1579,25 @@ impl<'ctx> CodeGen<'ctx> {
             .build_select(lrm_idx2_gt, lrm_last2, lrm_idx2a, "idx2")
             .map_err(llvm_err)?
             .into_int_value();
+        let lrm_is_idx0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, lrm_idx2, zr, "is_idx0")
+            .map_err(llvm_err)?;
+        let lrm_drop0_bb = self.context.append_basic_block(lrm_fn, "hgt0_drop0");
+        let lrm_tdc_bb = self.context.append_basic_block(lrm_fn, "hgt0_tdc");
+        let _ = self
+            .builder
+            .build_conditional_branch(lrm_is_idx0, lrm_drop0_bb, lrm_tdc_bb);
+        self.builder.position_at_end(lrm_drop0_bb);
+        let lrm_drop_fn0 = self.module.get_function("action_list_drop").unwrap();
+        let lrm_drop0_rv = self
+            .builder
+            .build_call(lrm_drop_fn0, &[lrm_list.into(), oner.into()], "drop0")
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic();
+        let _ = self.builder.build_return(Some(&lrm_drop0_rv));
+        self.builder.position_at_end(lrm_tdc_bb);
         let lrm_take_fn = self.module.get_function("action_list_take").unwrap();
         let lrm_drop_fn = self.module.get_function("action_list_drop").unwrap();
         let lrm_concat_fn = self.module.get_function("action_list_concat").unwrap();

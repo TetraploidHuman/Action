@@ -1,0 +1,11 @@
+fun greet(name: String) -> String {
+    name
+}
+
+fun greet(x: Int) -> Int {
+    x
+}
+
+fun main() {
+    println(greet(true))
+}

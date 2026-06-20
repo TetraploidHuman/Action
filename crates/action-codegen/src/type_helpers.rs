@@ -259,171 +259,31 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    /// Guess the return type from the function body expression when no annotation is provided.
-    #[cfg(test)]
-    pub(super) fn infer_return_type(&self, body: &Expr) -> Option<Type> {
-        match &body.kind {
-            ExprKind::Block(stmts) => stmts.last().and_then(|s| match s {
-                Stmt::Expr { expr: e, .. } => Some(self.infer_expr_type(e)),
-                _ => None,
-            }),
-            _ => Some(self.infer_expr_type(body)),
-        }
-    }
-
-    pub(super) fn infer_expr_type(&self, expr: &Expr) -> Type {
-        match &expr.kind {
-            ExprKind::Literal(Literal::String(_)) | ExprKind::StringInterpolate(_) => {
-                Type::Named("String".into())
-            }
-            ExprKind::Literal(Literal::Int(_)) => Type::Named("Int".into()),
-            ExprKind::Literal(Literal::Float(_)) => Type::Named("Float".into()),
-            ExprKind::Literal(Literal::Bool(_)) => Type::Named("Bool".into()),
-            ExprKind::Literal(Literal::Char(_)) => Type::Named("Char".into()),
-            ExprKind::Binary(left, op, _) => {
-                if *op == BinaryOp::Add {
-                    // If either side is a string, result is string
-                    if matches!(self.infer_expr_type(left), Type::Named(ref n) if n == "String") {
-                        return Type::Named("String".into());
-                    }
-                }
-                Type::Named("Int".into())
-            }
-            ExprKind::Call { func, .. } => {
-                if let ExprKind::Ident(name) = &func.kind {
-                    match name.as_str() {
-                        "print" | "println" | "action_json_free" => Type::Unit,
-                        "toString" | "toUpper" | "toLower" => Type::Named("String".into()),
-                        "substring" | "unwrapOr" | "readLine" | "jsonEscape" | "httpRequest"
-                        | "str" | "chatOnce" | "storeMessages" | "extractContent"
-                        | "handleChat" => Type::Named("String".into()),
-                        "parseDate" | "date" => {
-                            Type::Nullable(Box::new(Type::Named("Date".into())))
-                        }
-                        "datetime" => Type::Nullable(Box::new(Type::Named("DateTime".into()))),
-                        "format" => Type::Named("String".into()),
-                        "now" => Type::Named("DateTime".into()),
-                        "today" => Type::Named("Date".into()),
-                        "find" => Type::Nullable(Box::new(Type::Named("Int".into()))),
-                        "flip" | "constant" | "identity" => Type::Named("Int".into()),
-                        "Random_new" => Type::Named("Random".into()),
-                        "nextInt" => Type::Generic(
-                            Box::new(Type::Named("Tuple".into())),
-                            vec![Type::Named("Random".into()), Type::Named("Int".into())],
-                        ),
-                        "count" => Type::Named("Int".into()),
-                        "partition" => Type::Generic(
-                            Box::new(Type::Named("Tuple".into())),
-                            vec![Type::Named("list".into()), Type::Named("list".into())],
-                        ),
-                        "__list" => Type::Named("list".into()),
-                        "__set" => Type::Named("set".into()),
-                        _ => {
-                            if self.registry.lookup_variant(name).is_some() {
-                                let enum_name = self
-                                    .registry
-                                    .variant_to_enum
-                                    .get(name)
-                                    .cloned()
-                                    .unwrap_or_default();
-                                Type::Named(enum_name)
-                            } else {
-                                Type::Named("Int".into())
-                            }
-                        }
-                    }
-                } else {
-                    Type::Named("Int".into())
-                }
-            }
-            ExprKind::When(w) => self.infer_when_type(&w.kind),
-            ExprKind::Continue | ExprKind::Break => Type::Unit,
-            ExprKind::For(_) => Type::Unit,
-            ExprKind::Block(stmts) => stmts
-                .last()
-                .map(|s| match s {
-                    Stmt::Expr { expr: e, .. } => self.infer_expr_type(e),
-                    _ => Type::Unit,
-                })
-                .unwrap_or(Type::Unit),
-            ExprKind::Ident(name) => {
-                // Check scope first for AST type info
-                if let Some(sv) = self.scope.get(name) {
-                    if let Some(ref ast_type) = sv.ast_type {
-                        return ast_type.clone();
-                    }
-                    // Fallback: use val_kind to infer basic type
-                    match sv.kind {
-                        ValKind::Enum => {
-                            // Try to find which enum type
-                            for enum_name in self.enum_types.keys() {
-                                if sv.ty == (*self.enum_types.get(enum_name).unwrap()).into() {
-                                    return Type::Named(enum_name.clone());
-                                }
-                            }
-                            Type::Named("Int".into())
-                        }
-                        ValKind::Str => Type::Named("String".into()),
-                        ValKind::Struct => Type::Named("Int".into()), // ambiguous, default
-                        ValKind::List => Type::Named("list".into()),
-                        ValKind::Map => Type::Named("map".into()),
-                        ValKind::Set => Type::Named("set".into()),
-                        ValKind::Fn => Type::Named("Int".into()),
-                        _ => Type::Named("Int".into()),
-                    }
-                } else if self.registry.lookup_variant(name).is_some() {
-                    let enum_name = self
-                        .registry
-                        .variant_to_enum
-                        .get(name)
-                        .cloned()
-                        .unwrap_or_default();
-                    Type::Named(enum_name)
-                } else {
-                    Type::Named("Int".into())
-                }
-            }
-            ExprKind::MapLiteral(_) => Type::Map(
-                Box::new(Type::Named("String".into())),
-                Box::new(Type::Named("Int".into())),
-            ),
-            ExprKind::SetLiteral(_) => Type::Set(Box::new(Type::Named("Int".into()))),
-            ExprKind::Null => Type::Nullable(Box::new(Type::Named("Nothing".into()))),
-            ExprKind::OrBlock { nullable, fallback } => {
-                let cond_ty = self.infer_expr_type(nullable);
-                match cond_ty {
-                    Type::Nullable(inner) => *inner,
-                    _ => self.infer_expr_type(fallback),
-                }
-            }
-            _ => Type::Named("Int".into()),
-        }
-    }
-
-    fn infer_when_type(&self, kind: &WhenKind) -> Type {
-        match kind {
-            WhenKind::OneLine {
+    fn infer_hir_when_type(&self, w: &action_frontend::hir::HirWhen) -> Type {
+        use action_frontend::hir::HirWhenKind;
+        match &w.kind {
+            HirWhenKind::OneLine {
                 then_expr,
                 else_expr,
                 ..
             } => {
-                let t = self.infer_expr_type(then_expr);
+                let t = self.infer_hir_expr_type(then_expr);
                 if matches!(t, Type::Unit) {
-                    self.infer_expr_type(else_expr)
+                    self.infer_hir_expr_type(else_expr)
                 } else {
                     t
                 }
             }
-            WhenKind::ValueMatch { arms, .. } | WhenKind::ConditionChain { arms } => arms
+            HirWhenKind::ValueMatch { arms, .. } | HirWhenKind::ConditionChain { arms } => arms
                 .first()
-                .map(|a| self.infer_expr_type(&a.body))
+                .map(|a| self.infer_hir_expr_type(&a.body))
                 .unwrap_or(Type::Unit),
         }
     }
 
     /// Infer expression type at codegen time from HIR, using scope for idents.
     /// HIR `expr.ty` can be stale for prelude/stdlib idents (e.g. param `x` tagged as
-    /// `list` during lowering); scope matches the AST `infer_expr_type` behavior.
+    /// `list` during lowering); scope matches frontend type inference behavior.
     pub(super) fn infer_hir_expr_type(&self, expr: &HirExpr) -> Type {
         match &expr.kind {
             HirExprKind::Ident(name) => {
@@ -488,7 +348,7 @@ impl<'ctx> CodeGen<'ctx> {
                     _ => None,
                 })
                 .unwrap_or(Type::Unit),
-            HirExprKind::When(w) => self.infer_when_type(&w.to_when().kind),
+            HirExprKind::When(w) => self.infer_hir_when_type(w),
             HirExprKind::Continue | HirExprKind::Break => Type::Unit,
             HirExprKind::For(_) => Type::Unit,
             HirExprKind::OrBlock { nullable, fallback } => {

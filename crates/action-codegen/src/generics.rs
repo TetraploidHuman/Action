@@ -44,8 +44,6 @@ impl<'ctx> CodeGen<'ctx> {
         args: &[super::call_arg::CallArg<'_>],
         trailing: Option<super::call_arg::CallArg<'_>>,
     ) -> Result<TypedValue<'ctx>, String> {
-        #[cfg(test)]
-        use super::call_arg::CallArg;
         let HirStmt::Fun {
             params,
             type_params,
@@ -64,12 +62,6 @@ impl<'ctx> CodeGen<'ctx> {
         for (i, param) in params.iter().enumerate() {
             if i >= args.len() {
                 break;
-            }
-            #[cfg(test)]
-            if matches!(args[i], CallArg::Ast(e) if matches!(e.kind, ExprKind::Lambda { .. }))
-                || matches!(args[i], CallArg::Hir(h) if matches!(h.kind, action_frontend::hir::HirExprKind::Lambda { .. }))
-            {
-                continue;
             }
             let param_ty = param.ty.clone().unwrap_or(Type::Named("Int".into()));
             let arg_type_name = self.typed_value_type_name(&arg_vals[i]);

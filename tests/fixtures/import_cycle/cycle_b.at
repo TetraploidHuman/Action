@@ -1,0 +1,5 @@
+import cycle_a
+
+fun cycle_b_helper() -> Int {
+    2
+}

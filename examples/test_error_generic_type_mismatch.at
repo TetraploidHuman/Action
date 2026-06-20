@@ -1,0 +1,7 @@
+fun <T> pair(a: T, b: T) -> T {
+    a
+}
+
+fun main() {
+    println(pair(1, true))
+}

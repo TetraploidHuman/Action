@@ -1,7 +1,5 @@
 // Submodule: map_set
 
-#[cfg(test)]
-use action_frontend::ast::*;
 use inkwell::types::BasicTypeEnum;
 use inkwell::values::{BasicValue, BasicValueEnum, PointerValue};
 
@@ -21,20 +19,6 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value())
     }
 
-    #[cfg(test)]
-
-    pub(super) fn compile_map_lit(
-        &mut self,
-        entries: &[(Expr, Expr)],
-    ) -> Result<TypedValue<'ctx>, String> {
-        let mut keys = Vec::with_capacity(entries.len());
-        let mut vals = Vec::with_capacity(entries.len());
-        for (k, v) in entries {
-            keys.push(self.compile_expr(k)?);
-            vals.push(self.compile_expr(v)?);
-        }
-        self.compile_map_lit_values(&keys, &vals)
-    }
 
     pub(super) fn compile_map_lit_values(
         &mut self,
@@ -74,18 +58,6 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::Map(alloca))
     }
 
-    #[cfg(test)]
-
-    pub(super) fn compile_set_lit(
-        &mut self,
-        elements: &[Expr],
-    ) -> Result<TypedValue<'ctx>, String> {
-        let mut vals = Vec::with_capacity(elements.len());
-        for e in elements {
-            vals.push(self.compile_expr(e)?);
-        }
-        self.compile_set_lit_values(&vals)
-    }
 
     pub(super) fn compile_set_lit_values(
         &mut self,
@@ -137,58 +109,6 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::Set(alloca))
     }
 
-    #[cfg(test)]
-    pub(super) fn builtin_set_of(
-        &mut self,
-        args: &[CallArg<'_>],
-    ) -> Result<TypedValue<'ctx>, String> {
-        // Set.of(...) is equivalent to a set literal with the given elements
-        let cap = self.i64_ty().const_int((args.len() + 4) as u64, false);
-        let cc = self.call_rt("action_map_create", &[cap.into()])?;
-        let set_bv = cc.try_as_basic_value().basic().ok_or("map_create failed")?;
-        let alloca = self
-            .builder
-            .build_alloca(self.list_type, "set_of")
-            .map_err(llvm_err)?;
-        self.builder.build_store(alloca, set_bv).map_err(llvm_err)?;
-
-        let null_val: BasicValueEnum = {
-            let undef = self.string_type.get_undef();
-            let r1 = self
-                .builder
-                .build_insert_value(undef, self.i64_ty().const_int(0, false), 0, "sn0")
-                .map_err(llvm_err)?;
-            let r2 = self
-                .builder
-                .build_insert_value(r1, self.ptr_ty().const_zero(), 1, "sn1")
-                .map_err(llvm_err)?;
-            r2.as_basic_value_enum()
-        };
-
-        for elem_expr in args {
-            let elem_val = self.compile_call_arg(*elem_expr)?;
-            self.rc_inc_typed_value(&elem_val)?;
-            let elem_fat = self.to_fat_struct(&elem_val)?;
-            let set_loaded = self.load_list(alloca)?;
-            let cc = match self.call_rt(
-                "action_map_insert",
-                &[set_loaded.into(), elem_fat.into(), null_val.into()],
-            ) {
-                Ok(v) => v,
-                Err(e) => {
-                    let _ = self.rc_dec_typed_value(&elem_val);
-                    let _ = self.rc_free_intermediate(&elem_val);
-                    return Err(e);
-                }
-            };
-            let new_set = cc.try_as_basic_value().basic().ok_or("map_insert failed")?;
-            self.builder
-                .build_store(alloca, new_set)
-                .map_err(llvm_err)?;
-        }
-
-        Ok(TypedValue::Set(alloca))
-    }
 
     /// map.insert(key, val) — receiver alloca is pre-compiled to avoid double compilation.
     pub(super) fn builtin_map_insert(

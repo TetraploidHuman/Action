@@ -46,9 +46,9 @@ fn build_host_runtime_staticlib() {
     }
 
     println!("cargo:rerun-if-changed=crates/host-rt/");
-    println!("cargo:rerun-if-changed=src/runtime_json.rs");
-    println!("cargo:rerun-if-changed=src/http_runtime.rs");
-    println!("cargo:rerun-if-changed=src/runtime_threading.rs");
+    println!("cargo:rerun-if-changed=crates/host-rt/runtime_json.rs");
+    println!("cargo:rerun-if-changed=crates/host-rt/http_runtime.rs");
+    println!("cargo:rerun-if-changed=crates/host-rt/runtime_threading.rs");
 
     let profile = if std::env::var("PROFILE").unwrap_or_default() == "release" {
         "release"
@@ -61,11 +61,12 @@ fn build_host_runtime_staticlib() {
 
     let host_rt_target = target_dir.join("host_rt_build");
     let lib_path = host_rt_target.join(profile).join("libaction_host_rt.a");
+    emit_host_rt_link(&host_rt_target, profile);
     let sources = [
         host_rt_manifest.clone(),
-        manifest_dir.join("src/runtime_json.rs"),
-        manifest_dir.join("src/http_runtime.rs"),
-        manifest_dir.join("src/runtime_threading.rs"),
+        manifest_dir.join("crates/host-rt/runtime_json.rs"),
+        manifest_dir.join("crates/host-rt/http_runtime.rs"),
+        manifest_dir.join("crates/host-rt/runtime_threading.rs"),
     ];
     if lib_path.exists() && !host_rt_sources_changed(&lib_path, &sources) {
         return;
@@ -96,6 +97,13 @@ fn build_host_runtime_staticlib() {
             eprintln!("cargo:warning=failed to spawn action-host-rt build: {e}");
         }
     }
+}
+
+fn emit_host_rt_link(host_rt_target: &Path, profile: &str) {
+    let lib_dir = host_rt_target.join(profile);
+    println!("cargo:rustc-link-search=native={}", lib_dir.display());
+    // AOT `--emit exe` links libaction_host_rt.a explicitly in main.rs; search path only here.
+    let _ = profile;
 }
 
 fn host_rt_sources_changed(lib: &Path, sources: &[PathBuf]) -> bool {

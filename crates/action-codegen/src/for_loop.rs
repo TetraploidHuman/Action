@@ -10,16 +10,12 @@ use inkwell::IntPredicate;
 use super::{llvm_err, CodeGen, Scope, TypedValue, ValKind};
 
 pub(super) enum ForExprSrc<'a> {
-    #[cfg(test)]
-    Ast(&'a Expr),
     Hir(&'a HirExpr),
 }
 
 impl<'a> ForExprSrc<'a> {
     fn compile<'ctx>(&self, gen: &mut CodeGen<'ctx>) -> Result<TypedValue<'ctx>, String> {
         match self {
-            #[cfg(test)]
-            ForExprSrc::Ast(e) => gen.compile_expr(e),
             ForExprSrc::Hir(h) => gen.compile_hir_expr(h),
         }
     }
@@ -29,19 +25,6 @@ impl<'a> ForExprSrc<'a> {
         gen: &mut CodeGen<'ctx>,
     ) -> Result<Option<(IntValue<'ctx>, IntValue<'ctx>)>, String> {
         match self {
-            #[cfg(test)]
-            ForExprSrc::Ast(e) => match &e.kind {
-                ExprKind::Binary(lhs, BinaryOp::Range, rhs)
-                | ExprKind::Binary(lhs, BinaryOp::RangeExclusive, rhs) => {
-                    let start_v = gen.compile_expr(lhs)?;
-                    let end_v = gen.compile_expr(rhs)?;
-                    match (start_v, end_v) {
-                        (TypedValue::Int(s), TypedValue::Int(e)) => Ok(Some((s, e))),
-                        _ => Err("Range bounds must be integers".to_string()),
-                    }
-                }
-                _ => Ok(None),
-            },
             ForExprSrc::Hir(h) => match &h.kind {
                 HirExprKind::Binary(lhs, BinaryOp::Range, rhs)
                 | HirExprKind::Binary(lhs, BinaryOp::RangeExclusive, rhs)
@@ -203,136 +186,8 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
-    #[cfg(test)]
 
-    pub(super) fn compile_for(&mut self, f: &For) -> Result<TypedValue<'ctx>, String> {
-        match &f.kind {
-            ForKind::Iterate {
-                var,
-                iterable,
-                body,
-                collect,
-                ..
-            } => self.compile_for_iterate(
-                var,
-                ForExprSrc::Ast(iterable),
-                ForExprSrc::Ast(body),
-                *collect,
-            ),
-            ForKind::Condition {
-                condition, body, ..
-            } => {
-                if let Some(result) = self.try_compile_for_sequential_list_get(condition, body)? {
-                    return Ok(result);
-                }
-                self.compile_for_condition(condition, body)
-            }
-            ForKind::Infinite { body, .. } => self.compile_for_infinite(body),
-            ForKind::NestedIterate {
-                bindings,
-                body,
-                collect,
-            } => self.compile_for_nested_iterate(
-                &bindings
-                    .iter()
-                    .map(|(n, e)| (n.clone(), ForExprSrc::Ast(e)))
-                    .collect::<Vec<_>>(),
-                ForExprSrc::Ast(body),
-                *collect,
-            ),
-            ForKind::IterateWithIndex {
-                vars,
-                iterable,
-                body,
-            } => {
-                self.compile_for_with_index(vars, ForExprSrc::Ast(iterable), ForExprSrc::Ast(body))
-            }
-        }
-    }
 
-    #[cfg(test)]
-
-    pub(super) fn compile_for_condition(
-        &mut self,
-        condition: &Expr,
-        body: &Expr,
-    ) -> Result<TypedValue<'ctx>, String> {
-        let current_fn = self
-            .builder
-            .get_insert_block()
-            .and_then(|b| b.get_parent())
-            .ok_or("Cannot compile for outside function")?;
-
-        let header = self.context.append_basic_block(current_fn, "for_cond_hdr");
-        let body_block = self.context.append_basic_block(current_fn, "for_cond_body");
-        let exit = self.context.append_basic_block(current_fn, "for_cond_exit");
-
-        let saved_continue = self.continue_target;
-        let saved_break = self.break_target;
-        self.continue_target = Some(header);
-        self.break_target = Some(exit);
-
-        let _ = self.builder.build_unconditional_branch(header);
-        self.builder.position_at_end(header);
-        let cv = self.compile_expr(condition)?;
-        let cond_val = match cv {
-            TypedValue::Bool(b) => b,
-            TypedValue::Int(v) => self
-                .builder
-                .build_int_compare(
-                    inkwell::IntPredicate::NE,
-                    v,
-                    self.i64_ty().const_int(0, false),
-                    "cond",
-                )
-                .map_err(llvm_err)?,
-            _ => return Err("for condition must evaluate to Bool or Int".to_string()),
-        };
-        let _ = self
-            .builder
-            .build_conditional_branch(cond_val, body_block, exit);
-
-        self.builder.position_at_end(body_block);
-        let body_val = self.compile_expr(body)?;
-        self.rc_discard_value(&body_val)?;
-        let _ = self.builder.build_unconditional_branch(header);
-
-        self.builder.position_at_end(exit);
-        self.continue_target = saved_continue;
-        self.break_target = saved_break;
-
-        Ok(TypedValue::Unit)
-    }
-
-    #[cfg(test)]
-
-    pub(super) fn compile_for_infinite(&mut self, body: &Expr) -> Result<TypedValue<'ctx>, String> {
-        let current_fn = self
-            .builder
-            .get_insert_block()
-            .and_then(|b| b.get_parent())
-            .ok_or("Cannot compile for outside function")?;
-
-        let body_block = self.context.append_basic_block(current_fn, "for_inf_body");
-        let exit = self.context.append_basic_block(current_fn, "for_inf_exit");
-
-        let saved_continue = self.continue_target;
-        let saved_break = self.break_target;
-        self.continue_target = Some(body_block);
-        self.break_target = Some(exit);
-
-        let _ = self.builder.build_unconditional_branch(body_block);
-        self.builder.position_at_end(body_block);
-        let body_val = self.compile_expr(body)?;
-        self.rc_discard_value(&body_val)?;
-        let _ = self.builder.build_unconditional_branch(body_block);
-
-        self.builder.position_at_end(exit);
-        self.continue_target = saved_continue;
-        self.break_target = saved_break;
-
-        Ok(TypedValue::Unit)
-    }
 
     pub(super) fn compile_for_iterate(
         &mut self,
@@ -963,45 +818,6 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// `for idx < end { lst.get(idx); idx = idx + 1 }` — cached sequential walk.
-    #[cfg(test)]
-    fn try_compile_for_sequential_list_get(
-        &mut self,
-        condition: &Expr,
-        body: &Expr,
-    ) -> Result<Option<TypedValue<'ctx>>, String> {
-        let (idx_var, end_expr): (String, Expr) = match &condition.kind {
-            ExprKind::Binary(lhs, BinaryOp::Lt, rhs) => match (&lhs.kind, &rhs.kind) {
-                (ExprKind::Ident(v), end) => (v.clone(), ExprKind::clone(end).into()),
-                _ => return Ok(None),
-            },
-            _ => return Ok(None),
-        };
-        let (list_expr, get_idx_var) = match Self::find_list_get_in_expr(body) {
-            Some(v) => v,
-            None => return Ok(None),
-        };
-        if get_idx_var != idx_var {
-            return Ok(None);
-        }
-        if !Self::body_increments_var(body, &idx_var) {
-            return Ok(None);
-        }
-
-        let list_val = self.compile_expr(&list_expr)?;
-        let list_ptr = match &list_val {
-            TypedValue::List(p) => *p,
-            _ => return Ok(None),
-        };
-
-        let end_val = self.compile_expr(&end_expr)?;
-        let end_bound = match end_val {
-            TypedValue::Int(v) => v,
-            _ => return Ok(None),
-        };
-
-        self.compile_sequential_list_get_loop(list_ptr, end_bound)
-            .map(Some)
-    }
 
     fn compile_sequential_list_get_loop(
         &mut self,
@@ -1072,80 +888,11 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::Unit)
     }
 
-    #[cfg(test)]
-    fn find_list_get_in_expr(body: &Expr) -> Option<(Expr, String)> {
-        match &body.kind {
-            ExprKind::Block(stmts) => {
-                for stmt in stmts {
-                    if let Some(v) = Self::find_list_get_in_stmt(stmt) {
-                        return Some(v);
-                    }
-                }
-                None
-            }
-            other => Self::find_list_get_in_expr_inner(&Expr::from(other.clone())),
-        }
-    }
 
-    #[cfg(test)]
-    fn find_list_get_in_stmt(stmt: &Stmt) -> Option<(Expr, String)> {
-        match stmt {
-            Stmt::Let { value, .. } => Self::find_list_get_in_expr_inner(&value.kind),
-            Stmt::Expr { expr, .. } => Self::find_list_get_in_expr_inner(&expr.kind),
-            _ => None,
-        }
-    }
 
-    #[cfg(test)]
-    fn find_list_get_in_expr_inner(kind: &ExprKind) -> Option<(Expr, String)> {
-        match kind {
-            ExprKind::Call { func, args, .. } => {
-                if let ExprKind::FieldAccess(obj, method) = &func.kind {
-                    if method == "get" && args.len() == 1 {
-                        if let ExprKind::Ident(idx) = &args[0].kind {
-                            return Some(((*obj.clone()).clone(), idx.clone()));
-                        }
-                    }
-                }
-                None
-            }
-            ExprKind::Block(stmts) => {
-                Self::find_list_get_in_expr(&ExprKind::Block(stmts.clone()).into())
-            }
-            _ => None,
-        }
-    }
 
-    #[cfg(test)]
-    fn body_increments_var(body: &Expr, var: &str) -> bool {
-        match &body.kind {
-            ExprKind::Block(stmts) => stmts.iter().any(|s| Self::stmt_increments_var(s, var)),
-            ExprKind::Assign { target, value } => Self::is_var_increment(target, value, var),
-            _ => false,
-        }
-    }
 
-    #[cfg(test)]
-    fn stmt_increments_var(stmt: &Stmt, var: &str) -> bool {
-        match stmt {
-            Stmt::Expr { expr, .. } => match &expr.kind {
-                ExprKind::Assign { target, value } => Self::is_var_increment(target, value, var),
-                _ => false,
-            },
-            _ => false,
-        }
-    }
 
-    #[cfg(test)]
-    fn is_var_increment(target: &Expr, value: &Expr, var: &str) -> bool {
-        match (&target.kind, &value.kind) {
-            (ExprKind::Ident(t), ExprKind::Binary(lhs, BinaryOp::Add, rhs)) if t == var => {
-                matches!(&lhs.kind, ExprKind::Ident(v) if v == var)
-                    || matches!(&rhs.kind, ExprKind::Ident(v) if v == var)
-            }
-            _ => false,
-        }
-    }
 
     pub(super) fn compile_hir_for(
         &mut self,

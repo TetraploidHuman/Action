@@ -1,8 +1,8 @@
-//! Source formatting (indentation) shared by the LSP and `action fmt` CLI.
+//! Source formatting (token-aware indentation) shared by the LSP and `action fmt` CLI.
 
 use std::collections::HashMap;
 
-use crate::lexer::Token;
+use crate::lexer::{Token, TokenKind};
 
 /// Formatting options (LSP `FormattingOptions` equivalent).
 #[derive(Debug, Clone, Copy)]
@@ -20,7 +20,34 @@ impl Default for FormatOptions {
     }
 }
 
-fn line_brace_counts(source: &str) -> HashMap<usize, (u32, u32)> {
+/// Brace depth delta per source line derived from lexer tokens (string/comment safe).
+fn line_brace_counts_from_tokens(source: &str, tokens: &[Token]) -> HashMap<usize, (u32, u32)> {
+    let line_starts: Vec<usize> = std::iter::once(0)
+        .chain(source.match_indices('\n').map(|(i, _)| i + 1))
+        .collect();
+
+    let line_of = |byte: usize| -> usize {
+        line_starts
+            .partition_point(|&start| start <= byte)
+            .saturating_sub(1)
+    };
+
+    let mut line_braces: HashMap<usize, (u32, u32)> = HashMap::new();
+    for tok in tokens {
+        let (open, close) = match tok.kind {
+            TokenKind::LBrace => (1u32, 0u32),
+            TokenKind::RBrace => (0u32, 1u32),
+            _ => continue,
+        };
+        let line = line_of(tok.span.start);
+        let entry = line_braces.entry(line).or_insert((0, 0));
+        entry.0 += open;
+        entry.1 += close;
+    }
+    line_braces
+}
+
+fn line_brace_counts_fallback(source: &str) -> HashMap<usize, (u32, u32)> {
     let mut line_braces = HashMap::new();
     for (line_num, line) in source.split('\n').enumerate() {
         let open = line.chars().filter(|&c| c == '{').count() as u32;
@@ -32,16 +59,19 @@ fn line_brace_counts(source: &str) -> HashMap<usize, (u32, u32)> {
     line_braces
 }
 
-/// Re-indent `source` using brace-aware depth. `tokens` is accepted for API
-/// compatibility with the LSP formatter but brace depth is derived from source lines.
-pub fn format_source(source: &str, _tokens: &[Token], options: &FormatOptions) -> String {
+/// Re-indent `source` using token-aware brace depth when `tokens` is non-empty.
+pub fn format_source(source: &str, tokens: &[Token], options: &FormatOptions) -> String {
     let indent_str = if options.insert_spaces {
         " ".repeat(options.tab_size)
     } else {
         "\t".to_string()
     };
 
-    let line_braces = line_brace_counts(source);
+    let line_braces = if tokens.is_empty() {
+        line_brace_counts_fallback(source)
+    } else {
+        line_brace_counts_from_tokens(source, tokens)
+    };
 
     let mut expected_depth: i32 = 0;
     let mut out = String::with_capacity(source.len());
@@ -102,5 +132,16 @@ mod tests {
         assert_ne!(src, formatted);
         let again = format_at(&formatted);
         assert_eq!(formatted, again);
+    }
+
+    #[test]
+    fn test_format_ignores_braces_in_strings() {
+        let src = "fun f() {\nval s = \"{ not a brace }\"\nval x = 1\n}\n";
+        let formatted = format_at(src);
+        assert!(
+            formatted.contains("    val x = 1"),
+            "string braces must not affect indent: {:?}",
+            formatted
+        );
     }
 }

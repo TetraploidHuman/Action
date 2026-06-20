@@ -348,15 +348,6 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// Compile or-block: nullable or { fallback }
     /// If nullable is null (flag=1), return fallback; otherwise return inner value
-    #[cfg(test)]
-    pub(super) fn compile_or_block(
-        &mut self,
-        nullable: &Expr,
-        fallback: &Expr,
-    ) -> Result<TypedValue<'ctx>, String> {
-        let cond_val = self.compile_expr(nullable)?;
-        self.compile_or_block_from_cond(cond_val, |cg| cg.compile_expr(fallback))
-    }
 
     pub(super) fn compile_or_block_hir(
         &mut self,
@@ -1057,65 +1048,5 @@ impl<'ctx> CodeGen<'ctx> {
             return self.bv_to_typed(field_val);
         }
         Err(format!("Field '{}' not supported on this type", field))
-    }
-
-    /// Wrap a TypedValue in a nullable struct of matching LLVM type.
-    #[cfg(test)]
-    pub(super) fn wrap_in_typed_nullable(
-        &mut self,
-        value: &TypedValue<'ctx>,
-        inner_bt: BasicTypeEnum<'ctx>,
-    ) -> Result<TypedValue<'ctx>, String> {
-        let b1 = self.null_flag_ty();
-        let nullable_fields: &[BasicTypeEnum] = &[b1.into(), inner_bt];
-        let nullable_ty = self.context.struct_type(nullable_fields, false);
-
-        let alloca = self
-            .builder
-            .build_alloca(nullable_ty, "wrap_tv")
-            .map_err(llvm_err)?;
-        let undef = nullable_ty.get_undef();
-        let with_flag = self
-            .builder
-            .build_insert_value(undef, b1.const_int(0, false), 0, "wrap_tv_flag")
-            .map_err(llvm_err)?;
-        let value_bv = match value {
-            TypedValue::Str(ptr) => self
-                .builder
-                .build_load(self.string_type, *ptr, "wtv_s")
-                .map_err(llvm_err)?
-                .as_basic_value_enum(),
-            TypedValue::Struct(ptr, st) => {
-                let bt: BasicTypeEnum = (*st).into();
-                self.builder
-                    .build_load(bt, *ptr, "wtv_st")
-                    .map_err(llvm_err)?
-            }
-            TypedValue::Enum(ptr, et, ..) => {
-                let bt: BasicTypeEnum = (*et).into();
-                self.builder
-                    .build_load(bt, *ptr, "wtv_en")
-                    .map_err(llvm_err)?
-            }
-            TypedValue::List(ptr) | TypedValue::Map(ptr) | TypedValue::Set(ptr) => {
-                self.load_list(*ptr)?.as_basic_value_enum()
-            }
-            TypedValue::Bool(v) => self
-                .builder
-                .build_int_truncate(*v, self.bool_ty(), "wtv_bool")
-                .map_err(llvm_err)?
-                .as_basic_value_enum(),
-            _ => value
-                .to_bv()
-                .unwrap_or_else(|| self.i64_ty().const_int(0, false).into()),
-        };
-        let wrapped = self
-            .builder
-            .build_insert_value(with_flag, value_bv, 1, "wrap_tv_val")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(alloca, wrapped)
-            .map_err(llvm_err)?;
-        Ok(TypedValue::Nullable(alloca, nullable_ty.into()))
     }
 }

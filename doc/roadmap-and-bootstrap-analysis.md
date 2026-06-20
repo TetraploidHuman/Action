@@ -221,56 +221,56 @@ runtime_decl/define_*.rs (LLVM 实现)
 
 在已完成 P2（性能）、P4（测试/CI）、P5（fmt/check）基础上，建议按 **「稳定 → 结构化 → 自举准备 → 性能/生态」** 排序。
 
-### 4.1 P0 — 语义稳定（阻塞一切）
+### 4.1 P0 — 语义稳定
 
 | 项 | 说明 | 状态 |
 |----|------|------|
-| UFCS 方法链 RC | `builtins_call.rs` 只读方法禁止 double-eval | 部分修复，需持续回归 |
-| ConcatNode 变异 | `define_list_tree.rs` push_subtree 分支 | 已修，需 property test |
-| AOT IR Pass | `default<O2>` 对 runtime 全模块 miscompile | **已禁用**，TargetMachine -O2 保留 |
-| 集成测试 | 140/140 绿 | 本地已绿；CI runner 需稳定 |
+| UFCS 方法链 RC | `builtins_call.rs` 只读方法禁止 double-eval | ✅ 持续回归 |
+| ConcatNode 变异 | `push_subtree` ConcatNode 分支 | ✅ |
+| AOT IR Pass | runtime 全模块 `default<O2>` 已禁用 | ✅ |
+| 集成测试 | 140+ 项绿 | ✅ |
 
-### 4.2 P1 — 架构重构（自举前置，6–9 个月）
+### 4.2 P1 — 架构重构（自举前置）
 
-| # | 方向 | 预期收益 | 工作量 |
-|---|------|----------|--------|
-| 1 | **抽取 `frontend` crate** | lexer/parser/ast/typecheck/loader/error 独立编译 | 中 |
-| 2 | **拆分 `BuiltinTypeSig` 表** | 消除 typecheck↔codegen 循环依赖；Action 自举只需抄类型表 | 中 |
-| 3 | **统一诊断管线** | 全路径 `CompilerError` + Span，删除 run 路径 regex re-parse | 小 |
-| 4 | **引入 Typed IR（HIR）** | AST → HIR → LLVM；前端自举只需 emit HIR JSON/bincode | 大 |
-| 5 | **拆分 `parser.rs` / `typecheck.rs`** | 按 syntactic category 分子模块 | 中 |
-| 6 | **LSP/REPL 共用 `load_program`** | 消除三套流水线 | 中 |
-| 7 | **Runtime C ABI 冻结** | 将 `action_list_*` 等导出为稳定 `.h` + `libaction_rt.so` | 大 |
+| # | 方向 | 状态 |
+|---|------|------|
+| 1 | `action-frontend` crate | ✅ |
+| 2 | `builtin/registry.rs` 类型表 | ✅ |
+| 3 | 统一诊断 `CompilerError` + Span | ✅ |
+| 4 | HIR + JSON emit | ✅ |
+| 5 | parser/typecheck 子模块拆分 | ✅ |
+| 6 | LSP/REPL 共用 `FrontendSession` | ✅ |
+| 7 | Runtime C ABI `include/action_rt.h` | ✅ |
+| 8 | AST codegen 删除（R8） | ✅ |
+| 9 | CLI / host-rt crate 化（R9） | ✅ |
 
-### 4.3 P2 — 性能（进行中，可继续）
+### 4.3 P2 — 性能
 
-| 方向 | 现状 | 下一步 |
-|------|------|--------|
-| index-0 insert | concat 快速路径 | 全索引 `insert_rec` + RC 修复 |
-| for-loop get 缓存 | `list_get_cached` | 推广到 `builtins_iter` 更多路径 |
-| lambda 单态化 | map/filter 简单情况 | 扩展捕获分析 |
-| Map rehash | O(n) rebuild | robin-hood / 增量 rehash |
-| ConcatNode balance | 未做 | 按需 flatten 降 get 深度 |
-| AOT LTO | 未做 | runtime bitcode + user IR 链接 |
+| 方向 | 状态 |
+|------|------|
+| `insert_rec` 中间索引 insert | ✅ |
+| `remove(0)` 快速路径 | ✅ |
+| `list_get_cached` 推广至 reduce/iter | ✅ |
+| ConcatNode balance / Map Robin-Hood / fused iter | ✅ |
+| AOT LTO | ✅ |
 
-### 4.4 P3 — 测试与质量（P4 延续）
+### 4.4 P3 — 测试与质量
 
-| 优先级 | 动作 |
-|--------|------|
-| 高 | CI self-hosted runner 稳定；integration job 必绿 |
-| 高 | 扩展 compile-error：import/泛型/重载歧义 |
-| 中 | List/Map **持久化不变量** property test |
-| 中 | lib proptest 与 merge gate 解耦 |
-| 低 | fuzz lexer/parser |
+| 优先级 | 动作 | 状态 |
+|--------|------|------|
+| 高 | compile-error：import 循环/非法名、泛型、重载 | ✅ |
+| 中 | Map CoW oracle（`test_map_cow_properties`） | ✅ |
+| 中 | diagnostics JSON 测试 | ✅ |
+| 低 | lib proptest 与 merge gate 解耦 | 进行中 |
 
 ### 4.5 P4 — 开发者体验
 
-| 工具 | 建议 |
+| 工具 | 状态 |
 |------|------|
-| `action fmt` | 改为 token-aware（复用 lexer） |
-| `action check --explain` | 结构化 JSON 诊断（已起步） |
-| VSCode 扩展 | Marketplace 发布，版本与 crate 对齐 |
-| Debugger | 长期：LLDB + DWARF 或解释型 fallback |
+| `action fmt` token-aware | ✅ |
+| `action check --format json` | ✅ |
+| `action check --explain` + JSON help 字段 | ✅ |
+| VSCode 扩展 Marketplace | 待做 |
 
 ### 4.6 P5 — 生态
 

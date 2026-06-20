@@ -5,29 +5,30 @@
 //   action-frontend   — lex / parse / typecheck / load
 //   action-codegen    — LLVM codegen + runtime IR
 //   action-driver     — compile orchestration (load → compile → emit)
-//   action (root)     — CLI, LSP, REPL + backward-compatible re-exports
-
-pub mod backend;
+//   action-cli        — CLI binary (crates/action-cli/src/main.rs)
+//   action (root)     — backward-compatible re-exports
 
 pub use action_frontend as frontend;
 pub use action_span as span;
 
-// ── Backward-compatible re-exports (existing `crate::lexer` paths) ────────────
 pub use action_codegen as codegen;
 pub use action_codegen::CodeGen;
+pub use action_driver as driver;
 pub use action_frontend::{
     ast, builtin, checked, config, error, fmt, hir, lexer, loader, parser, registry, session,
     typecheck, types,
 };
 pub use action_span::Span;
 
-// Legacy alias: typecheck + codegen both used `builtin_registry`
 pub use action_frontend::builtin as builtin_registry;
 
-pub mod driver;
-pub mod http_runtime;
-pub mod lsp;
-pub mod repl;
-pub mod runtime_json;
-pub mod runtime_threading;
-pub mod test_runner;
+pub use action_lsp as lsp;
+
+// JIT host symbols (JSON/HTTP/threading). Sources live in `crates/host-rt/`; also
+// compiled into `libaction_host_rt.a` for AOT via build.rs.
+#[path = "../crates/host-rt/runtime_json.rs"]
+mod runtime_json;
+#[path = "../crates/host-rt/http_runtime.rs"]
+mod http_runtime;
+#[path = "../crates/host-rt/runtime_threading.rs"]
+mod runtime_threading;

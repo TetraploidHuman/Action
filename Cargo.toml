@@ -5,6 +5,7 @@ members = [
     "crates/action-frontend",
     "crates/action-codegen",
     "crates/action-driver",
+    "crates/action-lsp",
     "crates/host-rt",
     "crates/runtime-bc-emit",
 ]
@@ -21,13 +22,14 @@ path = "src/lib.rs"
 
 [[bin]]
 name = "action"
-path = "src/main.rs"
+path = "crates/action-cli/src/main.rs"
 
 [dependencies]
 action-span = { path = "crates/action-span" }
 action-frontend = { path = "crates/action-frontend" }
 action-codegen = { path = "crates/action-codegen" }
 action-driver = { path = "crates/action-driver" }
+action-lsp = { path = "crates/action-lsp" }
 inkwell = { version = "0.9", features = ["llvm21-1"] }
 llvm-sys = { version = "211" }
 ariadne = "0.4"

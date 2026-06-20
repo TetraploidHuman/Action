@@ -1,5 +1,6 @@
 use action_span::Span;
 use ariadne::{Color, Label, Report, ReportKind, Source};
+use serde::{Deserialize, Serialize};
 
 /// Structured compiler error with optional source location and help text
 #[derive(Debug, Clone)]
@@ -97,6 +98,77 @@ pub fn enrich_with_explain(mut error: CompilerError) -> CompilerError {
     error
 }
 
+/// Machine-readable diagnostic for `--format json` / LSP adapters.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Diagnostic {
+    pub severity: String,
+    pub message: String,
+    pub file: String,
+    pub line: Option<usize>,
+    pub col: Option<usize>,
+    pub highlight_len: Option<usize>,
+    pub help: Option<String>,
+    pub code: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiagnosticEnvelope {
+    pub version: u32,
+    pub diagnostics: Vec<Diagnostic>,
+}
+
+fn diagnostic_code_for(error: &CompilerError) -> &'static str {
+    let msg = error.message.as_str();
+    if msg.contains("Lexer error") || msg.contains("Unexpected") {
+        "lex-error"
+    } else if msg.contains("Parse error") || msg.contains("Expected") {
+        "parse-error"
+    } else if msg.contains("Circular import") || msg.contains("Module '") {
+        "import-error"
+    } else if msg.contains("Cannot infer type arguments") {
+        "generic-error"
+    } else if msg.contains("No matching overload") {
+        "overload-error"
+    } else {
+        "type-error"
+    }
+}
+
+pub fn compiler_error_to_diagnostic(error: &CompilerError, file: &str) -> Diagnostic {
+    Diagnostic {
+        severity: "error".to_string(),
+        message: error.message.clone(),
+        file: file.to_string(),
+        line: error.span.as_ref().map(|s| s.line),
+        col: error.span.as_ref().map(|s| s.col),
+        highlight_len: error.span.as_ref().map(|s| s.highlight_len()),
+        help: error.help.clone(),
+        code: Some(diagnostic_code_for(error).to_string()),
+    }
+}
+
+pub fn diagnostics_to_json_pretty(
+    errors: &[CompilerError],
+    file: &str,
+    explain: bool,
+) -> Result<String, serde_json::Error> {
+    let diagnostics: Vec<Diagnostic> = errors
+        .iter()
+        .map(|e| {
+            let err = if explain {
+                enrich_with_explain(e.clone())
+            } else {
+                e.clone()
+            };
+            compiler_error_to_diagnostic(&err, file)
+        })
+        .collect();
+    serde_json::to_string_pretty(&DiagnosticEnvelope {
+        version: 1,
+        diagnostics,
+    })
+}
+
 /// Convert line (1-indexed) and col (1-indexed) to byte offset in source.
 pub fn line_col_to_offset(source: &str, line: usize, col: usize) -> usize {
     let mut cur_line = 1;
@@ -115,76 +187,42 @@ pub fn line_col_to_offset(source: &str, line: usize, col: usize) -> usize {
     source.len()
 }
 
-/// Report compiler errors with span-aware highlighting.
-///
-/// Accepts errors as string slices — each error string may be in
-/// "Error at line X, col Y: message" format (produced by `CompilerError`'s
-/// `Display` impl) or a plain error message.
-pub fn report_compiler_errors(source: &str, path: &str, errors: &[impl AsRef<str>]) {
-    for err_str in errors {
-        let err_str = err_str.as_ref();
-        let lines: Vec<&str> = err_str.lines().collect();
-        let main_line = lines.first().copied().unwrap_or("");
-        let help = if lines.len() > 1 && lines[1].trim().starts_with("help: ") {
-            Some(
-                lines[1]
-                    .trim()
-                    .strip_prefix("help: ")
-                    .unwrap_or("")
-                    .to_string(),
-            )
-        } else {
-            None
-        };
+/// Report compiler errors using structured spans (preferred over string re-parse).
+pub fn report_compiler_errors(source: &str, path: &str, errors: &[CompilerError]) {
+    for error in errors {
+        report_one_compiler_error(source, path, error);
+    }
+}
 
-        if let Some((line, col, msg)) = parse_error_line(main_line) {
-            let offset = line_col_to_offset(source, line, col);
-            let highlight_len = 1usize;
-            let mut report = Report::build(ReportKind::Error, path, offset)
-                .with_message(&msg)
-                .with_label(
-                    Label::new((path, offset..offset + highlight_len))
-                        .with_message("here")
-                        .with_color(Color::Red),
-                );
-            if let Some(ref help) = help {
-                report = report.with_help(help.clone());
-            }
-            report
-                .finish()
-                .eprint((path, Source::from(source)))
-                .unwrap_or_else(|_| eprintln!("Error: {}", main_line));
-        } else {
-            eprintln!("\x1b[1;31merror:\x1b[0m {}", main_line);
-            if let Some(ref help) = help {
-                eprintln!("  \x1b[1;36mhelp:\x1b[0m {}", help);
-            }
+fn report_one_compiler_error(source: &str, path: &str, error: &CompilerError) {
+    if let Some(span) = &error.span {
+        let offset = line_col_to_offset(source, span.line, span.col);
+        let highlight_len = span.highlight_len();
+        let end = (offset + highlight_len).min(source.len());
+        let mut report = Report::build(ReportKind::Error, path, offset)
+            .with_message(&error.message)
+            .with_label(
+                Label::new((path, offset..end))
+                    .with_message("here")
+                    .with_color(Color::Red),
+            );
+        if let Some(ref help) = error.help {
+            report = report.with_help(help.clone());
+        }
+        report
+            .finish()
+            .eprint((path, Source::from(source)))
+            .unwrap_or_else(|_| eprintln!("Error: {}", error.message));
+    } else {
+        eprintln!("\x1b[1;31merror:\x1b[0m {}", error.message);
+        if let Some(ref help) = error.help {
+            eprintln!("  \x1b[1;36mhelp:\x1b[0m {}", help);
         }
     }
 }
 
-/// Extract (line, col, message) from an error string formatted as
-/// "Error at line X, col Y: message" or "Parse error at line X, col Y: message".
-fn parse_error_line(line: &str) -> Option<(usize, usize, String)> {
-    if let Some(rest) = line.strip_prefix("Error at line ") {
-        let parts: Vec<&str> = rest.splitn(2, ", col ").collect();
-        if parts.len() == 2 {
-            let line_num: usize = parts[0].parse().ok()?;
-            let col_parts: Vec<&str> = parts[1].splitn(2, ": ").collect();
-            let col: usize = col_parts[0].parse().ok()?;
-            let msg = col_parts.get(1).unwrap_or(&"error").to_string();
-            return Some((line_num, col, msg));
-        }
-    }
-    if let Some(rest) = line.strip_prefix("Parse error at line ") {
-        let parts: Vec<&str> = rest.splitn(2, ", col ").collect();
-        if parts.len() == 2 {
-            let line_num: usize = parts[0].parse().ok()?;
-            let col_parts: Vec<&str> = parts[1].splitn(2, ": ").collect();
-            let col: usize = col_parts[0].parse().ok()?;
-            let msg = col_parts.get(1).unwrap_or(&"parse error").to_string();
-            return Some((line_num, col, msg));
-        }
-    }
-    None
+/// Report a plain error message (no span available).
+pub fn report_error_message(source: &str, path: &str, message: &str) {
+    eprintln!("\x1b[1;31merror:\x1b[0m {}", message);
+    let _ = (source, path);
 }

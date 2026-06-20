@@ -101,6 +101,29 @@ fn assert_compile_error(name: &str, expected_msg: &str) {
     );
 }
 
+fn assert_compile_error_at(path: &std::path::Path, expected_msg: &str) {
+    let output = Command::new(action_binary())
+        .args(["run", path.to_str().unwrap()])
+        .output()
+        .expect(&format!("Failed to run: {}", path.display()));
+    assert!(
+        !output.status.success(),
+        "Expected {} to fail, but it succeeded.\nstdout: {}",
+        path.display(),
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr)
+        .replace("\r\n", "\n")
+        .replace('\r', "");
+    assert!(
+        stderr.contains(expected_msg),
+        "Expected error containing {:?} when compiling {}, but got:\n{}",
+        expected_msg,
+        path.display(),
+        stderr
+    );
+}
+
 #[test]
 fn test_hello() {
     assert_eq!(run_example("hello.at"), "Hello, World!\n");
@@ -845,6 +868,36 @@ fn test_error_generic_mismatch() {
 }
 
 #[test]
+fn test_error_generic_type_mismatch() {
+    assert_compile_error(
+        "test_error_generic_type_mismatch.at",
+        "Cannot infer type arguments for 'pair'",
+    );
+}
+
+#[test]
+fn test_error_overload_no_match() {
+    assert_compile_error(
+        "test_error_overload_no_match.at",
+        "No matching overload",
+    );
+}
+
+#[test]
+fn test_error_import_cycle() {
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/import_cycle/main.at");
+    assert_compile_error_at(&p, "Circular import detected");
+}
+
+#[test]
+fn test_error_import_invalid_module_name() {
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/import_invalid_name/main.at");
+    assert_compile_error_at(&p, "Unexpected token");
+}
+
+#[test]
 fn test_error_arg_count() {
     assert_compile_error("test_error_arg_count.at", "expects 2 arguments, but got 1");
 }
@@ -1064,6 +1117,12 @@ fn test_cow_properties() {
         out
     );
     assert!(out.contains("5"), "Expected len=5 in output");
+}
+
+#[test]
+fn test_map_cow_properties() {
+    let out = run_example("test_map_cow_properties.at");
+    assert_eq!(out.trim(), "2\n2\n3\n1\n2\n999");
 }
 
 // ---- UFCS chain regression test ----

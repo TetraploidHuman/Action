@@ -3,12 +3,8 @@
 // Extracted from misc.rs.
 //
 
-#[cfg(test)]
-use action_frontend::ast::*;
 use inkwell::types::{BasicTypeEnum, StructType};
 use inkwell::values::{BasicValue, BasicValueEnum, PointerValue};
-#[cfg(test)]
-use inkwell::IntPredicate;
 
 use super::{llvm_err, CodeGen, InnerType, TypedValue, ValKind};
 
@@ -101,83 +97,6 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    #[cfg(test)]
-
-    pub(super) fn compile_string_interp(
-        &mut self,
-        parts: &[StringPart],
-    ) -> Result<TypedValue<'ctx>, String> {
-        let mut result: Option<PointerValue<'ctx>> = None;
-        for p in parts {
-            let str_ptr = match p {
-                StringPart::Literal(s) => {
-                    let tv = self.compile_string_literal(s)?;
-                    match tv {
-                        TypedValue::Str(ptr) => Some(ptr),
-                        _ => None,
-                    }
-                }
-                StringPart::Expr(expr) => {
-                    let val = self.compile_expr(expr)?;
-                    self.value_to_string_ptr(&val)?
-                }
-            };
-
-            if let Some(ptr) = str_ptr {
-                result = match result {
-                    None => Some(ptr),
-                    Some(acc) => {
-                        let cc = self.call_rt_with_2str("action_string_concat", acc, ptr)?;
-                        // Free the accumulator's data if it's an intermediate (not a scope
-                        // variable). Intermediates start at RC=0 so rc_inc+rc_dec triggers
-                        // the free via RC 0→1→0.
-                        if !self.is_scope_variable(&TypedValue::Str(acc)) {
-                            let old_str = self.load_string(acc)?;
-                            let old_data = self
-                                .builder
-                                .build_extract_value(old_str, 1, "old_data")
-                                .map_err(llvm_err)?
-                                .into_pointer_value();
-                            self.rc_inc(old_data)?;
-                            self.rc_dec(old_data)?;
-                        }
-                        // Free the part being concatenated if it's an intermediate.
-                        if !self.is_scope_variable(&TypedValue::Str(ptr)) {
-                            let part_str = self.load_string(ptr)?;
-                            let part_data = self
-                                .builder
-                                .build_extract_value(part_str, 1, "part_data")
-                                .map_err(llvm_err)?
-                                .into_pointer_value();
-                            self.rc_inc(part_data)?;
-                            self.rc_dec(part_data)?;
-                        }
-                        match cc.try_as_basic_value().basic() {
-                            Some(bv) => {
-                                let alloca = self
-                                    .builder
-                                    .build_alloca(self.string_type, "interp")
-                                    .map_err(llvm_err)?;
-                                self.builder.build_store(alloca, bv).map_err(llvm_err)?;
-                                Some(alloca)
-                            }
-                            None => Some(acc),
-                        }
-                    }
-                };
-            }
-        }
-        match result {
-            Some(ptr) => Ok(TypedValue::Str(ptr)),
-            None => {
-                let g = self
-                    .builder
-                    .build_global_string_ptr("", "empty")
-                    .map_err(llvm_err)?;
-                Ok(TypedValue::Str(g.as_pointer_value()))
-            }
-        }
-    }
 
     pub(super) fn compile_string_interp_hir(
         &mut self,
@@ -333,181 +252,6 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    #[cfg(test)]
-
-    pub(super) fn compile_field_access(
-        &mut self,
-        obj: &Expr,
-        field: &str,
-    ) -> Result<TypedValue<'ctx>, String> {
-        // Handle enum variant access: EnumName.Variant
-        if let ExprKind::Ident(enum_name) = &obj.kind {
-            if self.enum_types.contains_key(enum_name) {
-                // Look up the variant in this specific enum
-                let variant_info = self
-                    .registry
-                    .lookup_variant(field)
-                    .map(|(ei, vi)| (ei.clone(), vi.clone()));
-                if let Some((enum_info, variant)) = variant_info {
-                    if enum_info.name == *enum_name {
-                        if variant.params.is_empty() {
-                            return self.compile_enum_construct(&enum_info, &variant, &[]);
-                        }
-                        return Err(format!(
-                            "Enum variant '{}.{}' requires arguments",
-                            enum_name, field
-                        ));
-                    }
-                }
-                return Err(format!(
-                    "Variant '{}' not found in enum '{}'",
-                    field, enum_name
-                ));
-            }
-            // Check if it's a module-qualified function call handled elsewhere (e.g., math.add)
-        }
-        let o = self.compile_expr(obj)?;
-
-        // If receiver is nullable, auto short-circuit on null
-        if let TypedValue::Nullable(nullable_ptr, inner_bt) = o {
-            let current_fn = self
-                .builder
-                .get_insert_block()
-                .and_then(|b| b.get_parent())
-                .ok_or("Cannot access field outside function")?;
-
-            let b1 = self.null_flag_ty();
-            let nullable_st = inner_bt.into_struct_type();
-            let null_bt: BasicTypeEnum = nullable_st.into();
-
-            let loaded = self
-                .builder
-                .build_load(null_bt, nullable_ptr, "nfa_ld")
-                .map_err(llvm_err)?;
-            let nullable_struct = loaded.into_struct_value();
-            let null_flag = self
-                .builder
-                .build_extract_value(nullable_struct, 0, "nfa_flag")
-                .map_err(llvm_err)?
-                .into_int_value();
-
-            let is_null = self
-                .builder
-                .build_int_compare(
-                    IntPredicate::EQ,
-                    null_flag,
-                    b1.const_int(1, false),
-                    "nfa_is_null",
-                )
-                .map_err(llvm_err)?;
-
-            let null_block = self.context.append_basic_block(current_fn, "nfa_null");
-            let val_block = self.context.append_basic_block(current_fn, "nfa_val");
-            let merge_block = self.context.append_basic_block(current_fn, "nfa_merge");
-
-            self.builder
-                .build_conditional_branch(is_null, null_block, val_block)
-                .map_err(llvm_err)?;
-
-            // Value path: extract inner, access field, wrap result in nullable.
-            // Processed first so the wrapped result type informs the null path.
-            self.builder.position_at_end(val_block);
-            let inner = self
-                .builder
-                .build_extract_value(nullable_struct, 1, "nfa_inner")
-                .map_err(llvm_err)?;
-            let inner_typed = self.bv_to_typed(inner)?;
-
-            let field_result =
-                self.compile_field_access_on_typed_value(&inner_typed, field, inner_bt)?;
-            let field_bt = field_result.get_value_type(self);
-            let field_wrapped = self.wrap_in_typed_nullable(&field_result, field_bt)?;
-            let (wrapped_ptr, wrapped_bt) = match field_wrapped {
-                TypedValue::Nullable(p, t) => (p, t),
-                _ => return Err("wrap_in_typed_nullable did not return Nullable".to_string()),
-            };
-            let val_loaded = self
-                .builder
-                .build_load(wrapped_bt, wrapped_ptr, "nfa_val_ld")
-                .map_err(llvm_err)?;
-            self.builder
-                .build_unconditional_branch(merge_block)
-                .map_err(llvm_err)?;
-
-            // Null path: produce null of the same wrapped type as the value path
-            self.builder.position_at_end(null_block);
-            let wrapped_struct_ty = wrapped_bt.into_struct_type();
-            let undef = wrapped_struct_ty.get_undef();
-            let null_struct = self
-                .builder
-                .build_insert_value(undef, b1.const_int(1, false), 0, "nfa_null_flag")
-                .map_err(llvm_err)?;
-            self.builder
-                .build_unconditional_branch(merge_block)
-                .map_err(llvm_err)?;
-
-            // Merge: phi the null and value paths (both have the same struct type)
-            self.builder.position_at_end(merge_block);
-            let phi = self
-                .builder
-                .build_phi(wrapped_bt, "nfa_merge")
-                .map_err(llvm_err)?;
-            phi.add_incoming(&[(&null_struct, null_block), (&val_loaded, val_block)]);
-
-            let result_alloca = self
-                .builder
-                .build_alloca(wrapped_struct_ty, "nfa_result")
-                .map_err(llvm_err)?;
-            self.builder
-                .build_store(result_alloca, phi.as_basic_value())
-                .map_err(llvm_err)?;
-            return Ok(TypedValue::Nullable(result_alloca, wrapped_bt));
-        }
-
-        if let TypedValue::Str(ptr) = &o {
-            if field == "length" {
-                let gep = self
-                    .builder
-                    .build_struct_gep(self.string_type, *ptr, 0, "lenp")
-                    .map_err(llvm_err)?;
-                let len = self
-                    .builder
-                    .build_load(self.i64_ty(), gep, "len")
-                    .map_err(llvm_err)?
-                    .into_int_value();
-                return Ok(TypedValue::Int(len));
-            }
-        }
-        if let TypedValue::Struct(ptr, struct_ty) = &o {
-            let bt: BasicTypeEnum = (*struct_ty).into();
-            let loaded = self
-                .builder
-                .build_load(bt, *ptr, "struct_ld")
-                .map_err(llvm_err)?;
-            let struct_val = loaded.into_struct_value();
-
-            // Check if field is a numeric index for tuple access: .0, .1, etc.
-            if let Ok(idx) = field.parse::<usize>() {
-                let field_val = self
-                    .builder
-                    .build_extract_value(struct_val, idx as u32, field)
-                    .map_err(llvm_err)?;
-                return self.bv_to_typed(field_val);
-            }
-
-            let field_names = self.lookup_struct_field_names(*struct_ty);
-            let idx = field_names
-                .iter()
-                .position(|n| n == field)
-                .ok_or_else(|| format!("Field '{}' not found on struct", field))?;
-            let field_val = self
-                .builder
-                .build_extract_value(struct_val, idx as u32, field)
-                .map_err(llvm_err)?;
-            return self.bv_to_typed(field_val);
-        }
-        Err(format!("Field '{}' not supported on this type", field))
-    }
 
     pub(super) fn lookup_struct_field_names(&self, struct_ty: StructType<'ctx>) -> Vec<String> {
         for (name, st) in &self.named_structs {
@@ -525,19 +269,6 @@ impl<'ctx> CodeGen<'ctx> {
         vec![]
     }
 
-    #[cfg(test)]
-
-    pub(super) fn compile_struct_lit(
-        &mut self,
-        fields: &[(String, Expr)],
-    ) -> Result<TypedValue<'ctx>, String> {
-        let field_names: Vec<String> = fields.iter().map(|(n, _)| n.clone()).collect();
-        let mut field_vals = Vec::with_capacity(fields.len());
-        for (_, expr) in fields {
-            field_vals.push(self.compile_expr(expr)?);
-        }
-        self.compile_struct_lit_values(&field_names, field_vals)
-    }
 
     pub(super) fn compile_struct_lit_values(
         &mut self,
@@ -648,21 +379,6 @@ impl<'ctx> CodeGen<'ctx> {
         self.compile_tuple_values(&compiled)
     }
 
-    #[cfg(test)]
-
-    pub(super) fn compile_tuple(
-        &mut self,
-        exprs: &[(Option<String>, Expr)],
-    ) -> Result<TypedValue<'ctx>, String> {
-        if exprs.is_empty() {
-            return Ok(TypedValue::Unit);
-        }
-        let mut compiled = Vec::with_capacity(exprs.len());
-        for (name_opt, expr) in exprs {
-            compiled.push((name_opt.clone(), self.compile_expr(expr)?));
-        }
-        self.compile_tuple_values(&compiled)
-    }
 
     pub(super) fn compile_tuple_values(
         &mut self,

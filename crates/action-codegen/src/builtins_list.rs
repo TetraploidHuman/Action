@@ -1,7 +1,5 @@
 // Submodule: builtins_list
 
-#[cfg(test)]
-use action_frontend::ast::*;
 
 use super::call_arg::CallArg;
 use super::{llvm_err, CodeGen, TypedValue};
@@ -114,8 +112,6 @@ impl<'ctx> CodeGen<'ctx> {
         lam: CallArg<'_>,
     ) -> Result<inkwell::values::PointerValue<'ctx>, String> {
         match lam {
-            #[cfg(test)]
-            CallArg::Ast(e) => self.compile_lambda_for_lazy(e),
             CallArg::Hir(h) => match &h.kind {
                 action_frontend::hir::HirExprKind::Lambda { params, body, .. } => {
                     if params.is_empty() {
@@ -135,26 +131,6 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// Compile a lambda for use as a lazy list step function.
     /// Returns a function pointer that can be called with (i64 state) -> next_i64.
-    #[cfg(test)]
-    fn compile_lambda_for_lazy(
-        &mut self,
-        lam: &Expr,
-    ) -> Result<inkwell::values::PointerValue<'ctx>, String> {
-        match &lam.kind {
-            ExprKind::Lambda { params, body, .. } => {
-                if params.is_empty() {
-                    return Err("lazy_list step function expects 1 parameter".to_string());
-                }
-                let fn_val = self.compile_lambda(params, body)?;
-                match fn_val {
-                    TypedValue::Fn(ptr, _) => Ok(ptr),
-                    TypedValue::Closure { fn_ptr, .. } => Ok(fn_ptr),
-                    _ => Err("lazy_list: step function compilation failed".to_string()),
-                }
-            }
-            _ => Err("lazy_list: expected lambda body".to_string()),
-        }
-    }
 
     // ---- LazyList operations ----
 

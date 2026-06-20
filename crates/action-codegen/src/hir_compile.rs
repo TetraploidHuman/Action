@@ -100,7 +100,7 @@ impl<'ctx> CodeGen<'ctx> {
                 } else {
                     return_type.clone().or_else(|| {
                         if all_typed {
-                            Some(body.ty.clone())
+                            Some(self.infer_hir_expr_type(body))
                         } else {
                             None
                         }
@@ -141,7 +141,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .collect();
                         let ret_type = return_type.clone().or_else(|| {
                             if params.iter().all(|p| p.ty.is_some()) {
-                                Some(fn_body.ty.clone())
+                                Some(self.infer_hir_expr_type(fn_body))
                             } else {
                                 None
                             }
@@ -177,7 +177,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .collect();
                         let ret_type = return_type.clone().or_else(|| {
                             if params.iter().all(|p| p.ty.is_some()) {
-                                Some(body.ty.clone())
+                                Some(self.infer_hir_expr_type(body))
                             } else {
                                 None
                             }

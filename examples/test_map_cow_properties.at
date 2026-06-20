@@ -1,0 +1,13 @@
+// Map CoW oracle: shared map must stay unchanged after mutation via alias
+fun main() {
+    val shared = Map["a": 1, "b": 2]
+    val alias = shared
+    var mutated = shared
+    mutated = mutated.insert("c", 999)
+    println(shared.len())
+    println(alias.len())
+    println(mutated.len())
+    println(shared["a"] or { 0 })
+    println(alias["b"] or { 0 })
+    println(mutated["c"] or { 0 })
+}

@@ -3,11 +3,14 @@
 use crate::ast::*;
 use crate::hir::nodes::*;
 use crate::typecheck::TypeChecker;
-use action_span::Span;
+use std::collections::HashMap;
 
 /// Build HIR from a type-checked program.
 pub fn lower_program(program: &Program, checker: &TypeChecker) -> HirModule {
-    let lowerer = Lowerer { checker };
+    let mut lowerer = Lowerer {
+        checker,
+        locals: HashMap::new(),
+    };
     HirModule {
         stmts: lowerer.lower_stmts(&program.stmts),
     }
@@ -15,14 +18,21 @@ pub fn lower_program(program: &Program, checker: &TypeChecker) -> HirModule {
 
 struct Lowerer<'a> {
     checker: &'a TypeChecker,
+    locals: HashMap<String, Type>,
 }
 
 impl<'a> Lowerer<'a> {
-    fn lower_stmts(&self, stmts: &[Stmt]) -> Vec<HirStmt> {
+    fn expr_type(&self, expr: &Expr) -> Type {
+        self.checker
+            .infer_expr_type_with_locals(expr, &self.locals)
+            .unwrap_or(Type::Named("Int".into()))
+    }
+
+    fn lower_stmts(&mut self, stmts: &[Stmt]) -> Vec<HirStmt> {
         stmts.iter().map(|s| self.lower_stmt(s)).collect()
     }
 
-    fn lower_stmt(&self, stmt: &Stmt) -> HirStmt {
+    fn lower_stmt(&mut self, stmt: &Stmt) -> HirStmt {
         match stmt {
             Stmt::Let {
                 mutable,
@@ -173,8 +183,35 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn lower_expr(&self, expr: &Expr) -> HirExpr {
-        let ty = self.checker.inferred_type(expr);
+    fn lower_expr(&mut self, expr: &Expr) -> HirExpr {
+        if let ExprKind::Lambda {
+            params,
+            body,
+            implicit_it,
+        } = &expr.kind
+        {
+            let saved = self.locals.clone();
+            for p in params {
+                self.locals.insert(p.clone(), Type::Named("Int".into()));
+            }
+            if *implicit_it {
+                self.locals.insert("it".into(), Type::Named("Int".into()));
+            }
+            let ty = self.expr_type(body);
+            let body_hir = self.lower_expr(body);
+            self.locals = saved;
+            return HirExpr {
+                ty,
+                span: expr.span,
+                kind: HirExprKind::Lambda {
+                    params: params.clone(),
+                    body: Box::new(body_hir),
+                    implicit_it: *implicit_it,
+                },
+            };
+        }
+
+        let ty = self.expr_type(expr);
         let kind = match &expr.kind {
             ExprKind::Literal(l) => HirExprKind::Literal(l.clone()),
             ExprKind::Ident(n) => HirExprKind::Ident(n.clone()),
@@ -195,15 +232,7 @@ impl<'a> Lowerer<'a> {
                     .as_ref()
                     .map(|l| Box::new(self.lower_expr(l))),
             },
-            ExprKind::Lambda {
-                params,
-                body,
-                implicit_it,
-            } => HirExprKind::Lambda {
-                params: params.clone(),
-                body: Box::new(self.lower_expr(body)),
-                implicit_it: *implicit_it,
-            },
+            ExprKind::Lambda { .. } => unreachable!("handled above"),
             ExprKind::When(w) => HirExprKind::When(Box::new(self.lower_when(w))),
             ExprKind::For(f) => HirExprKind::For(Box::new(self.lower_for(f))),
             ExprKind::Block(stmts) => HirExprKind::Block(self.lower_stmts(stmts)),
@@ -265,12 +294,12 @@ impl<'a> Lowerer<'a> {
         };
         HirExpr {
             ty,
-            span: Span::default(),
+            span: expr.span,
             kind,
         }
     }
 
-    fn lower_when(&self, w: &When) -> HirWhen {
+    fn lower_when(&mut self, w: &When) -> HirWhen {
         HirWhen {
             kind: match &w.kind {
                 WhenKind::OneLine {
@@ -293,7 +322,7 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn lower_when_arm(&self, arm: &WhenArm) -> HirWhenArm {
+    fn lower_when_arm(&mut self, arm: &WhenArm) -> HirWhenArm {
         HirWhenArm {
             pattern: self.lower_pattern(&arm.pattern),
             guard: arm.guard.as_ref().map(|g| Box::new(self.lower_expr(g))),
@@ -301,7 +330,7 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn lower_pattern(&self, pattern: &Pattern) -> HirPattern {
+    fn lower_pattern(&mut self, pattern: &Pattern) -> HirPattern {
         match pattern {
             Pattern::Wildcard => HirPattern::Wildcard,
             Pattern::Literal(l) => HirPattern::Literal(l.clone()),
@@ -332,7 +361,7 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn lower_for(&self, f: &For) -> HirFor {
+    fn lower_for(&mut self, f: &For) -> HirFor {
         HirFor {
             kind: match &f.kind {
                 ForKind::Iterate {

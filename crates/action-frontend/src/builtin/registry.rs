@@ -10,6 +10,8 @@ pub enum UfcsReceiverKind {
     Map,
     Set,
     String,
+    Stream,
+    Task,
     /// `len` / `isEmpty` on list, map, set, or string.
     Collection,
 }
@@ -45,6 +47,24 @@ fn nullable_int() -> Type {
 }
 fn fn_int_to_int() -> Type {
     Type::Function(vec![int()], Box::new(int()))
+}
+fn map_ty() -> Type {
+    Type::Map(Box::new(int()), Box::new(int()))
+}
+fn set_ty() -> Type {
+    Type::Set(Box::new(int()))
+}
+fn cstring() -> Type {
+    Type::Named("CString".into())
+}
+fn nullable_string() -> Type {
+    Type::Nullable(Box::new(string()))
+}
+fn task_int() -> Type {
+    Type::Task(Box::new(int()))
+}
+fn stream_int() -> Type {
+    Type::Stream(Box::new(int()))
 }
 
 fn build_registry() -> Vec<BuiltinDef> {
@@ -266,6 +286,339 @@ fn build_registry() -> Vec<BuiltinDef> {
             readonly: true,
             supports_trailing_lambda: false,
         },
+        // --- stdlib (global) ---
+        BuiltinDef {
+            name: "send",
+            param_types: vec![stream_int(), int()],
+            return_type: unit(),
+            ufcs_receiver: UfcsReceiverKind::Global,
+            readonly: false,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "close",
+            param_types: vec![stream_int()],
+            return_type: unit(),
+            ufcs_receiver: UfcsReceiverKind::Global,
+            readonly: false,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "cancel",
+            param_types: vec![task_int()],
+            return_type: unit(),
+            ufcs_receiver: UfcsReceiverKind::Global,
+            readonly: false,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "toCString",
+            param_types: vec![string()],
+            return_type: cstring(),
+            ufcs_receiver: UfcsReceiverKind::Global,
+            readonly: true,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "fromCString",
+            param_types: vec![cstring()],
+            return_type: string(),
+            ufcs_receiver: UfcsReceiverKind::Global,
+            readonly: true,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "readLine",
+            param_types: vec![],
+            return_type: nullable_string(),
+            ufcs_receiver: UfcsReceiverKind::Global,
+            readonly: true,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "httpRequest",
+            param_types: vec![string(), string()],
+            return_type: string(),
+            ufcs_receiver: UfcsReceiverKind::Global,
+            readonly: false,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "jsonEscape",
+            param_types: vec![string()],
+            return_type: string(),
+            ufcs_receiver: UfcsReceiverKind::Global,
+            readonly: true,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "unwrapOr",
+            param_types: vec![nullable_string(), string()],
+            return_type: string(),
+            ufcs_receiver: UfcsReceiverKind::Global,
+            readonly: false,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "substring",
+            param_types: vec![string(), int(), int()],
+            return_type: string(),
+            ufcs_receiver: UfcsReceiverKind::Global,
+            readonly: true,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "str",
+            param_types: vec![int()],
+            return_type: string(),
+            ufcs_receiver: UfcsReceiverKind::Global,
+            readonly: true,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "toUpper",
+            param_types: vec![string()],
+            return_type: string(),
+            ufcs_receiver: UfcsReceiverKind::Global,
+            readonly: true,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "toLower",
+            param_types: vec![string()],
+            return_type: string(),
+            ufcs_receiver: UfcsReceiverKind::Global,
+            readonly: true,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "receive",
+            param_types: vec![stream_int()],
+            return_type: int(),
+            ufcs_receiver: UfcsReceiverKind::Global,
+            readonly: true,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "wait",
+            param_types: vec![task_int()],
+            return_type: int(),
+            ufcs_receiver: UfcsReceiverKind::Global,
+            readonly: true,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "is_done",
+            param_types: vec![task_int()],
+            return_type: bool(),
+            ufcs_receiver: UfcsReceiverKind::Global,
+            readonly: true,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "is_cancelled",
+            param_types: vec![task_int()],
+            return_type: bool(),
+            ufcs_receiver: UfcsReceiverKind::Global,
+            readonly: true,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "withTimeout",
+            param_types: vec![task_int(), int()],
+            return_type: nullable_int(),
+            ufcs_receiver: UfcsReceiverKind::Global,
+            readonly: false,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "__list",
+            param_types: vec![],
+            return_type: list(),
+            ufcs_receiver: UfcsReceiverKind::Global,
+            readonly: false,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "coroutineScope",
+            param_types: vec![fn_int_to_int()],
+            return_type: list(),
+            ufcs_receiver: UfcsReceiverKind::Global,
+            readonly: false,
+            supports_trailing_lambda: true,
+        },
+        BuiltinDef {
+            name: "find",
+            param_types: vec![fn_int_to_int(), list()],
+            return_type: nullable_int(),
+            ufcs_receiver: UfcsReceiverKind::List,
+            readonly: true,
+            supports_trailing_lambda: true,
+        },
+        BuiltinDef {
+            name: "findIndex",
+            param_types: vec![fn_int_to_int(), list()],
+            return_type: nullable_int(),
+            ufcs_receiver: UfcsReceiverKind::List,
+            readonly: true,
+            supports_trailing_lambda: true,
+        },
+        BuiltinDef {
+            name: "reduce",
+            param_types: vec![fn_int_to_int(), list()],
+            return_type: nullable_int(),
+            ufcs_receiver: UfcsReceiverKind::List,
+            readonly: true,
+            supports_trailing_lambda: true,
+        },
+        BuiltinDef {
+            name: "foldRight",
+            param_types: vec![fn_int_to_int(), int(), list()],
+            return_type: int(),
+            ufcs_receiver: UfcsReceiverKind::List,
+            readonly: false,
+            supports_trailing_lambda: true,
+        },
+        BuiltinDef {
+            name: "takeWhile",
+            param_types: vec![fn_int_to_int(), list()],
+            return_type: list(),
+            ufcs_receiver: UfcsReceiverKind::List,
+            readonly: false,
+            supports_trailing_lambda: true,
+        },
+        BuiltinDef {
+            name: "dropWhile",
+            param_types: vec![fn_int_to_int(), list()],
+            return_type: list(),
+            ufcs_receiver: UfcsReceiverKind::List,
+            readonly: false,
+            supports_trailing_lambda: true,
+        },
+        BuiltinDef {
+            name: "sortedBy",
+            param_types: vec![fn_int_to_int(), list()],
+            return_type: list(),
+            ufcs_receiver: UfcsReceiverKind::List,
+            readonly: false,
+            supports_trailing_lambda: true,
+        },
+        // --- Map UFCS (ufcs-only) ---
+        BuiltinDef {
+            name: "contains",
+            param_types: vec![map_ty(), int()],
+            return_type: bool(),
+            ufcs_receiver: UfcsReceiverKind::Map,
+            readonly: true,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "insert",
+            param_types: vec![map_ty(), int(), int()],
+            return_type: unit(),
+            ufcs_receiver: UfcsReceiverKind::Map,
+            readonly: false,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "remove",
+            param_types: vec![map_ty(), int()],
+            return_type: nullable_int(),
+            ufcs_receiver: UfcsReceiverKind::Map,
+            readonly: true,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "get",
+            param_types: vec![map_ty(), int()],
+            return_type: nullable_int(),
+            ufcs_receiver: UfcsReceiverKind::Map,
+            readonly: true,
+            supports_trailing_lambda: false,
+        },
+        // --- Set UFCS (ufcs-only) ---
+        BuiltinDef {
+            name: "contains",
+            param_types: vec![set_ty(), int()],
+            return_type: bool(),
+            ufcs_receiver: UfcsReceiverKind::Set,
+            readonly: true,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "insert",
+            param_types: vec![set_ty(), int()],
+            return_type: unit(),
+            ufcs_receiver: UfcsReceiverKind::Set,
+            readonly: false,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "remove",
+            param_types: vec![set_ty(), int()],
+            return_type: nullable_int(),
+            ufcs_receiver: UfcsReceiverKind::Set,
+            readonly: true,
+            supports_trailing_lambda: false,
+        },
+        // --- Stream UFCS (ufcs-only) ---
+        BuiltinDef {
+            name: "send",
+            param_types: vec![stream_int(), int()],
+            return_type: unit(),
+            ufcs_receiver: UfcsReceiverKind::Stream,
+            readonly: false,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "receive",
+            param_types: vec![stream_int()],
+            return_type: int(),
+            ufcs_receiver: UfcsReceiverKind::Stream,
+            readonly: true,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "close",
+            param_types: vec![stream_int()],
+            return_type: unit(),
+            ufcs_receiver: UfcsReceiverKind::Stream,
+            readonly: false,
+            supports_trailing_lambda: false,
+        },
+        // --- Task UFCS (ufcs-only) ---
+        BuiltinDef {
+            name: "cancel",
+            param_types: vec![task_int()],
+            return_type: unit(),
+            ufcs_receiver: UfcsReceiverKind::Task,
+            readonly: false,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "is_done",
+            param_types: vec![task_int()],
+            return_type: bool(),
+            ufcs_receiver: UfcsReceiverKind::Task,
+            readonly: true,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "is_cancelled",
+            param_types: vec![task_int()],
+            return_type: bool(),
+            ufcs_receiver: UfcsReceiverKind::Task,
+            readonly: true,
+            supports_trailing_lambda: false,
+        },
+        BuiltinDef {
+            name: "wait",
+            param_types: vec![task_int()],
+            return_type: int(),
+            ufcs_receiver: UfcsReceiverKind::Task,
+            readonly: true,
+            supports_trailing_lambda: false,
+        },
     ]
 }
 
@@ -276,7 +629,26 @@ pub fn all() -> &'static [BuiltinDef] {
 }
 
 pub fn lookup(name: &str) -> Option<&'static BuiltinDef> {
-    all().iter().find(|d| d.name == name)
+    all().iter().find(|d| {
+        d.name == name
+            && !matches!(
+                d.ufcs_receiver,
+                UfcsReceiverKind::Map
+                    | UfcsReceiverKind::Set
+                    | UfcsReceiverKind::Stream
+                    | UfcsReceiverKind::Task
+            )
+    })
+}
+
+/// Return type for a global builtin call (`name(...)`).
+pub fn lookup_return_type(name: &str) -> Option<Type> {
+    lookup(name).map(|d| d.return_type.clone())
+}
+
+/// Return type for a UFCS builtin call (`recv.name(...)`).
+pub fn lookup_ufcs_return_type(kind: UfcsReceiverKind, method: &str) -> Option<Type> {
+    lookup_ufcs(kind, method).map(|d| d.return_type.clone())
 }
 
 /// Map a typechecker receiver type to a UFCS kind.
@@ -286,6 +658,8 @@ pub fn receiver_kind_from_type(ty: &Type) -> Option<UfcsReceiverKind> {
         Type::Named(n) if n == "String" => Some(UfcsReceiverKind::String),
         Type::Map(_, _) => Some(UfcsReceiverKind::Map),
         Type::Set(_) => Some(UfcsReceiverKind::Set),
+        Type::Stream(_) => Some(UfcsReceiverKind::Stream),
+        Type::Task(_) => Some(UfcsReceiverKind::Task),
         Type::Named(_) => Some(UfcsReceiverKind::Collection),
         _ => None,
     }
@@ -311,7 +685,9 @@ fn ufcs_matches(def: &BuiltinDef, kind: UfcsReceiverKind) -> bool {
 
 /// Lookup a UFCS method on a receiver kind.
 pub fn lookup_ufcs(kind: UfcsReceiverKind, method: &str) -> Option<&'static BuiltinDef> {
-    lookup(method).filter(|d| ufcs_matches(d, kind))
+    all()
+        .iter()
+        .find(|d| d.name == method && ufcs_matches(d, kind))
 }
 
 /// All UFCS methods applicable to a receiver kind (for LSP completion).

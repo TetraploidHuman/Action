@@ -116,6 +116,26 @@ pub fn resolve_imports(program: &Program, search_dirs: &[PathBuf]) -> Result<Vec
             }
         }
 
+        for m_stmt in &module_stmts {
+            if let Stmt::Import {
+                module: sub,
+                items: sub_items,
+                alias: sub_alias,
+                ..
+            } = m_stmt
+            {
+                resolve_module(
+                    sub,
+                    sub_items,
+                    sub_alias,
+                    search_dirs,
+                    loaded,
+                    visiting,
+                    extra_stmts,
+                )?;
+            }
+        }
+
         for m_stmt in &stmts_to_check {
             match m_stmt {
                 Stmt::Fun {

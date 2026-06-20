@@ -11,10 +11,9 @@
 //   Lines  165-203  CodeGen::new() + type helpers (i64_ty, f64_ty, ptr_ty, etc.)
 //   Lines  204-4074 define_runtime() — LLVM runtime function declarations (~3900 lines)
 //   Lines 4076-4116 Runtime helpers: call_rt, load_string, load_list, etc.
-//   Lines 4119-4300 Type inference: infer_return_type, infer_expr_type, build_fn_type, etc.
+//   Lines 4119-4300 Type inference: infer_hir_expr_type, build_fn_type, etc.
 //   Lines 4302-4418 compile(), print_ir(), verify()
-//   Lines 4423-5081 compile_stmt(), compile_fun_def(), compile_let, etc.
-//   Lines 5081-5975 compile_expr(), compile_lambda(), compile_binary(), compile_unary(), compile_call()
+//   HIR-only: compile_hir_*, compile_checked → compile_hir (no AST compile_expr/compile_stmt)
 //   Lines 5975-6395 compile_call() (continued)
 //   Lines 6396-8237 Builtin functions: print, list, map, filter, fold, flat_map, etc.
 //   Lines 8238-10902 builtin_stdlib() — stdlib function dispatcher (~2600 lines)
