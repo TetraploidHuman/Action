@@ -191,14 +191,6 @@ impl Token {
     pub fn new(kind: TokenKind, span: Span) -> Self {
         Token { kind, span }
     }
-
-    #[allow(dead_code)]
-    pub fn eof(span: Span) -> Self {
-        Token {
-            kind: TokenKind::Eof,
-            span,
-        }
-    }
 }
 
 /// The lexer
@@ -1193,22 +1185,6 @@ impl Lexer {
         let kind = self.next_token_kind();
         let end = self.span_start();
         Token::new(kind, start.with_end(end.start))
-    }
-
-    /// Peek at the next token without consuming it
-    #[allow(dead_code)]
-    pub fn peek(&self) -> TokenKind {
-        let mut clone = self.clone();
-        clone.next_token().kind
-    }
-
-    /// Peek two tokens ahead
-    #[allow(dead_code)]
-    pub fn peek2(&self) -> (TokenKind, TokenKind) {
-        let mut clone = self.clone();
-        let first = clone.next_token().kind;
-        let second = clone.next_token().kind;
-        (first, second)
     }
 
     /// Collect all tokens into a vector

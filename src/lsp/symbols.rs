@@ -1,8 +1,9 @@
 use lsp_types::{DocumentSymbol, SemanticToken, SemanticTokenType, SymbolKind};
+use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use crate::ast::*;
-use crate::lexer::{Token, TokenKind};
+use crate::lexer::{Span, Token, TokenKind};
 
 use super::position;
 
@@ -59,7 +60,34 @@ const TYPE_OPERATOR: u32 = 7;
 const MOD_DECLARATION: u32 = 0;
 const MOD_READONLY: u32 = 1;
 
-fn classify_token(token: &Token, prev_kind: Option<&TokenKind>) -> Option<(u32, u32)> {
+fn classify_ident_by_type_env(
+    name: &str,
+    type_env: &HashMap<String, Type>,
+    stdlib_type_env: &HashMap<String, Type>,
+    definition_map: &HashMap<String, Span>,
+) -> Option<(u32, u32)> {
+    if let Some(ty) = type_env.get(name).or_else(|| stdlib_type_env.get(name)) {
+        return match ty {
+            Type::Function(..) => Some((TYPE_FUNCTION, 0)),
+            Type::Named(n) if n.chars().next().is_some_and(|c| c.is_uppercase()) => {
+                Some((TYPE_TYPE, MOD_DECLARATION))
+            }
+            _ => Some((TYPE_VARIABLE, 0)),
+        };
+    }
+    if definition_map.contains_key(name) && name.chars().next().is_some_and(|c| c.is_uppercase()) {
+        return Some((TYPE_TYPE, MOD_DECLARATION));
+    }
+    None
+}
+
+fn classify_token(
+    token: &Token,
+    prev_kind: Option<&TokenKind>,
+    type_env: &HashMap<String, Type>,
+    stdlib_type_env: &HashMap<String, Type>,
+    definition_map: &HashMap<String, Span>,
+) -> Option<(u32, u32)> {
     match &token.kind {
         // Keywords
         TokenKind::Null
@@ -91,17 +119,21 @@ fn classify_token(token: &Token, prev_kind: Option<&TokenKind>) -> Option<(u32, 
         | TokenKind::As
         | TokenKind::Task => Some((TYPE_KEYWORD, 0)),
 
-        // Identifiers — classify by preceding keyword context
-        TokenKind::Ident(_name) => match prev_kind {
-            Some(TokenKind::Fun) => Some((TYPE_FUNCTION, MOD_DECLARATION)),
-            Some(TokenKind::Val) => Some((TYPE_VARIABLE, MOD_DECLARATION | MOD_READONLY)),
-            Some(TokenKind::Var) => Some((TYPE_VARIABLE, MOD_DECLARATION)),
-            Some(TokenKind::Const) => Some((TYPE_VARIABLE, MOD_DECLARATION | MOD_READONLY)),
-            Some(TokenKind::Enum) => Some((TYPE_ENUM_MEMBER, MOD_DECLARATION)),
-            Some(TokenKind::Type) => Some((TYPE_TYPE, MOD_DECLARATION)),
-            Some(TokenKind::Module) => Some((TYPE_VARIABLE, MOD_DECLARATION)),
-            _ => Some((TYPE_VARIABLE, 0)),
-        },
+        // Identifiers — type_env first, then keyword context
+        TokenKind::Ident(name) => {
+            classify_ident_by_type_env(name, type_env, stdlib_type_env, definition_map).or_else(
+                || match prev_kind {
+                    Some(TokenKind::Fun) => Some((TYPE_FUNCTION, MOD_DECLARATION)),
+                    Some(TokenKind::Val) => Some((TYPE_VARIABLE, MOD_DECLARATION | MOD_READONLY)),
+                    Some(TokenKind::Var) => Some((TYPE_VARIABLE, MOD_DECLARATION)),
+                    Some(TokenKind::Const) => Some((TYPE_VARIABLE, MOD_DECLARATION | MOD_READONLY)),
+                    Some(TokenKind::Enum) => Some((TYPE_ENUM_MEMBER, MOD_DECLARATION)),
+                    Some(TokenKind::Type) => Some((TYPE_TYPE, MOD_DECLARATION)),
+                    Some(TokenKind::Module) => Some((TYPE_VARIABLE, MOD_DECLARATION)),
+                    _ => Some((TYPE_VARIABLE, 0)),
+                },
+            )
+        }
 
         // Literals
         TokenKind::IntLiteral(_) | TokenKind::FloatLiteral(_) => Some((TYPE_NUMBER, 0)),
@@ -158,8 +190,13 @@ fn classify_token(token: &Token, prev_kind: Option<&TokenKind>) -> Option<(u32, 
     }
 }
 
-/// Compute semantic tokens from a token list using delta encoding
-pub fn compute_semantic_tokens(tokens: &[Token]) -> Vec<SemanticToken> {
+/// Compute semantic tokens from a token list using delta encoding and type_env hints.
+pub fn compute_semantic_tokens(
+    tokens: &[Token],
+    type_env: &HashMap<String, Type>,
+    stdlib_type_env: &HashMap<String, Type>,
+    definition_map: &HashMap<String, Span>,
+) -> Vec<SemanticToken> {
     let mut result = Vec::new();
     let mut prev_line: u32 = 0;
     let mut prev_start: u32 = 0;
@@ -172,7 +209,9 @@ pub fn compute_semantic_tokens(tokens: &[Token]) -> Vec<SemanticToken> {
             None
         };
 
-        if let Some((token_type, modifiers)) = classify_token(token, prev_kind) {
+        if let Some((token_type, modifiers)) =
+            classify_token(token, prev_kind, type_env, stdlib_type_env, definition_map)
+        {
             // span positions are 1-indexed; LSP is 0-indexed
             let line = (token.span.line as u32).saturating_sub(1);
             let start = (token.span.col as u32).saturating_sub(1);
@@ -425,6 +464,19 @@ mod tests {
     use crate::lexer::{Lexer, TokenKind};
     use std::collections::HashMap;
 
+    fn empty_envs() -> (
+        HashMap<String, Type>,
+        HashMap<String, Type>,
+        HashMap<String, Span>,
+    ) {
+        (HashMap::new(), HashMap::new(), HashMap::new())
+    }
+
+    fn classify(token: &Token, prev: Option<&TokenKind>) -> Option<(u32, u32)> {
+        let (te, ste, dm) = empty_envs();
+        classify_token(token, prev, &te, &ste, &dm)
+    }
+
     fn tokenize(source: &str) -> Vec<Token> {
         let mut lexer = Lexer::new(source);
         lexer.tokenize()
@@ -435,7 +487,7 @@ mod tests {
         let tokens = tokenize("val x = 42");
         // Token "val" is a keyword
         let token = &tokens[0];
-        let result = classify_token(token, None);
+        let result = classify(token, None);
         assert!(result.is_some());
         assert_eq!(result.unwrap().0, TYPE_KEYWORD);
     }
@@ -446,7 +498,7 @@ mod tests {
         // Token "hello" follows "fun"
         let fun_token = &tokens[0];
         let hello_token = &tokens[1];
-        let result = classify_token(hello_token, Some(&fun_token.kind));
+        let result = classify(hello_token, Some(&fun_token.kind));
         assert!(result.is_some());
         let (ttype, mods) = result.unwrap();
         assert_eq!(ttype, TYPE_FUNCTION);
@@ -458,7 +510,7 @@ mod tests {
         let tokens = tokenize("val x = 42");
         let val_token = &tokens[0];
         let x_token = &tokens[1];
-        let result = classify_token(x_token, Some(&val_token.kind));
+        let result = classify(x_token, Some(&val_token.kind));
         assert!(result.is_some());
         let (ttype, mods) = result.unwrap();
         assert_eq!(ttype, TYPE_VARIABLE);
@@ -469,7 +521,7 @@ mod tests {
     #[test]
     fn test_classify_number() {
         let tokens = tokenize("42");
-        let result = classify_token(&tokens[0], None);
+        let result = classify(&tokens[0], None);
         assert!(result.is_some());
         assert_eq!(result.unwrap().0, TYPE_NUMBER);
     }
@@ -477,7 +529,7 @@ mod tests {
     #[test]
     fn test_classify_string() {
         let tokens = tokenize("\"hello\"");
-        let result = classify_token(&tokens[0], None);
+        let result = classify(&tokens[0], None);
         assert!(result.is_some());
         assert_eq!(result.unwrap().0, TYPE_STRING);
     }
@@ -485,7 +537,7 @@ mod tests {
     #[test]
     fn test_classify_operator() {
         let tokens = tokenize("a + b");
-        let result = classify_token(&tokens[1], None);
+        let result = classify(&tokens[1], None);
         assert!(result.is_some());
         assert_eq!(result.unwrap().0, TYPE_OPERATOR);
     }
@@ -496,21 +548,23 @@ mod tests {
         // LParen and RParen should return None
         for t in &tokens {
             if matches!(t.kind, TokenKind::LParen | TokenKind::RParen) {
-                assert!(classify_token(t, None).is_none());
+                assert!(classify(t, None).is_none());
             }
         }
     }
 
     #[test]
     fn test_compute_semantic_tokens_empty() {
-        let result = compute_semantic_tokens(&[]);
+        let (te, ste, dm) = empty_envs();
+        let result = compute_semantic_tokens(&[], &te, &ste, &dm);
         assert!(result.is_empty());
     }
 
     #[test]
     fn test_compute_semantic_tokens_basic() {
         let tokens = tokenize("val x = 42");
-        let result = compute_semantic_tokens(&tokens);
+        let (te, ste, dm) = empty_envs();
+        let result = compute_semantic_tokens(&tokens, &te, &ste, &dm);
         assert!(!result.is_empty(), "should produce semantic tokens");
         // First token "val" should be a keyword
         assert_eq!(result[0].token_type, TYPE_KEYWORD);

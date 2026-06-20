@@ -14,7 +14,10 @@ use lsp_types::{
 };
 
 use crate::ast::{Expr, ExprKind, Stmt, Type};
-use crate::builtin::{format_ufcs_method_detail, receiver_kind_from_type, ufcs_methods_for_kind};
+use crate::builtin::{
+    all as all_builtins, format_builtin_detail, format_ufcs_method_detail, receiver_kind_from_type,
+    ufcs_methods_for_kind,
+};
 use crate::fmt::{self, FormatOptions};
 use crate::lexer::{Span, Token, TokenKind};
 use crate::typecheck::TypeRegistry;
@@ -234,46 +237,25 @@ pub fn handle_completion(
         }
     }
 
-    let builtins = &[
-        ("print", CompletionItemKind::FUNCTION),
-        ("println", CompletionItemKind::FUNCTION),
-        ("len", CompletionItemKind::FUNCTION),
-        ("push", CompletionItemKind::FUNCTION),
-        ("pop", CompletionItemKind::FUNCTION),
-        ("get", CompletionItemKind::FUNCTION),
-        ("map", CompletionItemKind::FUNCTION),
-        ("filter", CompletionItemKind::FUNCTION),
-        ("reduce", CompletionItemKind::FUNCTION),
-        ("fold", CompletionItemKind::FUNCTION),
-        ("range", CompletionItemKind::FUNCTION),
-        ("true", CompletionItemKind::CONSTANT),
-        ("false", CompletionItemKind::CONSTANT),
-    ];
-    for (name, kind) in builtins {
-        if name.starts_with(&prefix) && seen.insert(name.to_string()) {
+    let builtins = all_builtins();
+    for def in builtins {
+        if def.name.starts_with(&prefix) && seen.insert(def.name.to_string()) {
             items.push(CompletionItem {
-                label: name.to_string(),
-                kind: Some(*kind),
+                label: def.name.to_string(),
+                kind: Some(CompletionItemKind::FUNCTION),
+                detail: Some(format_builtin_detail(def)),
                 ..Default::default()
             });
         }
     }
 
-    for name in doc.type_env.keys() {
-        if name.starts_with(&prefix) && seen.insert(name.clone()) {
-            let kind = if matches!(doc.type_env.get(name), Some(Type::Function(..))) {
-                CompletionItemKind::FUNCTION
-            } else {
-                CompletionItemKind::VARIABLE
-            };
-            items.push(CompletionItem {
-                label: name.clone(),
-                kind: Some(kind),
-                detail: doc.type_env.get(name).map(|t| format!("{}", t)),
-                ..Default::default()
-            });
-        }
-    }
+    push_env_completion_items(
+        &mut items,
+        &mut seen,
+        &prefix,
+        &doc.type_env,
+        &state.project.session.base_type_env,
+    );
 
     for name in doc.definition_map.keys() {
         if name.starts_with(&prefix) && seen.insert(name.clone()) {
@@ -297,7 +279,12 @@ pub fn handle_semantic_tokens(
 ) -> Option<SemanticTokensResult> {
     let uri = &params.text_document.uri;
     let doc = state.project.documents.get(uri)?;
-    let tokens = symbols::compute_semantic_tokens(&doc.tokens);
+    let tokens = symbols::compute_semantic_tokens(
+        &doc.tokens,
+        &doc.type_env,
+        &state.project.session.base_type_env,
+        &doc.definition_map,
+    );
     Some(SemanticTokensResult::Tokens(lsp_types::SemanticTokens {
         result_id: None,
         data: tokens,
@@ -340,12 +327,7 @@ pub fn handle_signature_help(
             let param_names = doc
                 .hir
                 .as_ref()
-                .and_then(|hir| super::hir_lookup::find_fun_param_names(hir, &lookup_key))
-                .or_else(|| {
-                    doc.hir
-                        .as_ref()
-                        .and_then(|hir| super::hir_lookup::find_fun_param_names(hir, &display_name))
-                });
+                .and_then(|hir| super::hir_lookup::find_call_param_names(hir, &lookup_key));
             let label = format_function_signature(
                 &display_name,
                 &param_types,
@@ -538,7 +520,22 @@ pub fn handle_inlay_hints(state: &ServerState, params: InlayHintParams) -> Optio
         if matches!(token.kind, TokenKind::Val | TokenKind::Var) {
             if let Some(next_token) = doc.tokens.get(i + 1) {
                 if let TokenKind::Ident(name) = &next_token.kind {
-                    if let Some(ty) = doc.type_env.get(name) {
+                    let ty = lookup_type_in_envs(
+                        name,
+                        &doc.type_env,
+                        &state.project.session.base_type_env,
+                    )
+                    .cloned()
+                    .or_else(|| {
+                        doc.hir.as_ref().and_then(|hir| {
+                            let pos = position::offset_to_lsp_position(
+                                &doc.source,
+                                next_token.span.start,
+                            );
+                            super::hir_lookup::find_hir_expr_type(hir, &doc.source, &pos)
+                        })
+                    });
+                    if let Some(ty) = ty {
                         let pos =
                             position::offset_to_lsp_position(&doc.source, next_token.span.end);
                         hints.push(InlayHint {
@@ -1464,6 +1461,43 @@ fn find_stmt_span_for_name(stmts: &[Stmt], name: &str) -> Option<Span> {
     None
 }
 
+fn lookup_type_in_envs<'a>(
+    name: &str,
+    type_env: &'a HashMap<String, Type>,
+    stdlib_type_env: &'a HashMap<String, Type>,
+) -> Option<&'a Type> {
+    type_env.get(name).or_else(|| stdlib_type_env.get(name))
+}
+
+fn push_env_completion_items(
+    items: &mut Vec<CompletionItem>,
+    seen: &mut std::collections::HashSet<String>,
+    prefix: &str,
+    type_env: &HashMap<String, Type>,
+    stdlib_type_env: &HashMap<String, Type>,
+) {
+    for env in [type_env, stdlib_type_env] {
+        for (name, ty) in env {
+            if !name.starts_with(prefix) || !seen.insert(name.clone()) {
+                continue;
+            }
+            let kind = match ty {
+                Type::Function(..) => CompletionItemKind::FUNCTION,
+                Type::Named(n) if n.chars().next().is_some_and(|c| c.is_uppercase()) => {
+                    CompletionItemKind::CLASS
+                }
+                _ => CompletionItemKind::VARIABLE,
+            };
+            items.push(CompletionItem {
+                label: name.clone(),
+                kind: Some(kind),
+                detail: Some(format!("{}", ty)),
+                ..Default::default()
+            });
+        }
+    }
+}
+
 fn lookup_function_signature(
     name: &str,
     type_env: &HashMap<String, Type>,
@@ -1473,7 +1507,7 @@ fn lookup_function_signature(
     let func_type = type_env.get(name).or_else(|| stdlib_type_env.get(name))?;
     match func_type {
         Type::Function(param_types, ret_type) => {
-            let param_names = hir.and_then(|h| super::hir_lookup::find_fun_param_names(h, name));
+            let param_names = hir.and_then(|h| super::hir_lookup::find_call_param_names(h, name));
             Some(format_function_signature(
                 name,
                 param_types,

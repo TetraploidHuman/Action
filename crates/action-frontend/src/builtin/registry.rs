@@ -335,6 +335,21 @@ pub fn format_ufcs_method_detail(def: &BuiltinDef) -> String {
     }
 }
 
+/// Format a global or UFCS builtin for LSP completion detail.
+pub fn format_builtin_detail(def: &BuiltinDef) -> String {
+    let params: Vec<String> = def
+        .param_types
+        .iter()
+        .enumerate()
+        .map(|(i, ty)| format!("p{}: {}", i, ty))
+        .collect();
+    if params.is_empty() {
+        format!("{}() -> {}", def.name, def.return_type)
+    } else {
+        format!("{}({}) -> {}", def.name, params.join(", "), def.return_type)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

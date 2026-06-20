@@ -218,14 +218,6 @@ impl Parser {
         }
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn peek(&self) -> TokenKind {
-        self.tokens
-            .get(self.pos)
-            .map(|t| t.kind.clone())
-            .unwrap_or(TokenKind::Eof)
-    }
-
     pub(crate) fn peek2(&self) -> TokenKind {
         self.tokens
             .get(self.pos + 1)
@@ -243,23 +235,6 @@ impl Parser {
         }
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn expect_kw(&mut self, kw: &str) -> Result<(), ParseError> {
-        let kind = self.current_kind();
-        let matches = match &kind {
-            TokenKind::Ident(s) => s == kw,
-            TokenKind::Else => kw == "else",
-            TokenKind::Fun => kw == "fun",
-            _ => false,
-        };
-        if matches {
-            self.advance();
-            Ok(())
-        } else {
-            Err(self.error(&format!("Expected keyword '{}', got {}", kw, kind)))
-        }
-    }
-
     pub(crate) fn skip(&mut self, kind: TokenKind) -> bool {
         if std::mem::discriminant(&self.current_kind()) == std::mem::discriminant(&kind) {
             self.advance();
@@ -273,14 +248,6 @@ impl Parser {
         ParseError {
             message: msg.to_string(),
             span: self.current().span,
-        }
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn error_at(&self, msg: &str, line: usize, col: usize) -> ParseError {
-        ParseError {
-            message: msg.to_string(),
-            span: Span::new(0, line, col),
         }
     }
 

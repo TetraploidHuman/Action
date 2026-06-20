@@ -32,6 +32,72 @@ fn find_fun_param_names_in_stmt(stmt: &HirStmt, name: &str) -> Option<Vec<String
     }
 }
 
+/// Parameter names for an extension method `TypeName.method`.
+pub fn find_extension_method_param_names(
+    hir: &HirModule,
+    type_name: &str,
+    method: &str,
+) -> Option<Vec<String>> {
+    find_extension_method_param_names_in_stmts(&hir.stmts, type_name, method)
+}
+
+fn find_extension_method_param_names_in_stmts(
+    stmts: &[HirStmt],
+    type_name: &str,
+    method: &str,
+) -> Option<Vec<String>> {
+    for stmt in stmts {
+        if let Some(names) = find_extension_method_param_names_in_stmt(stmt, type_name, method) {
+            return Some(names);
+        }
+    }
+    None
+}
+
+fn find_extension_method_param_names_in_stmt(
+    stmt: &HirStmt,
+    type_name: &str,
+    method: &str,
+) -> Option<Vec<String>> {
+    match stmt {
+        HirStmt::Extension {
+            type_name: tn,
+            methods,
+            ..
+        } if tn == type_name => {
+            for m in methods {
+                if let HirStmt::Fun {
+                    name: n, params, ..
+                } = m
+                {
+                    if n == method {
+                        return Some(params.iter().map(|p| p.name.clone()).collect());
+                    }
+                }
+            }
+            None
+        }
+        HirStmt::Module { body, .. } => {
+            find_extension_method_param_names_in_stmts(body, type_name, method)
+        }
+        HirStmt::Export { stmt, .. } => {
+            find_extension_method_param_names_in_stmt(stmt, type_name, method)
+        }
+        _ => None,
+    }
+}
+
+/// Resolve parameter names for a type_env key (`foo` or `List.map`).
+pub fn find_call_param_names(hir: &HirModule, lookup_key: &str) -> Option<Vec<String>> {
+    if let Some((type_name, method)) = lookup_key.rsplit_once('.') {
+        find_extension_method_param_names(hir, type_name, method).or_else(|| {
+            find_fun_param_names(hir, method).or_else(|| find_fun_param_names(hir, lookup_key))
+        })
+    } else {
+        find_fun_param_names(hir, lookup_key)
+    }
+}
+
 /// Find the innermost HIR expression whose span contains `pos`.
 pub fn find_hir_expr_type(hir: &HirModule, source: &str, pos: &Position) -> Option<Type> {
     let offset = position::lsp_position_to_offset(source, pos);

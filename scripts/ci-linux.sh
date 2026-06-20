@@ -99,6 +99,8 @@ run_debug() {
 # Push CI: build once, test, frontend, debug perf smoke (full suite in parallel benchmark job).
 run_core() {
     verify_env
+    RUSTFLAGS="-D warnings" cargo build --target "$TARGET" -p action-frontend -p action-codegen -p action
+    run_clippy
     cargo build --target "$TARGET"
     "$ACTION" check examples/hello.at
     "$ACTION" run examples/hello.at
