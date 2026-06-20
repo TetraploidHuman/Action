@@ -1,6 +1,0 @@
-//! Driver helpers: unify CLI / test_runner compile orchestration.
-//! Bridge module — delegates to `action-driver` crate.
-
-pub use action_driver::{
-    compile_checked, effective_opt_level, emit_hir, format_loader_errors, load_checked,
-};
