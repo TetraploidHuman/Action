@@ -114,18 +114,21 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(i64, rh_p, "rh")
             .map_err(llvm_err)?
             .into_int_value();
-        let _ = self.builder.build_call(
-            rec_fn,
-            &[
-                left_node.into(),
-                left_h.into(),
-                tgt.into(),
-                idx_p.into(),
-                res_p.into(),
-                done_p.into(),
-            ],
-            "",
-        ).map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_call(
+                rec_fn,
+                &[
+                    left_node.into(),
+                    left_h.into(),
+                    tgt.into(),
+                    idx_p.into(),
+                    res_p.into(),
+                    done_p.into(),
+                ],
+                "",
+            )
+            .map_err(llvm_err)?;
         let found = self
             .builder
             .build_load(i64, done_p, "found_l")
@@ -149,18 +152,21 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_add(cur_idx, left_len, "new_idx")
             .map_err(llvm_err)?;
         self.builder.build_store(idx_p, new_idx).map_err(llvm_err)?;
-        let _ = self.builder.build_call(
-            rec_fn,
-            &[
-                right_node.into(),
-                right_h.into(),
-                tgt.into(),
-                idx_p.into(),
-                res_p.into(),
-                done_p.into(),
-            ],
-            "",
-        ).map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_call(
+                rec_fn,
+                &[
+                    right_node.into(),
+                    right_h.into(),
+                    tgt.into(),
+                    idx_p.into(),
+                    res_p.into(),
+                    done_p.into(),
+                ],
+                "",
+            )
+            .map_err(llvm_err)?;
         let _ = self.builder.build_return(None);
 
         self.builder.position_at_end(normal);
@@ -228,10 +234,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?
             .into_struct_value();
         let eq = self
-            .call_rt(
-                "action_string_eq",
-                &[elem.into(), tgt.into()],
-            )?
+            .call_rt("action_string_eq", &[elem.into(), tgt.into()])?
             .try_as_basic_value()
             .unwrap_basic()
             .into_int_value();
@@ -239,10 +242,10 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_conditional_branch(eq, leaf_found, leaf_next);
         self.builder.position_at_end(leaf_found);
-        self.builder.build_store(res_p, global_idx).map_err(llvm_err)?;
         self.builder
-            .build_store(done_p, one)
+            .build_store(res_p, global_idx)
             .map_err(llvm_err)?;
+        self.builder.build_store(done_p, one).map_err(llvm_err)?;
         let _ = self.builder.build_return(None);
         self.builder.position_at_end(leaf_next);
         let next_i = self
@@ -332,18 +335,21 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(ce, 1, "st")
             .map_err(llvm_err)?
             .into_int_value();
-        let _ = self.builder.build_call(
-            rec_fn,
-            &[
-                cp.into(),
-                child_h.into(),
-                tgt.into(),
-                idx_p.into(),
-                res_p.into(),
-                done_p.into(),
-            ],
-            "",
-        ).map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_call(
+                rec_fn,
+                &[
+                    cp.into(),
+                    child_h.into(),
+                    tgt.into(),
+                    idx_p.into(),
+                    res_p.into(),
+                    done_p.into(),
+                ],
+                "",
+            )
+            .map_err(llvm_err)?;
         let after_child = self
             .builder
             .build_load(i64, done_p, "after_child")
@@ -402,20 +408,25 @@ impl<'ctx> CodeGen<'ctx> {
         let res_a = self.builder.build_alloca(i64, "res_a").map_err(llvm_err)?;
         let done_a = self.builder.build_alloca(i64, "done_a").map_err(llvm_err)?;
         self.builder.build_store(idx_a, zero).map_err(llvm_err)?;
-        self.builder.build_store(res_a, neg1_out).map_err(llvm_err)?;
+        self.builder
+            .build_store(res_a, neg1_out)
+            .map_err(llvm_err)?;
         self.builder.build_store(done_a, zero).map_err(llvm_err)?;
-        let _ = self.builder.build_call(
-            rec_fn,
-            &[
-                node0.into(),
-                h0.into(),
-                target.into(),
-                idx_a.into(),
-                res_a.into(),
-                done_a.into(),
-            ],
-            "",
-        ).map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_call(
+                rec_fn,
+                &[
+                    node0.into(),
+                    h0.into(),
+                    target.into(),
+                    idx_a.into(),
+                    res_a.into(),
+                    done_a.into(),
+                ],
+                "",
+            )
+            .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(w_done);
         self.builder.position_at_end(w_done);
         let out = self

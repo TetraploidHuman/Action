@@ -1119,7 +1119,8 @@ impl<'ctx> CodeGen<'ctx> {
             &list_hir,
             &fold_init,
         )?;
-        self.compile_for_condition_hir(condition, &inc_body).map(Some)
+        self.compile_for_condition_hir(condition, &inc_body)
+            .map(Some)
     }
 
     fn extract_invariant_filter_map_fold_loop_body(
@@ -1187,14 +1188,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             _ => None,
         }?;
-        Some((
-            list_hir,
-            filter_lam,
-            map_lam,
-            fold_init,
-            fold_lam,
-            inc_expr,
-        ))
+        Some((list_hir, filter_lam, map_lam, fold_init, fold_lam, inc_expr))
     }
 
     fn extract_filter_trailing_lambda_hir(

@@ -172,11 +172,7 @@ impl<'ctx> CodeGen<'ctx> {
         let list_struct = self.load_list(list_ptr)?;
         let fm_cc = self.call_rt(
             "action_list_filter_map_walk",
-            &[
-                list_struct.into(),
-                filter_fn_ptr.into(),
-                map_fn_ptr.into(),
-            ],
+            &[list_struct.into(), filter_fn_ptr.into(), map_fn_ptr.into()],
         )?;
         let fm_bv = fm_cc
             .try_as_basic_value()
@@ -247,15 +243,13 @@ impl<'ctx> CodeGen<'ctx> {
         let map_fn_val = self.compile_call_arg(CallArg::Hir(map_lam))?;
         let fold_fn_val = self.compile_call_arg(*fold_lam)?;
         let list_val = self.compile_call_arg(CallArg::Hir(base_list))?;
-        Ok(Some(
-            self.fused_filter_map_fold_values(
-                filter_fn_val,
-                map_fn_val,
-                fold_fn_val,
-                list_val,
-                init_i64,
-            )?,
-        ))
+        Ok(Some(self.fused_filter_map_fold_values(
+            filter_fn_val,
+            map_fn_val,
+            fold_fn_val,
+            list_val,
+            init_i64,
+        )?))
     }
 
     pub(super) fn builtin_filter(

@@ -740,15 +740,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_struct_value();
         let mu_ins = self
             .builder
-            .build_call(
-                mi_fn,
-                &[
-                    mu_cl.into(),
-                    mu_key.into(),
-                    mu_val.into(),
-                ],
-                "ins",
-            )
+            .build_call(mi_fn, &[mu_cl.into(), mu_key.into(), mu_val.into()], "ins")
             .map_err(llvm_err)?;
         self.builder
             .build_store(mu_ra, mu_ins.try_as_basic_value().unwrap_basic())
