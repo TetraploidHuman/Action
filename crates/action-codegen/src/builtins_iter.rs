@@ -222,10 +222,7 @@ impl<'ctx> CodeGen<'ctx> {
         list_arg: &CallArg<'_>,
         fold_lam: &CallArg<'_>,
     ) -> Result<Option<TypedValue<'ctx>>, String> {
-        use action_frontend::hir::HirExprKind;
-        let CallArg::Hir(list_hir) = list_arg else {
-            return Ok(None);
-        };
+        let CallArg::Hir(list_hir) = list_arg;
         let (map_lam, filter_inner) = match Self::extract_map_call_args_hir(list_hir) {
             Some(v) => v,
             None => return Ok(None),

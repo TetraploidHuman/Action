@@ -1134,7 +1134,7 @@ impl<'ctx> CodeGen<'ctx> {
         action_frontend::hir::HirExpr,
         action_frontend::hir::HirExpr,
     )> {
-        use action_frontend::hir::{HirExpr, HirExprKind, HirStmt};
+        use action_frontend::hir::{HirExprKind, HirStmt};
         let stmts = match &body.kind {
             HirExprKind::Block(stmts) => stmts,
             _ => return None,
