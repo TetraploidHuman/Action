@@ -31,6 +31,11 @@ jobs:
       CARGO_BUILD_JOBS: 16
       RUSTFLAGS: -C debuginfo=0
     steps:
+      - name: Unset git proxy for checkout
+        run: |
+          git config --global --unset-all http.proxy 2>/dev/null || true
+          git config --global --unset-all https.proxy 2>/dev/null || true
+
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
@@ -70,6 +75,11 @@ jobs:
       CARGO_BUILD_JOBS: 16
       RUSTFLAGS: -C debuginfo=0
     steps:
+      - name: Unset git proxy for checkout
+        run: |
+          git config --global --unset-all http.proxy 2>/dev/null || true
+          git config --global --unset-all https.proxy 2>/dev/null || true
+
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
@@ -95,6 +105,11 @@ jobs:
       CARGO_INCREMENTAL: 1
       CARGO_BUILD_JOBS: 16
     steps:
+      - name: Unset git proxy for checkout
+        run: |
+          git config --global --unset-all http.proxy 2>/dev/null || true
+          git config --global --unset-all https.proxy 2>/dev/null || true
+
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
@@ -127,6 +142,11 @@ jobs:
     env:
       TARGET: x86_64-pc-windows-msvc
     steps:
+      - name: Unset git proxy for checkout
+        run: |
+          git config --global --unset-all http.proxy 2>/dev/null || true
+          git config --global --unset-all https.proxy 2>/dev/null || true
+
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
