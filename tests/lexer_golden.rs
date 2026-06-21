@@ -16,7 +16,7 @@ fn tokenize_json(source: &str) -> String {
 
 fn assert_lexer_golden(fixture_stem: &str) {
     let dir = fixtures_dir();
-    let at_path = dir.join(format!("{fixture_stem}.at"));
+    let at_path = dir.join(format!("{fixture_stem}.ac"));
     let json_path = dir.join(format!("{fixture_stem}.tokens.json"));
 
     let source = fs::read_to_string(&at_path).expect("read fixture source");
@@ -57,7 +57,7 @@ fn test_lexer_golden_all_fixtures() {
     for entry in fs::read_dir(&dir).expect("read lexer fixtures dir") {
         let entry = entry.expect("dir entry");
         let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("at") {
+        if path.extension().and_then(|e| e.to_str()) != Some("ac") {
             continue;
         }
         let stem = path.file_stem().and_then(|s| s.to_str()).expect("stem");

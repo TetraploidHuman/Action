@@ -1381,8 +1381,8 @@ impl<'ctx> CodeGen<'ctx> {
         let entry = self.context.append_basic_block(f, "entry");
         let cow = self.context.append_basic_block(f, "cow");
         let merge = self.context.append_basic_block(f, "merge");
-        let grow_ck = self.context.append_basic_block(f, "grow_ck");
         let grow = self.context.append_basic_block(f, "grow");
+        let rh_empty_ins = self.context.append_basic_block(f, "rh_empty_ins");
         let rh_chk = self.context.append_basic_block(f, "rh_chk");
         let rh_empty = self.context.append_basic_block(f, "rh_empty");
         let rh_tomb = self.context.append_basic_block(f, "rh_tomb");
@@ -1391,6 +1391,7 @@ impl<'ctx> CodeGen<'ctx> {
         let rh_swap = self.context.append_basic_block(f, "rh_swap");
         let rh_next = self.context.append_basic_block(f, "rh_next");
         let rh_fail = self.context.append_basic_block(f, "rh_fail");
+        let rh_fail_ret = self.context.append_basic_block(f, "rh_fail_ret");
         let update = self.context.append_basic_block(f, "update");
         let tomb_record = self.context.append_basic_block(f, "tomb_record");
         let tomb_cont = self.context.append_basic_block(f, "tomb_cont");
@@ -1438,41 +1439,6 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_store(idist_a, zero).map_err(llvm_err)?;
         self.builder.build_store(hash_a, hash).map_err(llvm_err)?;
         self.builder.build_store(ft_a, neg1).map_err(llvm_err)?;
-        self.builder
-            .build_unconditional_branch(grow_ck)
-            .map_err(llvm_err)?;
-
-        self.builder.position_at_end(grow_ck);
-        let cur_data = self
-            .builder
-            .build_load(ptr, data_a, "cd")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let cur_cap = self.load_i64(cap_a, "cc")?;
-        let nl_est = self
-            .builder
-            .build_int_add(len0, one, "nle")
-            .map_err(llvm_err)?;
-        let lhs = self
-            .builder
-            .build_int_mul(nl_est, load_den, "lhs")
-            .map_err(llvm_err)?;
-        let rhs = self
-            .builder
-            .build_int_mul(cur_cap, load_num, "rhs")
-            .map_err(llvm_err)?;
-        let need_grow = self
-            .builder
-            .build_int_compare(IntPredicate::UGT, lhs, rhs, "ng")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_conditional_branch(need_grow, grow, rh_chk)
-            .map_err(llvm_err)?;
-
-        self.builder.position_at_end(grow);
-        let (gd, gc) = self.ht_grow_table(cur_data, cur_cap)?;
-        self.builder.build_store(data_a, gd).map_err(llvm_err)?;
-        self.builder.build_store(cap_a, gc).map_err(llvm_err)?;
         self.builder
             .build_unconditional_branch(rh_chk)
             .map_err(llvm_err)?;
@@ -1571,6 +1537,50 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_return(Some(&ru)).map_err(llvm_err)?;
 
         self.builder.position_at_end(rh_empty);
+        let cur_cap_g = self.load_i64(cap_a, "cc_g")?;
+        let nl_est = self
+            .builder
+            .build_int_add(len0, one, "nle")
+            .map_err(llvm_err)?;
+        let lhs_g = self
+            .builder
+            .build_int_mul(nl_est, load_den, "lhs_g")
+            .map_err(llvm_err)?;
+        let rhs_g = self
+            .builder
+            .build_int_mul(cur_cap_g, load_num, "rhs_g")
+            .map_err(llvm_err)?;
+        let need_grow = self
+            .builder
+            .build_int_compare(IntPredicate::UGT, lhs_g, rhs_g, "ng")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_conditional_branch(need_grow, grow, rh_empty_ins)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(grow);
+        let cur_data = self
+            .builder
+            .build_load(ptr, data_a, "cd_gr")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let cur_cap = self.load_i64(cap_a, "cc_gr")?;
+        let (gd, gc) = self.ht_grow_table(cur_data, cur_cap)?;
+        self.builder.build_store(data_a, gd).map_err(llvm_err)?;
+        self.builder.build_store(cap_a, gc).map_err(llvm_err)?;
+        self.builder.build_store(idist_a, zero).map_err(llvm_err)?;
+        self.builder.build_store(ft_a, neg1).map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(rh_chk)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(rh_empty_ins);
+        let data_w = self
+            .builder
+            .build_load(ptr, data_a, "dw_ei")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let cap_w = self.load_i64(cap_a, "cw_ei")?;
         let ftv2 = self.load_i64(ft_a, "ftv2")?;
         let use_ft = self
             .builder
@@ -1595,7 +1605,35 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_return(Some(&ri)).map_err(llvm_err)?;
 
         self.builder.position_at_end(rh_fail);
-        let rf = self.ht_pack(data_w, len0, cap_w)?;
+        let cur_cap_f = self.load_i64(cap_a, "cc_f")?;
+        let nl_est_f = self
+            .builder
+            .build_int_add(len0, one, "nle_f")
+            .map_err(llvm_err)?;
+        let lhs_f = self
+            .builder
+            .build_int_mul(nl_est_f, load_den, "lhs_f")
+            .map_err(llvm_err)?;
+        let rhs_f = self
+            .builder
+            .build_int_mul(cur_cap_f, load_num, "rhs_f")
+            .map_err(llvm_err)?;
+        let need_grow_f = self
+            .builder
+            .build_int_compare(IntPredicate::UGT, lhs_f, rhs_f, "ng_f")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_conditional_branch(need_grow_f, grow, rh_fail_ret)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(rh_fail_ret);
+        let data_f = self
+            .builder
+            .build_load(ptr, data_a, "dw_f")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let cap_f = self.load_i64(cap_a, "cap_f")?;
+        let rf = self.ht_pack(data_f, len0, cap_f)?;
         self.builder.build_return(Some(&rf)).map_err(llvm_err)?;
 
         Ok(())

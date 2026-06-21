@@ -6,13 +6,13 @@ Action-in-Action 编译器前端的首个试点目录。首版仅使用 `doc/boo
 
 | 里程碑 | 内容 |
 |--------|------|
-| M4 | `lexer.at` token 输出与 Rust lexer golden 一致 |
+| M4 | `lexer.ac` token 输出与 Rust lexer golden 一致 |
 | M5 | 解析 bootstrap 子集 → HIR JSON |
 | M6 | Action 前端编译自身 lexer 源码 |
 
 ## 当前文件
 
-- `lexer.at` — 固定样例输出（完整 scanner 进行中）
+- `lexer.ac` — 固定样例输出（完整 scanner 进行中）
 
 ## 验证
 

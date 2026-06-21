@@ -67,9 +67,9 @@ mod tests {
     fn hir_round_trip_examples() {
         let workspace = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
         for rel in [
-            "examples/bench_cow.at",
-            "examples/map_filter.at",
-            "examples/hello.at",
+            "examples/bench_cow.ac",
+            "examples/map_filter.ac",
+            "examples/hello.ac",
         ] {
             let path = workspace.join(rel);
             let checked = crate::loader::load_checked(&path, false)

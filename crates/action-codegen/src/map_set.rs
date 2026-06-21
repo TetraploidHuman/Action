@@ -19,6 +19,12 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value())
     }
 
+    /// Scratch alloca for map/set insert; created once in each function entry block.
+    fn ht_result_scratch_alloca(&mut self) -> Result<PointerValue<'ctx>, String> {
+        self.ht_result_scratch
+            .ok_or_else(|| "ht_result_scratch missing (function prologue not set up)".to_string())
+    }
+
     pub(super) fn compile_map_lit_values(
         &mut self,
         keys: &[TypedValue<'ctx>],
@@ -133,14 +139,11 @@ impl<'ctx> CodeGen<'ctx> {
             }
         };
         let new_map = cc.try_as_basic_value().basic().ok_or("map_insert failed")?;
-        let alloca = self
-            .builder
-            .build_alloca(self.list_type, "map_inserted")
-            .map_err(llvm_err)?;
+        let scratch = self.ht_result_scratch_alloca()?;
         self.builder
-            .build_store(alloca, new_map)
+            .build_store(scratch, new_map)
             .map_err(llvm_err)?;
-        Ok(TypedValue::Map(alloca))
+        Ok(TypedValue::Map(scratch))
     }
 
     /// map.remove(key) — receiver alloca is pre-compiled to avoid double compilation.
@@ -255,14 +258,11 @@ impl<'ctx> CodeGen<'ctx> {
             }
         };
         let new_set = cc.try_as_basic_value().basic().ok_or("map_insert failed")?;
-        let alloca = self
-            .builder
-            .build_alloca(self.list_type, "set_inserted")
-            .map_err(llvm_err)?;
+        let scratch = self.ht_result_scratch_alloca()?;
         self.builder
-            .build_store(alloca, new_set)
+            .build_store(scratch, new_set)
             .map_err(llvm_err)?;
-        Ok(TypedValue::Set(alloca))
+        Ok(TypedValue::Set(scratch))
     }
 
     /// set.remove(elem) — receiver alloca is pre-compiled to avoid double compilation.

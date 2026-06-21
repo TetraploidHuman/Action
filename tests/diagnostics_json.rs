@@ -11,7 +11,7 @@ fn action_binary() -> PathBuf {
 #[test]
 fn test_check_format_json_reports_type_error() {
     let file =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/test_error_generic_mismatch.at");
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/test_error_generic_mismatch.ac");
     let output = Command::new(action_binary())
         .args([
             "check",
@@ -38,7 +38,7 @@ fn test_check_format_json_reports_type_error() {
 
 #[test]
 fn test_check_format_json_success_empty() {
-    let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/hello.at");
+    let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/hello.ac");
     let output = Command::new(action_binary())
         .args(["check", "--format", "json", file.to_str().unwrap()])
         .output()

@@ -47,7 +47,7 @@
 | `when` / 模式 | 元组、结构体、字符串 | `test_when_match`, `test_str_match`, `test_is_match` |
 | `for` / `while` | 迭代、索引 | `test_for_loop`, `test_for_with_index`, `test_nested_for` |
 | 解构 | 列表 / 结构体 | `test_destructure` |
-| TCO | 尾递归 | `test_tco`（若存在）或 `examples/tco.at` 覆盖 |
+| TCO | 尾递归 | `test_tco`（若存在）或 `examples/tco.ac` 覆盖 |
 
 ## 6. 模块与错误
 

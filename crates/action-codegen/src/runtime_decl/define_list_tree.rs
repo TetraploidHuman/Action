@@ -3297,72 +3297,19 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(lio_entry);
         let lio_lst = lio_fn.get_first_param().unwrap().into_struct_value();
         let lio_tgt = lio_fn.get_nth_param(1).unwrap().into_struct_value();
-
-        let lio_len = self
+        let lio_walk = self
+            .module
+            .get_function("action_list_index_of_walk")
+            .unwrap();
+        let lio_cc = self
             .builder
-            .build_extract_value(lio_lst, 1, "len")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let lio_i = self.builder.build_alloca(i64, "i").map_err(llvm_err)?;
-        self.builder
-            .build_store(lio_i, i64.const_int(0, false))
+            .build_call(lio_walk, &[lio_lst.into(), lio_tgt.into()], "idx")
             .map_err(llvm_err)?;
-        let lio_loop = self.context.append_basic_block(lio_fn, "loop");
-        let lio_body = self.context.append_basic_block(lio_fn, "body");
-        let lio_nf = self.context.append_basic_block(lio_fn, "notfound");
-        let _ = self.builder.build_unconditional_branch(lio_loop);
-        self.builder.position_at_end(lio_loop);
-        let lio_iv = self
-            .builder
-            .build_load(i64, lio_i, "iv")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let lio_cond = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, lio_iv, lio_len, "cond")
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(lio_cond, lio_body, lio_nf);
-        self.builder.position_at_end(lio_body);
-        // Load element via action_list_get (tree-aware)
-        let lio_get_fn = self.module.get_function("action_list_get").unwrap();
-        let lio_get_cc = self
-            .builder
-            .build_call(lio_get_fn, &[lio_lst.into(), lio_iv.into()], "lio_get")
-            .map_err(llvm_err)?;
-        let lio_ev = lio_get_cc
+        let lio_r = lio_cc
             .try_as_basic_value()
             .basic()
-            .ok_or("get failed")?
-            .into_struct_value();
-        let lio_str_eq_fn = self.module.get_function("action_string_eq").unwrap();
-        let lio_eq_cc = self
-            .builder
-            .build_call(lio_str_eq_fn, &[lio_ev.into(), lio_tgt.into()], "eq")
-            .map_err(llvm_err)?;
-        let lio_match = lio_eq_cc
-            .try_as_basic_value()
-            .unwrap_basic()
-            .into_int_value();
-        let lio_ret_match = self.context.append_basic_block(lio_fn, "ret_match");
-        let lio_next = self.context.append_basic_block(lio_fn, "next");
-        let _ = self
-            .builder
-            .build_conditional_branch(lio_match, lio_ret_match, lio_next);
-        self.builder.position_at_end(lio_ret_match);
-        let _ = self.builder.build_return(Some(&lio_iv));
-        self.builder.position_at_end(lio_next);
-        let lio_inc = self
-            .builder
-            .build_int_add(lio_iv, i64.const_int(1, false), "inc")
-            .map_err(llvm_err)?;
-        self.builder.build_store(lio_i, lio_inc).map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(lio_loop);
-        self.builder.position_at_end(lio_nf);
-        let _ = self
-            .builder
-            .build_return(Some(&i64.const_int(-1i64 as u64, true)));
+            .ok_or("index_of_walk failed")?;
+        let _ = self.builder.build_return(Some(&lio_r));
 
         // ---- action_list_concat({ptr, i64, i64}, {ptr, i64, i64}) -> {ptr, i64, i64} ----
         // Block-based: walks source tree leaves, pushes elements in batches.
@@ -3755,7 +3702,7 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self.builder.build_unconditional_branch(cc_balance_chk);
 
         self.builder.position_at_end(cc_balance_chk);
-        let max_concat_depth = i64.const_int(32, false);
+        let max_concat_depth = i64.const_int(24, false);
         let needs_balance = self
             .builder
             .build_int_compare(IntPredicate::SGT, new_depth, max_concat_depth, "needs_bal")

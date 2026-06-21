@@ -2,7 +2,7 @@
 fun main() {
     // Test exists (should work on this file)
     print("exists self: ")
-    print(exists("examples/io_test.at"))
+    print(exists("examples/io_test.ac"))
     println("")
 
     // Test exists (should fail on non-existent file)

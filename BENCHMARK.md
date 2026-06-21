@@ -24,7 +24,7 @@ nix-shell --run "./benchmark.sh -n 5 -O0"
 | `-O0`…`-O3` / `--opt N` | LLVM 优化级别 |
 | `--warmup` / `--no-warmup` | 是否先跑 1 次不计时（默认预热） |
 | `-b, --build` | 运行前先 `cargo build --release` |
-| `-l, --list` | 列出所有 `examples/bench_*.at` |
+| `-l, --list` | 列出所有 `examples/bench_*.ac` |
 | `--results FILE` | 结果输出文件（默认 `benchmark_results.txt`） |
 | `-p, --profile` | 向 `action run` 传递 `--profile`（仅 run 模式） |
 
@@ -47,7 +47,7 @@ cd ~/Action && nix-shell --run "python3 scripts/perf_report.py"
 
 ## 基准用例
 
-程序位于 `examples/bench_*.at`：
+程序位于 `examples/bench_*.ac`：
 
 | 类别 | 文件 |
 |------|------|
@@ -73,7 +73,7 @@ cd ~/Action && nix-shell --run "python3 scripts/perf_report.py"
 
 ```bash
 nix-shell --run "cargo test -- --test-threads=1"
-nix-shell --run "./target/release/action run examples/bench_cow.at"   # 预期输出 11
+nix-shell --run "./target/release/action run examples/bench_cow.ac"   # 预期输出 11
 nix-shell --run "./benchmark.sh -n 3"
 nix-shell --run "python3 scripts/perf_report.py"
 ```
@@ -92,6 +92,6 @@ nix-shell --run "python3 scripts/perf_report.py"
 | bench_insert100 | 17 | 18 | 19 |
 | bench_concat_depth | 15 | 16 | 16 |
 
-**说明**：`bench_map_10k` / `bench_set_10k` 用于 1 万元素级 Map/Set 压力；与 `bench_map` / `bench_set`（小规模 smoke）互补。`bench_concat_depth` 覆盖深度 ConcatNode 与 **fused map+filter**（`filter(map(lst){f}){g}` → 单遍 `action_list_map_filter_walk`）；语义用例见 `examples/map_filter.at`（输出 `210215`）。对比优化前后请固定 `--mode` 与 `--opt`。
+**说明**：`bench_map_10k` / `bench_set_10k` 用于 1 万元素级 Map/Set 压力；与 `bench_map` / `bench_set`（小规模 smoke）互补。`bench_concat_depth` 覆盖深度 ConcatNode 与 **fused map+filter**（`filter(map(lst){f}){g}` → 单遍 `action_list_map_filter_walk`）；语义用例见 `examples/map_filter.ac`（输出 `210215`）。对比优化前后请固定 `--mode` 与 `--opt`。
 
 性能改动须保持语言语义（见 `.cursor/rules/preserve-language-semantics.mdc`）。

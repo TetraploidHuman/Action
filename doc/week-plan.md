@@ -1,20 +1,21 @@
-# 一周改进计划（2026-06-21 → 2026-06-27）
+# 一周改进计划（2026-06-22 → 2026-06-28）
 
-> **基线**：`main` @ `7aaa858`（P0-3 assign per-node RC、155 integration 全绿、CI 绿）  
-> **优先级**：**正确性 & RC** > **CI 门禁** > **性能基线** > **自举 M4 起步** > **文档**
+> **基线**：`main` @ `0f35d99` + 未提交三项（`map_filter_map` 融合、`insert_rec` 满叶 append、`apply` 去虚拟化 + `map` LICM）  
+> **AOT -O2 基线**（2026-06-21）：`bench_all` 21ms · `bench_concat_depth` 14ms · `bench_funcall` 12ms · `bench_for_chain` 11ms  
+> **优先级**：**List P0 热点** > **提交/CI** > **P1 迭代器融合** > **P2 Concat** > **P3 调用/Map**
 
 ---
 
-## 上周已完成（2026-06-20）
+## 上周已完成（2026-06-21）
 
 | ID | 项 |
 |----|-----|
-| ✅ | `insert_rec`：`list_root_rc`、CoW-before-recurse、条件 xfer / `store_child` rc_inc |
-| ✅ | assign 延迟整树释放（同作用域另有 List 绑定时仅 `rc_dec` 根） |
-| ✅ | scope cleanup 逆序；集成 `test_insert_exit` / `test_cow_insert_isolation` / `test_list_cow_property` |
-| ✅ | `ci-linux.sh` release 冒烟；`benchmark_regression.py` FAIL 行检测 |
-| ✅ | Windows release 冒烟（`bench_cow` + `test_insert_exit`） |
-| ✅ | `ARCHITECTURE.md` CI/测试同步 |
+| ✅ | `range_walk_rec`：take/drop/slice/chunks/windows |
+| ✅ | `remove(0)` → `drop(1)` 入口快路径（含 ConcatNode） |
+| ✅ | Concat remove `index>0` 恢复左右递归 + concat |
+| ✅ | `map(filter(map(...)))` identity 融合；非 identity 双遍（待提交改为 `map_filter_map_walk`） |
+| ✅ | `list_get_cached` 推广；reverse walk；chunks/windows 改 slice |
+| ✅ | integration **163/163**；`bench_cow` → **11** |
 
 ---
 
@@ -22,79 +23,87 @@
 
 | 轨道 | 目标 | 里程碑 |
 |------|------|--------|
-| A 语义/RC | List 别名路径无 flaky；延迟释放策略可观测、可测 | M1.1 |
-| B CI | proptest blocking；release 冒烟扩展 | M-CI |
-| C 性能 | AOT `-O2` 基线重刷；insert 系列无回归 | M-perf |
-| D 自举 | M4 lexer golden 框架 + 首版 `bootstrap/lexer.at` 试点 | M4α |
-| E 文档 | 语义大纲 + stdlib 分层（支撑子集冻结） | M-doc |
+| A 收尾 | 提交上轮三项优化 + CI 绿 | M-commit |
+| B **P0 List** | `insert_rec` 满叶 split + internal overflow；`find` concat 早退 | M-list-P0 |
+| C **P1 融合** | `filter+map+fold` 单遍；LICM 扩展 | M-iter |
+| D **P2 Concat** | balance/flatten 调优；`bench_all` concat contains 回归 | M-concat |
+| E 基线 | AOT 重刷 + 无回归 | M-perf |
 
 ---
 
 ## 任务清单
 
-### P0 — List / RC 正确性（Mon–Tue）
+### Phase A — 提交上轮优化（Day 1）
 
 | ID | 任务 | 说明 | 验收 |
 |----|------|------|------|
-| P0-1 | **别名压力集成测试** ✅ | `append`/`remove`/`insert` 与 `lst`+`ins` 同作用域；内层 block 提前释放一条绑定 | 新增 2–3 个 `.at` + integration；30× release 无 SIGABRT |
-| P0-2 | **延迟释放可观测性** ✅ | assign 大循环 insert 内存峰值可记录（`scripts/measure_mem_peak.sh` + `mem_peak_note.md`） | 已记录 pre/post P0-3 MaxRSS（−2.6%～−3.2%） |
-| P0-3 | **per-node RC 释放** ✅ | assign 时对旧根子树 walk + 条件 dec，跳过 live 绑定与 RHS 新值 | `test_rc_pressure` / insert 30× 稳定；`define_list_rc_assign.rs` |
-| P0-4 | **修正测试计数** ✅ | `ARCHITECTURE.md` 与 `integration.rs` 均为 **155** | 已一致 |
+| A-1 | **commit + push** | `map_filter_map_walk`、`insert_rec` append-on-full、`apply` 去虚拟化、`map` LICM | CI 绿 |
+| A-2 | **基线快照** | `./benchmark.sh --mode aot --opt 2 -n 5` → `benchmark_results_aot_o2.txt` | 记录 avg ms |
 
-**快检命令：**
+**快检：**
 
 ```bash
 nix-shell --run 'cargo test --release --test integration -- --test-threads=1'
-for b in bench_insert2 bench_insert10 bench_insert50 bench_insert100 bench_all; do
-  for i in $(seq 1 30); do ./target/release/action run examples/${b}.at >/dev/null || exit 1; done
-done
-./target/release/action run examples/bench_cow.at | tail -1   # 11
+./target/release/action run examples/bench_cow.ac          # 11
+./target/release/action run examples/bench_all.ac
+./target/release/action run examples/map_filter.ac         # 210215
 ```
 
 ---
 
-### P1 — CI 稳定（Tue–Wed）
+### P0 — List 运行时（Day 1–3，**本周首要**）
 
-| ID | 任务 | 说明 | 验收 |
-|----|------|------|------|
-| P1-1 | **Proptest 升格** ✅ | 256 cases；`ci.yml` 无 `continue-on-error` | CI blocking 且绿 |
-| P1-2 | **Scheduled Benchmark** ✅ | cron Benchmark job 全绿 | schedule run success |
-| P1-3 | **CI 冒烟扩展** ✅ | release 冒烟含 `test_cow_insert_isolation.at` | `ci-linux.sh` 第 90 行已含 |
+| ID | 任务 | 目标基准 | 说明 | 验收 |
+|----|------|----------|------|------|
+| P0-1 | **`insert_rec` 满叶中间 split** | `bench_all`、`bench_insert100` | `count==64 && idx<count`：32/33 分裂 + 半叶 shift insert；根 h=0 晋升 internal（仿 `lp_h0_full`） | insert 少走 `take+push+drop+concat` fallback |
+| P0-2 | **`insert_rec` internal overflow** | 同上 | 子 `insert_rec` null → `int_split_child`：CoW + split + 兄弟子树；internal 满 64 → 仿 `lp_split_intl` | `action_list_insert` fallback 命中率下降 |
+| P0-3 | **`find_walk_rec` Concat 早退** | `bench_concat_depth`、语义 | 仿 `contains_walk`：concat 左命中跳过右；internal 子树命中跳过后续 sibling | 不改持久化/CoW 语义 |
+| P0-4 | **回归夹具** | CI | `bench_all.ac` 增加 `c.contains(...)`；`opt_pass` 修正 `action_list_find` 命名 | integration + 语义快检 |
 
----
+**约束（必守）：**
 
-### P2 — 性能基线（Wed–Thu）
+- Concat **中间 insert 禁止** take+drop 替代递归（已证 `bench_all` 19→27ms 回归）
+- 共享引用 `rc>1` 必须 CoW 后再 split
+- 分裂几何与 push 一致：左 32、右最多 33、fanout 64
 
-| ID | 任务 | 说明 | 验收 |
-|----|------|------|------|
-| P2-1 | **AOT 基线重刷** ✅ | `./benchmark.sh --mode aot --opt 2 -n 5` → `benchmark_results_aot_o2.txt` | post P0-3 + list_get_cached |
-| P2-2 | **JIT 对照** ✅ | `./benchmark.sh -n 3` → `benchmark_results.txt` | 已重刷 |
-| P2-3 | **`list_get_cached` 缺口** ✅ | `for_loop`/`hir_compile`/`misc` index + UFCS `get` 在顺序 for 内用 loop cache | 见 `perf_map_note.md` |
-| P2-4 | **Map rebuild 采样** ✅ | `bench_map_10k` JIT ~133–137 ms；AOT exe ~7–8 ms；rebuild 非 step smoke 主导 | `scripts/perf_map_note.md` |
-| P2-5 | **`action_list_reverse` 叶扫描** ✅ | B-tree reverse walk 替代 get+push | `define_list_xform.rs` |
-| P2-6 | **`ht_from_list` get_cached** ✅ | 顺序 list→set 用 `list_get_cached` | `define_hash_table.rs` |
-| P2-7 | **opt_pass nounwind 扩展** ✅ | reverse/walk/ht 热函数 | `opt_pass.rs` |
+**参考 IR 模板（`define_list_core.rs`）：**
 
-### P3 — 自举 M4 起步（Thu–Fri）
-
-| ID | 任务 | 说明 | 验收 |
-|----|------|------|------|
-| P3-1 | **Lexer golden 框架** | `tests/lexer_golden.rs` 或扩展现有 lexer 测试：fixtures `tests/fixtures/lexer/*.at` → token JSON | `cargo test lexer_golden` 绿 |
-| P3-2 | **`bootstrap/lexer.at` 试点** | 仅 bootstrap 子集：读 `String`、输出 token 描述（可先 `println` 固定样例） | 目录 `bootstrap/` + README 一页 |
-| P3-3 | **HIR round-trip 夹具** | 为 3–5 个 bootstrap 子集 `.at` 加 `hir_golden` 条目 | `cargo test hir_golden` 绿 |
-| P3-4 | **子集边界测试** | 禁止特性（`import` / `Task` / `lazy val`）在 bootstrap 样例中 compile-error oracle | integration 或 fixtures |
-
-详见 `doc/bootstrap-subset.md` 里程碑 M4–M6。
+| 块 | 行号 | 用途 |
+|----|------|------|
+| `lp_split_leaf` | ~1000–1097 | 满叶 32/33 分裂 |
+| `lp_h0_full` | ~259–437 | 根 h=0 晋升 |
+| `lp_add_child` | ~1119–1250 | internal 追加兄弟 |
+| `lp_split_intl` | ~1253–1632 | internal 满 64 溢出 |
 
 ---
 
-### P4 — 文档（Fri，可与实现并行）
+### P1 — 迭代器融合（Day 3–4）
 
-| ID | 任务 | 说明 | 验收 |
-|----|------|------|------|
-| P4-1 | **`doc/language-spec-outline.md`** | 章节：类型、可空、CoW 集合、UFCS、模式、TCO；每项链到 integration 测试名 | 新 doc + ARCHITECTURE 链接 |
-| P4-2 | **`doc/stdlib-layers.md`** | `builtin` / `lib/*.at` / `stdlib/*.atom` / `host-rt` 职责表 | 新 doc |
-| P4-3 | **更新 roadmap 数字** | `roadmap-and-bootstrap-analysis.md` §2.3：140 → 152 integration、HIR 状态 | 只改度量表，不大改结论 |
+| ID | 任务 | 目标基准 | 说明 | 验收 |
+|----|------|----------|------|------|
+| P1-1 | **`filter+map+fold` 单遍 walk** | `bench_for_chain`（11ms） | 新 `action_list_filter_map_fold_walk` + codegen 融合 | AOT 明显下降 |
+| P1-2 | **`map+fold` / `filter+fold` 融合** | `bench_concat_depth` | UFCS / builtin 识别链式调用 | 语义不变 |
+| P1-3 | **LICM 扩展** | `bench_for_chain` | 循环外提 `filter(lst)`、`fold(0, lst)` 等不变式 | 与 `map` LICM 同模式 |
+
+---
+
+### P2 — Concat 深树（Day 4–5）
+
+| ID | 任务 | 目标基准 | 说明 | 验收 |
+|----|------|----------|------|------|
+| P2-1 | **Concat balance 阈值调优** | `bench_concat_depth`（14ms） | 深度 > 32 flatten；只调参/补路径 | 无 SIGSEGV |
+| P2-2 | **`push_subtree` / walk nounwind** | AOT 全局 | 扩 `opt_pass.rs` | `-O2` IPO 友好 |
+| P2-3 | **`indexOf` / `findIndex` cached walk** | `bench_all` | 替代 `get` 循环（若 profiling 命中） | 可选 |
+
+---
+
+### P3 — 调用与 Map（Day 5–6，可选）
+
+| ID | 任务 | 目标基准 | 说明 |
+|----|------|----------|------|
+| P3-1 | **`fib(30)` 字面量特化** | `bench_funcall` | 常量参数编译期求值；不改变一般 `fib(n)` |
+| P3-2 | **HO 去虚拟化扩展** | `bench_lambda` | `FunctionRef`、局部 `val f = fn` |
+| P3-3 | **Map 增量更新** | `bench_map_10k` | 单独阶段；`define_map.rs` O(n) rebuild |
 
 ---
 
@@ -102,24 +111,22 @@ done
 
 | 日 | 重点 | 产出 |
 |----|------|------|
-| 一 | P0-1 压力测试 + 30× bench | 新 integration + 稳定跑通 |
-| 二 | P0-3（若需要）+ P1-1 hosted | RC 或 CI 一项闭环 |
-| 三 | P1-2 proptest + P2-1 AOT 基线 | blocking proptest；新 baseline commit |
-| 四 | P3-1–P3-3 bootstrap 框架 | lexer golden + bootstrap/ 目录 |
-| 五 | P4 文档 + P2-3 热点 + 全量 CI | 文档 PR；`gh run watch` 全绿 |
+| 一 | Phase A 提交 + **P0-1** 叶 split | commit + insert_rec 中间索引 |
+| 二 | **P0-2** internal overflow | `int_split_child` + split_intl |
+| 三 | **P0-3/4** find 早退 + bench 夹具 | P0 commit + CI |
+| 四 | **P1-1** filter+map+fold | `bench_for_chain` 下降 |
+| 五 | P1-2/3 + P2-1 + AOT 基线重刷 | 第二 commit；`gh run watch` |
 
 ---
 
 ## 验收总表（周末 checklist）
 
-- [x] `cargo test --release --test integration -- --test-threads=1` → **155 passed**
-- [x] insert 系列 bench **30×** release 无 crash
-- [x] `bench_cow.at` → `11`；`map_filter.at` → `210215`
-- [x] `./benchmark.sh --mode aot --opt 2` regression 相对新基线无 CRASH/FAIL
-- [x] Linux（自托管 NixOS）/ Windows / Benchmark CI 绿
-- [x] （若 P1-2 完成）proptest job blocking 且绿
-- [x] （若 P3 完成）`lexer_golden` 或 `bootstrap/README.md` 存在
-- [x] （若 P4 完成）`language-spec-outline.md` + `stdlib-layers.md`
+- [ ] Phase A + P0 各至少 1 commit；push 后 CI 绿
+- [ ] `cargo test --release --test integration -- --test-threads=1` → **163 passed**
+- [ ] `bench_cow.ac` → **11**；`map_filter.ac` → **210215**；`bench_all.ac` 无 SIGSEGV
+- [ ] insert 系列 **30×** release 无 crash
+- [ ] `./benchmark.sh --mode aot --opt 2 -n 3` 相对基线无 FAIL；`bench_all` / `bench_insert100` 有改善或持平
+- [ ] P1 完成时 `bench_for_chain` avg **< 11ms**（目标 ~8ms）
 
 ---
 
@@ -127,24 +134,21 @@ done
 
 | 风险 | 缓解 |
 |------|------|
-| 延迟释放导致内存峰值 | P0-2 记录；必要时 P0-3 per-node dec |
-| 自托管 runner 离线 | 监控 runner 健康；本地 `nix-shell` + `ci-linux.sh` 复现 |
-| 自举范围膨胀 | 严格 `bootstrap-subset.md`；本周只做 lexer 试点 |
-| 性能与语义冲突 | 遵守 `preserve-language-semantics.mdc`；先快检再 benchmark |
+| insert split 破坏 CoW | 先 CoW 再 split；跑 `test_list_cow_property` / `bench_cow` |
+| Concat insert 回归 | 禁止 take+drop 中间路径；必跑 `bench_all` + `bench_concat_depth` |
+| find 早退改语义 | 保持中序首次匹配；补 integration |
 
 **本周明确不做：**
 
-- 重写 `define_list_core.rs` 大块算法
-- 全量 port `parser.rs` / `typecheck.rs`
-- VSCode Marketplace / `atom.toml` 生态
-- LLVM PassManager 默认 `O2` 浇在整 module runtime IR 上
+- 重写 `define_list_core.rs` 整块
+- 全 module runtime IR PassManager O2
+- 为 benchmark 改语言语义（如默认 fib 改迭代）
 
 ---
 
 ## 参考
 
-- 语义约束：`.cursor/rules/preserve-language-semantics.mdc`
+- 语义：`.cursor/rules/preserve-language-semantics.mdc`
+- 工作流：`.cursor/rules/phased-optimization-workflow.mdc`
+- 性能：`BENCHMARK.md`、`scripts/perf_map_note.md`
 - 架构：`doc/ARCHITECTURE.md`
-- 路线图：`doc/roadmap-and-bootstrap-analysis.md`
-- 子集：`doc/bootstrap-subset.md`
-- 性能：`BENCHMARK.md`

@@ -69,7 +69,7 @@ find_action_bin() {
 }
 bench_exe_path() {
     local f="$1"
-    echo "${f%.at}"
+    echo "${f%.ac}"
 }
 # AOT: emit+link once per benchmark (not timed).
 compile_aot() {
@@ -97,12 +97,12 @@ if [[ -z "$ACTION_BIN" ]]; then
     echo -e "${YELLOW}[build] release...${NC}"; (cd "$SRC_DIR" && cargo build --release)
     ACTION_BIN="$(find_action_bin)"
 fi
-mapfile -t BENCH_FILES < <(ls "$SRC_DIR/examples"/bench_*.at 2>/dev/null | sort)
+mapfile -t BENCH_FILES < <(ls "$SRC_DIR/examples"/bench_*.ac 2>/dev/null | sort)
 if [[ -n "$BENCH_ONLY" ]]; then
     IFS=',' read -ra ONLY_NAMES <<< "$BENCH_ONLY"
     filtered=()
     for bench_file in "${BENCH_FILES[@]}"; do
-        name="$(basename "$bench_file" .at)"
+        name="$(basename "$bench_file" .ac)"
         for want in "${ONLY_NAMES[@]}"; do
             if [[ "$name" == "$want" ]]; then
                 filtered+=("$bench_file")
@@ -135,7 +135,7 @@ printf "${BOLD}%-38s %10s %10s %10s  %s${NC}\n" "Benchmark" "Min (ms)" "Avg (ms)
 printf "%s\n" "───────────────────────────────────────────────────────────────────────────"
 PASS=0; FAIL=0; TOTAL=${#BENCH_FILES[@]}
 for bench_file in "${BENCH_FILES[@]}"; do
-    name="$(basename "$bench_file" .at)"; times=(); ok=true
+    name="$(basename "$bench_file" .ac)"; times=(); ok=true
     if [[ "$MODE" == "aot" ]]; then
         compile_aot "$bench_file" || ok=false
     fi
@@ -163,7 +163,7 @@ for bench_file in "${BENCH_FILES[@]}"; do
     printf "%-38s %8d %8d %8d  PASS\n" "$name" "$min" "$avg" "$max" >> "$RESULTS_PATH"
     PASS=$((PASS+1))
     if [[ "$MODE" == "aot" ]]; then
-        rm -f "$(bench_exe_path "$bench_file")" "${bench_file%.at}.o"
+        rm -f "$(bench_exe_path "$bench_file")" "${bench_file%.ac}.o"
     fi
 done
 echo ""; echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

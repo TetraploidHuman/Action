@@ -58,7 +58,7 @@ pub fn builtin_types(program: &Program) -> Vec<Stmt> {
     builtins
 }
 
-/// Parse a single `.at` / `.atom` source file into statements.
+/// Parse a single `.ac` / `.atom` source file into statements.
 fn parse_source_file(path: &Path) -> Result<Vec<Stmt>, String> {
     let source =
         fs::read_to_string(path).map_err(|e| format!("Cannot read '{}': {}", path.display(), e))?;
@@ -79,8 +79,8 @@ fn parse_source_file(path: &Path) -> Result<Vec<Stmt>, String> {
     Ok(program.stmts)
 }
 
-/// Load all `.at` files from a dependency path (file, directory, or `name.at` sibling).
-fn load_at_sources(dep_path: &Path) -> Result<Vec<Stmt>, String> {
+/// Load all `.ac` files from a dependency path (file, directory, or `name.ac` sibling).
+fn load_ac_sources(dep_path: &Path) -> Result<Vec<Stmt>, String> {
     if dep_path.is_file() {
         return parse_source_file(dep_path);
     }
@@ -88,12 +88,12 @@ fn load_at_sources(dep_path: &Path) -> Result<Vec<Stmt>, String> {
         let mut files: Vec<PathBuf> = fs::read_dir(dep_path)
             .map_err(|e| format!("Cannot read directory '{}': {}", dep_path.display(), e))?
             .filter_map(|entry| entry.ok().map(|e| e.path()))
-            .filter(|p| p.extension().is_some_and(|ext| ext == "at"))
+            .filter(|p| p.extension().is_some_and(|ext| ext == "ac"))
             .collect();
         files.sort();
         if files.is_empty() {
             return Err(format!(
-                "Dependency directory '{}' contains no .at files",
+                "Dependency directory '{}' contains no .ac files",
                 dep_path.display()
             ));
         }
@@ -103,7 +103,7 @@ fn load_at_sources(dep_path: &Path) -> Result<Vec<Stmt>, String> {
         }
         return Ok(stmts);
     }
-    let at_file = dep_path.with_extension("at");
+    let at_file = dep_path.with_extension("ac");
     if at_file.is_file() {
         return parse_source_file(&at_file);
     }
@@ -123,7 +123,7 @@ pub fn load_path_dependencies(source_path: &Path) -> Result<Vec<Stmt>, String> {
         } else {
             project_root.join(dep_path)
         };
-        stmts.extend(load_at_sources(&resolved)?);
+        stmts.extend(load_ac_sources(&resolved)?);
     }
     Ok(stmts)
 }
@@ -138,7 +138,7 @@ pub fn load_stdlib() -> Result<Vec<Stmt>, String> {
     let cwd_lib = std::env::current_dir()
         .map_err(|e| format!("Cannot get current dir: {}", e))?
         .join("lib");
-    for file_name in &["math.at", "json.at"] as &[&str] {
+    for file_name in &["math.ac", "json.ac"] as &[&str] {
         let path = [&exe_lib, &cwd_lib]
             .iter()
             .map(|d| d.join(file_name))

@@ -67,7 +67,7 @@ println(List[1,2,3].remove(0).len())    // 正常
 
 **修复原则**：对 `TypedValue::List` 的 `len`/`isEmpty`（及同类只读方法）在 UFCS 分支**直接用已编译的 `recv_val`**，禁止 `rc_free` 后再 `compile_call(Ident("len"), [receiver AST])`。相关逻辑在 `builtins_call.rs` List 分支与 UFCS fallback 两处。
 
-**回归用例**：`bench_all.at`、上式 `t_d.at`；IR 中 `@main` 对同一 receiver **不应出现两次** `action_list_remove`。
+**回归用例**：`bench_all.ac`、上式 `t_d.ac`；IR 中 `@main` 对同一 receiver **不应出现两次** `action_list_remove`。
 
 ### 3. List 运行时：ConcatNode（`height == -1`）
 
@@ -99,7 +99,7 @@ entry:
 | `define_list_*.rs` 体积大 | `git status` 若显示 `D`，立即 `git checkout HEAD -- <file>` 恢复 |
 | 新基本块 | 每 block 必须以 `br`/`ret` 终结（见下文「写 LLVM 运行时的坑」） |
 | `opt_level` | 只影响 JIT/AOT 引擎与 `TargetMachine`，**无**独立 IR PassManager |
-| 临时调试文件 | 勿提交 `examples/_dev/` 下临时文件（如 `_bisect*.at`、`_test_*.at`） |
+| 临时调试文件 | 勿提交 `examples/_dev/` 下临时文件（如 `_bisect*.ac`、`_test_*.ac`） |
 
 ## 标准验证命令
 
@@ -113,9 +113,9 @@ cargo build --release
 cargo test --test integration -- --test-threads=1
 
 # 3. 语义快检（List/CoW/map-filter / 方法链）
-./target/release/action run examples/bench_cow.at      # 预期: 11
-./target/release/action run examples/map_filter.at    # 预期: 210215
-./target/release/action run examples/bench_all.at       # 方法链 + concat 回归
+./target/release/action run examples/bench_cow.ac      # 预期: 11
+./target/release/action run examples/map_filter.ac    # 预期: 210215
+./target/release/action run examples/bench_all.ac       # 方法链 + concat 回归
 
 # 4. 性能（默认 JIT 全路径）
 ./benchmark.sh -n 3

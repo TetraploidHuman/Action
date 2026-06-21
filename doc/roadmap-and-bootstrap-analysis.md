@@ -55,7 +55,7 @@ Action 是一门**功能已相当完整**的静态类型语言：可空类型、
 ### 2.2 编译流水线
 
 ```
-.at/.atom 源文件
+.ac/.atom 源文件
     │
     ▼
 ProjectConfig (atom.toml) ──可选──► 优化级别 / path deps
@@ -64,7 +64,7 @@ ProjectConfig (atom.toml) ──可选──► 优化级别 / path deps
 loader::load_program()          ← 主编排器
     ├─ Lexer::tokenize()
     ├─ Parser::parse_program()
-    ├─ 注入 builtin 类型 + lib/math.at + lib/json.at
+    ├─ 注入 builtin 类型 + lib/math.ac + lib/json.ac
     ├─ resolve_imports() + transform_module_access()
     ├─ register_types() → TypeRegistry
     └─ TypeChecker::check()
@@ -86,7 +86,7 @@ JIT (MCJIT) / AOT (obj/exe) + libaction_host_rt.a (JSON/HTTP/线程)
 | 资产 | 数量/状态 |
 |------|-----------|
 | Integration 测试 | **155** 项（语义权威）；HIR golden + bootstrap 子集夹具 |
-| 示例程序 | **269** 个 `.at` |
+| 示例程序 | **269** 个 `.ac` |
 | AOT 基准 | **30** 项（`benchmark.sh --mode aot --opt 2`） |
 | 单元测试 | lexer 36 / parser 27 / typecheck 23 |
 | 文档 | README、BENCHMARK.md、doc/tutorial.md (~1700 行) |
@@ -95,8 +95,8 @@ JIT (MCJIT) / AOT (obj/exe) + libaction_host_rt.a (JSON/HTTP/线程)
 
 | 路径 | 内容 | 对自举的意义 |
 |------|------|--------------|
-| `lib/math.at` | 15 行纯 Action 数学函数 | 证明 **纯 Action stdlib 可行** |
-| `lib/json.at` | Action 包装 + Rust FFI | **FFI 薄层模式**可复用于 bootstrap |
+| `lib/math.ac` | 15 行纯 Action 数学函数 | 证明 **纯 Action stdlib 可行** |
+| `lib/json.ac` | Action 包装 + Rust FFI | **FFI 薄层模式**可复用于 bootstrap |
 | `stdlib/io.atom` | `external fun` 声明 | 读源文件所需 |
 | `stdlib/http.atom` | HTTP 包装 | 与编译器无关 |
 
@@ -197,7 +197,7 @@ List B-tree + CoW + ConcatNode（`height == -1`）共 **~8,900 行** IR builder 
 #### （4）三层层叠的 stdlib
 
 ```
-lib/math.at (自动加载)
+lib/math.ac (自动加载)
 stdlib/*.atom (手动 import)
 builtins_stdlib_*.rs (codegen dispatch)
 runtime_decl/define_*.rs (LLVM 实现)
@@ -379,7 +379,7 @@ Phase 7: （可选）逐步扩大 Action 前端覆盖，Rust 前端退役
 | 评估标准 | 直接推进自举 | 先优化结构再自举 |
 |----------|-------------|-----------------|
 | **交付风险** | 极高 — 双份逻辑漂移 | 低 — 单份 Rust 源逐步替换 |
-| **时间到首个里程碑** | 看似快（写 `.at` lexer） | 慢 2–3 月（拆 crate） |
+| **时间到首个里程碑** | 看似快（写 `.ac` lexer） | 慢 2–3 月（拆 crate） |
 | **时间到可用自举编译器** | 更长（接口反复改） | 更短（HIR 冻结后 port 稳定） |
 | **团队心智负担** | 同时维护 Rust + Action 两套前端 | 先整理 Rust，再按模块替换 |
 | **bug 放大效应** | List/UFCS bug 进入自举链 | 先清零再 port |
@@ -434,7 +434,7 @@ Phase 7: （可选）逐步扩大 Action 前端覆盖，Rust 前端退役
 │   frontend crate │ BuiltinTypeSig │ HIR │ 诊断统一 │ LSP 合一  │
 ├─────────────────────────────────────────────────────────────┤
 │ 轨道 C：自举试点（P1 后期启动）                               │
-│   lexer.at → parser.at → typecheck.at → HIR → Rust codegen   │
+│   lexer.ac → parser.ac → typecheck.ac → HIR → Rust codegen   │
 └─────────────────────────────────────────────────────────────┘
          ↑ 轨道 B 完成 HIR 冻结后，轨道 C 全面加速
 ```
@@ -445,7 +445,7 @@ Phase 7: （可选）逐步扩大 Action 前端覆盖，Rust 前端退役
 |--------|------|
 | M1 语义冻结 | 140 integration + 29 AOT bench 全绿；UFCS/ConcatNode 有回归测试 |
 | M2 Frontend crate | `cargo build -p action-frontend` 无 codegen 依赖 |
-| M3 HIR v0 | JSON schema + round-trip 测试；Rust codegen 从 HIR 编译 hello.at |
+| M3 HIR v0 | JSON schema + round-trip 测试；Rust codegen 从 HIR 编译 hello.ac |
 | M4 Action lexer | token 输出与 Rust lexer 100% 一致（golden files） |
 | M5 Action parser 子集 | 解析 bootstrap 子集源码 → HIR |
 | M6 自举 Alpha | Action 写的 lexer+parser+checker 编译自身源码（经 Rust codegen） |
@@ -537,7 +537,7 @@ Action 最接近 **Rust + Scala 混合策略**：LLVM 后端保留，前端分�
 | `src/codegen/builtin_registry.rs` | ★★★ 必须先拆分 |
 | `src/codegen/expr.rs` | ★☆☆ 留 Rust |
 | `src/codegen/runtime_decl/*` | ☆☆☆ 不 port |
-| `lib/json.at` | ★★☆ FFI 模式参考 |
+| `lib/json.ac` | ★★☆ FFI 模式参考 |
 | `tests/integration.rs` | ★★★ oracle |
 
 ---

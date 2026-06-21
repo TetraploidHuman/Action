@@ -188,7 +188,7 @@ mod tests {
     }
 
     fn make_doc(source: &str) -> Document {
-        let uri = Url::parse("file:///test.at").unwrap();
+        let uri = Url::parse("file:///test.ac").unwrap();
         let mut doc = Document::new(uri, source.to_string(), 1);
         doc.recheck_with_session(&test_session());
         doc
@@ -256,7 +256,7 @@ mod tests {
 
     #[test]
     fn test_recheck_updates_state() {
-        let uri = Url::parse("file:///test.at").unwrap();
+        let uri = Url::parse("file:///test.ac").unwrap();
         let mut doc = Document::new(uri.clone(), "val x = 1".to_string(), 1);
         assert!(
             doc.ast.is_empty(),

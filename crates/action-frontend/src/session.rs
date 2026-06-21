@@ -339,12 +339,12 @@ impl FrontendSession {
         self.compile_recover_for_path(source, None)
     }
 
-    /// Load stdlib `.at` files into registry + type_env (for LSP startup).
+    /// Load stdlib `.ac` files into registry + type_env (for LSP startup).
     pub fn load_stdlib_context(search_dirs: &[PathBuf]) -> (TypeRegistry, HashMap<String, Type>) {
         let mut registry = TypeRegistry::new();
         let mut type_env: HashMap<String, Type> = HashMap::new();
 
-        for filename in &["math.at", "json.at"] {
+        for filename in &["math.ac", "json.ac"] {
             let source = search_dirs
                 .iter()
                 .map(|d| d.join(filename))

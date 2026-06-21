@@ -1676,7 +1676,7 @@ mod tests {
     fn make_state(source: &str) -> ServerState {
         let proj = Project::with_stdlib(TypeRegistry::new(), HashMap::new(), Vec::new());
         let mut state = ServerState::new(proj);
-        let uri = Url::parse("file:///test.at").unwrap();
+        let uri = Url::parse("file:///test.ac").unwrap();
         let params = DidOpenTextDocumentParams {
             text_document: TextDocumentItem {
                 uri: uri.clone(),
@@ -1690,7 +1690,7 @@ mod tests {
     }
 
     fn test_uri() -> Url {
-        Url::parse("file:///test.at").unwrap()
+        Url::parse("file:///test.ac").unwrap()
     }
 
     fn state_with_proj(proj: Project) -> ServerState {

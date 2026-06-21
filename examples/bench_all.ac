@@ -69,4 +69,6 @@ fun main() {
     println(ins.len())
     println(rem.len())
     println(c.len())
+    println(c.contains(500))
+    println(c.contains(9999))
 }

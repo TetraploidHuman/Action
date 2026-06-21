@@ -6636,6 +6636,9 @@ impl<'ctx> CodeGen<'ctx> {
         let fdr_int_child = self.context.append_basic_block(fd_find_rec_fn, "int_child");
         let fdr_int_next = self.context.append_basic_block(fd_find_rec_fn, "int_next");
         let fdr_concat = self.context.append_basic_block(fd_find_rec_fn, "concat");
+        let fdr_concat_right = self
+            .context
+            .append_basic_block(fd_find_rec_fn, "concat_right");
         let fdr_normal = self.context.append_basic_block(fd_find_rec_fn, "normal");
         self.builder.position_at_end(fdr_entry);
         let fdr_node = fd_find_rec_fn
@@ -6718,6 +6721,26 @@ impl<'ctx> CodeGen<'ctx> {
                 "",
             )
             .map_err(llvm_err)?;
+        let fdr_concat_lflag = self
+            .builder
+            .build_load(i64, fdr_found_flag_p, "fdr_concat_lflag")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let fdr_concat_lfound = self
+            .builder
+            .build_int_compare(
+                IntPredicate::NE,
+                fdr_concat_lflag,
+                zero,
+                "fdr_concat_lfound",
+            )
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_conditional_branch(
+            fdr_concat_lfound,
+            fdr_leaf_done,
+            fdr_concat_right,
+        );
+        self.builder.position_at_end(fdr_concat_right);
         let _ = self
             .builder
             .build_call(
@@ -6919,7 +6942,18 @@ impl<'ctx> CodeGen<'ctx> {
                 "",
             )
             .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(fdr_int_next);
+        let fdr_child_flag = self
+            .builder
+            .build_load(i64, fdr_found_flag_p, "fdr_child_flag")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let fdr_child_found = self
+            .builder
+            .build_int_compare(IntPredicate::NE, fdr_child_flag, zero, "fdr_child_found")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(fdr_child_found, fdr_leaf_done, fdr_int_next);
         self.builder.position_at_end(fdr_int_next);
         let fdr_next_ci = self
             .builder

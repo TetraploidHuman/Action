@@ -157,7 +157,7 @@ pub use action_lsp as lsp;
 ```bash
 nix-shell --run 'cargo test --release --test integration -- --test-threads=1'
 nix-shell --run 'cargo test --release --test diagnostics_json -- --test-threads=1'
-./target/release/action run examples/bench_cow.at   # 预期 11
+./target/release/action run examples/bench_cow.ac   # 预期 11
 ```
 
 **CI（`.github/workflows/ci.yml`）**

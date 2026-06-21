@@ -20,7 +20,7 @@ struct Cli {
 enum Commands {
     /// Compile and run an Atomic source file
     Run {
-        /// Source file path (.at or .atom)
+        /// Source file path (.ac or .atom)
         file: PathBuf,
         /// Optimization level (0-3)
         #[arg(short = 'O', long, default_value = "0")]
@@ -43,7 +43,7 @@ enum Commands {
     },
     /// Compile an Atomic source file
     Build {
-        /// Source file path (.at or .atom)
+        /// Source file path (.ac or .atom)
         file: PathBuf,
         /// Output file path
         #[arg(short, long)]
@@ -60,7 +60,7 @@ enum Commands {
     },
     /// Type-check an Atomic source file without compilation
     Check {
-        /// Source file path (.at or .atom)
+        /// Source file path (.ac or .atom)
         file: PathBuf,
         /// Enable verbose error messages with suggestions
         #[arg(long)]
@@ -74,7 +74,7 @@ enum Commands {
     },
     /// Format an Action source file (indentation)
     Fmt {
-        /// Source file path (.at or .atom)
+        /// Source file path (.ac or .atom)
         file: PathBuf,
         /// Check formatting without writing (exit 1 if changes needed)
         #[arg(long)]
@@ -102,7 +102,7 @@ enum Commands {
     },
     /// Discover and run @test functions in a source file
     Test {
-        /// Source file path (.at or .atom)
+        /// Source file path (.ac or .atom)
         file: PathBuf,
         /// Optimization level (0-3)
         #[arg(short = 'O', long, default_value = "0")]

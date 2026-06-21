@@ -85,6 +85,12 @@ impl<'ctx> CodeGen<'ctx> {
         let mut saved_scope = Scope::new();
         std::mem::swap(&mut self.scope, &mut saved_scope);
         self.scope = Scope::new();
+        self.ht_result_scratch = None;
+        let ht_scratch = self
+            .builder
+            .build_alloca(self.list_type, "ht_result_scratch")
+            .map_err(llvm_err)?;
+        self.ht_result_scratch = Some(ht_scratch);
 
         // Load captured values from the captures struct into local allocas
         if has_captures {

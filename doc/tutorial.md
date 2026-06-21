@@ -37,7 +37,7 @@ cargo build --release
 ### 验证安装
 
 ```bash
-./target/release/action run examples/hello.at
+./target/release/action run examples/hello.ac
 # 输出: Hello, World!
 ```
 
@@ -45,38 +45,38 @@ cargo build --release
 
 | 命令 | 作用 |
 |------|------|
-| `action run file.at` | 编译并运行（JIT） |
-| `action build file.at` | 编译为 LLVM IR |
-| `action build file.at -o prog` | 编译为可执行文件 |
-| `action check file.at` | 仅类型检查，不运行 |
+| `action run file.ac` | 编译并运行（JIT） |
+| `action build file.ac` | 编译为 LLVM IR |
+| `action build file.ac -o prog` | 编译为可执行文件 |
+| `action check file.ac` | 仅类型检查，不运行 |
 | `action repl` | 启动交互式 REPL |
 | `action lsp` | 启动 Language Server |
 
 ### 常用选项
 
 ```bash
-action run file.at --check    # 类型检查 + JIT
-action run file.at -O 3       # 优化等级 0-3
-action run file.at --emit ir  # 输出 LLVM IR
-action build file.at --emit asm   # 输出汇编
-action build file.at --emit exe   # 链接为可执行文件
+action run file.ac --check    # 类型检查 + JIT
+action run file.ac -O 3       # 优化等级 0-3
+action run file.ac --emit ir  # 输出 LLVM IR
+action build file.ac --emit asm   # 输出汇编
+action build file.ac --emit exe   # 链接为可执行文件
 ```
 
 ### 交叉编译
 
 ```bash
-action run file.at --target wasm
-action build file.at --target linux-arm64
+action run file.ac --target wasm
+action build file.ac --target linux-arm64
 ```
 
 ## 1.4 源文件与项目结构
 
-源文件使用 `.at` 扩展名。
+源文件使用 `.ac` 扩展名。
 
 ```
 my_project/
 ├── src/
-│   └── main.at
+│   └── main.ac
 ├── lib/              # 标准库模块
 ├── examples/         # 示例文件
 └── atom.toml         # 项目配置（可选）
@@ -88,7 +88,7 @@ my_project/
 [project]
 name = "my_project"
 version = "0.1.0"
-main = "src/main.at"
+main = "src/main.ac"
 
 [build]
 optimize = true
@@ -1173,8 +1173,8 @@ Action 的模块系统基于源文件。标准库位于 `lib/` 目录：
 
 ```
 lib/
-├── math.at       # 数学运算
-└── json.at       # JSON 解析
+├── math.ac       # 数学运算
+└── json.ac       # JSON 解析
 ```
 
 ## 14.2 导入模块
@@ -1255,7 +1255,7 @@ coroutineScope {
 
 # 第十六章：JSON 支持
 
-推荐使用 `lib/json.at` 模块（`import json`），其公开 API 与底层 `action_json_*` FFI 一一对应：
+推荐使用 `lib/json.ac` 模块（`import json`），其公开 API 与底层 `action_json_*` FFI 一一对应：
 
 | 模块函数 | FFI |
 |----------|-----|
@@ -1297,7 +1297,7 @@ val str = jsonStringify(root)
 jsonFree(root)
 ```
 
-### 类型常量（`lib/json.at`）
+### 类型常量（`lib/json.ac`）
 
 | 常量 | 值 | 说明 |
 |------|-----|------|
@@ -1560,7 +1560,7 @@ toList(ll)            // 转回普通 List
 ## 23.1 编译流水线
 
 ```
-源文件 (.at)
+源文件 (.ac)
   → Lexer      词法分析，生成 Token 流
   → Parser     Pratt 解析器，生成 AST
   → TypeChecker 类型检查与推断（含智能转换）

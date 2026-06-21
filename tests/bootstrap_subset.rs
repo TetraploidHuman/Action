@@ -13,7 +13,7 @@ fn collect_at_files(dir: &Path) -> Vec<PathBuf> {
         .unwrap_or_else(|_| panic!("read dir {}", dir.display()))
         .filter_map(|e| e.ok())
         .map(|e| e.path())
-        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("at"))
+        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("ac"))
         .collect();
     paths.sort();
     paths

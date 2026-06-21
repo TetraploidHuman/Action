@@ -20,7 +20,7 @@ function activate(context) {
     const clientOptions = {
         documentSelector: [{ scheme: 'file', language: 'action' }],
         synchronize: {
-            fileEvents: require('vscode').workspace.createFileSystemWatcher('**/*.at')
+            fileEvents: require('vscode').workspace.createFileSystemWatcher('**/*.ac')
         }
     };
 

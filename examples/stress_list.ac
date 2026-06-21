@@ -1,4 +1,4 @@
-// stress_list.at - Large List stress test (1000+ elements)
+// stress_list.ac - Large List stress test (1000+ elements)
 // Verifies correctness of push, get, insert, remove, reverse, take, slice
 
 fun main() {

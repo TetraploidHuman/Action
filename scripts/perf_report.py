@@ -78,13 +78,13 @@ def phase_split() -> None:
     print("\n=== PHASE SPLIT (ms, 3-run avg) ===")
     print(f"{'benchmark':24s} {'check':>7s} {'build':>7s} {'run':>7s} {'jit+rt':>7s}")
     names = [
-        "bench_step1.at",
-        "bench_step3.at",
-        "bench_step6.at",
-        "bench_all.at",
-        "_dev/bench_insert_bisect.at",
-        "bench_for_method.at",
-        "bench_cow.at",
+        "bench_step1.ac",
+        "bench_step3.ac",
+        "bench_step6.ac",
+        "bench_all.ac",
+        "_dev/bench_insert_bisect.ac",
+        "bench_for_method.ac",
+        "bench_cow.ac",
     ]
     for name in names:
         f = EXAMPLES / name
@@ -108,12 +108,12 @@ def phase_split() -> None:
 def aot_runtime() -> None:
     print("\n=== AOT PURE RUNTIME (-O2, ms, 3-run avg) ===")
     for name in (
-        "bench_step1.at",
-        "bench_step3.at",
-        "bench_step6.at",
-        "bench_all.at",
-        "_dev/bench_insert_bisect.at",
-        "bench_cow.at",
+        "bench_step1.ac",
+        "bench_step3.ac",
+        "bench_step6.ac",
+        "bench_all.ac",
+        "_dev/bench_insert_bisect.ac",
+        "bench_cow.ac",
     ):
         f = EXAMPLES / name
         r = bench_aot(f, opt=2, runs=3)
@@ -127,7 +127,7 @@ def step_deltas() -> None:
     print("\n=== BENCH_STEP JIT+RT DELTA (run-build, ms) ===")
     prev = 0.0
     for i in range(1, 7):
-        f = EXAMPLES / f"bench_step{i}.at"
+        f = EXAMPLES / f"bench_step{i}.ac"
         tb, _, _ = bench_build(f, runs=2)
         tr, _, _ = bench_run(f, runs=2)
         rt = (tr - tb) * 1000

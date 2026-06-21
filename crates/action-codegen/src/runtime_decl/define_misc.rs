@@ -704,20 +704,64 @@ impl<'ctx> CodeGen<'ctx> {
                 "",
             )
             .map_err(llvm_err)?;
+        let mi_fn = self.module.get_function("action_map_insert").unwrap();
+        let mu_j = self.builder.build_alloca(i64, "mu_j").map_err(llvm_err)?;
+        self.builder
+            .build_store(mu_j, i64.const_int(0, false))
+            .map_err(llvm_err)?;
+        let mu_loop = self.context.append_basic_block(mu_fn, "loop_b");
+        let mu_chk = self.context.append_basic_block(mu_fn, "chk_b");
+        let mu_body = self.context.append_basic_block(mu_fn, "body_b");
+        let mu_skip = self.context.append_basic_block(mu_fn, "skip_b");
+        let mu_done = self.context.append_basic_block(mu_fn, "done_b");
+        let _ = self.builder.build_unconditional_branch(mu_loop);
+        self.builder.position_at_end(mu_loop);
+        let mu_jv = self
+            .builder
+            .build_load(i64, mu_j, "jv")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let mu_c2 = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, mu_jv, mu_bcap, "c2")
+            .map_err(llvm_err)?;
         let _ = self
             .builder
+            .build_conditional_branch(mu_c2, mu_chk, mu_done);
+        self.builder.position_at_end(mu_chk);
+        self.ht_branch_if_slot_active(mu_bdata, mu_jv, mu_body, mu_skip)?;
+        self.builder.position_at_end(mu_body);
+        let mu_key = self.ht_key_fat_at(mu_bdata, mu_jv)?;
+        let mu_val = self.ht_val_fat_at(mu_bdata, mu_jv)?;
+        let mu_cl = self
+            .builder
+            .build_load(self.list_type, mu_ra, "cl")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let mu_ins = self
+            .builder
             .build_call(
-                bulk_fn,
+                mi_fn,
                 &[
-                    mu_dest_data.into(),
-                    mu_dest_cap.into(),
-                    mu_len_p.into(),
-                    mu_bdata.into(),
-                    mu_bcap.into(),
+                    mu_cl.into(),
+                    mu_key.into(),
+                    mu_val.into(),
                 ],
-                "",
+                "ins",
             )
             .map_err(llvm_err)?;
+        self.builder
+            .build_store(mu_ra, mu_ins.try_as_basic_value().unwrap_basic())
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(mu_skip);
+        self.builder.position_at_end(mu_skip);
+        let mu_inc = self
+            .builder
+            .build_int_add(mu_jv, i64.const_int(1, false), "inc")
+            .map_err(llvm_err)?;
+        self.builder.build_store(mu_j, mu_inc).map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(mu_loop);
+        self.builder.position_at_end(mu_done);
         let mu_rt = self
             .builder
             .build_load(self.list_type, mu_ra, "mu_rt")

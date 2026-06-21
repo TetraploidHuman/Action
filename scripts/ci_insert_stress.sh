@@ -34,7 +34,7 @@ echo "=== insert stress (${ITERS}× release) ==="
 for b in "${BENCHES[@]}"; do
     i=1
     while [[ "$i" -le "$ITERS" ]]; do
-        "$BIN" run "examples/${b}.at" >/dev/null || {
+        "$BIN" run "examples/${b}.ac" >/dev/null || {
             echo "insert stress failed: ${b} iteration ${i}/${ITERS}" >&2
             exit 1
         }

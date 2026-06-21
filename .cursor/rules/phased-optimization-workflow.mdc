@@ -1,0 +1,154 @@
+---
+description: 效率优先（不计 token）：强烈建议 SubAgent 并行、待办闭环、分阶段提交并监测 CI
+alwaysApply: true
+---
+
+# 分阶段优化工作流（Action 项目）
+
+## 0. 效率优先（用户明确要求）
+
+**Token 消耗 irrelevant；唯一目标是墙钟时间（wall-clock）效率。**
+
+| 优先 | 强烈不推荐 |
+|------|------------|
+| **默认**同轮并发多个 Task SubAgent（无依赖时） | 为省 token / 图省事而主 Agent 串行 grep / read / test |
+| 探索、编译测试、CI 诊断**首选** SubAgent | 明明可并行却等一个 SubAgent 结束再开下一个 |
+| 主 Agent 协调、写码、汇总 | 无依赖却堆很多 SubAgent 造成协调开销 |
+
+凡涉及**改代码、跑测试、性能优化、CI** 的任务，本规则与 `preserve-language-semantics.mdc`、`ai-agent-workflow.mdc` 一并生效。**不得**在未完成全部待办、未通过 CI 的情况下宣告任务结束。
+
+## 1. 任务规划与待办
+
+1. **先规划再动手**：将工作拆成若干**计划阶段**（Phase 1、Phase 2…），每阶段目标单一、可独立验证、可独立提交。
+2. **维护待办清单**（`TodoWrite`）：
+   - 覆盖用户要求的**全部**优化项；实施中可按实际情况增删，但**每一项必须有明确终态**（完成或取消并说明原因）。
+   - 阶段内再细分为**小类**（如「List walk」「Map rebuild」「benchmark 回归」）。
+   - **禁止**留下 `in_progress` 或悬空待办；会话结束前全部标为 `completed` 或 `cancelled`。
+3. **语义约束**：任何优化不得违反 `preserve-language-semantics.mdc`（CoW、RC、持久化结构、方法链等）。
+
+## 2. SubAgent 分工（强烈建议并行）
+
+**强烈建议**用 Task 子代理分担探索、跑测、CI 诊断。无依赖的小类 **≥2 时，默认应在同一条消息内并发多个 Task**——这是本项目首选工作方式，不是可选项里的平等分支。
+
+**不强制**：仅 1 个小类、步骤强依赖、或主 Agent 单路径明显更快时，可只开 1 个或串行；**若选择不并行，收尾汇报须一句话说明理由**。
+
+### 2.1 并行建议（默认遵循）
+
+| 情况 | 强烈建议 |
+|------|----------|
+| 无依赖小类 **≥ 2** | **同一条消息内并发 ≥2 个 Task**（如 explore + shell） |
+| 无依赖小类 **≥ 3** | **尽量一批全部并发**；至多拆成 2 批 |
+| 仅有 1 个小类 | 1 个 Task 或主 Agent 直接做 |
+| 上一批 Task 仍在跑 | 主 Agent **应同时**改不依赖结果的代码，勿空等 |
+| 有依赖的小类 | 等前置结果后再开下一批（该批内仍可并发） |
+
+**开 Task 前自问**：还有没有无依赖小类？有 → **优先同轮多开**，不要习惯性只开 1 个。
+
+### 2.2 类型映射
+
+| 小类 | SubAgent | 典型任务 |
+|------|----------|----------|
+| 代码探索 / 热点定位 | `explore` | 找调用链、读大文件、跨目录搜索 |
+| 编译、测试、benchmark | `shell` | `cargo build/test`、`./benchmark.sh`、`gh run watch` |
+| CI 失败根因 | `ci-investigator` | 解析 failed check、对照日志 |
+| 独立多步实现 | `generalPurpose` | 与主线程无冲突的子模块改动 |
+
+### 2.3 首选起手式
+
+优化 List + Map 时，**默认起手**应为：
+
+```text
+同一消息内 3 个 Task（并行）：
+  Task[explore]  定位 define_list_core / define_list_tree 热点
+  Task[explore]  定位 define_map rebuild 路径
+  Task[shell]    nix-shell 内跑 integration baseline + bench_cow.ac
+```
+
+仅当任务范围极小或步骤紧耦合时，才退化为串行 / 单 SubAgent。
+
+### 2.4 其它
+
+- 子代理结论由主 Agent **抽样复验**（关键路径必跑）。
+
+## 3. 单阶段执行循环
+
+每个计划阶段按以下顺序**完整走完**后再进入下一阶段：
+
+```
+规划待办 → SubAgent 执行小类 → 本机验证 → 修复所有 BUG → 提交 → 推送 → 监测 CI → CI 绿 → 下一阶段
+```
+
+### 3.1 本机验证（推送前必做）
+
+在 `nix-shell` 内至少执行：
+
+```bash
+cargo build --release
+cargo test --test integration -- --test-threads=1
+```
+
+涉及 List/CoW/RC 时额外执行 `ai-agent-workflow.mdc` 中的语义快检；涉及性能时跑 `./benchmark.sh`（与改动类型同一 `--mode`）。
+
+### 3.2 提交与推送
+
+- 每完成**一个计划阶段**创建**一次** commit（消息说明阶段目标与验证结果）。
+- 推送到远端：`./scripts/git-push.sh origin main`（或当前功能分支）。
+- 用户若明确要求「只 commit 不 push」，遵从用户当次指令；否则默认 push 以触发 CI。
+
+### 3.3 监测 CI 直至通过
+
+推送后**持续监测** GitHub Actions，**不得**在 CI 未绿时开始下一阶段：
+
+```bash
+# 查看最近一次 workflow 运行
+gh run list --limit 5
+
+# 等待当前 run 结束（替换 RUN_ID）
+gh run watch RUN_ID --exit-status
+
+# 失败时查看日志
+gh run view RUN_ID --log-failed
+```
+
+- 主 workflow：`.github/workflows/ci.yml`（Linux CI、Windows CI、Benchmark）。
+- CI 失败时：优先用 `ci-investigator` 子代理定位根因，**在本机复现并修复**，再 commit + push，**重新 watch** 直到全部 required checks 通过。
+- 若 CI 失败由**非本阶段引入**的既有 bug 导致，**同样必须修复**——不得标注为「历史问题」而跳过。
+
+## 4. BUG 处理纪律
+
+| 要求 | 说明 |
+|------|------|
+| **零遗漏** | 编译错误、测试失败、SIGSEGV、Clippy、`cargo fmt`、benchmark 回归——全部修复 |
+| **根因修复** | 改逻辑、改算法、补测试；禁止治标不治本 |
+| **禁止** | `#[allow(...)]` 压警告、`#[expect(...)]` 掩盖新问题、注释掉失败代码、跳过测试、`--no-verify`、降低 CI 门槛 |
+| **允许** | 为真实误报添加**最小范围**的 `allow` 时，须在 commit 消息中说明误报原因（尽量避免） |
+
+Windows / Linux 双端 CI 均须绿；仅修一端视为未完成。
+
+## 5. 阶段划分参考
+
+按改动面拆分，避免单 commit 过大：
+
+| 阶段类型 | 示例 |
+|----------|------|
+| 运行时热点 | `define_list_*.rs`、`define_map.rs` 单一优化 |
+| Codegen | `builtins_call.rs`、`builtins_iter.rs` 独立修复 |
+| 测试与回归 | 集成测试、语义快检用例 |
+| 性能与基准 | benchmark 脚本 / 基线更新（须注明方法论变化） |
+
+每阶段 PR/commit 应能独立回滚且 CI 仍绿。
+
+## 6. 完成标准（全部满足才可收尾）
+
+- [ ] 待办清单**全部** `completed` 或合理 `cancelled`
+- [ ] 用户要求的优化项**均已实现并验证**
+- [ ] 每个计划阶段均已 **commit + push + CI 通过**
+- [ ] 无已知未修 BUG（含非本 agent 引入）
+- [ ] 向用户汇报：阶段列表、SubAgent 使用情况（**多开批次**或**未并行理由**）、commit/CI 结果
+
+## 7. 与其它规则的关系
+
+- 环境、产物路径、踩坑：见 `ai-agent-workflow.mdc`
+- 语义不变性：见 `preserve-language-semantics.mdc`
+- 远端与 push：`remote-ssh-server.mdc` + `./scripts/git-push.sh`
+- 纯问答（解释代码、不改仓库）→ 不强制 SubAgent / CI；**一旦动代码或跑测** → 本规则全文适用

@@ -22,7 +22,7 @@ fn validate_module_name(name: &str) -> Result<(), String> {
 /// Load a single module file and return its statements
 fn load_module(module_name: &str, search_dirs: &[PathBuf]) -> Result<Vec<Stmt>, String> {
     validate_module_name(module_name)?;
-    for ext in &["atom", "at"] {
+    for ext in &["atom", "ac", "at"] {
         let file_name = format!("{}.{}", module_name, ext);
         for dir in search_dirs {
             let path = dir.join(&file_name);
@@ -52,8 +52,8 @@ fn load_module(module_name: &str, search_dirs: &[PathBuf]) -> Result<Vec<Stmt>, 
         }
     }
     Err(format!(
-        "Module '{}' not found (looked for {}.atom or {}.at)",
-        module_name, module_name, module_name
+        "Module '{}' not found (looked for {}.atom, {}.ac, or {}.at)",
+        module_name, module_name, module_name, module_name
     ))
 }
 

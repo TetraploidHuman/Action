@@ -3,7 +3,7 @@
   "name": "Action",
   "scopeName": "source.action",
   "fileTypes": [
-    ".at"
+    ".ac"
   ],
   "patterns": [
     {

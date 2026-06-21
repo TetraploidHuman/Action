@@ -1,0 +1,20 @@
+// Deep concat tree: append builds ConcatNode, then insert/remove/take
+fun main() {
+    var a = List[]
+    var b = List[]
+    var i = 0
+    for i < 32 {
+        a = a.append(i)
+        b = b.append(i + 100)
+        i = i + 1
+    }
+    val big = concat(a, b)
+    val mid = big.insert(50, 999)
+    val trimmed = mid.remove(0).take(10)
+    print(big.len())
+    print(mid.len())
+    print(trimmed.len())
+    print(trimmed.get(0))
+    print(mid.get(50))
+    println("")
+}

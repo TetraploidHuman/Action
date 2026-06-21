@@ -391,6 +391,8 @@ pub struct CodeGen<'ctx> {
     pub(crate) anon_structs: HashMap<Vec<String>, StructType<'ctx>>,
     /// Compile-time constants: name → (global pointer, element type, ValKind)
     pub(crate) consts: HashMap<String, (PointerValue<'ctx>, BasicTypeEnum<'ctx>, ValKind)>,
+    /// Reused scratch slot for map/set insert results (one alloca per function).
+    pub(crate) ht_result_scratch: Option<inkwell::values::PointerValue<'ctx>>,
     /// Target block for `continue` — set inside for loops, cleared on exit
     pub(crate) continue_target: Option<inkwell::basic_block::BasicBlock<'ctx>>,
     /// Target block for `break` — set inside for loops, cleared on exit
@@ -594,6 +596,7 @@ impl<'ctx> CodeGen<'ctx> {
             consts: HashMap::new(),
             continue_target: None,
             break_target: None,
+            ht_result_scratch: None,
             list_loop_get_cache: None,
             extension_methods: HashMap::new(),
             tco_state: None,

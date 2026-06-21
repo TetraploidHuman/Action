@@ -46,8 +46,8 @@ nix-shell --run "cargo test -- --test-threads=1"
 
 - `test_list_insert_remove`、`test_list_stress`、`test_list_concat`
 - `test_rc_pressure`、`test_rc_cycle`
-- `examples/bench_cow.at` 输出仍为预期（当前为 `11`）
-- `examples/bench_all.at` 不 SIGSEGV（方法链 + concat 树变异路径）
+- `examples/bench_cow.ac` 输出仍为预期（当前为 `11`）
+- `examples/bench_all.ac` 不 SIGSEGV（方法链 + concat 树变异路径）
 
 涉及性能时，用 `./benchmark.sh` 与 `scripts/perf_report.py` 对比，并说明测的是 JIT 全路径（`--mode run`）还是 AOT 纯执行（`--mode aot`）。详见 `BENCHMARK.md`。
 

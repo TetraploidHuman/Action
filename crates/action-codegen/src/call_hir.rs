@@ -230,9 +230,14 @@ impl<'ctx> CodeGen<'ctx> {
                         if Self::is_identity_lambda_hir(lam) {
                             return self.fused_map_filter_hir(map_inner, base_list, filter_fn_val);
                         }
+                        let map_fn_val = self.compile_hir_expr(lam)?;
+                        return self.fused_map_filter_map_hir(
+                            map_inner,
+                            base_list,
+                            filter_fn_val,
+                            map_fn_val,
+                        );
                     }
-                    let mf_list = self.fused_map_filter_hir(map_inner, base_list, filter_fn_val)?;
-                    return self.map_walk_list_value(map_fn, mf_list);
                 }
                 let inner_val = self.compile_hir_expr(inner)?;
                 if matches!(inner_val, TypedValue::LazyList(_)) {
@@ -277,6 +282,26 @@ impl<'ctx> CodeGen<'ctx> {
         args: &[CallArg<'_>],
         trailing: Option<CallArg<'_>>,
     ) -> Result<TypedValue<'ctx>, String> {
+        if name == "apply" && args.len() == 2 && trailing.is_none() {
+            let CallArg::Hir(hir) = &args[0];
+            if let Some(fn_name) = Self::resolve_direct_fn_name_hir(self, hir) {
+                return self.compile_direct_function_call_from_call_args(
+                    &fn_name,
+                    &[args[1]],
+                    None,
+                );
+            }
+            if let Ok(fn_val) = self.compile_call_arg(args[0]) {
+                if let Some(fn_name) = self.fn_ptr_to_module_name(&fn_val) {
+                    return self.compile_direct_function_call_from_call_args(
+                        &fn_name,
+                        &[args[1]],
+                        None,
+                    );
+                }
+            }
+        }
+
         let fn_val = self
             .module
             .get_function(name)
@@ -627,5 +652,48 @@ impl<'ctx> CodeGen<'ctx> {
             }
             _ => Err("Call target is not a function".to_string()),
         }
+    }
+
+    fn resolve_direct_fn_name_hir(
+        codegen: &CodeGen<'_>,
+        hir: &action_frontend::hir::HirExpr,
+    ) -> Option<String> {
+        use action_frontend::hir::HirExprKind;
+        match &hir.kind {
+            HirExprKind::Ident(name) => {
+                if codegen.module.get_function(name).is_some() {
+                    Some(name.clone())
+                } else {
+                    None
+                }
+            }
+            HirExprKind::FunctionRef(name) => {
+                if codegen.module.get_function(name).is_some() {
+                    Some(name.clone())
+                } else {
+                    let resolved = name.replace("::", "_").replace('.', "_");
+                    if codegen.module.get_function(&resolved).is_some() {
+                        Some(resolved)
+                    } else {
+                        None
+                    }
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn fn_ptr_to_module_name(&self, val: &TypedValue<'ctx>) -> Option<String> {
+        let fn_ptr = match val {
+            TypedValue::Fn(p, _) => *p,
+            TypedValue::Closure { fn_ptr, .. } => *fn_ptr,
+            _ => return None,
+        };
+        for f in self.module.get_functions() {
+            if f.as_global_value().as_pointer_value() == fn_ptr {
+                return f.get_name().to_str().ok().map(|s| s.to_string());
+            }
+        }
+        None
     }
 }

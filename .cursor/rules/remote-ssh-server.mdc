@@ -58,7 +58,7 @@ nix-shell
 ```bash
 cargo build --release
 cargo test -- --test-threads=1
-./target/release/action run examples/hello.at
+./target/release/action run examples/hello.ac
 ./benchmark.sh --iterations 3
 ./benchmark.sh --mode aot --opt 2
 python3 scripts/perf_phase_split.py

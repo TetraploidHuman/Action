@@ -17,7 +17,7 @@
       {
         "id": "action",
         "aliases": ["Action", "action"],
-        "extensions": [".at"],
+        "extensions": [".ac"],
         "configuration": "./language-configuration.json"
       }
     ],

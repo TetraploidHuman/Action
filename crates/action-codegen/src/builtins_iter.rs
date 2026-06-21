@@ -27,10 +27,13 @@ impl<'ctx> CodeGen<'ctx> {
                                 filter_fn_val,
                             );
                         }
-                        let mf_list =
-                            self.fused_map_filter_hir(map_inner_hir, base_list, filter_fn_val)?;
                         let outer_fn = self.compile_call_arg(lam)?;
-                        return self.map_walk_list_value(outer_fn, mf_list);
+                        return self.fused_map_filter_map_hir(
+                            map_inner_hir,
+                            base_list,
+                            filter_fn_val,
+                            outer_fn,
+                        );
                     }
                 }
             }
@@ -141,6 +144,120 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::List(res_a))
     }
 
+    /// filter+map then fold: two tree walks (no intermediate filter/map lists in user code).
+    pub(super) fn fused_filter_map_fold_values(
+        &mut self,
+        filter_fn_val: TypedValue<'ctx>,
+        map_fn_val: TypedValue<'ctx>,
+        fold_fn_val: TypedValue<'ctx>,
+        list_val: TypedValue<'ctx>,
+        init: inkwell::values::IntValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let filter_fn_ptr = match filter_fn_val {
+            TypedValue::Fn(p, _) | TypedValue::Closure { fn_ptr: p, .. } => p,
+            _ => return Err("fused filter+map+fold: filter function required".to_string()),
+        };
+        let map_fn_ptr = match map_fn_val {
+            TypedValue::Fn(p, _) | TypedValue::Closure { fn_ptr: p, .. } => p,
+            _ => return Err("fused filter+map+fold: map function required".to_string()),
+        };
+        let fold_fn_ptr = match fold_fn_val {
+            TypedValue::Fn(p, _) | TypedValue::Closure { fn_ptr: p, .. } => p,
+            _ => return Err("fused filter+map+fold: fold function required".to_string()),
+        };
+        let list_ptr = match list_val {
+            TypedValue::List(p) => p,
+            _ => return Err("fused filter+map+fold: list required".to_string()),
+        };
+        let list_struct = self.load_list(list_ptr)?;
+        let fm_cc = self.call_rt(
+            "action_list_filter_map_walk",
+            &[
+                list_struct.into(),
+                filter_fn_ptr.into(),
+                map_fn_ptr.into(),
+            ],
+        )?;
+        let fm_bv = fm_cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("filter_map_walk failed")?;
+        let fold_cc = self.call_rt(
+            "action_list_fold_walk",
+            &[fm_bv.into(), fold_fn_ptr.into(), init.into()],
+        )?;
+        let acc = fold_cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("fold_walk failed")?
+            .into_int_value();
+        Ok(TypedValue::Int(acc))
+    }
+
+    pub(super) fn fused_filter_map_fold_hir(
+        &mut self,
+        filter_fn_expr: &action_frontend::hir::HirExpr,
+        map_fn_expr: &action_frontend::hir::HirExpr,
+        fold_fn_expr: &action_frontend::hir::HirExpr,
+        list_expr: &action_frontend::hir::HirExpr,
+        init_expr: &action_frontend::hir::HirExpr,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let filter_fn_val = self.compile_hir_expr(filter_fn_expr)?;
+        let map_fn_val = self.compile_hir_expr(map_fn_expr)?;
+        let fold_fn_val = self.compile_hir_expr(fold_fn_expr)?;
+        let list_val = self.compile_hir_expr(list_expr)?;
+        let init_val = self.compile_hir_expr(init_expr)?;
+        let init_i64 = match init_val {
+            TypedValue::Int(v) => v,
+            _ => return Err("fused filter+map+fold: init must be Int".to_string()),
+        };
+        self.fused_filter_map_fold_values(
+            filter_fn_val,
+            map_fn_val,
+            fold_fn_val,
+            list_val,
+            init_i64,
+        )
+    }
+
+    pub(super) fn try_fused_filter_map_fold_fold_args(
+        &mut self,
+        init_arg: &CallArg<'_>,
+        list_arg: &CallArg<'_>,
+        fold_lam: &CallArg<'_>,
+    ) -> Result<Option<TypedValue<'ctx>>, String> {
+        use action_frontend::hir::HirExprKind;
+        let CallArg::Hir(list_hir) = list_arg else {
+            return Ok(None);
+        };
+        let (map_lam, filter_inner) = match Self::extract_map_call_args_hir(list_hir) {
+            Some(v) => v,
+            None => return Ok(None),
+        };
+        let (filter_lam, base_list) = match Self::extract_filter_call_args_hir(filter_inner) {
+            Some(v) => v,
+            None => return Ok(None),
+        };
+        let init_val = self.compile_call_arg(*init_arg)?;
+        let init_i64 = match init_val {
+            TypedValue::Int(v) => v,
+            _ => return Ok(None),
+        };
+        let filter_fn_val = self.compile_call_arg(CallArg::Hir(filter_lam))?;
+        let map_fn_val = self.compile_call_arg(CallArg::Hir(map_lam))?;
+        let fold_fn_val = self.compile_call_arg(*fold_lam)?;
+        let list_val = self.compile_call_arg(CallArg::Hir(base_list))?;
+        Ok(Some(
+            self.fused_filter_map_fold_values(
+                filter_fn_val,
+                map_fn_val,
+                fold_fn_val,
+                list_val,
+                init_i64,
+            )?,
+        ))
+    }
+
     pub(super) fn builtin_filter(
         &mut self,
         args: &[CallArg<'_>],
@@ -232,6 +349,15 @@ impl<'ctx> CodeGen<'ctx> {
         trailing: Option<CallArg<'_>>,
     ) -> Result<TypedValue<'ctx>, String> {
         // fold(fn, init, list) or fold(init, list) { lambda }
+        if let Some(lam) = trailing {
+            if args.len() == 2 {
+                if let Some(result) =
+                    self.try_fused_filter_map_fold_fold_args(&args[0], &args[1], &lam)?
+                {
+                    return Ok(result);
+                }
+            }
+        }
         let (fn_ptr, init_val, list_val) = if let Some(lam) = trailing {
             if args.len() != 2 {
                 return Err(
@@ -477,6 +603,12 @@ impl<'ctx> CodeGen<'ctx> {
         trailing: Option<CallArg<'_>>,
     ) -> Result<TypedValue<'ctx>, String> {
         let (fn_ptr, list_ptr) = self.extract_callback_args(args, trailing, 1, "findIndex")?;
+        let fn_val = if trailing.is_some() {
+            self.compile_call_arg(trailing.unwrap())?
+        } else {
+            self.compile_call_arg(args[0])?
+        };
+        let direct_target = self.try_direct_lambda(fn_val);
         let input_len = self.list_len_val(self.load_list(list_ptr)?)?;
         let current_fn = self
             .builder
@@ -515,20 +647,32 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(elem_val.into_struct_value(), 0, "et")
             .map_err(llvm_err)?
             .into_int_value();
-        let fat_ret_ty = self.string_type;
-        let fn_type = fat_ret_ty.fn_type(&[i64.into()], false);
-        let call_r = self
-            .builder
-            .build_indirect_call(fn_type, fn_ptr, &[elem_tag.into()], "fi_call")
-            .map_err(llvm_err)?;
-        let pred_bv = call_r.try_as_basic_value().basic().ok_or("call failed")?;
-        let pred = if pred_bv.is_struct_value() {
-            self.builder
-                .build_extract_value(pred_bv.into_struct_value(), 0, "pred")
-                .map_err(llvm_err)?
-                .into_int_value()
+        let pred = if let Some(ref target) = direct_target {
+            let cc = self.emit_direct_lambda_call(target, elem_tag, "fi_call")?;
+            if cc.is_struct_value() {
+                self.builder
+                    .build_extract_value(cc.into_struct_value(), 0, "pred")
+                    .map_err(llvm_err)?
+                    .into_int_value()
+            } else {
+                cc.into_int_value()
+            }
         } else {
-            pred_bv.into_int_value()
+            let fat_ret_ty = self.string_type;
+            let fn_type = fat_ret_ty.fn_type(&[i64.into()], false);
+            let call_r = self
+                .builder
+                .build_indirect_call(fn_type, fn_ptr, &[elem_tag.into()], "fi_call")
+                .map_err(llvm_err)?;
+            let pred_bv = call_r.try_as_basic_value().basic().ok_or("call failed")?;
+            if pred_bv.is_struct_value() {
+                self.builder
+                    .build_extract_value(pred_bv.into_struct_value(), 0, "pred")
+                    .map_err(llvm_err)?
+                    .into_int_value()
+            } else {
+                pred_bv.into_int_value()
+            }
         };
         let is_true = self
             .builder
@@ -1283,36 +1427,6 @@ impl<'ctx> CodeGen<'ctx> {
         Ok((fn_ptr, list_ptr, init_val))
     }
 
-    pub(crate) fn map_walk_list_value(
-        &mut self,
-        map_fn_val: TypedValue<'ctx>,
-        list_val: TypedValue<'ctx>,
-    ) -> Result<TypedValue<'ctx>, String> {
-        let fn_ptr = match map_fn_val {
-            TypedValue::Fn(p, _) => p,
-            TypedValue::Closure { fn_ptr, .. } => fn_ptr,
-            _ => return Err("map: function required".to_string()),
-        };
-        let list_ptr = match list_val {
-            TypedValue::List(p) => p,
-            _ => return Err("map: list required".to_string()),
-        };
-        let list_struct = self.load_list(list_ptr)?;
-        let result_alloca = self
-            .builder
-            .build_alloca(self.list_type, "map_result")
-            .map_err(llvm_err)?;
-        let map_cc = self.call_rt("action_list_map_walk", &[list_struct.into(), fn_ptr.into()])?;
-        let result_bv = map_cc
-            .try_as_basic_value()
-            .basic()
-            .ok_or("map_walk failed")?;
-        self.builder
-            .build_store(result_alloca, result_bv)
-            .map_err(llvm_err)?;
-        Ok(TypedValue::List(result_alloca))
-    }
-
     pub(crate) fn is_identity_lambda_call_arg(lam: &CallArg<'_>) -> bool {
         let CallArg::Hir(expr) = lam;
         Self::is_identity_lambda_hir(expr)
@@ -1499,6 +1613,71 @@ impl<'ctx> CodeGen<'ctx> {
             .try_as_basic_value()
             .basic()
             .ok_or("map_filter_walk failed")?;
+        self.builder
+            .build_store(result_alloca, result_bv)
+            .map_err(llvm_err)?;
+
+        Ok(TypedValue::List(result_alloca))
+    }
+
+    pub(super) fn fused_map_filter_map_hir(
+        &mut self,
+        map_inner_expr: &action_frontend::hir::HirExpr,
+        base_list_expr: &action_frontend::hir::HirExpr,
+        filter_fn_val: TypedValue<'ctx>,
+        map_outer_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let map_inner_val = self.compile_hir_expr(map_inner_expr)?;
+        let base_list_val = self.compile_hir_expr(base_list_expr)?;
+        self.fused_map_filter_map_values(map_inner_val, base_list_val, filter_fn_val, map_outer_val)
+    }
+
+    pub(super) fn fused_map_filter_map_values(
+        &mut self,
+        map_inner_val: TypedValue<'ctx>,
+        base_list_val: TypedValue<'ctx>,
+        filter_fn_val: TypedValue<'ctx>,
+        map_outer_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let filter_fn_ptr = match filter_fn_val {
+            TypedValue::Fn(p, _) => p,
+            TypedValue::Closure { fn_ptr, .. } => fn_ptr,
+            _ => return Err("fused map+filter+map: filter function required".to_string()),
+        };
+        let map_inner_ptr = match map_inner_val {
+            TypedValue::Fn(p, _) => p,
+            TypedValue::Closure { fn_ptr, .. } => fn_ptr,
+            _ => return Err("fused map+filter+map: inner map function required".to_string()),
+        };
+        let map_outer_ptr = match map_outer_val {
+            TypedValue::Fn(p, _) => p,
+            TypedValue::Closure { fn_ptr, .. } => fn_ptr,
+            _ => return Err("fused map+filter+map: outer map function required".to_string()),
+        };
+        let inner_list_ptr = match base_list_val {
+            TypedValue::List(p) => p,
+            _ => return Err("fused map+filter+map: list required".to_string()),
+        };
+
+        let inner_list_struct = self.load_list(inner_list_ptr)?;
+        let result_alloca = self
+            .builder
+            .build_alloca(self.list_type, "mfm_result")
+            .map_err(llvm_err)?;
+
+        let mfm_cc = self.call_rt(
+            "action_list_map_filter_map_walk",
+            &[
+                inner_list_struct.into(),
+                map_inner_ptr.into(),
+                filter_fn_ptr.into(),
+                map_outer_ptr.into(),
+            ],
+        )?;
+        let result_bv = mfm_cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("map_filter_map_walk failed")?;
         self.builder
             .build_store(result_alloca, result_bv)
             .map_err(llvm_err)?;

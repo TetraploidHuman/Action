@@ -14,6 +14,11 @@ impl<'ctx> CodeGen<'ctx> {
         let malloc_rc_fn = self.module.get_function("action_malloc_rc").unwrap();
         let memcpy_fn = self.module.get_function("memcpy").unwrap();
         let rc_inc_fn = self.module.get_function("action_rc_inc").unwrap();
+        let list_push_fn = self.module.get_function("action_list_push").unwrap();
+        let split_child_fn = self
+            .module
+            .get_function("action_list_insert_rec_split_child")
+            .unwrap();
 
         let lir_fn = self.module.add_function(
             "action_list_insert_rec",
@@ -32,6 +37,8 @@ impl<'ctx> CodeGen<'ctx> {
 
         let entry = self.context.append_basic_block(lir_fn, "entry");
         let leaf = self.context.append_basic_block(lir_fn, "leaf");
+        let leaf_full_chk = self.context.append_basic_block(lir_fn, "leaf_full_chk");
+        let leaf_full_push = self.context.append_basic_block(lir_fn, "leaf_full_push");
         let leaf_full = self.context.append_basic_block(lir_fn, "leaf_full");
         let leaf_cow = self.context.append_basic_block(lir_fn, "leaf_cow");
         let leaf_cow_copy = self.context.append_basic_block(lir_fn, "leaf_cow_copy");
@@ -53,6 +60,7 @@ impl<'ctx> CodeGen<'ctx> {
         let int_inc_body = self.context.append_basic_block(lir_fn, "int_inc_body");
         let int_inc_done = self.context.append_basic_block(lir_fn, "int_inc_done");
         let int_prep_recurse = self.context.append_basic_block(lir_fn, "int_prep_recurse");
+        let int_split_child = self.context.append_basic_block(lir_fn, "int_split_child");
         let int_update = self.context.append_basic_block(lir_fn, "int_update");
         let int_ret = self.context.append_basic_block(lir_fn, "int_ret");
         let dec_old = self.context.append_basic_block(lir_fn, "dec_old");
@@ -99,7 +107,50 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self
             .builder
-            .build_conditional_branch(is_full, leaf_full, leaf_cow);
+            .build_conditional_branch(is_full, leaf_full_chk, leaf_cow);
+
+        self.builder.position_at_end(leaf_full_chk);
+        let idx_eq_count = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, lir_idx, count, "idx_eq_count")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(idx_eq_count, leaf_full_push, leaf_full);
+
+        self.builder.position_at_end(leaf_full_push);
+        let lfp_undef = self.list_type.get_undef();
+        let lfp_s1 = self
+            .builder
+            .build_insert_value(lfp_undef, lir_node, 0, "lfp_s1")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let lfp_s2 = self
+            .builder
+            .build_insert_value(lfp_s1, count, 1, "lfp_s2")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let lfp_list = self
+            .builder
+            .build_insert_value(lfp_s2, zero, 2, "lfp_list")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let lfp_pushed = self
+            .builder
+            .build_call(
+                list_push_fn,
+                &[lfp_list.into(), lir_val.into()],
+                "lfp_pushed",
+            )
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .basic()
+            .ok_or("insert_rec leaf_full_push: push failed")?;
+        let lfp_new_node = self
+            .builder
+            .build_extract_value(lfp_pushed.into_struct_value(), 0, "lfp_new_node")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_return(Some(&lfp_new_node));
 
         self.builder.position_at_end(leaf_full);
         let _ = self.builder.build_return(Some(&null_ptr));
@@ -564,7 +615,33 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self
             .builder
-            .build_conditional_branch(child_failed, fail_ret, int_update);
+            .build_conditional_branch(child_failed, int_split_child, int_update);
+        self.builder.position_at_end(int_split_child);
+        let split_result = self
+            .builder
+            .build_call(
+                split_child_fn,
+                &[
+                    work_node.into(),
+                    found_i.into(),
+                    work_child.into(),
+                    local_idx.into(),
+                    lir_val.into(),
+                    list_root_rc.into(),
+                ],
+                "split_result",
+            )
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_pointer_value();
+        let split_failed = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, split_result, null_ptr, "split_fail")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(split_failed, fail_ret, int_ret);
         self.builder.position_at_end(fail_ret);
         let _ = self.builder.build_return(Some(&null_ptr));
 

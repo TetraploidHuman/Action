@@ -41,7 +41,7 @@ fun main() {
 ```
 
 ```bash
-action run hello.at
+action run hello.ac
 ```
 
 ## 语言指南
@@ -450,7 +450,7 @@ println(resp)
 
 ### JSON 支持
 
-推荐使用 `lib/json.at` 模块（封装底层 `action_json_*` FFI）：
+推荐使用 `lib/json.ac` 模块（封装底层 `action_json_*` FFI）：
 
 ```action
 import json.{jsonParse, jsonGet, jsonAsFloat, jsonStringify, jsonFree, jsonType}
@@ -707,21 +707,21 @@ action_test_ping()      // 返回 Int
 ## 命令行
 
 ```bash
-action run file.at                    # 编译并运行（JIT）
-action build file.at                  # 编译为 LLVM IR
-action build file.at -o prog          # 编译为可执行文件
-action check file.at                 # 仅类型检查，不运行
+action run file.ac                    # 编译并运行（JIT）
+action build file.ac                  # 编译为 LLVM IR
+action build file.ac -o prog          # 编译为可执行文件
+action check file.ac                 # 仅类型检查，不运行
 
 action repl                          # 交互式 REPL
 
-action run file.at --check           # 类型检查 + JIT
-action run file.at -O 3              # 优化等级 0-3
-action run file.at --emit ir         # 输出 LLVM IR
-action build file.at --emit asm      # 输出汇编
-action build file.at --emit obj      # 输出目标文件
-action build file.at --emit exe      # 链接为可执行文件
-action run file.at --target wasm     # 交叉编译到 WASM
-action build file.at --target linux-arm64  # 交叉编译到 ARM64
+action run file.ac --check           # 类型检查 + JIT
+action run file.ac -O 3              # 优化等级 0-3
+action run file.ac --emit ir         # 输出 LLVM IR
+action build file.ac --emit asm      # 输出汇编
+action build file.ac --emit obj      # 输出目标文件
+action build file.ac --emit exe      # 链接为可执行文件
+action run file.ac --target wasm     # 交叉编译到 WASM
+action build file.ac --target linux-arm64  # 交叉编译到 ARM64
 
 # 启动 LSP 服务器
 action lsp
@@ -752,13 +752,13 @@ action lsp
 ```
 my_project/
 ├── src/
-│   └── main.at
+│   └── main.ac
 ├── lib/              # 标准库模块
 ├── examples/         # 示例文件
 └── atom.toml         # 项目配置（可选）
 ```
 
-`.at` 为 Action 源文件扩展名。
+`.ac` 为 Action 源文件扩展名。
 
 ### 项目配置（atom.toml）
 
@@ -766,7 +766,7 @@ my_project/
 [project]
 name = "my_project"
 version = "0.1.0"
-main = "src/main.at"
+main = "src/main.ac"
 
 [build]
 optimize = true
@@ -780,7 +780,7 @@ lto = true
 ## 编译器架构
 
 ```
-源文件 (.at)
+源文件 (.ac)
   → Lexer      词法分析，生成 Token 流
   → Parser     Pratt 解析器，生成 AST
   → TypeChecker 类型检查与推断（含智能转换）

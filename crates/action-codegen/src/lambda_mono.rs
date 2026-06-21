@@ -92,7 +92,7 @@ impl<'ctx> CodeGen<'ctx> {
         format!("{prefix}_{lambda_name}")
     }
 
-    fn emit_direct_lambda_call(
+    pub(super) fn emit_direct_lambda_call(
         &mut self,
         target: &DirectLambdaTarget<'ctx>,
         arg: IntValue<'ctx>,

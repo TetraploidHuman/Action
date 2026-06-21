@@ -29,8 +29,8 @@ nix_clippy_path() {
 run_test() {
     verify_env
     cargo build --target "$TARGET"
-    "$ACTION" check examples/hello.at
-    "$ACTION" run examples/hello.at
+    "$ACTION" check examples/hello.ac
+    "$ACTION" run examples/hello.ac
     echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"capabilities":{}}}' \
         | timeout 5 "$ACTION" lsp 2>&1 || true
     PROPTEST_CASES="${PROPTEST_CASES:-50}" \
@@ -63,14 +63,14 @@ CI_PERF_BENCHES="${CI_PERF_BENCHES:-bench_cow,bench_all,bench_concat_depth,bench
 run_perf_smoke_debug() {
     echo "=== perf smoke (debug JIT) ==="
     local out
-    out=$("$ACTION" run examples/bench_cow.at 2>&1) || return 1
+    out=$("$ACTION" run examples/bench_cow.ac 2>&1) || return 1
     echo "$out" | tail -1 | grep -qx '11' || {
         echo "bench_cow: expected 11, got: $out" >&2
         return 1
     }
     local b
     for b in bench_all bench_concat_depth bench_insert100; do
-        "$ACTION" run "examples/${b}.at" >/dev/null || {
+        "$ACTION" run "examples/${b}.ac" >/dev/null || {
             echo "perf smoke failed: ${b}" >&2
             return 1
         }
@@ -82,13 +82,13 @@ run_perf_smoke_release() {
     cargo build --release --target "$TARGET"
     test -x "$RELEASE_ACTION"
     local out b
-    out=$("$RELEASE_ACTION" run examples/bench_cow.at 2>&1) || return 1
+    out=$("$RELEASE_ACTION" run examples/bench_cow.ac 2>&1) || return 1
     echo "$out" | tail -1 | grep -qx '11' || {
         echo "bench_cow (release): expected 11, got: $out" >&2
         return 1
     }
     for b in bench_insert2 bench_insert10 bench_insert100 test_insert_exit test_list_alias_insert test_cow_insert_isolation; do
-        "$RELEASE_ACTION" run "examples/${b}.at" >/dev/null || {
+        "$RELEASE_ACTION" run "examples/${b}.ac" >/dev/null || {
             echo "release smoke failed: ${b}" >&2
             return 1
         }
@@ -118,7 +118,7 @@ run_proptest() {
 
 run_debug() {
     verify_env
-    "$ACTION" run examples/hello.at
+    "$ACTION" run examples/hello.ac
 }
 
 # Push CI: build once, test, frontend, debug perf smoke (full suite in parallel benchmark job).
@@ -127,8 +127,8 @@ run_core() {
     RUSTFLAGS="-D warnings" cargo build --target "$TARGET" -p action-frontend -p action-codegen -p action
     run_clippy
     cargo build --target "$TARGET"
-    "$ACTION" check examples/hello.at
-    "$ACTION" run examples/hello.at
+    "$ACTION" check examples/hello.ac
+    "$ACTION" run examples/hello.ac
     echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"capabilities":{}}}' \
         | timeout 5 "$ACTION" lsp 2>&1 || true
     PROPTEST_CASES="${PROPTEST_CASES:-50}" \

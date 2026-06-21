@@ -190,21 +190,21 @@ jobs:
         run: |
           $Action = Join-Path $PWD "target/$env:TARGET/debug/action.exe"
           if (-not (Test-Path $Action)) { throw "missing binary: $Action" }
-          & $Action check examples/hello.at
-          $out = & $Action run examples/hello.at 2>&1 | Out-String
+          & $Action check examples/hello.ac
+          $out = & $Action run examples/hello.ac 2>&1 | Out-String
           Write-Host $out
-          if ($out -notmatch 'hello') { Write-Warning "hello.at output unexpected" }
+          if ($out -notmatch 'hello') { Write-Warning "hello.ac output unexpected" }
           try { '{}' | & $Action lsp 2>&1 | Out-Null } catch { Write-Host "lsp smoke: $_" }
           cargo test --lib --target $env:TARGET -- --test-threads=1 --skip proptest
           cargo test --test integration --target $env:TARGET -- --test-threads=1
           cargo build --release --target $env:TARGET
           $Release = Join-Path $PWD "target/$env:TARGET/release/action.exe"
           if (-not (Test-Path $Release)) { throw "missing release binary: $Release" }
-          $cow = & $Release run examples/bench_cow.at 2>&1 | Out-String
+          $cow = & $Release run examples/bench_cow.ac 2>&1 | Out-String
           if ($cow.Trim().Split("`n")[-1] -ne '11') { throw "bench_cow (release): expected 11" }
-          & $Release run examples/test_insert_exit.at | Out-Null
-          & $Release run examples/bench_all.at | Out-Null
-          & $Release run examples/test_list_alias_insert.at | Out-Null
+          & $Release run examples/test_insert_exit.ac | Out-Null
+          & $Release run examples/bench_all.ac | Out-Null
+          & $Release run examples/test_list_alias_insert.ac | Out-Null
 
       - name: Debug run output
         if: failure()
@@ -212,7 +212,7 @@ jobs:
         run: |
           $action = Join-Path $PWD "target/$env:TARGET/debug/action.exe"
           if (Test-Path $action) {
-            & $action run examples/hello.at *>&1 | Tee-Object -FilePath action_run_output.txt
+            & $action run examples/hello.ac *>&1 | Tee-Object -FilePath action_run_output.txt
           } else {
             "binary missing: $action" | Tee-Object -FilePath action_run_output.txt
           }

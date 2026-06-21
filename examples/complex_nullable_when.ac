@@ -1,0 +1,23 @@
+// Nullable flow: or {}, when, safe chaining
+fun main() {
+    val maybe = 42
+    val n = maybe or { 0 }
+    print(n)
+
+    val empty: Int? = null
+    val fallback = empty or { 7 }
+    print(fallback)
+
+    val tag = when {
+        n > 40 -> "high"
+        n > 10 -> "mid"
+        else -> "low"
+    }
+    print(tag)
+
+    val lst = List[1, 2, 3]
+    val idx = lst.findIndex { x -> x == 2 }
+    val found = idx or { -1 }
+    print(found)
+    println("")
+}

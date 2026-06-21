@@ -1,0 +1,13 @@
+// CoW persistence: original bindings must stay unchanged after derived mutations
+fun main() {
+    val original = List[1, 2, 3, 4, 5]
+    val shared = original
+    val derived = shared.remove(0).append(99)
+
+    print(original.len())
+    print(derived.len())
+    print(original.get(0))
+    print(derived.get(0))
+    print(derived.get(derived.len() - 1))
+    println("")
+}

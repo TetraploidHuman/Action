@@ -42,10 +42,10 @@ def migrate_file(path: Path) -> bool:
 
 
 def main() -> int:
-    paths = [Path(p) for p in sys.argv[1:]] if len(sys.argv) > 1 else list(ROOT.rglob("*.at"))
+    paths = [Path(p) for p in sys.argv[1:]] if len(sys.argv) > 1 else list(ROOT.rglob("*.ac"))
     n = 0
     for path in sorted(paths):
-        if "_dev" in path.parts or path.suffix != ".at":
+        if "_dev" in path.parts or path.suffix != ".ac":
             continue
         if migrate_file(path):
             print(path.relative_to(ROOT))

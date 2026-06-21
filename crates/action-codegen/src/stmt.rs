@@ -303,6 +303,12 @@ impl<'ctx> CodeGen<'ctx> {
         let mut saved_scope = Scope::new();
         std::mem::swap(&mut self.scope, &mut saved_scope);
         self.scope = Scope::new();
+        self.ht_result_scratch = None;
+        let ht_scratch = self
+            .builder
+            .build_alloca(self.list_type, "ht_result_scratch")
+            .map_err(llvm_err)?;
+        self.ht_result_scratch = Some(ht_scratch);
 
         let mut param_slots: Vec<(PointerValue<'ctx>, BasicTypeEnum<'ctx>, ValKind)> = Vec::new();
         for (i, param) in params.iter().enumerate() {

@@ -25,7 +25,7 @@ def timed(args: list[str], runs: int = 3) -> float:
 
 def row(name: str) -> None:
     f = EXAMPLES / name
-    out = Path(f"/tmp/{name.replace('.at', '')}.ll")
+    out = Path(f"/tmp/{name.replace('.ac', '')}.ll")
     if out.exists():
         out.unlink()
     tc = timed([str(BIN), "check", str(f)])
@@ -40,14 +40,14 @@ def main() -> None:
 
     print(f"{'benchmark':24s} {'check':>7s} {'build':>7s} {'run':>7s} {'jit+rt':>7s}")
     for i in range(1, 7):
-        row(f"bench_step{i}.at")
+        row(f"bench_step{i}.ac")
     print()
     for name in (
-        "bench_all.at",
-        "_dev/bench_insert_bisect.at",
-        "bench_for_method.at",
-        "bench_funcall.at",
-        "bench_cow.at",
+        "bench_all.ac",
+        "_dev/bench_insert_bisect.ac",
+        "bench_for_method.ac",
+        "bench_funcall.ac",
+        "bench_cow.ac",
     ):
         row(name)
 

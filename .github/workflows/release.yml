@@ -246,6 +246,6 @@ jobs:
             # Linux
             tar xzf action-${{ steps.ver.outputs.value }}-linux-x64.tar.gz
             export PATH="$PWD/action-${{ steps.ver.outputs.value }}-linux-x64/bin:$PATH"
-            action run hello.at
+            action run hello.ac
             ```
           generate_release_notes: true
