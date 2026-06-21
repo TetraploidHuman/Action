@@ -51,12 +51,12 @@ action run hello.at
 ```action
 val x = 42              // 不可变绑定
 var y = 0               // 可变绑定
-val name String = "Action"  // 带类型标注
-val typed: Int = 42     // 带冒号标注（两种语法皆可）
+val name: String = "Action"  // 带类型标注（冒号分隔）
+val typed: Int = 42
 lazy val big = heavyComputation()  // 惰性初始化（lazy 在 val 之前）
 
 y = y + 1               // 普通赋值
-const MAX Int = 1024    // 编译期常量
+const MAX: Int = 1024    // 编译期常量
 
 y += 1                  // 复合赋值: += -= *= /= %=
 
@@ -67,11 +67,11 @@ y = y + 1               // 普通赋值
 ### 基本类型
 
 ```action
-val i Int = 42
-val f Float = 3.14
-val b Bool = true           // true / false
-val s String = "hello"
-val c Char = 'A'
+val i: Int = 42
+val f: Float = 3.14
+val b: Bool = true           // true / false
+val s: String = "hello"
+val c: Char = 'A'
 
 val bin = 0b1010        // 二进制字面量 = 10
 val oct = 0o777         // 八进制字面量 = 511
@@ -219,8 +219,8 @@ val z = identity(3.14)      // Float
 
 ```action
 // T? 表示可空类型，null 表示空值
-val name String? = "Alice"
-val empty String? = null
+val name: String? = "Alice"
+val empty: String? = null
 
 // 对可空接收者的方法调用自动短路（接收者为 null 时直接返回 null）
 val upper = name.toUpper()         // String? = "ALICE"

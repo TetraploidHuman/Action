@@ -85,7 +85,7 @@ JIT (MCJIT) / AOT (obj/exe) + libaction_host_rt.a (JSON/HTTP/线程)
 
 | 资产 | 数量/状态 |
 |------|-----------|
-| Integration 测试 | **140** 项（语义权威） |
+| Integration 测试 | **152+** 项（语义权威）；HIR golden + bootstrap 子集夹具 |
 | 示例程序 | **234** 个 `.at` |
 | AOT 基准 | **29** 项（`benchmark.sh --mode aot --opt 2`） |
 | 单元测试 | lexer 36 / parser 27 / typecheck 23 |

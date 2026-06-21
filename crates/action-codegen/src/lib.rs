@@ -829,7 +829,7 @@ mod tests {
 
     #[test]
     fn test_codegen_type_annotated_variable() {
-        let ir = compile_program("val x Int = 42");
+        let ir = compile_program("val x: Int = 42");
         assert!(!ir.is_empty(), "IR should not be empty");
         assert!(ir.contains("i64 42"), "IR should contain i64 42");
     }

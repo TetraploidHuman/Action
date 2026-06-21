@@ -2,7 +2,7 @@
 fun apply_direct(f: (Int) -> Int, x: Int) -> Int = f(x)
 
 fun main() {
-    val opt Int? = 10
+    val opt: Int? = 10
     when opt {
         null -> print(0)
         else -> print(opt)

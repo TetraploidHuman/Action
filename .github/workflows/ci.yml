@@ -60,7 +60,6 @@ jobs:
   proptest:
     name: Linux Proptest
     runs-on: [self-hosted, linux, ci]
-    continue-on-error: true
     env:
       CARGO_TARGET_DIR: /home/miaox99/桌面/Runner/ci-target
       CARGO_INCREMENTAL: 1
@@ -133,8 +132,9 @@ jobs:
 
       - name: Install LLVM 21
         run: |
-          wget -q https://github.com/llvm/llvm-project/releases/download/llvmorg-21.1.8/clang+llvm-21.1.8-x86_64-linux-gnu-ubuntu-18.04.tar.xz
-          tar xf clang+llvm-21.1.8-x86_64-linux-gnu-ubuntu-18.04.tar.xz
+          curl -fL --retry 3 --connect-timeout 60 -o llvm.tar.xz \
+            "https://github.com/llvm/llvm-project/releases/download/llvmorg-21.1.8/clang+llvm-21.1.8-x86_64-linux-gnu-ubuntu-18.04.tar.xz"
+          tar xf llvm.tar.xz
           echo "LLVM_SYS_211_PREFIX=$PWD/clang+llvm-21.1.8-x86_64-linux-gnu-ubuntu-18.04" >> "$GITHUB_ENV"
           echo "$PWD/clang+llvm-21.1.8-x86_64-linux-gnu-ubuntu-18.04/bin" >> "$GITHUB_PATH"
 

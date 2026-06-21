@@ -1,0 +1,128 @@
+[
+  {
+    "kind": "fun",
+    "span": {
+      "start": 0,
+      "end": 3,
+      "line": 1,
+      "col": 1
+    }
+  },
+  {
+    "kind": "main",
+    "span": {
+      "start": 3,
+      "end": 8,
+      "line": 1,
+      "col": 4
+    }
+  },
+  {
+    "kind": "(",
+    "span": {
+      "start": 8,
+      "end": 9,
+      "line": 1,
+      "col": 9
+    }
+  },
+  {
+    "kind": ")",
+    "span": {
+      "start": 9,
+      "end": 10,
+      "line": 1,
+      "col": 10
+    }
+  },
+  {
+    "kind": "{",
+    "span": {
+      "start": 10,
+      "end": 12,
+      "line": 1,
+      "col": 11
+    }
+  },
+  {
+    "kind": "val",
+    "span": {
+      "start": 12,
+      "end": 20,
+      "line": 1,
+      "col": 13
+    }
+  },
+  {
+    "kind": "x",
+    "span": {
+      "start": 20,
+      "end": 22,
+      "line": 2,
+      "col": 8
+    }
+  },
+  {
+    "kind": "=",
+    "span": {
+      "start": 22,
+      "end": 24,
+      "line": 2,
+      "col": 10
+    }
+  },
+  {
+    "kind": "1",
+    "span": {
+      "start": 24,
+      "end": 26,
+      "line": 2,
+      "col": 12
+    }
+  },
+  {
+    "kind": "var",
+    "span": {
+      "start": 26,
+      "end": 34,
+      "line": 2,
+      "col": 14
+    }
+  },
+  {
+    "kind": "y",
+    "span": {
+      "start": 34,
+      "end": 36,
+      "line": 3,
+      "col": 8
+    }
+  },
+  {
+    "kind": "=",
+    "span": {
+      "start": 36,
+      "end": 38,
+      "line": 3,
+      "col": 10
+    }
+  },
+  {
+    "kind": "2",
+    "span": {
+      "start": 38,
+      "end": 40,
+      "line": 3,
+      "col": 12
+    }
+  },
+  {
+    "kind": "}",
+    "span": {
+      "start": 40,
+      "end": 42,
+      "line": 3,
+      "col": 14
+    }
+  }
+]

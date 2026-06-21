@@ -1,0 +1,19 @@
+// Inner for-loop scope releases ins binding; outer lst must remain valid after iteration.
+fun main() {
+    var lst = List[]
+    var i = 0
+    for i < 2000 {
+        lst = lst.append(i)
+        i = i + 1
+    }
+    for _once in List[1] {
+        var ins = lst
+        var j = 0
+        for j < 10 {
+            ins = ins.insert(j * 2, 9999)
+            j = j + 1
+        }
+        println(ins.len())
+    }
+    println(lst.len())
+}

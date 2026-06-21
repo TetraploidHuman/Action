@@ -9,6 +9,10 @@ fn examples_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples")
 }
 
+fn fixtures_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/bootstrap")
+}
+
 fn load_checked(path: &Path) -> CheckedProgram {
     loader::load_checked(&path.to_path_buf(), false).expect("typecheck should pass")
 }
@@ -17,6 +21,27 @@ fn hir_json(path: &Path) -> String {
     load_checked(path)
         .hir_json_pretty()
         .expect("hir json serialize")
+}
+
+#[test]
+fn test_hir_golden_bootstrap_control_flow() {
+    let path = fixtures_dir().join("control_flow.at");
+    let json = hir_json(&path);
+    assert!(json.contains("For") || json.contains("for") || json.contains("While"));
+}
+
+#[test]
+fn test_hir_golden_bootstrap_enum_simple() {
+    let path = fixtures_dir().join("enum_simple.at");
+    let json = hir_json(&path);
+    assert!(json.contains("Enum") || json.contains("when") || json.contains("When"));
+}
+
+#[test]
+fn test_hir_golden_bootstrap_struct_when() {
+    let path = fixtures_dir().join("struct_when.at");
+    let json = hir_json(&path);
+    assert!(json.contains("Struct") || json.contains("when") || json.contains("When"));
 }
 
 #[test]

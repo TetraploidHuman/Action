@@ -1,0 +1,8 @@
+type Point = {x: Int, y: Int}
+
+fun main() -> Int {
+    val p: Point = {x = 10, y = 20}
+    val tag: Int = when p.x == 10 { 1 else 0 }
+    println(tag)
+    return 0
+}

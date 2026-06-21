@@ -1,0 +1,47 @@
+[
+  {
+    "kind": "42",
+    "span": {
+      "start": 0,
+      "end": 2,
+      "line": 1,
+      "col": 1
+    }
+  },
+  {
+    "kind": "3.14",
+    "span": {
+      "start": 2,
+      "end": 7,
+      "line": 1,
+      "col": 3
+    }
+  },
+  {
+    "kind": "\"hello\"",
+    "span": {
+      "start": 7,
+      "end": 15,
+      "line": 1,
+      "col": 8
+    }
+  },
+  {
+    "kind": "true",
+    "span": {
+      "start": 15,
+      "end": 20,
+      "line": 1,
+      "col": 16
+    }
+  },
+  {
+    "kind": "false",
+    "span": {
+      "start": 20,
+      "end": 26,
+      "line": 1,
+      "col": 21
+    }
+  }
+]

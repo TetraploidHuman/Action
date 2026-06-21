@@ -1,19 +1,19 @@
 // Integration test: stdlib (nullable Option/Result), List, String builtins
 fun main() {
     // === Nullable stdlib (replaces Option/Result enums) ===
-    val opt Int? = 42
+    val opt: Int? = 42
     print((opt or { 0 }) * 2)           // 84
 
-    val chained Int? = (opt or { 0 }) + 10
+    val chained: Int? = (opt or { 0 }) + 10
     print(chained)                      // 52
 
-    val nothing Int? = null
+    val nothing: Int? = null
     print(nothing or { 99 })            // 99
 
-    val ok_val Int? = 31
+    val ok_val: Int? = 31
     print((ok_val or { 0 }) + 10)      // 41
 
-    val err_val Int? = null
+    val err_val: Int? = null
     print(err_val or { 100 })           // 100
 
     // === List builtins ===

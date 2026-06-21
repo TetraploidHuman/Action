@@ -585,7 +585,7 @@ mod tests {
 
     #[test]
     fn test_variable_type_annotation_mismatch() {
-        let errors = check_source("val x Int = \"hello\"");
+        let errors = check_source("val x: Int = \"hello\"");
         assert!(!errors.is_empty(), "Expected variable type mismatch error");
         let msg = errors[0].message.to_lowercase();
         assert!(
@@ -668,7 +668,7 @@ mod tests {
 
     #[test]
     fn test_invalid_generic_instantiation() {
-        let errors = check_source("val x List = List[1, 2, 3]");
+        let errors = check_source("val x: List = List[1, 2, 3]");
         // List without type parameter - may warn or error
         // Just ensure no panic
         let _ = errors;
@@ -689,7 +689,7 @@ mod tests {
 
     #[test]
     fn test_nullable_assignment_to_non_nullable() {
-        let errors = check_source("val x Int = null");
+        let errors = check_source("val x: Int = null");
         assert!(
             !errors.is_empty(),
             "expected type error for nullable to non-nullable"
@@ -711,7 +711,7 @@ mod tests {
     #[test]
     fn test_complex_recursive_type_annotation() {
         // List of lists - should type check without panic
-        let errors = check_source("val x List[List[Int]] = List[List[1, 2], List[3, 4]]");
+        let errors = check_source("val x: List[List[Int]] = List[List[1, 2], List[3, 4]]");
         // This may or may not error depending on generics support
         let _ = errors;
     }
@@ -739,7 +739,7 @@ mod tests {
 
     #[test]
     fn test_char_type_mismatch() {
-        let errors = check_source("val x Int = 'a'");
+        let errors = check_source("val x: Int = 'a'");
         assert!(
             !errors.is_empty(),
             "expected type error for char-to-int assignment"

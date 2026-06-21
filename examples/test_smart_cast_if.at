@@ -1,11 +1,11 @@
 fun main() {
     // Smart cast with != null check
-    val x Int? = 42
+    val x: Int? = 42
     when x != null {
         print(x + 1)
     }
 
     // Smart cast with == null check (else branch gets smart cast)
-    val y Int? = 99
+    val y: Int? = 99
     when y == null { print(0) else print(y + 1) }
 }

@@ -87,7 +87,7 @@ run_perf_smoke_release() {
         echo "bench_cow (release): expected 11, got: $out" >&2
         return 1
     }
-    for b in bench_insert2 bench_insert10 bench_insert100 test_insert_exit; do
+    for b in bench_insert2 bench_insert10 bench_insert100 test_insert_exit test_cow_insert_isolation; do
         "$RELEASE_ACTION" run "examples/${b}.at" >/dev/null || {
             echo "release smoke failed: ${b}" >&2
             return 1

@@ -176,11 +176,11 @@ impl Parser {
         };
         self.advance();
 
-        // Optional type annotation — space-separated, no colon: var x Int = 0
-        let type_ann = if self.current_kind() == TokenKind::Eq {
-            None
-        } else {
+        // Type annotation requires colon: val x: Int = 0
+        let type_ann = if self.skip(TokenKind::Colon) {
             Some(self.parse_type()?)
+        } else {
+            None
         };
 
         // Assignment
@@ -207,11 +207,11 @@ impl Parser {
         };
         self.advance();
 
-        // Optional type annotation — space-separated, no colon: var x Int = 0
-        let type_ann = if self.current_kind() == TokenKind::Eq {
-            None
-        } else {
+        // Type annotation requires colon: val x: Int = 0
+        let type_ann = if self.skip(TokenKind::Colon) {
             Some(self.parse_type()?)
+        } else {
+            None
         };
 
         // Assignment

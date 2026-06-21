@@ -1,0 +1,8 @@
+// Bootstrap forbidden: lazy val (gate import ensures compile-error oracle)
+import bootstrap_subset_forbidden_gate
+
+lazy val x: Int = 42
+
+fun main() -> Int {
+    return 0
+}

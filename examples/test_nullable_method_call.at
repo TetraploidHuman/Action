@@ -7,11 +7,11 @@ fun getNullList() { null }
 
 fun main() {
     // --- Nullable String ---
-    val s String? = "hello"
+    val s: String? = "hello"
     print(s.len() or { -1 })                                 // 5
     print(s.toUpper() or { "FALLBACK" })                     // HELLO
 
-    val ns String? = null
+    val ns: String? = null
     print(ns.len() or { -1 })                                // -1
     print(ns.toUpper() or { "NULLSTR" })                     // NULLSTR
 
@@ -22,7 +22,7 @@ fun main() {
     print(lst.len() or { -1 })                               // 3
 
     // Null List (needs type annotation for the null to know its type)
-    val nl List? = null
+    val nl: List? = null
     print(nl.head() or { -1 })                               // -1
 
     // --- List from null function ---
@@ -35,7 +35,7 @@ fun main() {
     val m = Map["x": 10, "y": 20]
     print(m.contains("x") or { false })                      // true (1)
 
-    val nm Map? = null
+    val nm: Map? = null
     print(nm.contains("x") or { false })                     // false (0)
 
     // --- Map from null function ---

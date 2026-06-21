@@ -1,18 +1,18 @@
 // Test chained Elvis
 fun main() {
     // Chained Elvis: a ?: b ?: c — step by step
-    val a Int? = null
-    val b Int? = null
-    val c Int? = 5
+    val a: Int? = null
+    val b: Int? = null
+    val c: Int? = 5
 
     // Step approach
     val step1 = a or { b }
     println(step1 or { c })                          // 5
 
     // Variable approach
-    val v1 Int? = null
-    val v2 Int? = 10
-    val v3 Int? = 20
+    val v1: Int? = null
+    val v2: Int? = 10
+    val v3: Int? = 20
     val result = (v1 or { v2 }) or { v3 }
     println(result)                              // 10
 }

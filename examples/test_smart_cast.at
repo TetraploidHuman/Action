@@ -1,21 +1,21 @@
 // Test smart cast: when matching non-null pattern narrows T? to T
 fun main() {
     // Test 1: Non-null value, smart cast in else branch
-    val x Int? = 42
+    val x: Int? = 42
     when x {
         null -> print(0)
         else -> print(x + 1)
     }
 
     // Test 2: Null value goes to null branch
-    val y Int? = null
+    val y: Int? = null
     when y {
         null -> print(9)
         else -> print(0)
     }
 
     // Test 3: Named pattern extract with smart cast not needed (bound variable is non-null)
-    val z Int? = 10
+    val z: Int? = 10
     when z {
         null -> print(0)
         v -> print(v * 2)

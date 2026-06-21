@@ -1,6 +1,6 @@
 // Test: pattern binding + callback using nullable types
 fun main() {
-    val opt Int? = 21
+    val opt: Int? = 21
     val f = { x -> x * 2 }
     val result = opt or { 0 }
     print(f(result))

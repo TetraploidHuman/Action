@@ -1,0 +1,12 @@
+// Bootstrap forbidden: extension (gate import ensures compile-error oracle)
+import bootstrap_subset_forbidden_gate
+
+extension Int {
+    fun double(self) -> Int {
+        self * 2
+    }
+}
+
+fun main() -> Int {
+    return 0
+}

@@ -1,0 +1,6 @@
+// Bootstrap M4 pilot: fixed token demo (full scanner in progress).
+// Output mirrors Rust lexer golden for a minimal subset sample.
+fun main() -> Int {
+    println("tokens: fun main ( ) { val x = 1 var y = 2 }")
+    return 0
+}

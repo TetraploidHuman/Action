@@ -1136,6 +1136,27 @@ fn test_insert_exit() {
 }
 
 #[test]
+fn test_list_alias_append() {
+    // lst + ins same scope; append on ins must not corrupt lst.
+    let out = run_example("test_list_alias_append.at");
+    assert_eq!(out.trim(), "2010\n2000");
+}
+
+#[test]
+fn test_list_alias_remove() {
+    // lst + ins same scope; remove on ins must not corrupt lst.
+    let out = run_example("test_list_alias_remove.at");
+    assert_eq!(out.trim(), "190\n200");
+}
+
+#[test]
+fn test_list_alias_block() {
+    // Inner for-loop scope releases ins; outer lst must stay valid.
+    let out = run_example("test_list_alias_block.at");
+    assert_eq!(out.trim(), "2010\n2000");
+}
+
+#[test]
 fn test_cow_insert_isolation() {
     let out = run_example("test_cow_insert_isolation.at");
     assert_eq!(out.trim(), "10\n9999");

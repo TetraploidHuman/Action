@@ -129,8 +129,8 @@ fun main() {
 
 ```action
 val x = 42                  // 类型自动推断
-val name String = "Action"  // 带类型标注（空格分隔，无冒号）
-val typed: Int = 42         // 也支持冒号标注
+val name: String = "Action"  // 带类型标注（冒号分隔）
+val typed: Int = 42
 ```
 
 ### 可变绑定
@@ -150,7 +150,7 @@ lazy val big = heavyComputation()  // 惰性初始化，首次访问时计算
 ### 编译期常量
 
 ```action
-const MAX_SIZE Int = 1024
+const MAX_SIZE: Int = 1024
 const PI = 3
 ```
 

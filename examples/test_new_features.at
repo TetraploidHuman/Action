@@ -3,8 +3,8 @@ fun add(a: Int, b: Int) -> Int { a + b }
 
 fun main() {
     // ---- Test nullable value operations ----
-    val s Int? = 42
-    val n Int? = null
+    val s: Int? = 42
+    val n: Int? = null
 
     print("s != null: ")
     println(s != null)
@@ -38,8 +38,8 @@ fun main() {
     println(n or { 99 })
 
     // ---- Test nullable as Result replacement ----
-    val ok Int? = 10
-    val err Int? = null
+    val ok: Int? = 10
+    val err: Int? = null
 
     print("ok != null: ")
     println(ok != null)

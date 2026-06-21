@@ -615,8 +615,18 @@ mod tests {
     }
 
     #[test]
+    fn test_type_ann_requires_colon() {
+        assert!(
+            parse("val x Int = 1").is_err(),
+            "space-separated type annotation should be rejected"
+        );
+        assert!(parse("val x: Int = 1").is_ok());
+        assert!(parse("const MAX: Int = 1").is_ok());
+    }
+
+    #[test]
     fn test_let_with_nullable_type() {
-        let prog = parse("val x Int? = null").unwrap();
+        let prog = parse("val x: Int? = null").unwrap();
         match &prog.stmts[0] {
             Stmt::Let { name, type_ann, .. } => {
                 assert_eq!(name, "x");
