@@ -7,8 +7,9 @@ When `assign` to a `List` binding only `rc_dec`s the old root (because another b
 - **Correctness**: unchanged — CoW and alias isolation still hold (`test_insert_exit`, alias stress tests).
 - **Memory**: peak RSS can grow roughly with loop count × tree size until the binding goes out of scope or is reassigned without aliasing peers.
 
-## Mitigation (future)
+## Mitigation
 
+- **P0-3 (enabled)**: `define_list_rc_assign.rs` — post-order release skipping nodes reachable from live scope lists **and the incoming assign value**. Codegen: `emit_rc_release_list_on_assign` in `rc_ops.rs` (passes `new_data_ptr`/`new_height` so RHS-shared nodes are not freed early).
 - Per-node conditional `rc_dec` on assign when safe (see week-plan P0-3).
 - Prefer inner blocks to shorten alias lifetime (`test_list_alias_block.at`).
 

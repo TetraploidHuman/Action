@@ -886,6 +886,106 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(acc)
     }
 
+    /// Release old list on assign when other List bindings exist but roots differ.
+    /// `new_data_ptr` / `new_height` must be included in the live set so nodes shared
+    /// with the incoming value are not freed while the RHS result is still live.
+    pub(super) fn emit_rc_release_list_on_assign(
+        &self,
+        exclude_ptr: PointerValue<'ctx>,
+        old_data_ptr: PointerValue<'ctx>,
+        old_height: IntValue<'ctx>,
+        new_data_ptr: PointerValue<'ctx>,
+        new_height: IntValue<'ctx>,
+    ) -> Result<(), String> {
+        const MAX_LIVE: usize = 8;
+        let i64 = self.i64_ty();
+        let ptr = self.ptr_ty();
+        let mut live: Vec<(PointerValue<'ctx>, IntValue<'ctx>)> =
+            vec![(new_data_ptr, new_height)];
+        let mut scope = &self.scope;
+        loop {
+            for var in scope.local_variables().values() {
+                if var.ptr == exclude_ptr || var.kind != ValKind::List {
+                    continue;
+                }
+                if live.len() >= MAX_LIVE {
+                    break;
+                }
+                let lv = self.load_list(var.ptr)?;
+                let dp = self
+                    .builder
+                    .build_extract_value(lv, 0, "la_dp")
+                    .map_err(llvm_err)?
+                    .into_pointer_value();
+                let h = self
+                    .builder
+                    .build_extract_value(lv, 2, "la_h")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                live.push((dp, h));
+            }
+            if live.len() >= MAX_LIVE {
+                break;
+            }
+            match &scope.parent {
+                Some(p) => scope = p.as_ref(),
+                None => break,
+            }
+        }
+        if live.is_empty() {
+            return self.emit_rc_release_list_root(old_data_ptr, old_height);
+        }
+        let nodes_arr = self
+            .builder
+            .build_array_alloca(ptr, i64.const_int(MAX_LIVE as u64, false), "la_nodes")
+            .map_err(llvm_err)?;
+        let hs_arr = self
+            .builder
+            .build_array_alloca(i64, i64.const_int(MAX_LIVE as u64, false), "la_hs")
+            .map_err(llvm_err)?;
+        for i in 0..MAX_LIVE {
+            let dp = if i < live.len() {
+                live[i].0
+            } else {
+                ptr.const_null()
+            };
+            let h = if i < live.len() {
+                live[i].1
+            } else {
+                i64.const_int(0, false)
+            };
+            let np = unsafe {
+                self.builder
+                    .build_gep(ptr, nodes_arr, &[i64.const_int(i as u64, false)], "la_n")
+                    .map_err(llvm_err)?
+            };
+            let hp = unsafe {
+                self.builder
+                    .build_gep(i64, hs_arr, &[i64.const_int(i as u64, false)], "la_h")
+                    .map_err(llvm_err)?
+            };
+            self.builder.build_store(np, dp).map_err(llvm_err)?;
+            self.builder.build_store(hp, h).map_err(llvm_err)?;
+        }
+        let n = i64.const_int(live.len() as u64, false);
+        let rla_fn = self
+            .module
+            .get_function("action_rc_release_list_on_assign")
+            .ok_or("action_rc_release_list_on_assign not found")?;
+        let _ = self.builder.build_call(
+            rla_fn,
+            &[
+                old_data_ptr.into(),
+                old_height.into(),
+                nodes_arr.into(),
+                hs_arr.into(),
+                n.into(),
+            ],
+            "",
+        );
+        Ok(())
+    }
+
     /// Free an intermediate heap-typed value that is not a scope variable.
     /// Uses rc_inc+rc_dec to safely release. For tree values (List/Map/Set) with RC=1,
     /// this keeps the node alive (1→2→1) — the final scope cleanup handles actual freeing.

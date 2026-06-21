@@ -501,27 +501,11 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?;
             }
             IterMode::List { list_ptr, .. } => {
-                if let Some(cache) = list_get_cache {
-                    let tag = self.list_get_cached_tag(*list_ptr, current_idx, cache)?;
-                    self.builder
-                        .build_store(item_alloca, tag)
-                        .map_err(llvm_err)?;
-                } else {
-                    let loaded = self.load_list(*list_ptr)?;
-                    let list_get_cc =
-                        self.call_rt("action_list_get", &[loaded.into(), current_idx.into()])?;
-                    let fat_elem = list_get_cc
-                        .try_as_basic_value()
-                        .basic()
-                        .ok_or("list_get failed")?;
-                    let tag = self
-                        .builder
-                        .build_extract_value(fat_elem.into_struct_value(), 0, "elem_tag")
-                        .map_err(llvm_err)?;
-                    self.builder
-                        .build_store(item_alloca, tag)
-                        .map_err(llvm_err)?;
-                }
+                let cache = list_get_cache.expect("list for-with-index always has get cache");
+                let tag = self.list_get_cached_tag(*list_ptr, current_idx, cache)?;
+                self.builder
+                    .build_store(item_alloca, tag)
+                    .map_err(llvm_err)?;
             }
         }
 

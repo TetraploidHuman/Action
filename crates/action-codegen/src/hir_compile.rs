@@ -954,8 +954,9 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_conditional_branch(cond, rest_bdy, rest_ext);
                 self.builder.position_at_end(rest_bdy);
-                let elem = self.call_rt("action_list_get", &[list_val.into(), cur.into()])?;
-                let elem_bv = elem.try_as_basic_value().basic().ok_or("rest get fail")?;
+                let get_cache = self.alloc_list_get_cache()?;
+                let elem = self.list_get_cached_fat(list_ptr, cur, get_cache)?;
+                let elem_bv = elem.into_struct_value();
                 let rest_loaded = self.load_list(rest_alloca)?;
                 let _ = self.call_rt("action_list_push", &[rest_loaded.into(), elem_bv.into()])?;
                 let nxt = self

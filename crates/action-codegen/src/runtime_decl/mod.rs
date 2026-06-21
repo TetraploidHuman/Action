@@ -457,6 +457,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.define_list_tree()?;
         self.define_math_ms()?;
         self.define_misc()?;
+        self.define_list_rc_assign()?;
         self.apply_runtime_fn_attrs();
         Ok(())
     }
@@ -470,6 +471,7 @@ mod define_list_core;
 mod define_list_extra;
 mod define_list_insert_rec;
 mod define_list_iter;
+mod define_list_rc_assign;
 mod define_list_tree;
 mod define_list_xform;
 mod define_map;
