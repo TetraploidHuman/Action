@@ -160,7 +160,20 @@ nix-shell --run 'cargo test --release --test diagnostics_json -- --test-threads=
 ./target/release/action run examples/bench_cow.at   # 预期 11
 ```
 
-**CI（`scripts/ci-linux.sh core`）**：debug 冒烟（`bench_cow` / `bench_all` / `bench_concat_depth` / `bench_insert100`）+ **release 冒烟**（`bench_insert2/10/100` + `test_insert_exit`）。Benchmark job 全量 JIT/AOT + `benchmark_regression.py`（含 FAIL 行检测）。
+**CI（`.github/workflows/ci.yml`）**
+
+Linux 侧**全部**在 **自托管 NixOS runner** 上执行，开发/CI 环境由仓库根目录 `shell.nix` 提供（LLVM 21 + Rust），**不**使用 GitHub `ubuntu-latest` 或系统 apt 装 LLVM。
+
+| Job | Runner 标签 | 入口 |
+|-----|-------------|------|
+| Linux CI | `[self-hosted, linux, ci]` | `nix-shell --run "bash scripts/ci-linux.sh core"` |
+| Linux Proptest | `[self-hosted, linux, ci]` | `nix-shell --run "bash scripts/ci-linux.sh proptest"` |
+| Linux Benchmark | `[self-hosted, linux, benchmark]` | `nix-shell --run "bash scripts/ci-linux.sh benchmark"` |
+| Windows CI | `windows-2025`（GitHub hosted） | 下载 LLVM 21 预编译包 + `cargo test` |
+
+`scripts/ci-linux.sh` 在 **nix-shell 内**运行：`fmt`/clippy、155 项 integration、debug/release 冒烟（`bench_cow` / insert 系列 / `test_insert_exit` 等）。Benchmark job 另跑全量 JIT/AOT + `benchmark_regression.py`。
+
+持久化编译缓存：`CARGO_TARGET_DIR` 指向 runner 本地目录（如 `~/桌面/Runner/ci-target`），与开发者本机 `nix-shell` 行为一致。
 
 集成测试 **155 项**为语义权威；重构不得降低通过数。类型标注使用 **colon 语法**（`val x: Int = 1`），与 bootstrap 子集及 `doc/language-spec-outline.md` 一致。
 

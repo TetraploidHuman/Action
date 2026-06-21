@@ -15,7 +15,6 @@
 | ✅ | `ci-linux.sh` release 冒烟；`benchmark_regression.py` FAIL 行检测 |
 | ✅ | Windows release 冒烟（`bench_cow` + `test_insert_exit`） |
 | ✅ | `ARCHITECTURE.md` CI/测试同步 |
-| ⚠️ | `linux-hosted` fallback job 已加但 **wget LLVM 失败**（`continue-on-error`，不挡主 CI） |
 
 ---
 
@@ -24,7 +23,7 @@
 | 轨道 | 目标 | 里程碑 |
 |------|------|--------|
 | A 语义/RC | List 别名路径无 flaky；延迟释放策略可观测、可测 | M1.1 |
-| B CI | hosted fallback 可用；proptest 升格为 blocking | M-CI |
+| B CI | proptest blocking；release 冒烟扩展 | M-CI |
 | C 性能 | AOT `-O2` 基线重刷；insert 系列无回归 | M-perf |
 | D 自举 | M4 lexer golden 框架 + 首版 `bootstrap/lexer.at` 试点 | M4α |
 | E 文档 | 语义大纲 + stdlib 分层（支撑子集冻结） | M-doc |
@@ -58,10 +57,9 @@ done
 
 | ID | 任务 | 说明 | 验收 |
 |----|------|------|------|
-| P1-1 | **修复 `linux-hosted`** | wget 失败（exit 8）：改 `curl -fL --retry 3`、或 `apt` 装 `llvm-21-dev`、或 actions cache LLVM tarball | job 绿或明确 `needs` 文档；不再 exit 8 |
-| P1-2 | **Proptest 升格** | `proptest` job 本地 256 cases × 3 轮稳定后，去掉 `continue-on-error: true` | CI 失败即 blocking |
-| P1-3 | **Scheduled Benchmark** | 确认 cron Benchmark job 在 insert 修复后全绿；失败则查 `benchmark_regression.py` 与 CRASH 行 | schedule run success |
-| P1-4 | **CI 冒烟扩展（可选）** | release 冒烟加 `test_cow_insert_isolation.at`（轻量、秒级） | `ci-linux.sh core` 仍 < 10min |
+| P1-1 | **Proptest 升格** | 256 cases 稳定后去掉 `continue-on-error` | CI 失败即 blocking |
+| P1-2 | **Scheduled Benchmark** | cron Benchmark job 全绿 | schedule run success |
+| P1-3 | **CI 冒烟扩展** | release 冒烟加 `test_cow_insert_isolation.at` | `ci-linux.sh core` 仍合理耗时 |
 
 ---
 
@@ -117,7 +115,7 @@ done
 - [x] insert 系列 bench **30×** release 无 crash
 - [x] `bench_cow.at` → `11`；`map_filter.at` → `210215`
 - [x] `./benchmark.sh --mode aot --opt 2` regression 相对新基线无 CRASH/FAIL
-- [x] Linux / Windows / Benchmark CI 绿；hosted fallback 不再 wget 硬失败
+- [x] Linux（自托管 NixOS）/ Windows / Benchmark CI 绿
 - [x] （若 P1-2 完成）proptest job blocking 且绿
 - [x] （若 P3 完成）`lexer_golden` 或 `bootstrap/README.md` 存在
 - [x] （若 P4 完成）`language-spec-outline.md` + `stdlib-layers.md`
@@ -129,7 +127,7 @@ done
 | 风险 | 缓解 |
 |------|------|
 | 延迟释放导致内存峰值 | P0-2 记录；必要时 P0-3 per-node dec |
-| hosted runner 离线 | P1-1 修好 ubuntu job 作 fallback |
+| 自托管 runner 离线 | 监控 runner 健康；本地 `nix-shell` + `ci-linux.sh` 复现 |
 | 自举范围膨胀 | 严格 `bootstrap-subset.md`；本周只做 lexer 试点 |
 | 性能与语义冲突 | 遵守 `preserve-language-semantics.mdc`；先快检再 benchmark |
 

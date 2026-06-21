@@ -467,7 +467,7 @@ Phase 7: （可选）逐步扩大 Action 前端覆盖，Rust 前端退役
 | 双前端逻辑漂移 | 高 | 自举 compiler 编译结果不一致 | HIR 作为单一真相；golden tests |
 | List/RC 语义 bug | 中 | 自举链崩溃 | M1 前 property tests |
 | 持久化 Map 性能 | 中 | 大项目编译慢 | bootstrap 子集用显式数据结构；或允许 `var` + 可变 buffer FFI |
-| CI runner 不稳定 | 高 | 重构回归难发现 | GitHub hosted fallback job |
+| CI runner 不稳定 | 高 | 重构回归难发现 | 自托管 NixOS runner 监控；本地 `nix-shell` + `scripts/ci-linux.sh` 复现 |
 | 团队规模小 | 中 | 三轨并行人力不足 | 严格优先级：M1 > M2 > M3 > M4 |
 | LLVM 版本升级 | 低 | inkwell 绑定破坏 | 锁定 LLVM 21，计划升级窗口 |
 
