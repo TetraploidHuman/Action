@@ -1314,10 +1314,8 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     pub(crate) fn is_identity_lambda_call_arg(lam: &CallArg<'_>) -> bool {
-        match lam {
-            CallArg::Hir(expr) => Self::is_identity_lambda_hir(expr),
-            _ => false,
-        }
+        let CallArg::Hir(expr) = lam;
+        Self::is_identity_lambda_hir(expr)
     }
 
     pub(crate) fn is_identity_lambda_hir(expr: &action_frontend::hir::HirExpr) -> bool {
