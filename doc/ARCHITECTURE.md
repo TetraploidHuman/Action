@@ -171,7 +171,7 @@ Linux 侧**全部**在 **自托管 NixOS runner** 上执行，开发/CI 环境�
 | Linux Benchmark | `[self-hosted, linux, benchmark]` | `nix-shell --run "bash scripts/ci-linux.sh benchmark"` |
 | Windows CI | `windows-2025`（GitHub hosted） | 下载 LLVM 21 预编译包 + `cargo test` |
 
-`scripts/ci-linux.sh` 在 **nix-shell 内**运行：`fmt`/clippy、155 项 integration、debug/release 冒烟（`bench_cow` / insert 系列 / `test_insert_exit` 等）。Benchmark job 另跑全量 JIT/AOT + `benchmark_regression.py`。
+`scripts/ci-linux.sh` 在 **nix-shell 内**运行：`fmt`/clippy、155 项 integration、debug/release 冒烟（`bench_cow` / insert 系列 / `test_insert_exit` / `test_cow_insert_isolation` 等）。Benchmark job 另跑全量 JIT/AOT + `benchmark_regression.py`。
 
 持久化编译缓存：`CARGO_TARGET_DIR` 指向 runner 本地目录（如 `~/桌面/Runner/ci-target`），与开发者本机 `nix-shell` 行为一致。
 

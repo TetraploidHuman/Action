@@ -13,6 +13,25 @@ When `assign` to a `List` binding only `rc_dec`s the old root (because another b
 - Per-node conditional `rc_dec` on assign when safe (see week-plan P0-3).
 - Prefer inner blocks to shorten alias lifetime (`test_list_alias_block.at`).
 
+## Measured peak RSS (2026-06-21, GNU time MaxRSS)
+
+Environment: self-hosted NixOS, `./target/release/action run`, programs build 2000-element `lst` then 100× or 10× insert alias loop unless noted.
+
+| Program | Pre P0-3 (`4edaec2`, root-only defer) | Post P0-3 (`main`) | Δ |
+|---------|--------------------------------------:|-------------------:|--:|
+| `bench_insert100.at` | 45084 KB | 43648 KB | −3.2% |
+| `test_insert_exit.at` | 44472 KB | 43312 KB | −2.6% |
+| `test_list_alias_block.at` | — | 43812 KB | inner block baseline |
+
+Reproduce:
+
+```bash
+cargo build --release
+bash scripts/measure_mem_peak.sh examples/bench_insert100.at examples/test_insert_exit.at
+```
+
+Compare pre-P0-3: `git worktree add /tmp/pre 4edaec2 && (cd /tmp/pre && cargo build --release && …)`.
+
 ## Baseline
 
-Record peak with `/usr/bin/time -v` or `ps` while running `bench_insert100.at` × N before/after assign-policy changes.
+Record peak with `scripts/measure_mem_peak.sh` or `GNU_TIME=/run/current-system/sw/bin/time` while running `bench_insert100.at` before/after assign-policy changes.

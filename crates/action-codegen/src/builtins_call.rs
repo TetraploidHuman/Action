@@ -179,8 +179,13 @@ impl<'ctx> CodeGen<'ctx> {
                     .append_basic_block(current_fn, "ufcs_get_merge");
                 let _ = self.builder.build_conditional_branch(oob, none_bb, some_bb);
                 self.builder.position_at_end(some_bb);
-                let elem = self.call_rt("action_list_get", &[lv.into(), iv.into()])?;
-                let elem_bv = elem.try_as_basic_value().basic().ok_or("get failed")?;
+                let elem_bv = if let Some(cache) = self.list_loop_get_cache {
+                    self.list_get_cached_fat(lp, iv, cache)?.into()
+                } else {
+                    let elem = self.call_rt("action_list_get", &[lv.into(), iv.into()])?;
+                    elem.try_as_basic_value().basic().ok_or("get failed")?
+                };
+                let elem_bv = elem_bv.into_struct_value();
                 let nullable_ty = self.get_nullable_type(self.string_type.into(), "Nullable<Str>");
                 let some_struct = {
                     let undef = nullable_ty.get_undef();

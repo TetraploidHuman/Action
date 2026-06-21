@@ -1,6 +1,6 @@
 # 一周改进计划（2026-06-21 → 2026-06-27）
 
-> **基线**：`main` @ `08ed31a`（insert_rec CoW、release 冒烟、152 integration 全绿、CI 五 job 绿）  
+> **基线**：`main` @ `7aaa858`（P0-3 assign per-node RC、155 integration 全绿、CI 绿）  
 > **优先级**：**正确性 & RC** > **CI 门禁** > **性能基线** > **自举 M4 起步** > **文档**
 
 ---
@@ -37,9 +37,9 @@
 | ID | 任务 | 说明 | 验收 |
 |----|------|------|------|
 | P0-1 | **别名压力集成测试** | `append`/`remove`/`insert` 与 `lst`+`ins` 同作用域；内层 block 提前释放一条绑定 | 新增 2–3 个 `.at` + integration；30× release 无 SIGABRT |
-| P0-2 | **延迟释放可观测性** | assign 仅 `rc_dec` 根时，大循环 insert 内存峰值可记录（`scripts/` 小脚本或 `bench_insert*` 注释基线） | 文档或 issue 记录峰值；无静默 OOM |
-| P0-3 | **per-node RC 释放（可选）** | 若 P0-1 仍 flaky：assign 时对旧根子树 walk + 条件 dec，替代 scope 批量整树释放 | `test_rc_pressure` / `test_rc_cycle` 绿；insert 30× 稳定 |
-| P0-4 | **修正测试计数** | `ARCHITECTURE.md` 写 153，实际 `integration.rs` 为 **152** | 文档与 `cargo test` 输出一致 |
+| P0-2 | **延迟释放可观测性** ✅ | assign 大循环 insert 内存峰值可记录（`scripts/measure_mem_peak.sh` + `mem_peak_note.md`） | 已记录 pre/post P0-3 MaxRSS（−2.6%～−3.2%） |
+| P0-3 | **per-node RC 释放** ✅ | assign 时对旧根子树 walk + 条件 dec，跳过 live 绑定与 RHS 新值 | `test_rc_pressure` / insert 30× 稳定；`define_list_rc_assign.rs` |
+| P0-4 | **修正测试计数** ✅ | `ARCHITECTURE.md` 与 `integration.rs` 均为 **155** | 已一致 |
 
 **快检命令：**
 
@@ -57,9 +57,9 @@ done
 
 | ID | 任务 | 说明 | 验收 |
 |----|------|------|------|
-| P1-1 | **Proptest 升格** | 256 cases 稳定后去掉 `continue-on-error` | CI 失败即 blocking |
+| P1-1 | **Proptest 升格** ✅ | 256 cases；`ci.yml` 无 `continue-on-error` | CI blocking 且绿 |
 | P1-2 | **Scheduled Benchmark** | cron Benchmark job 全绿 | schedule run success |
-| P1-3 | **CI 冒烟扩展** | release 冒烟加 `test_cow_insert_isolation.at` | `ci-linux.sh core` 仍合理耗时 |
+| P1-3 | **CI 冒烟扩展** ✅ | release 冒烟含 `test_cow_insert_isolation.at` | `ci-linux.sh` 第 90 行已含 |
 
 ---
 
@@ -67,10 +67,10 @@ done
 
 | ID | 任务 | 说明 | 验收 |
 |----|------|------|------|
-| P2-1 | **AOT 基线重刷** | `./benchmark.sh --mode aot --opt 2 -n 5` → 更新 `benchmark_results_aot_o2.txt` | Benchmark job regression 绿；commit 注明「post insert_rec CoW」 |
-| P2-2 | **JIT 对照** | 同参数 JIT 结果写入 `benchmark_results.txt` 或 CI artifact 对比 | `perf_report.py` Top5 无意外 CRASH |
-| P2-3 | **`list_get_cached` 缺口** | 扫 `builtins_iter.rs` / `for_loop.rs` 仍用 `action_list_get` 的热路径；能换则换 cached | AOT `bench_map_filter` / `bench_fold` 有 measurable 收益或明确「无缺口」记录 |
-| P2-4 | **Map rebuild 采样** | `define_map.rs` rebuild 是否在 `bench_map_*` 占主导；仅记录热点，**本周不强行改算法** | `perf_phase_split.py` 笔记入 `doc/week-plan.md` 或 issue |
+| P2-1 | **AOT 基线重刷** ✅ | `./benchmark.sh --mode aot --opt 2 -n 5` → `benchmark_results_aot_o2.txt` | post P0-3 + list_get_cached |
+| P2-2 | **JIT 对照** ✅ | `./benchmark.sh -n 3` → `benchmark_results.txt` | 已重刷 |
+| P2-3 | **`list_get_cached` 缺口** ✅ | `for_loop`/`hir_compile`/`misc` index + UFCS `get` 在顺序 for 内用 loop cache | 见 `perf_map_note.md` |
+| P2-4 | **Map rebuild 采样** ✅ | `bench_map_10k` JIT ~133–137 ms；AOT exe ~7–8 ms；rebuild 非 step smoke 主导 | `scripts/perf_map_note.md` |
 
 ---
 

@@ -908,6 +908,22 @@ impl<'ctx> CodeGen<'ctx> {
         condition: &action_frontend::hir::HirExpr,
         body: &action_frontend::hir::HirExpr,
     ) -> Result<TypedValue<'ctx>, String> {
+        use action_frontend::ast::BinaryOp;
+        use action_frontend::hir::HirExprKind;
+
+        let saved_cache = self.list_loop_get_cache;
+        if let Some((_, idx_var)) = Self::find_sequential_list_access_in_hir(body) {
+            if Self::body_increments_var_hir(body, &idx_var) {
+                if let HirExprKind::Binary(lhs, BinaryOp::Lt, _) = &condition.kind {
+                    if let HirExprKind::Ident(cond_var) = &lhs.kind {
+                        if cond_var == &idx_var {
+                            self.list_loop_get_cache = Some(self.alloc_list_get_cache()?);
+                        }
+                    }
+                }
+            }
+        }
+
         let current_fn = self
             .builder
             .get_insert_block()
@@ -951,6 +967,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(exit);
         self.continue_target = saved_continue;
         self.break_target = saved_break;
+        self.list_loop_get_cache = saved_cache;
 
         Ok(TypedValue::Unit)
     }
@@ -1037,7 +1054,7 @@ impl<'ctx> CodeGen<'ctx> {
             },
             _ => return Ok(None),
         };
-        let (list_hir, get_idx_var) = match Self::find_list_get_in_hir(body) {
+        let (list_hir, get_idx_var) = match Self::find_sequential_list_access_in_hir(body) {
             Some(v) => v,
             None => return Ok(None),
         };
@@ -1059,6 +1076,51 @@ impl<'ctx> CodeGen<'ctx> {
         };
         self.compile_sequential_list_get_loop(list_ptr, end_bound)
             .map(Some)
+    }
+
+    fn find_sequential_list_access_in_hir(body: &HirExpr) -> Option<(HirExpr, String)> {
+        Self::find_list_get_in_hir(body).or_else(|| Self::find_list_index_in_hir(body))
+    }
+
+    fn find_list_index_in_hir(body: &HirExpr) -> Option<(HirExpr, String)> {
+        use action_frontend::hir::HirExprKind;
+        match &body.kind {
+            HirExprKind::Block(stmts) => {
+                for stmt in stmts {
+                    if let Some(v) = Self::find_list_index_in_hir_stmt(stmt) {
+                        return Some(v);
+                    }
+                }
+                None
+            }
+            _ => Self::find_list_index_in_hir_inner(body),
+        }
+    }
+
+    fn find_list_index_in_hir_stmt(
+        stmt: &action_frontend::hir::HirStmt,
+    ) -> Option<(HirExpr, String)> {
+        use action_frontend::hir::HirStmt;
+        match stmt {
+            HirStmt::Let { value, .. } => Self::find_list_index_in_hir_inner(value),
+            HirStmt::Expr { expr, .. } => Self::find_list_index_in_hir_inner(expr),
+            _ => None,
+        }
+    }
+
+    fn find_list_index_in_hir_inner(expr: &HirExpr) -> Option<(HirExpr, String)> {
+        use action_frontend::hir::HirExprKind;
+        match &expr.kind {
+            HirExprKind::Index(obj, idx) => {
+                if let HirExprKind::Ident(name) = &idx.kind {
+                    Some((obj.as_ref().clone(), name.clone()))
+                } else {
+                    None
+                }
+            }
+            HirExprKind::Block(_) => Self::find_list_index_in_hir(expr),
+            _ => None,
+        }
     }
 
     fn find_list_get_in_hir(body: &HirExpr) -> Option<(HirExpr, String)> {

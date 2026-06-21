@@ -180,7 +180,27 @@ impl<'ctx> CodeGen<'ctx> {
             _ => return Err("Index must be an integer".to_string()),
         };
         match obj_val {
-            TypedValue::List(list_ptr) | TypedValue::LazyList(list_ptr) => {
+            TypedValue::List(list_ptr) => {
+                let fat = if let Some(cache) = self.list_loop_get_cache {
+                    self.list_get_cached_fat(list_ptr, index_val, cache)?
+                        .into_struct_value()
+                } else {
+                    let list_val = self.load_list(list_ptr)?;
+                    let cc =
+                        self.call_rt("action_list_get", &[list_val.into(), index_val.into()])?;
+                    cc.try_as_basic_value()
+                        .basic()
+                        .ok_or("list_get failed")?
+                        .into_struct_value()
+                };
+                let alloca = self
+                    .builder
+                    .build_alloca(self.string_type, "list_elem")
+                    .map_err(llvm_err)?;
+                self.builder.build_store(alloca, fat).map_err(llvm_err)?;
+                Ok(TypedValue::Str(alloca))
+            }
+            TypedValue::LazyList(list_ptr) => {
                 let list_val = self.load_list(list_ptr)?;
                 let cc = self.call_rt("action_list_get", &[list_val.into(), index_val.into()])?;
                 match cc.try_as_basic_value().basic() {

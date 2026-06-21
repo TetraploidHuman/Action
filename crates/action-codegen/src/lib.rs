@@ -395,6 +395,8 @@ pub struct CodeGen<'ctx> {
     pub(crate) continue_target: Option<inkwell::basic_block::BasicBlock<'ctx>>,
     /// Target block for `break` — set inside for loops, cleared on exit
     pub(crate) break_target: Option<inkwell::basic_block::BasicBlock<'ctx>>,
+    /// When compiling a sequential `for i < n` loop that indexes a List, reuse one get cache.
+    pub(crate) list_loop_get_cache: Option<inkwell::values::PointerValue<'ctx>>,
     /// Extension method mapping: "TypeName.method" → "TypeName_method"
     pub(crate) extension_methods: HashMap<String, String>,
     /// TCO (Tail Call Optimization) state for the current function.
@@ -592,6 +594,7 @@ impl<'ctx> CodeGen<'ctx> {
             consts: HashMap::new(),
             continue_target: None,
             break_target: None,
+            list_loop_get_cache: None,
             extension_methods: HashMap::new(),
             tco_state: None,
             coroutine_collector: None,

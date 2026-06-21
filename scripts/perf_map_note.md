@@ -1,16 +1,25 @@
 # Map / runtime hotspot notes (2026-06-21)
 
-From `python3 scripts/perf_phase_split.py` (JIT full path, `-O0`):
+From `./benchmark.sh` (post P0-3 assign RC + list loop cache):
 
-| Benchmark | jit+rt (ms) | Notes |
-|-----------|-------------|--------|
-| `bench_all.at` | ~287 | List CoW + concat + method chain |
-| `bench_insert100` (via bisect) | ~266 | insert alias assign path |
-| `bench_cow.at` | ~113 | CoW property micro |
-| `bench_for_method.at` | ~110 | for + UFCS; `list_get_cached` used in iter |
+| Benchmark | JIT (ms) | AOT -O2 exe (ms) | Notes |
+|-----------|----------|------------------|--------|
+| `bench_all.at` | 215–220 | 25–29 | List CoW + concat + method chain |
+| `bench_insert100.at` | 153–249 | 8–11 | insert alias + assign release |
+| `bench_cow.at` | 132–108 | — | CoW micro |
+| `bench_for_method.at` | 137–113 | — | for + UFCS; iter cached |
+| `bench_map_10k.at` | 133–137 | 7–8 | Map O(n) ops; rebuild not step-smoke dominant |
+| `bench_map.at` | 130–135 | 4–5 | small map |
 
-**Codegen scan**: `builtins_iter.rs` already uses `list_get_cached_fat`. Remaining `action_list_get` in UFCS one-shots (`builtins_call.rs`) and `misc.rs` index — not sequential loops.
+**Codegen — list_get_cached (P2-3):**
 
-**Map rebuild**: not dominant in step1–6 smoke; profile `bench_map_10k.at` before changing `define_map.rs`.
+| Path | Status |
+|------|--------|
+| `builtins_iter.rs` | all loop walks use `list_get_cached_fat` |
+| `for_loop.rs` | `for (i,x) in list`, sequential peephole, **`list_loop_get_cache` on `for i < n` body** |
+| `hir_compile.rs` | list rest-destructure tail uses cached get |
+| `misc.rs` | `lst[i]` uses loop cache when inside sequential condition-for |
+| `builtins_call.rs` | UFCS `.get(i)` uses loop cache in same context |
+| `builtins_call.rs` head/last | single-shot; leave uncached |
 
-**Perf changes landed**: `for_loop.rs` always cached for `for (i,x) in list`; `hir_compile.rs` rest-destructure tail uses cached get.
+**Map rebuild:** profile before changing `define_map.rs`; `bench_map_10k` total JIT ~135 ms — dominated by compile+run overhead on medium workload, not List insert path.
