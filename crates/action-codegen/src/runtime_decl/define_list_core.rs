@@ -2601,8 +2601,12 @@ impl<'ctx> CodeGen<'ctx> {
         );
         let ls_entry = self.context.append_basic_block(list_set_fn, "entry");
         let ls_concat = self.context.append_basic_block(list_set_fn, "concat");
-        let ls_concat_set_left = self.context.append_basic_block(list_set_fn, "concat_set_left");
-        let ls_concat_set_right = self.context.append_basic_block(list_set_fn, "concat_set_right");
+        let ls_concat_set_left = self
+            .context
+            .append_basic_block(list_set_fn, "concat_set_left");
+        let ls_concat_set_right = self
+            .context
+            .append_basic_block(list_set_fn, "concat_set_right");
         let ls_normal = self.context.append_basic_block(list_set_fn, "normal");
         let ls_h0 = self.context.append_basic_block(list_set_fn, "h0");
         let ls_h0_cow = self.context.append_basic_block(list_set_fn, "h0_cow");
@@ -3099,15 +3103,11 @@ impl<'ctx> CodeGen<'ctx> {
                 "lw_lok",
             )
             .map_err(llvm_err)?;
-        let _ = self.builder.build_conditional_branch(
-            lw_left_ok,
-            lw_concat_found,
-            lw_concat_right,
-        );
-        self.builder.position_at_end(lw_concat_found);
         let _ = self
             .builder
-            .build_return(Some(&b1.const_int(1, false)));
+            .build_conditional_branch(lw_left_ok, lw_concat_found, lw_concat_right);
+        self.builder.position_at_end(lw_concat_found);
+        let _ = self.builder.build_return(Some(&b1.const_int(1, false)));
         self.builder.position_at_end(lw_concat_right);
         let lw_right_hit = self
             .builder

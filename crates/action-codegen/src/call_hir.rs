@@ -231,8 +231,7 @@ impl<'ctx> CodeGen<'ctx> {
                             return self.fused_map_filter_hir(map_inner, base_list, filter_fn_val);
                         }
                     }
-                    let mf_list =
-                        self.fused_map_filter_hir(map_inner, base_list, filter_fn_val)?;
+                    let mf_list = self.fused_map_filter_hir(map_inner, base_list, filter_fn_val)?;
                     return self.map_walk_list_value(map_fn, mf_list);
                 }
                 let inner_val = self.compile_hir_expr(inner)?;

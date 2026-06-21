@@ -30,11 +30,8 @@ impl<'ctx> CodeGen<'ctx> {
                                     filter_fn_val,
                                 );
                             }
-                            let mf_list = self.fused_map_filter_hir(
-                                map_inner_hir,
-                                base_list,
-                                filter_fn_val,
-                            )?;
+                            let mf_list =
+                                self.fused_map_filter_hir(map_inner_hir, base_list, filter_fn_val)?;
                             let outer_fn = self.compile_call_arg(lam)?;
                             return self.map_walk_list_value(outer_fn, mf_list);
                         }

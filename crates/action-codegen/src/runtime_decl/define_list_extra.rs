@@ -156,10 +156,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_conditional_branch(lz_cond, lz_body, lz_done);
         self.builder.position_at_end(lz_body);
-        let lz_get_cached_fn = self
-            .module
-            .get_function("action_list_get_cached")
-            .unwrap();
+        let lz_get_cached_fn = self.module.get_function("action_list_get_cached").unwrap();
         let lz_av = self
             .builder
             .build_call(
@@ -531,10 +528,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_conditional_branch(wi_cond, wi_body, wi_done);
         self.builder.position_at_end(wi_body);
-        let wi_get_cached_fn = self
-            .module
-            .get_function("action_list_get_cached")
-            .unwrap();
+        let wi_get_cached_fn = self.module.get_function("action_list_get_cached").unwrap();
         let wi_ev = self
             .builder
             .build_call(
@@ -683,10 +677,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_conditional_branch(unq_cond, unq_body, unq_done);
         self.builder.position_at_end(unq_body);
-        let unq_get_cached_fn = self
-            .module
-            .get_function("action_list_get_cached")
-            .unwrap();
+        let unq_get_cached_fn = self.module.get_function("action_list_get_cached").unwrap();
         let unq_ev = self
             .builder
             .build_call(

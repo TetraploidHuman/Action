@@ -1272,9 +1272,9 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(IntPredicate::EQ, lrm_idx_final, lrm_z, "is_idx0")
             .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(lrm_is_idx0, lrm_drop0_entry, lrm_after_drop0);
+        let _ =
+            self.builder
+                .build_conditional_branch(lrm_is_idx0, lrm_drop0_entry, lrm_after_drop0);
         self.builder.position_at_end(lrm_drop0_entry);
         let lrm_drop_fn_e = self.module.get_function("action_list_drop").unwrap();
         let lrm_drop0_e = self
@@ -3039,10 +3039,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(i64, ch_i, "cur_i")
             .map_err(llvm_err)?
             .into_int_value();
-        let ch_get_cached_fn = self
-            .module
-            .get_function("action_list_get_cached")
-            .unwrap();
+        let ch_get_cached_fn = self.module.get_function("action_list_get_cached").unwrap();
         let ch_ev = self
             .builder
             .build_call(
@@ -3240,10 +3237,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_add(wn_iv, wn_jv, "epi")
             .map_err(llvm_err)?;
-        let wn_get_cached_fn = self
-            .module
-            .get_function("action_list_get_cached")
-            .unwrap();
+        let wn_get_cached_fn = self.module.get_function("action_list_get_cached").unwrap();
         let wn_ev = self
             .builder
             .build_call(
