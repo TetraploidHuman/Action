@@ -900,8 +900,7 @@ impl<'ctx> CodeGen<'ctx> {
         const MAX_LIVE: usize = 8;
         let i64 = self.i64_ty();
         let ptr = self.ptr_ty();
-        let mut live: Vec<(PointerValue<'ctx>, IntValue<'ctx>)> =
-            vec![(new_data_ptr, new_height)];
+        let mut live: Vec<(PointerValue<'ctx>, IntValue<'ctx>)> = vec![(new_data_ptr, new_height)];
         let mut scope = &self.scope;
         loop {
             for var in scope.local_variables().values() {

@@ -543,7 +543,10 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(ptr, rec_ce, "ch")
             .map_err(llvm_err)?
             .into_pointer_value();
-        let rec_ch_null = self.builder.build_is_null(rec_child, "cn").map_err(llvm_err)?;
+        let rec_ch_null = self
+            .builder
+            .build_is_null(rec_child, "cn")
+            .map_err(llvm_err)?;
         let rec_ch_do = self.context.append_basic_block(rla_rec_fn, "ch_do");
         let _ = self
             .builder

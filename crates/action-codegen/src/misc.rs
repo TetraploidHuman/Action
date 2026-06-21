@@ -882,20 +882,16 @@ impl<'ctx> CodeGen<'ctx> {
                     let list_ar_bb = self.context.append_basic_block(fn_val, "asg_list_ar");
                     let list_full_bb = self.context.append_basic_block(fn_val, "asg_list_full");
                     let list_dec_done = self.context.append_basic_block(fn_val, "asg_list_done");
-                    let _ = self.builder.build_conditional_branch(
-                        is_shared,
-                        list_sh_bb,
-                        list_pick_bb,
-                    );
+                    let _ =
+                        self.builder
+                            .build_conditional_branch(is_shared, list_sh_bb, list_pick_bb);
                     self.builder.position_at_end(list_sh_bb);
                     self.rc_dec(data_ptr)?;
                     let _ = self.builder.build_unconditional_branch(list_dec_done);
                     self.builder.position_at_end(list_pick_bb);
-                    let _ = self.builder.build_conditional_branch(
-                        other_list,
-                        list_ar_bb,
-                        list_full_bb,
-                    );
+                    let _ =
+                        self.builder
+                            .build_conditional_branch(other_list, list_ar_bb, list_full_bb);
                     self.builder.position_at_end(list_ar_bb);
                     let (new_data_ptr, new_height) = match &v {
                         TypedValue::List(np) => {
