@@ -1213,6 +1213,8 @@ impl<'ctx> CodeGen<'ctx> {
         );
         let lrm_entry = self.context.append_basic_block(lrm_fn, "entry");
         let lrm_concat = self.context.append_basic_block(lrm_fn, "concat");
+        let lrm_concat_rm_left = self.context.append_basic_block(lrm_fn, "concat_rm_left");
+        let lrm_concat_rm_right = self.context.append_basic_block(lrm_fn, "concat_rm_right");
         let lrm_normal = self.context.append_basic_block(lrm_fn, "normal");
         let lrm_h0 = self.context.append_basic_block(lrm_fn, "h0");
         let lrm_h0_cow = self.context.append_basic_block(lrm_fn, "h0_cow");
@@ -1297,48 +1299,156 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self
             .builder
             .build_conditional_branch(lrm_is_concat, lrm_concat, lrm_normal);
-        // ConcatNode: take + drop(idx+1) + concat (range walk)
+        // ConcatNode: lazy dispatch — remove in left/right subtree, rebuild via concat
         self.builder.position_at_end(lrm_concat);
-        let lrm_cn_take_fn = self.module.get_function("action_list_take").unwrap();
-        let lrm_cn_drop_fn = self.module.get_function("action_list_drop").unwrap();
-        let lrm_cn_concat_fn = self.module.get_function("action_list_concat").unwrap();
+        let lrm_cn_ln_p = unsafe {
+            self.builder
+                .build_gep(ptr, lrm_node, &[i64.const_int(2, false)], "cn_ln_p")
+                .map_err(llvm_err)
+        }?;
+        let lrm_cn_left_node = self
+            .builder
+            .build_load(ptr, lrm_cn_ln_p, "cn_ln")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let lrm_cn_ll_p = unsafe {
+            self.builder
+                .build_gep(i64, lrm_node, &[i64.const_int(3, false)], "cn_ll_p")
+                .map_err(llvm_err)
+        }?;
+        let lrm_cn_left_len = self
+            .builder
+            .build_load(i64, lrm_cn_ll_p, "cn_ll")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let lrm_cn_lh_p = unsafe {
+            self.builder
+                .build_gep(i64, lrm_node, &[i64.const_int(4, false)], "cn_lh_p")
+                .map_err(llvm_err)
+        }?;
+        let lrm_cn_left_h = self
+            .builder
+            .build_load(i64, lrm_cn_lh_p, "cn_lh")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let lrm_cn_l_undef = self.list_type.get_undef();
+        let lrm_cn_l1 = self
+            .builder
+            .build_insert_value(lrm_cn_l_undef, lrm_cn_left_node, 0, "cn_l1")
+            .map_err(llvm_err)?;
+        let lrm_cn_l2 = self
+            .builder
+            .build_insert_value(lrm_cn_l1, lrm_cn_left_len, 1, "cn_l2")
+            .map_err(llvm_err)?;
         let lrm_cn_left = self
             .builder
-            .build_call(
-                lrm_cn_take_fn,
-                &[lrm_list.into(), lrm_idx_final.into()],
-                "cn_left",
-            )
+            .build_insert_value(lrm_cn_l2, lrm_cn_left_h, 2, "cn_left")
             .map_err(llvm_err)?
-            .try_as_basic_value()
-            .unwrap_basic()
             .into_struct_value();
-        let lrm_cn_idxp1 = self
+        let lrm_cn_rn_p = unsafe {
+            self.builder
+                .build_gep(ptr, lrm_node, &[i64.const_int(5, false)], "cn_rn_p")
+                .map_err(llvm_err)
+        }?;
+        let lrm_cn_right_node = self
             .builder
-            .build_int_add(lrm_idx_final, lrm_one, "cn_idxp1")
+            .build_load(ptr, lrm_cn_rn_p, "cn_rn")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let lrm_cn_rl_p = unsafe {
+            self.builder
+                .build_gep(i64, lrm_node, &[i64.const_int(6, false)], "cn_rl_p")
+                .map_err(llvm_err)
+        }?;
+        let lrm_cn_right_len = self
+            .builder
+            .build_load(i64, lrm_cn_rl_p, "cn_rl")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let lrm_cn_rh_p = unsafe {
+            self.builder
+                .build_gep(i64, lrm_node, &[i64.const_int(7, false)], "cn_rh_p")
+                .map_err(llvm_err)
+        }?;
+        let lrm_cn_right_h = self
+            .builder
+            .build_load(i64, lrm_cn_rh_p, "cn_rh")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let lrm_cn_r_undef = self.list_type.get_undef();
+        let lrm_cn_r1 = self
+            .builder
+            .build_insert_value(lrm_cn_r_undef, lrm_cn_right_node, 0, "cn_r1")
+            .map_err(llvm_err)?;
+        let lrm_cn_r2 = self
+            .builder
+            .build_insert_value(lrm_cn_r1, lrm_cn_right_len, 1, "cn_r2")
             .map_err(llvm_err)?;
         let lrm_cn_right = self
             .builder
-            .build_call(
-                lrm_cn_drop_fn,
-                &[lrm_list.into(), lrm_cn_idxp1.into()],
-                "cn_right",
-            )
+            .build_insert_value(lrm_cn_r2, lrm_cn_right_h, 2, "cn_right")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let lrm_cn_lt = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, lrm_idx_final, lrm_cn_left_len, "cn_lt")
+            .map_err(llvm_err)?;
+        let lrm_cn_chk_right = self.context.append_basic_block(lrm_fn, "concat_chk_right");
+        let _ =
+            self.builder
+                .build_conditional_branch(lrm_cn_lt, lrm_concat_rm_left, lrm_cn_chk_right);
+        self.builder.position_at_end(lrm_cn_chk_right);
+        let _ = self.builder.build_unconditional_branch(lrm_concat_rm_right);
+
+        let lrm_concat_fn = self.module.get_function("action_list_concat").unwrap();
+
+        self.builder.position_at_end(lrm_concat_rm_left);
+        let lrm_cn_new_left = self
+            .builder
+            .build_call(lrm_fn, &[lrm_cn_left.into(), lrm_idx_final.into()], "cn_nl")
             .map_err(llvm_err)?
             .try_as_basic_value()
             .unwrap_basic()
             .into_struct_value();
-        let lrm_cn_res = self
+        let lrm_cn_rl_res = self
             .builder
             .build_call(
-                lrm_cn_concat_fn,
-                &[lrm_cn_left.into(), lrm_cn_right.into()],
-                "cn_res",
+                lrm_concat_fn,
+                &[lrm_cn_new_left.into(), lrm_cn_right.into()],
+                "cn_rl_res",
             )
             .map_err(llvm_err)?
             .try_as_basic_value()
             .unwrap_basic();
-        let _ = self.builder.build_return(Some(&lrm_cn_res));
+        let _ = self.builder.build_return(Some(&lrm_cn_rl_res));
+
+        self.builder.position_at_end(lrm_concat_rm_right);
+        let lrm_cn_new_idx = self
+            .builder
+            .build_int_sub(lrm_idx_final, lrm_cn_left_len, "cn_ni")
+            .map_err(llvm_err)?;
+        let lrm_cn_new_right = self
+            .builder
+            .build_call(
+                lrm_fn,
+                &[lrm_cn_right.into(), lrm_cn_new_idx.into()],
+                "cn_nr",
+            )
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_struct_value();
+        let lrm_cn_rr_res = self
+            .builder
+            .build_call(
+                lrm_concat_fn,
+                &[lrm_cn_left.into(), lrm_cn_new_right.into()],
+                "cn_rr_res",
+            )
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic();
+        let _ = self.builder.build_return(Some(&lrm_cn_rr_res));
         // Normal path: check h=0 vs h>0
         self.builder.position_at_end(lrm_normal);
         let zr = i64.const_int(0, false);
@@ -2934,19 +3044,6 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(ch_entry);
         let ch_in = ch_fn.get_first_param().unwrap().into_struct_value();
         let ch_csize = ch_fn.get_nth_param(1).unwrap().into_int_value();
-        let ch_i8 = self.context.i8_type();
-        let ch_ptr = self.ptr_ty();
-        let ch_cache_a = self
-            .builder
-            .build_alloca(ch_i8.array_type(32), "ch_cache")
-            .map_err(llvm_err)?;
-        let ch_cache_i8 = self
-            .builder
-            .build_pointer_cast(ch_cache_a, ch_ptr, "ch_cache_i8")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(ch_cache_i8, ch_i8.const_int(0, false))
-            .map_err(llvm_err)?;
 
         let ch_len = self
             .builder
@@ -2991,107 +3088,33 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_conditional_branch(ch_cond, ch_body, ch_done);
         self.builder.position_at_end(ch_body);
-        let ch_subl = self.call_rt("action_list_create", &[ch_csafe.into()])?;
-        let ch_sublv = ch_subl.try_as_basic_value().unwrap_basic();
-        let ch_sa = self
+        let ch_slice_fn = self.module.get_function("action_list_slice").unwrap();
+        let ch_end_raw = self
             .builder
-            .build_alloca(self.list_type, "ch_sa")
+            .build_int_add(ch_iv, ch_csafe, "end_raw")
             .map_err(llvm_err)?;
-        self.builder
-            .build_store(ch_sa, ch_sublv)
-            .map_err(llvm_err)?;
-        let ch_j = self.builder.build_alloca(i64, "ch_j").map_err(llvm_err)?;
-        self.builder
-            .build_store(ch_j, i64.const_int(0, false))
-            .map_err(llvm_err)?;
-        let ch_iloop = self.context.append_basic_block(ch_fn, "iloop");
-        let ch_ibody = self.context.append_basic_block(ch_fn, "ibody");
-        let ch_idone = self.context.append_basic_block(ch_fn, "idone");
-        let _ = self.builder.build_unconditional_branch(ch_iloop);
-        self.builder.position_at_end(ch_iloop);
-        let ch_jv = self
-            .builder
-            .build_load(i64, ch_j, "jv")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let ch_jc = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, ch_jv, ch_csafe, "jc")
-            .map_err(llvm_err)?;
-        let ch_end = self
-            .builder
-            .build_int_compare(IntPredicate::SGE, ch_iv, ch_len, "end")
-            .map_err(llvm_err)?;
-        let ch_ic = self
-            .builder
-            .build_and(
-                ch_jc,
-                self.builder.build_not(ch_end, "").map_err(llvm_err)?,
-                "ic",
-            )
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(ch_ic, ch_ibody, ch_idone);
-        self.builder.position_at_end(ch_ibody);
-        let ch_cur_i = self
-            .builder
-            .build_load(i64, ch_i, "cur_i")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let ch_get_cached_fn = self.module.get_function("action_list_get_cached").unwrap();
-        let ch_ev = self
+        let ch_sl_cc = self
             .builder
             .build_call(
-                ch_get_cached_fn,
-                &[ch_in.into(), ch_cur_i.into(), ch_cache_a.into()],
-                "ev",
+                ch_slice_fn,
+                &[ch_in.into(), ch_iv.into(), ch_end_raw.into()],
+                "sl",
             )
             .map_err(llvm_err)?
             .try_as_basic_value()
-            .basic()
-            .ok_or("get failed")?
+            .unwrap_basic()
             .into_struct_value();
-        let ch_cl = self
-            .builder
-            .build_load(self.list_type, ch_sa, "cl")
-            .map_err(llvm_err)?
-            .into_struct_value();
-        let ch_ps = self.call_rt(
-            "action_list_push",
-            &[ch_cl.into(), ch_ev.as_basic_value_enum().into()],
-        )?;
-        self.builder
-            .build_store(ch_sa, ch_ps.try_as_basic_value().unwrap_basic())
-            .map_err(llvm_err)?;
-        let ch_ivi = self
-            .builder
-            .build_int_add(ch_cur_i, i64.const_int(1, false), "ivi")
-            .map_err(llvm_err)?;
-        self.builder.build_store(ch_i, ch_ivi).map_err(llvm_err)?;
-        let ch_jvi = self
-            .builder
-            .build_int_add(ch_jv, i64.const_int(1, false), "jvi")
-            .map_err(llvm_err)?;
-        self.builder.build_store(ch_j, ch_jvi).map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(ch_iloop);
-        self.builder.position_at_end(ch_idone);
         let ch_subl_fat = self.string_type.get_undef();
         let ch_sublft = self
             .builder
             .build_insert_value(ch_subl_fat, i64.const_int(6, false), 0, "st")
             .map_err(llvm_err)?;
-        let ch_subl_l = self
-            .builder
-            .build_load(self.list_type, ch_sa, "sl")
-            .map_err(llvm_err)?
-            .into_struct_value();
         let ch_sp = self
             .builder
             .build_alloca(self.list_type, "ch_sp")
             .map_err(llvm_err)?;
         self.builder
-            .build_store(ch_sp, ch_subl_l)
+            .build_store(ch_sp, ch_sl_cc)
             .map_err(llvm_err)?;
         let ch_sublfv = self
             .builder
@@ -3109,6 +3132,24 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(ch_ra, ch_rps.try_as_basic_value().unwrap_basic())
             .map_err(llvm_err)?;
+        let ch_rem = self
+            .builder
+            .build_int_sub(ch_len, ch_iv, "rem")
+            .map_err(llvm_err)?;
+        let ch_step_gt = self
+            .builder
+            .build_int_compare(IntPredicate::SGT, ch_rem, ch_csafe, "step_gt")
+            .map_err(llvm_err)?;
+        let ch_step = self
+            .builder
+            .build_select(ch_step_gt, ch_csafe, ch_rem, "step")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let ch_niv = self
+            .builder
+            .build_int_add(ch_iv, ch_step, "niv")
+            .map_err(llvm_err)?;
+        self.builder.build_store(ch_i, ch_niv).map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(ch_loop);
         self.builder.position_at_end(ch_done);
         let ch_rt = self
@@ -3128,19 +3169,6 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(wn_entry);
         let wn_in = wn_fn.get_first_param().unwrap().into_struct_value();
         let wn_wsize = wn_fn.get_nth_param(1).unwrap().into_int_value();
-        let wn_i8 = self.context.i8_type();
-        let wn_ptr = self.ptr_ty();
-        let wn_cache_a = self
-            .builder
-            .build_alloca(wn_i8.array_type(32), "wn_cache")
-            .map_err(llvm_err)?;
-        let wn_cache_i8 = self
-            .builder
-            .build_pointer_cast(wn_cache_a, wn_ptr, "wn_cache_i8")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(wn_cache_i8, wn_i8.const_int(0, false))
-            .map_err(llvm_err)?;
 
         let wn_len = self
             .builder
@@ -3202,88 +3230,34 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_conditional_branch(wn_cond, wn_body, wn_done);
         self.builder.position_at_end(wn_body);
-        let wn_subl = self.call_rt("action_list_create", &[wn_wsafe.into()])?;
-        let wn_sublv = wn_subl.try_as_basic_value().unwrap_basic();
-        let wn_sa = self
+        let wn_slice_fn = self.module.get_function("action_list_slice").unwrap();
+        let wn_end = self
             .builder
-            .build_alloca(self.list_type, "wn_sa")
+            .build_int_add(wn_iv, wn_wsafe, "end")
             .map_err(llvm_err)?;
-        self.builder
-            .build_store(wn_sa, wn_sublv)
-            .map_err(llvm_err)?;
-        let wn_j = self.builder.build_alloca(i64, "wn_j").map_err(llvm_err)?;
-        self.builder
-            .build_store(wn_j, i64.const_int(0, false))
-            .map_err(llvm_err)?;
-        let wn_iloop = self.context.append_basic_block(wn_fn, "iloop");
-        let wn_ibody = self.context.append_basic_block(wn_fn, "ibody");
-        let wn_idone = self.context.append_basic_block(wn_fn, "idone");
-        let _ = self.builder.build_unconditional_branch(wn_iloop);
-        self.builder.position_at_end(wn_iloop);
-        let wn_jv = self
-            .builder
-            .build_load(i64, wn_j, "jv")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let wn_jc = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, wn_jv, wn_wsafe, "jc")
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(wn_jc, wn_ibody, wn_idone);
-        self.builder.position_at_end(wn_ibody);
-        let wn_ep_idx = self
-            .builder
-            .build_int_add(wn_iv, wn_jv, "epi")
-            .map_err(llvm_err)?;
-        let wn_get_cached_fn = self.module.get_function("action_list_get_cached").unwrap();
-        let wn_ev = self
+        let wn_sl_cc = self
             .builder
             .build_call(
-                wn_get_cached_fn,
-                &[wn_in.into(), wn_ep_idx.into(), wn_cache_a.into()],
-                "ev",
+                wn_slice_fn,
+                &[wn_in.into(), wn_iv.into(), wn_end.into()],
+                "sl",
             )
             .map_err(llvm_err)?
             .try_as_basic_value()
-            .basic()
-            .ok_or("get failed")?
+            .unwrap_basic()
             .into_struct_value();
-        let wn_cl = self
-            .builder
-            .build_load(self.list_type, wn_sa, "cl")
-            .map_err(llvm_err)?
-            .into_struct_value();
-        let wn_ps = self.call_rt(
-            "action_list_push",
-            &[wn_cl.into(), wn_ev.as_basic_value_enum().into()],
-        )?;
-        self.builder
-            .build_store(wn_sa, wn_ps.try_as_basic_value().unwrap_basic())
-            .map_err(llvm_err)?;
-        let wn_jvi = self
-            .builder
-            .build_int_add(wn_jv, i64.const_int(1, false), "jvi")
-            .map_err(llvm_err)?;
-        self.builder.build_store(wn_j, wn_jvi).map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(wn_iloop);
-        self.builder.position_at_end(wn_idone);
         let wn_fat = self.string_type.get_undef();
         let wn_ft = self
             .builder
             .build_insert_value(wn_fat, i64.const_int(6, false), 0, "ft")
             .map_err(llvm_err)?;
-        let wn_sl = self
-            .builder
-            .build_load(self.list_type, wn_sa, "sl")
-            .map_err(llvm_err)?
-            .into_struct_value();
         let wn_sp = self
             .builder
             .build_alloca(self.list_type, "wn_sp")
             .map_err(llvm_err)?;
-        self.builder.build_store(wn_sp, wn_sl).map_err(llvm_err)?;
+        self.builder
+            .build_store(wn_sp, wn_sl_cc)
+            .map_err(llvm_err)?;
         let wn_fv = self
             .builder
             .build_insert_value(wn_ft, wn_sp, 1, "fv")
