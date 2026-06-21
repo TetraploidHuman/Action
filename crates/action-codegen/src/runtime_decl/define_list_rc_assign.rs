@@ -10,17 +10,8 @@ impl<'ctx> CodeGen<'ctx> {
         let i32 = self.context.i32_type();
         let i8 = self.context.i8_type();
         let i1 = self.context.bool_type();
-        let list_ty = self.list_type;
-        let str_ty = self.string_type;
 
-        let rdl_fn = self
-            .module
-            .get_function("action_rc_dec_list_node")
-            .ok_or("action_rc_dec_list_node not found")?;
-        let _rdl_fn = rdl_fn;
         let rc_dec_fn = self.module.get_function("action_rc_dec").unwrap();
-        let _str_rc_dec_fn = self.module.get_function("action_string_rc_dec").unwrap();
-        let _free_fn = self.module.get_function("free").unwrap();
 
         // ---- action_list_tree_contains_node(root, height, target) -> i1 ----
         let cnt_fn = self.module.add_function(
@@ -592,7 +583,6 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self.builder.build_return(None);
 
-        let _ = (list_ty, i8);
         Ok(())
     }
 }
