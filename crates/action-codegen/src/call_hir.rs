@@ -224,6 +224,17 @@ impl<'ctx> CodeGen<'ctx> {
                 } else {
                     return Err("map with trailing lambda expects 0 args".to_string());
                 };
+                if let Some((map_inner, base_list)) = Self::extract_map_call_args_hir(inner) {
+                    let filter_fn_val = self.compile_hir_expr(filter_fn)?;
+                    if let Some(lam) = trailing {
+                        if Self::is_identity_lambda_hir(lam) {
+                            return self.fused_map_filter_hir(map_inner, base_list, filter_fn_val);
+                        }
+                    }
+                    let mf_list =
+                        self.fused_map_filter_hir(map_inner, base_list, filter_fn_val)?;
+                    return self.map_walk_list_value(map_fn, mf_list);
+                }
                 let inner_val = self.compile_hir_expr(inner)?;
                 if matches!(inner_val, TypedValue::LazyList(_)) {
                     return self.fused_lazy_filter_map_hir(filter_fn, inner, map_fn);

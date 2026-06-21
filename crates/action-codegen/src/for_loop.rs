@@ -1160,6 +1160,13 @@ impl<'ctx> CodeGen<'ctx> {
                         }
                     }
                 }
+                if let HirExprKind::Ident(name) = &func.kind {
+                    if name == "get" && args.len() == 2 {
+                        if let HirExprKind::Ident(idx) = &args[1].kind {
+                            return Some((args[0].clone(), idx.clone()));
+                        }
+                    }
+                }
                 None
             }
             HirExprKind::Block(_) => Self::find_list_get_in_hir(expr),

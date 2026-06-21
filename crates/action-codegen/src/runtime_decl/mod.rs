@@ -143,6 +143,14 @@ impl<'ctx> CodeGen<'ctx> {
             void.fn_type(&[ptr.into(), ptr.into(), i64.into()], false),
             None,
         );
+        self.module.add_function(
+            "action_list_range_walk_rec",
+            void.fn_type(
+                &[ptr.into(), ptr.into(), i64.into(), ptr.into(), ptr.into()],
+                false,
+            ),
+            None,
+        );
         let _memcmp_fn = self.module.add_function(
             "memcmp",
             i32.fn_type(&[ptr.into(), ptr.into(), i64.into()], false),
@@ -476,6 +484,7 @@ mod define_list_core;
 mod define_list_extra;
 mod define_list_insert_rec;
 mod define_list_iter;
+mod define_list_range;
 mod define_list_rc_assign;
 mod define_list_tree;
 mod define_list_xform;

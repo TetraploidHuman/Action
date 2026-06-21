@@ -58,76 +58,20 @@ impl<'ctx> CodeGen<'ctx> {
         let cc0 = self.call_rt("action_list_create", &[i64.const_int(0, false).into()])?;
         let lte_r = cc0.try_as_basic_value().unwrap_basic();
         let _ = self.builder.build_return(Some(&lte_r));
-        // Copy elements [1..len)
+        // Copy elements [1..len) via drop(1) range walk
         self.builder.position_at_end(lt_do);
-        let lt_nlen = self
+        let lt_drop_fn = self.module.get_function("action_list_drop").unwrap();
+        let lt_drop_r = self
             .builder
-            .build_int_sub(lt_len, i64.const_int(1, false), "nlen")
-            .map_err(llvm_err)?;
-        let cc = self.call_rt("action_list_create", &[lt_nlen.into()])?;
-        let lt_new = cc.try_as_basic_value().unwrap_basic().into_struct_value();
-        // Loop from i=1 to len
-        let lt_new_alloc = self
-            .builder
-            .build_alloca(self.list_type, "newacc")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(lt_new_alloc, lt_new)
-            .map_err(llvm_err)?;
-        let lt_i_alloc = self.builder.build_alloca(i64, "i").map_err(llvm_err)?;
-        self.builder
-            .build_store(lt_i_alloc, i64.const_int(1, false))
-            .map_err(llvm_err)?;
-        let lt_loop = self.context.append_basic_block(lt_fn, "loop");
-        let lt_body = self.context.append_basic_block(lt_fn, "body");
-        let lt_done = self.context.append_basic_block(lt_fn, "done");
-        let _ = self.builder.build_unconditional_branch(lt_loop);
-        self.builder.position_at_end(lt_loop);
-        let lt_i = self
-            .builder
-            .build_load(i64, lt_i_alloc, "i")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let lt_cond = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, lt_i, lt_len, "cond")
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(lt_cond, lt_body, lt_done);
-        self.builder.position_at_end(lt_body);
-        // Use action_list_get to read element from source list (tree-aware)
-        let list_get_fn = self.module.get_function("action_list_get").unwrap();
-        let lt_fv = self
-            .builder
-            .build_call(list_get_fn, &[lt_list.into(), lt_i.into()], "fv")
+            .build_call(
+                lt_drop_fn,
+                &[lt_list.into(), i64.const_int(1, false).into()],
+                "drop1",
+            )
             .map_err(llvm_err)?
             .try_as_basic_value()
             .unwrap_basic();
-        let lt_cur = self
-            .builder
-            .build_load(self.list_type, lt_new_alloc, "cur")
-            .map_err(llvm_err)?
-            .into_struct_value();
-        let cc2 = self.call_rt("action_list_push", &[lt_cur.into(), lt_fv.into()])?;
-        let lt_nv = cc2.try_as_basic_value().unwrap_basic();
-        self.builder
-            .build_store(lt_new_alloc, lt_nv)
-            .map_err(llvm_err)?;
-        let lt_ni = self
-            .builder
-            .build_int_add(lt_i, i64.const_int(1, false), "ni")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(lt_i_alloc, lt_ni)
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(lt_loop);
-        self.builder.position_at_end(lt_done);
-        let lt_rv = self
-            .builder
-            .build_load(self.list_type, lt_new_alloc, "rv")
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_return(Some(&lt_rv));
+        let _ = self.builder.build_return(Some(&lt_drop_r));
 
         // ---- action_list_zip({ptr,i64,i64}, {ptr,i64,i64}) -> {ptr,i64,i64} ----
         let lz_fn = self.module.add_function(
@@ -172,6 +116,28 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(lz_i_alloc, i64.const_int(0, false))
             .map_err(llvm_err)?;
+        let lz_cache_a = self
+            .builder
+            .build_alloca(i8.array_type(32), "cache_a")
+            .map_err(llvm_err)?;
+        let lz_cache_b = self
+            .builder
+            .build_alloca(i8.array_type(32), "cache_b")
+            .map_err(llvm_err)?;
+        let lz_cache_a_i8 = self
+            .builder
+            .build_pointer_cast(lz_cache_a, ptr, "cache_a_i8")
+            .map_err(llvm_err)?;
+        let lz_cache_b_i8 = self
+            .builder
+            .build_pointer_cast(lz_cache_b, ptr, "cache_b_i8")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(lz_cache_a_i8, i8.const_int(0, false))
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(lz_cache_b_i8, i8.const_int(0, false))
+            .map_err(llvm_err)?;
         let lz_loop = self.context.append_basic_block(lz_fn, "loop");
         let lz_body = self.context.append_basic_block(lz_fn, "body");
         let lz_done = self.context.append_basic_block(lz_fn, "done");
@@ -190,17 +156,28 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_conditional_branch(lz_cond, lz_body, lz_done);
         self.builder.position_at_end(lz_body);
-        let lz_get_fn = self.module.get_function("action_list_get").unwrap();
+        let lz_get_cached_fn = self
+            .module
+            .get_function("action_list_get_cached")
+            .unwrap();
         let lz_av = self
             .builder
-            .build_call(lz_get_fn, &[lz_a.into(), lz_i.into()], "av")
+            .build_call(
+                lz_get_cached_fn,
+                &[lz_a.into(), lz_i.into(), lz_cache_a.into()],
+                "av",
+            )
             .map_err(llvm_err)?
             .try_as_basic_value()
             .basic()
             .ok_or("get a failed")?;
         let lz_bv = self
             .builder
-            .build_call(lz_get_fn, &[lz_b.into(), lz_i.into()], "bv")
+            .build_call(
+                lz_get_cached_fn,
+                &[lz_b.into(), lz_i.into(), lz_cache_b.into()],
+                "bv",
+            )
             .map_err(llvm_err)?
             .try_as_basic_value()
             .basic()
@@ -321,69 +298,14 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_sub(li_len, i64.const_int(1, false), "nlen")
             .map_err(llvm_err)?;
-        let cc = self.call_rt("action_list_create", &[li_nlen.into()])?;
-        let li_new_init = cc.try_as_basic_value().unwrap_basic().into_struct_value();
-        let li_new_alloc = self
+        let li_take_fn = self.module.get_function("action_list_take").unwrap();
+        let li_take_r = self
             .builder
-            .build_alloca(self.list_type, "newacc")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(li_new_alloc, li_new_init)
-            .map_err(llvm_err)?;
-        let li_i_alloc = self.builder.build_alloca(i64, "i").map_err(llvm_err)?;
-        self.builder
-            .build_store(li_i_alloc, i64.const_int(0, false))
-            .map_err(llvm_err)?;
-        let li_loop = self.context.append_basic_block(li_fn, "loop");
-        let li_body = self.context.append_basic_block(li_fn, "body");
-        let li_done = self.context.append_basic_block(li_fn, "done");
-        let _ = self.builder.build_unconditional_branch(li_loop);
-        self.builder.position_at_end(li_loop);
-        let li_i = self
-            .builder
-            .build_load(i64, li_i_alloc, "i")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let li_cond = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, li_i, li_nlen, "cond")
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(li_cond, li_body, li_done);
-        self.builder.position_at_end(li_body);
-        // Use action_list_get to read element from source list (tree-aware)
-        let list_get_fn_li = self.module.get_function("action_list_get").unwrap();
-        let li_fv = self
-            .builder
-            .build_call(list_get_fn_li, &[li_list.into(), li_i.into()], "fv")
+            .build_call(li_take_fn, &[li_list.into(), li_nlen.into()], "take")
             .map_err(llvm_err)?
             .try_as_basic_value()
             .unwrap_basic();
-        let li_cur = self
-            .builder
-            .build_load(self.list_type, li_new_alloc, "cur")
-            .map_err(llvm_err)?
-            .into_struct_value();
-        let cc2 = self.call_rt("action_list_push", &[li_cur.into(), li_fv.into()])?;
-        let li_nv = cc2.try_as_basic_value().unwrap_basic();
-        self.builder
-            .build_store(li_new_alloc, li_nv)
-            .map_err(llvm_err)?;
-        let li_ni = self
-            .builder
-            .build_int_add(li_i, i64.const_int(1, false), "ni")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(li_i_alloc, li_ni)
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(li_loop);
-        self.builder.position_at_end(li_done);
-        let li_rv = self
-            .builder
-            .build_load(self.list_type, li_new_alloc, "rv")
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_return(Some(&li_rv));
+        let _ = self.builder.build_return(Some(&li_take_r));
 
         // ---- action_list_last({ptr, i64, i64}) -> {i64, ptr} ----
         let llast_fn = self.module.add_function(
@@ -580,6 +502,17 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(wi_i_alloc, i64.const_int(0, false))
             .map_err(llvm_err)?;
+        let wi_cache_a = self
+            .builder
+            .build_alloca(i8.array_type(32), "cache")
+            .map_err(llvm_err)?;
+        let wi_cache_i8 = self
+            .builder
+            .build_pointer_cast(wi_cache_a, ptr, "cache_i8")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(wi_cache_i8, i8.const_int(0, false))
+            .map_err(llvm_err)?;
         let wi_loop = self.context.append_basic_block(wi_fn, "loop");
         let wi_body = self.context.append_basic_block(wi_fn, "body");
         let wi_done = self.context.append_basic_block(wi_fn, "done");
@@ -598,10 +531,17 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_conditional_branch(wi_cond, wi_body, wi_done);
         self.builder.position_at_end(wi_body);
-        let wi_get_fn = self.module.get_function("action_list_get").unwrap();
+        let wi_get_cached_fn = self
+            .module
+            .get_function("action_list_get_cached")
+            .unwrap();
         let wi_ev = self
             .builder
-            .build_call(wi_get_fn, &[wi_list.into(), wi_i.into()], "ev")
+            .build_call(
+                wi_get_cached_fn,
+                &[wi_list.into(), wi_i.into(), wi_cache_a.into()],
+                "ev",
+            )
             .map_err(llvm_err)?
             .try_as_basic_value()
             .basic()
@@ -714,6 +654,17 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(unq_i_alloc, i64.const_int(0, false))
             .map_err(llvm_err)?;
+        let unq_cache_a = self
+            .builder
+            .build_alloca(i8.array_type(32), "cache")
+            .map_err(llvm_err)?;
+        let unq_cache_i8 = self
+            .builder
+            .build_pointer_cast(unq_cache_a, ptr, "cache_i8")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(unq_cache_i8, i8.const_int(0, false))
+            .map_err(llvm_err)?;
         let unq_loop = self.context.append_basic_block(unq_fn, "loop");
         let unq_body = self.context.append_basic_block(unq_fn, "body");
         let unq_done = self.context.append_basic_block(unq_fn, "done");
@@ -732,10 +683,17 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_conditional_branch(unq_cond, unq_body, unq_done);
         self.builder.position_at_end(unq_body);
-        let unq_get_fn = self.module.get_function("action_list_get").unwrap();
+        let unq_get_cached_fn = self
+            .module
+            .get_function("action_list_get_cached")
+            .unwrap();
         let unq_ev = self
             .builder
-            .build_call(unq_get_fn, &[unq_list.into(), unq_i.into()], "ev")
+            .build_call(
+                unq_get_cached_fn,
+                &[unq_list.into(), unq_i.into(), unq_cache_a.into()],
+                "ev",
+            )
             .map_err(llvm_err)?
             .try_as_basic_value()
             .basic()

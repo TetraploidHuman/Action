@@ -22,7 +22,7 @@ impl<'ctx> CodeGen<'ctx> {
         let malloc_rc_fn = self.module.get_function("action_malloc_rc").unwrap();
         let list_create_fn = self.module.get_function("action_list_create").unwrap();
         let list_push_fn = self.module.get_function("action_list_push").unwrap();
-        let list_get_fn = self.module.get_function("action_list_get").unwrap();
+        let _list_get_fn = self.module.get_function("action_list_get").unwrap();
         let child_entry_ty = self.child_entry_type;
 
         // ---- action_list_reverse_walk_rec(ptr acc, ptr node, i64 height) -> void ----
@@ -538,9 +538,6 @@ impl<'ctx> CodeGen<'ctx> {
         let lt_h0_reuse = self.context.append_basic_block(lt_fn, "h0_reuse");
         let lt_h0_done = self.context.append_basic_block(lt_fn, "h0_done");
         let lt_hgt0 = self.context.append_basic_block(lt_fn, "hgt0");
-        let lt_loop = self.context.append_basic_block(lt_fn, "loop");
-        let lt_body = self.context.append_basic_block(lt_fn, "body");
-        let lt_done = self.context.append_basic_block(lt_fn, "done");
         self.builder.position_at_end(lt_entry);
         let lt_list = lt_fn.get_first_param().unwrap().into_struct_value();
         let lt_n = lt_fn.get_nth_param(1).unwrap().into_int_value();
@@ -943,7 +940,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_insert_value(lt_r2, i64.const_int(0, false), 2, "r3")
             .map_err(llvm_err)?;
         let _ = self.builder.build_return(Some(&lt_r3));
-        // === h>0: per-element loop ===
+        // === h>0: B-tree range walk (skip=0, limit=n) ===
         self.builder.position_at_end(lt_hgt0);
         let lt_actual2 = self
             .builder
@@ -959,7 +956,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
         let lt_new = self
             .builder
-            .build_call(list_create_fn, &[i64.const_int(0, false).into()], "new")
+            .build_call(list_create_fn, &[zero.into()], "new")
             .map_err(llvm_err)?
             .try_as_basic_value()
             .basic()
@@ -969,59 +966,35 @@ impl<'ctx> CodeGen<'ctx> {
             .build_alloca(self.list_type, "acc")
             .map_err(llvm_err)?;
         self.builder.build_store(lt_acc, lt_new).map_err(llvm_err)?;
-        let lt_i_a = self.builder.build_alloca(i64, "ia").map_err(llvm_err)?;
+        let lt_skip_a = self.builder.build_alloca(i64, "skip_a").map_err(llvm_err)?;
         self.builder
-            .build_store(lt_i_a, i64.const_int(0, false))
+            .build_store(lt_skip_a, zero)
             .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(lt_loop);
-        self.builder.position_at_end(lt_loop);
-        let lt_i = self
+        let lt_limit_a = self
             .builder
-            .build_load(i64, lt_i_a, "i")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let lt_cond = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, lt_i, lt_actual2, "cond")
+            .build_alloca(i64, "limit_a")
             .map_err(llvm_err)?;
+        self.builder
+            .build_store(lt_limit_a, lt_actual2)
+            .map_err(llvm_err)?;
+        let lt_range_fn = self
+            .module
+            .get_function("action_list_range_walk_rec")
+            .unwrap();
         let _ = self
             .builder
-            .build_conditional_branch(lt_cond, lt_body, lt_done);
-        self.builder.position_at_end(lt_body);
-        let lt_get_fn = self.module.get_function("action_list_get").unwrap();
-        let lt_fv = self
-            .builder
-            .build_call(lt_get_fn, &[lt_list.into(), lt_i.into()], "fv")
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .basic()
-            .ok_or("get failed")?;
-        let lt_str_rc_inc_fn2 = self.module.get_function("action_string_rc_inc").unwrap();
-        let _ = self
-            .builder
-            .build_call(lt_str_rc_inc_fn2, &[lt_fv.into_struct_value().into()], "")
+            .build_call(
+                lt_range_fn,
+                &[
+                    lt_acc.into(),
+                    lt_node.into(),
+                    lt_height.into(),
+                    lt_skip_a.into(),
+                    lt_limit_a.into(),
+                ],
+                "",
+            )
             .map_err(llvm_err)?;
-        let lt_push_fn = self.module.get_function("action_list_push").unwrap();
-        let lt_cur = self
-            .builder
-            .build_load(self.list_type, lt_acc, "cur")
-            .map_err(llvm_err)?
-            .into_struct_value();
-        let lt_pv = self
-            .builder
-            .build_call(lt_push_fn, &[lt_cur.into(), lt_fv.into()], "pv")
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .basic()
-            .ok_or("push failed")?;
-        self.builder.build_store(lt_acc, lt_pv).map_err(llvm_err)?;
-        let lt_ni = self
-            .builder
-            .build_int_add(lt_i, i64.const_int(1, false), "ni")
-            .map_err(llvm_err)?;
-        self.builder.build_store(lt_i_a, lt_ni).map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(lt_loop);
-        self.builder.position_at_end(lt_done);
         let lt_rv = self
             .builder
             .build_load(self.list_type, lt_acc, "rv")
@@ -1056,9 +1029,23 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .map_err(llvm_err)?
             .into_int_value();
+        let ld_node = self
+            .builder
+            .build_extract_value(ld_list, 0, "node")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let ld_height = self
+            .builder
+            .build_extract_value(ld_list, 2, "height")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let ld_remain = self
+            .builder
+            .build_int_sub(ld_len, ld_start, "remain")
+            .map_err(llvm_err)?;
         let ld_new = self
             .builder
-            .build_call(list_create_fn, &[i64.const_int(0, false).into()], "new")
+            .build_call(list_create_fn, &[zero.into()], "new")
             .map_err(llvm_err)?
             .try_as_basic_value()
             .basic()
@@ -1068,60 +1055,35 @@ impl<'ctx> CodeGen<'ctx> {
             .build_alloca(self.list_type, "acc")
             .map_err(llvm_err)?;
         self.builder.build_store(ld_acc, ld_new).map_err(llvm_err)?;
-        let ld_i_a = self.builder.build_alloca(i64, "ia").map_err(llvm_err)?;
+        let ld_skip_a = self.builder.build_alloca(i64, "skip_a").map_err(llvm_err)?;
         self.builder
-            .build_store(ld_i_a, ld_start)
+            .build_store(ld_skip_a, ld_start)
             .map_err(llvm_err)?;
-        let ld_loop = self.context.append_basic_block(ld_fn, "loop");
-        let ld_body = self.context.append_basic_block(ld_fn, "body");
-        let ld_done = self.context.append_basic_block(ld_fn, "done");
-        let _ = self.builder.build_unconditional_branch(ld_loop);
-        self.builder.position_at_end(ld_loop);
-        let ld_i = self
+        let ld_limit_a = self
             .builder
-            .build_load(i64, ld_i_a, "i")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let ld_cond = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, ld_i, ld_len, "cond")
+            .build_alloca(i64, "limit_a")
             .map_err(llvm_err)?;
+        self.builder
+            .build_store(ld_limit_a, ld_remain)
+            .map_err(llvm_err)?;
+        let ld_range_fn = self
+            .module
+            .get_function("action_list_range_walk_rec")
+            .unwrap();
         let _ = self
             .builder
-            .build_conditional_branch(ld_cond, ld_body, ld_done);
-        self.builder.position_at_end(ld_body);
-        let ld_fv = self
-            .builder
-            .build_call(list_get_fn, &[ld_list.into(), ld_i.into()], "fv")
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .basic()
-            .ok_or("get failed")?;
-        let ld_str_rc_inc_fn = self.module.get_function("action_string_rc_inc").unwrap();
-        let _ = self
-            .builder
-            .build_call(ld_str_rc_inc_fn, &[ld_fv.into_struct_value().into()], "")
+            .build_call(
+                ld_range_fn,
+                &[
+                    ld_acc.into(),
+                    ld_node.into(),
+                    ld_height.into(),
+                    ld_skip_a.into(),
+                    ld_limit_a.into(),
+                ],
+                "",
+            )
             .map_err(llvm_err)?;
-        let ld_cur = self
-            .builder
-            .build_load(self.list_type, ld_acc, "cur")
-            .map_err(llvm_err)?
-            .into_struct_value();
-        let ld_pv = self
-            .builder
-            .build_call(list_push_fn, &[ld_cur.into(), ld_fv.into()], "pv")
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .basic()
-            .ok_or("push failed")?;
-        self.builder.build_store(ld_acc, ld_pv).map_err(llvm_err)?;
-        let ld_ni = self
-            .builder
-            .build_int_add(ld_i, i64.const_int(1, false), "ni")
-            .map_err(llvm_err)?;
-        self.builder.build_store(ld_i_a, ld_ni).map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(ld_loop);
-        self.builder.position_at_end(ld_done);
         let ld_rv = self
             .builder
             .build_load(self.list_type, ld_acc, "rv")

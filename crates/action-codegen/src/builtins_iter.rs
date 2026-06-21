@@ -12,6 +12,37 @@ impl<'ctx> CodeGen<'ctx> {
         args: &[CallArg<'_>],
         trailing: Option<CallArg<'_>>,
     ) -> Result<TypedValue<'ctx>, String> {
+        // map(filter(map(base))) { outer } — fuse inner map+filter; skip identity outer map
+        if let Some(lam) = trailing {
+            if args.len() == 1 {
+                if let CallArg::Hir(list_hir) = args[0] {
+                    if let Some((filter_fn_hir, inner)) =
+                        Self::extract_filter_call_args_hir(list_hir)
+                    {
+                        if let Some((map_inner_hir, base_list)) =
+                            Self::extract_map_call_args_hir(inner)
+                        {
+                            let filter_fn_val = self.compile_hir_expr(filter_fn_hir)?;
+                            if Self::is_identity_lambda_call_arg(&lam) {
+                                return self.fused_map_filter_hir(
+                                    map_inner_hir,
+                                    base_list,
+                                    filter_fn_val,
+                                );
+                            }
+                            let mf_list = self.fused_map_filter_hir(
+                                map_inner_hir,
+                                base_list,
+                                filter_fn_val,
+                            )?;
+                            let outer_fn = self.compile_call_arg(lam)?;
+                            return self.map_walk_list_value(outer_fn, mf_list);
+                        }
+                    }
+                }
+            }
+        }
+
         // map(fn, list) or map(list) { lambda }
         let (fn_ptr, list_val) = if let Some(lam) = trailing {
             // map(list) { lambda }
@@ -1257,6 +1288,63 @@ impl<'ctx> CodeGen<'ctx> {
             _ => return Err("foldRight: init must be an integer".to_string()),
         };
         Ok((fn_ptr, list_ptr, init_val))
+    }
+
+    pub(crate) fn map_walk_list_value(
+        &mut self,
+        map_fn_val: TypedValue<'ctx>,
+        list_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let fn_ptr = match map_fn_val {
+            TypedValue::Fn(p, _) => p,
+            TypedValue::Closure { fn_ptr, .. } => fn_ptr,
+            _ => return Err("map: function required".to_string()),
+        };
+        let list_ptr = match list_val {
+            TypedValue::List(p) => p,
+            _ => return Err("map: list required".to_string()),
+        };
+        let list_struct = self.load_list(list_ptr)?;
+        let result_alloca = self
+            .builder
+            .build_alloca(self.list_type, "map_result")
+            .map_err(llvm_err)?;
+        let map_cc = self.call_rt("action_list_map_walk", &[list_struct.into(), fn_ptr.into()])?;
+        let result_bv = map_cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("map_walk failed")?;
+        self.builder
+            .build_store(result_alloca, result_bv)
+            .map_err(llvm_err)?;
+        Ok(TypedValue::List(result_alloca))
+    }
+
+    pub(crate) fn is_identity_lambda_call_arg(lam: &CallArg<'_>) -> bool {
+        let CallArg::Hir(expr) = lam else {
+            return false;
+        };
+        Self::is_identity_lambda_hir(expr)
+    }
+
+    pub(crate) fn is_identity_lambda_hir(expr: &action_frontend::hir::HirExpr) -> bool {
+        use action_frontend::hir::HirExprKind;
+        let HirExprKind::Lambda {
+            params,
+            body,
+            implicit_it,
+            ..
+        } = &expr.kind
+        else {
+            return false;
+        };
+        if *implicit_it {
+            matches!(&body.kind, HirExprKind::Ident(name) if name == "it")
+        } else if params.len() == 1 {
+            matches!(&body.kind, HirExprKind::Ident(name) if name == &params[0])
+        } else {
+            false
+        }
     }
 
     pub(super) fn extract_filter_call_args_hir(
