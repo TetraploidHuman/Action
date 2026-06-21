@@ -16,11 +16,366 @@ impl<'ctx> CodeGen<'ctx> {
         let _b1 = self.bool_ty();
         let i32 = self.context.i32_type();
         let i8 = self.context.i8_type();
+        let zero = i64.const_int(0, false);
+        let one = i64.const_int(1, false);
+        let neg1 = i64.const_int(-1i64 as u64, true);
         let malloc_rc_fn = self.module.get_function("action_malloc_rc").unwrap();
         let list_create_fn = self.module.get_function("action_list_create").unwrap();
         let list_push_fn = self.module.get_function("action_list_push").unwrap();
         let list_get_fn = self.module.get_function("action_list_get").unwrap();
+        let child_entry_ty = self.child_entry_type;
+
+        // ---- action_list_reverse_walk_rec(ptr acc, ptr node, i64 height) -> void ----
+        // Reverse-order B-tree / ConcatNode walk: push elements into acc without get().
+        let rw_fn = self
+            .module
+            .get_function("action_list_reverse_walk_rec")
+            .unwrap();
+        let rw_entry = self.context.append_basic_block(rw_fn, "entry");
+        let rw_concat = self.context.append_basic_block(rw_fn, "concat");
+        let rw_not_concat = self.context.append_basic_block(rw_fn, "not_concat");
+        let rw_h0_leaf = self.context.append_basic_block(rw_fn, "h0_leaf");
+        let rw_h0_loop = self.context.append_basic_block(rw_fn, "h0_loop");
+        let rw_h0_body = self.context.append_basic_block(rw_fn, "h0_body");
+        let rw_h0_done = self.context.append_basic_block(rw_fn, "h0_done");
+        let rw_h1_intl = self.context.append_basic_block(rw_fn, "h1_intl");
+        let rw_h1_loop = self.context.append_basic_block(rw_fn, "h1_loop");
+        let rw_h1_body = self.context.append_basic_block(rw_fn, "h1_body");
+        let rw_h1_done = self.context.append_basic_block(rw_fn, "h1_done");
+        let rw_hgt1 = self.context.append_basic_block(rw_fn, "hgt1");
+        let rw_hgt1_loop = self.context.append_basic_block(rw_fn, "hgt1_loop");
+        let rw_hgt1_body = self.context.append_basic_block(rw_fn, "hgt1_body");
+        let rw_hgt1_done = self.context.append_basic_block(rw_fn, "hgt1_done");
+        let rw_done = self.context.append_basic_block(rw_fn, "done");
+        self.builder.position_at_end(rw_entry);
+        let rw_acc = rw_fn.get_first_param().unwrap().into_pointer_value();
+        let rw_node = rw_fn.get_nth_param(1).unwrap().into_pointer_value();
+        let rw_height = rw_fn.get_nth_param(2).unwrap().into_int_value();
+        let rw_is_concat = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, rw_height, neg1, "is_concat")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(rw_is_concat, rw_concat, rw_not_concat);
+        // ConcatNode: reverse walk right then left
+        self.builder.position_at_end(rw_concat);
+        let rw_cn_i8 = self
+            .builder
+            .build_pointer_cast(rw_node, ptr, "cn_i8")
+            .map_err(llvm_err)?;
+        let rw_right_ptr = unsafe {
+            self.builder
+                .build_gep(i8, rw_cn_i8, &[i64.const_int(40, false)], "right_ptr")
+                .map_err(llvm_err)
+        }?;
+        let rw_right = self
+            .builder
+            .build_load(self.list_type, rw_right_ptr, "right")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let rw_left_ptr = unsafe {
+            self.builder
+                .build_gep(i8, rw_cn_i8, &[i64.const_int(16, false)], "left_ptr")
+                .map_err(llvm_err)
+        }?;
+        let rw_left = self
+            .builder
+            .build_load(self.list_type, rw_left_ptr, "left")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let rw_r_node = self
+            .builder
+            .build_extract_value(rw_right, 0, "r_fn")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let rw_r_h = self
+            .builder
+            .build_extract_value(rw_right, 2, "r_fh")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let rw_l_node = self
+            .builder
+            .build_extract_value(rw_left, 0, "l_fn")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let rw_l_h = self
+            .builder
+            .build_extract_value(rw_left, 2, "l_fh")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let _ = self
+            .builder
+            .build_call(rw_fn, &[rw_acc.into(), rw_r_node.into(), rw_r_h.into()], "")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_call(rw_fn, &[rw_acc.into(), rw_l_node.into(), rw_l_h.into()], "")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(rw_done);
+        // Three-way dispatch: h==0, h==1, h>=2
+        self.builder.position_at_end(rw_not_concat);
+        let rw_is_h0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, rw_height, zero, "is_h0")
+            .map_err(llvm_err)?;
+        let rw_not_h0 = self.context.append_basic_block(rw_fn, "not_h0");
+        let _ = self
+            .builder
+            .build_conditional_branch(rw_is_h0, rw_h0_leaf, rw_not_h0);
+        self.builder.position_at_end(rw_not_h0);
+        let rw_is_h1 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, rw_height, one, "is_h1")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(rw_is_h1, rw_h1_intl, rw_hgt1);
+        // === h=0: reverse leaf scan ===
+        self.builder.position_at_end(rw_h0_leaf);
+        let rw_leaf_i8 = self
+            .builder
+            .build_pointer_cast(rw_node, ptr, "leaf_i8")
+            .map_err(llvm_err)?;
+        let rw_count_raw = self
+            .builder
+            .build_load(i32, rw_leaf_i8, "count_raw")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let rw_count = self
+            .builder
+            .build_int_z_extend(rw_count_raw, i64, "count")
+            .map_err(llvm_err)?;
+        let rw_h0_i = self.builder.build_alloca(i64, "h0_i").map_err(llvm_err)?;
+        let rw_h0_start = self
+            .builder
+            .build_int_sub(rw_count, one, "h0_start")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(rw_h0_i, rw_h0_start)
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(rw_h0_loop);
+        self.builder.position_at_end(rw_h0_loop);
+        let rw_h0_iv = self
+            .builder
+            .build_load(i64, rw_h0_i, "h0_iv")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let rw_h0_cond = self
+            .builder
+            .build_int_compare(IntPredicate::SGE, rw_h0_iv, zero, "h0_cond")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(rw_h0_cond, rw_h0_body, rw_h0_done);
+        self.builder.position_at_end(rw_h0_body);
+        let rw_eb = unsafe {
+            self.builder
+                .build_gep(i8, rw_leaf_i8, &[i64.const_int(8, false)], "eb")
+                .map_err(llvm_err)
+        }?;
+        let rw_ep = unsafe {
+            self.builder
+                .build_gep(self.string_type, rw_eb, &[rw_h0_iv], "ep")
+                .map_err(llvm_err)
+        }?;
+        let rw_elem = self
+            .builder
+            .build_load(self.string_type, rw_ep, "elem")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let rw_cur = self
+            .builder
+            .build_load(self.list_type, rw_acc, "cur")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let rw_pushed = self
+            .builder
+            .build_call(list_push_fn, &[rw_cur.into(), rw_elem.into()], "pushed")
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .basic()
+            .ok_or("push failed")?;
+        self.builder
+            .build_store(rw_acc, rw_pushed)
+            .map_err(llvm_err)?;
+        let rw_h0_next = self
+            .builder
+            .build_int_sub(rw_h0_iv, one, "h0_next")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(rw_h0_i, rw_h0_next)
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(rw_h0_loop);
+        self.builder.position_at_end(rw_h0_done);
+        let _ = self.builder.build_unconditional_branch(rw_done);
+        // === h=1: reverse child scan (leaf children) ===
+        self.builder.position_at_end(rw_h1_intl);
+        let rw_intl_i8 = self
+            .builder
+            .build_pointer_cast(rw_node, ptr, "intl_i8")
+            .map_err(llvm_err)?;
+        let rw_intl_cnt_r = self
+            .builder
+            .build_load(i32, rw_intl_i8, "intl_cnt")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let rw_intl_cnt = self
+            .builder
+            .build_int_z_extend(rw_intl_cnt_r, i64, "intl_cnt64")
+            .map_err(llvm_err)?;
+        let rw_h1_i = self.builder.build_alloca(i64, "h1_i").map_err(llvm_err)?;
+        let rw_h1_start = self
+            .builder
+            .build_int_sub(rw_intl_cnt, one, "h1_start")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(rw_h1_i, rw_h1_start)
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(rw_h1_loop);
+        self.builder.position_at_end(rw_h1_loop);
+        let rw_h1_iv = self
+            .builder
+            .build_load(i64, rw_h1_i, "h1_iv")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let rw_h1_cond = self
+            .builder
+            .build_int_compare(IntPredicate::SGE, rw_h1_iv, zero, "h1_cond")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(rw_h1_cond, rw_h1_body, rw_h1_done);
+        self.builder.position_at_end(rw_h1_body);
+        let rw_h1_ce_off = self
+            .builder
+            .build_int_add(
+                i64.const_int(16, false),
+                self.builder
+                    .build_int_mul(rw_h1_iv, i64.const_int(16, false), "h1_ce_off_m")
+                    .map_err(llvm_err)?,
+                "h1_ce_off",
+            )
+            .map_err(llvm_err)?;
+        let rw_h1_ce_p = unsafe {
+            self.builder
+                .build_gep(i8, rw_intl_i8, &[rw_h1_ce_off], "h1_ce_p")
+                .map_err(llvm_err)
+        }?;
+        let rw_h1_ce = self
+            .builder
+            .build_load(child_entry_ty, rw_h1_ce_p, "h1_ce")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let rw_h1_child = self
+            .builder
+            .build_extract_value(rw_h1_ce, 0, "h1_child")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let _ = self
+            .builder
+            .build_call(rw_fn, &[rw_acc.into(), rw_h1_child.into(), zero.into()], "")
+            .map_err(llvm_err)?;
+        let rw_h1_next = self
+            .builder
+            .build_int_sub(rw_h1_iv, one, "h1_next")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(rw_h1_i, rw_h1_next)
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(rw_h1_loop);
+        self.builder.position_at_end(rw_h1_done);
+        let _ = self.builder.build_unconditional_branch(rw_done);
+        // === h>=2: reverse deep internal node scan ===
+        self.builder.position_at_end(rw_hgt1);
+        let rw_d_intl_i8 = self
+            .builder
+            .build_pointer_cast(rw_node, ptr, "dintl_i8")
+            .map_err(llvm_err)?;
+        let rw_d_cnt_r = self
+            .builder
+            .build_load(i32, rw_d_intl_i8, "dcnt")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let rw_d_cnt = self
+            .builder
+            .build_int_z_extend(rw_d_cnt_r, i64, "dcnt64")
+            .map_err(llvm_err)?;
+        let rw_hgt1_i = self.builder.build_alloca(i64, "hgt1_i").map_err(llvm_err)?;
+        let rw_hgt1_start = self
+            .builder
+            .build_int_sub(rw_d_cnt, one, "hgt1_start")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(rw_hgt1_i, rw_hgt1_start)
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(rw_hgt1_loop);
+        self.builder.position_at_end(rw_hgt1_loop);
+        let rw_hgt1_iv = self
+            .builder
+            .build_load(i64, rw_hgt1_i, "hgt1_iv")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let rw_hgt1_cond = self
+            .builder
+            .build_int_compare(IntPredicate::SGE, rw_hgt1_iv, zero, "hgt1_cond")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(rw_hgt1_cond, rw_hgt1_body, rw_hgt1_done);
+        self.builder.position_at_end(rw_hgt1_body);
+        let rw_hgt1_ce_off = self
+            .builder
+            .build_int_add(
+                i64.const_int(16, false),
+                self.builder
+                    .build_int_mul(rw_hgt1_iv, i64.const_int(16, false), "hgt1_ce_off_m")
+                    .map_err(llvm_err)?,
+                "hgt1_ce_off",
+            )
+            .map_err(llvm_err)?;
+        let rw_hgt1_ce_p = unsafe {
+            self.builder
+                .build_gep(i8, rw_d_intl_i8, &[rw_hgt1_ce_off], "hgt1_ce_p")
+                .map_err(llvm_err)
+        }?;
+        let rw_hgt1_ce = self
+            .builder
+            .build_load(child_entry_ty, rw_hgt1_ce_p, "hgt1_ce")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let rw_hgt1_child = self
+            .builder
+            .build_extract_value(rw_hgt1_ce, 0, "hgt1_child")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let rw_child_h = self
+            .builder
+            .build_int_sub(rw_height, one, "child_h")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_call(
+                rw_fn,
+                &[rw_acc.into(), rw_hgt1_child.into(), rw_child_h.into()],
+                "",
+            )
+            .map_err(llvm_err)?;
+        let rw_hgt1_next = self
+            .builder
+            .build_int_sub(rw_hgt1_iv, one, "hgt1_next")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(rw_hgt1_i, rw_hgt1_next)
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(rw_hgt1_loop);
+        self.builder.position_at_end(rw_hgt1_done);
+        let _ = self.builder.build_unconditional_branch(rw_done);
+        self.builder.position_at_end(rw_done);
+        let _ = self.builder.build_return(None);
+
         // ---- action_list_reverse({ptr, i64, i64}) -> {ptr, i64, i64} ----
+        // B-tree reverse walk: O(n) tree scan instead of O(n) get+push.
         let lr_fn = self.module.add_function(
             "action_list_reverse",
             self.list_type.fn_type(&[self.list_type.into()], false),
@@ -29,14 +384,19 @@ impl<'ctx> CodeGen<'ctx> {
         let lr_entry = self.context.append_basic_block(lr_fn, "entry");
         self.builder.position_at_end(lr_entry);
         let lr_list = lr_fn.get_first_param().unwrap().into_struct_value();
-        let lr_len = self
+        let lr_node = self
             .builder
-            .build_extract_value(lr_list, 1, "len")
+            .build_extract_value(lr_list, 0, "node")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let lr_height = self
+            .builder
+            .build_extract_value(lr_list, 2, "height")
             .map_err(llvm_err)?
             .into_int_value();
         let lr_new = self
             .builder
-            .build_call(list_create_fn, &[i64.const_int(0, false).into()], "new")
+            .build_call(list_create_fn, &[zero.into()], "new")
             .map_err(llvm_err)?
             .try_as_basic_value()
             .basic()
@@ -46,59 +406,14 @@ impl<'ctx> CodeGen<'ctx> {
             .build_alloca(self.list_type, "acc")
             .map_err(llvm_err)?;
         self.builder.build_store(lr_acc, lr_new).map_err(llvm_err)?;
-        let lr_i_a = self.builder.build_alloca(i64, "ia").map_err(llvm_err)?;
-        let lr_start = self
-            .builder
-            .build_int_sub(lr_len, i64.const_int(1, false), "start")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(lr_i_a, lr_start)
-            .map_err(llvm_err)?;
-        let lr_loop = self.context.append_basic_block(lr_fn, "loop");
-        let lr_body = self.context.append_basic_block(lr_fn, "body");
-        let lr_done = self.context.append_basic_block(lr_fn, "done");
-        let _ = self.builder.build_unconditional_branch(lr_loop);
-        self.builder.position_at_end(lr_loop);
-        let lr_i = self
-            .builder
-            .build_load(i64, lr_i_a, "i")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let lr_cond = self
-            .builder
-            .build_int_compare(IntPredicate::SGE, lr_i, i64.const_int(0, false), "cond")
-            .map_err(llvm_err)?;
         let _ = self
             .builder
-            .build_conditional_branch(lr_cond, lr_body, lr_done);
-        self.builder.position_at_end(lr_body);
-        let lr_fv = self
-            .builder
-            .build_call(list_get_fn, &[lr_list.into(), lr_i.into()], "fv")
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .basic()
-            .ok_or("get failed")?;
-        let lr_cur = self
-            .builder
-            .build_load(self.list_type, lr_acc, "cur")
-            .map_err(llvm_err)?
-            .into_struct_value();
-        let lr_pv = self
-            .builder
-            .build_call(list_push_fn, &[lr_cur.into(), lr_fv.into()], "pv")
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .basic()
-            .ok_or("push failed")?;
-        self.builder.build_store(lr_acc, lr_pv).map_err(llvm_err)?;
-        let lr_ni = self
-            .builder
-            .build_int_sub(lr_i, i64.const_int(1, false), "ni")
+            .build_call(
+                rw_fn,
+                &[lr_acc.into(), lr_node.into(), lr_height.into()],
+                "",
+            )
             .map_err(llvm_err)?;
-        self.builder.build_store(lr_i_a, lr_ni).map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(lr_loop);
-        self.builder.position_at_end(lr_done);
         let lr_rv = self
             .builder
             .build_load(self.list_type, lr_acc, "rv")

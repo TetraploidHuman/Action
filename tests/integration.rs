@@ -1157,6 +1157,13 @@ fn test_list_alias_block() {
 }
 
 #[test]
+fn test_list_alias_insert() {
+    // lst + ins same scope; insert on ins must not corrupt lst.
+    let out = run_example("test_list_alias_insert.at");
+    assert_eq!(out.trim(), "2010\n2000");
+}
+
+#[test]
 fn test_cow_insert_isolation() {
     let out = run_example("test_cow_insert_isolation.at");
     assert_eq!(out.trim(), "10\n9999");
@@ -1241,6 +1248,41 @@ fn test_lazy_drop() {
 #[test]
 fn test_bench_map_10k() {
     run_example_starts_with("bench_map_10k.at", "10000\n10000");
+}
+
+#[test]
+fn test_bench_insert2() {
+    assert_eq!(run_example("bench_insert2.at"), "2002\n9999\n8888\n");
+}
+
+#[test]
+fn test_bench_insert10() {
+    assert_eq!(run_example("bench_insert10.at"), "2010\n");
+}
+
+#[test]
+fn test_bench_insert50() {
+    assert_eq!(run_example("bench_insert50.at"), "2050\n");
+}
+
+#[test]
+fn test_bench_insert100() {
+    assert_eq!(run_example("bench_insert100.at"), "2100\n");
+}
+
+#[test]
+fn test_bench_for_chain() {
+    assert_eq!(run_example("bench_for_chain.at"), "1998000\n");
+}
+
+#[test]
+fn test_bench_for_method() {
+    assert_eq!(run_example("bench_for_method.at"), "1666\n1002\n");
+}
+
+#[test]
+fn test_bench_set_10k() {
+    assert_eq!(run_example("bench_set_10k.at"), "10000\n10000\n5000\n");
 }
 
 // ---- Example coverage (stdlib / IO / builtins) ----

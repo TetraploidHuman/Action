@@ -36,7 +36,7 @@
 
 | ID | 任务 | 说明 | 验收 |
 |----|------|------|------|
-| P0-1 | **别名压力集成测试** | `append`/`remove`/`insert` 与 `lst`+`ins` 同作用域；内层 block 提前释放一条绑定 | 新增 2–3 个 `.at` + integration；30× release 无 SIGABRT |
+| P0-1 | **别名压力集成测试** ✅ | `append`/`remove`/`insert` 与 `lst`+`ins` 同作用域；内层 block 提前释放一条绑定 | 新增 2–3 个 `.at` + integration；30× release 无 SIGABRT |
 | P0-2 | **延迟释放可观测性** ✅ | assign 大循环 insert 内存峰值可记录（`scripts/measure_mem_peak.sh` + `mem_peak_note.md`） | 已记录 pre/post P0-3 MaxRSS（−2.6%～−3.2%） |
 | P0-3 | **per-node RC 释放** ✅ | assign 时对旧根子树 walk + 条件 dec，跳过 live 绑定与 RHS 新值 | `test_rc_pressure` / insert 30× 稳定；`define_list_rc_assign.rs` |
 | P0-4 | **修正测试计数** ✅ | `ARCHITECTURE.md` 与 `integration.rs` 均为 **155** | 已一致 |
@@ -58,7 +58,7 @@ done
 | ID | 任务 | 说明 | 验收 |
 |----|------|------|------|
 | P1-1 | **Proptest 升格** ✅ | 256 cases；`ci.yml` 无 `continue-on-error` | CI blocking 且绿 |
-| P1-2 | **Scheduled Benchmark** | cron Benchmark job 全绿 | schedule run success |
+| P1-2 | **Scheduled Benchmark** ✅ | cron Benchmark job 全绿 | schedule run success |
 | P1-3 | **CI 冒烟扩展** ✅ | release 冒烟含 `test_cow_insert_isolation.at` | `ci-linux.sh` 第 90 行已含 |
 
 ---
@@ -71,8 +71,9 @@ done
 | P2-2 | **JIT 对照** ✅ | `./benchmark.sh -n 3` → `benchmark_results.txt` | 已重刷 |
 | P2-3 | **`list_get_cached` 缺口** ✅ | `for_loop`/`hir_compile`/`misc` index + UFCS `get` 在顺序 for 内用 loop cache | 见 `perf_map_note.md` |
 | P2-4 | **Map rebuild 采样** ✅ | `bench_map_10k` JIT ~133–137 ms；AOT exe ~7–8 ms；rebuild 非 step smoke 主导 | `scripts/perf_map_note.md` |
-
----
+| P2-5 | **`action_list_reverse` 叶扫描** ✅ | B-tree reverse walk 替代 get+push | `define_list_xform.rs` |
+| P2-6 | **`ht_from_list` get_cached** ✅ | 顺序 list→set 用 `list_get_cached` | `define_hash_table.rs` |
+| P2-7 | **opt_pass nounwind 扩展** ✅ | reverse/walk/ht 热函数 | `opt_pass.rs` |
 
 ### P3 — 自举 M4 起步（Thu–Fri）
 

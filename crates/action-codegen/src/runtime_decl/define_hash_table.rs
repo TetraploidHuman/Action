@@ -605,7 +605,9 @@ impl<'ctx> CodeGen<'ctx> {
         let ht_create = self.module.get_function("action_ht_create").unwrap();
         let ht_insert = self.module.get_function("action_ht_insert").unwrap();
         let list_len_fn = self.module.get_function("action_list_len").unwrap();
-        let list_get_fn = self.module.get_function("action_list_get").unwrap();
+        let list_get_cached_fn = self.module.get_function("action_list_get_cached").unwrap();
+        let i8 = self.context.i8_type();
+        let ptr = self.ptr_ty();
         let null_val: BasicValueEnum = {
             let undef = str_ty.get_undef();
             let r1 = self
@@ -647,6 +649,17 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_store(set_a, set0).map_err(llvm_err)?;
         let i_a = self.builder.build_alloca(i64, "i").map_err(llvm_err)?;
         self.builder.build_store(i_a, zero).map_err(llvm_err)?;
+        let cache_a = self
+            .builder
+            .build_alloca(i8.array_type(32), "cache")
+            .map_err(llvm_err)?;
+        let cache_i8 = self
+            .builder
+            .build_pointer_cast(cache_a, ptr, "cache_i8")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(cache_i8, i8.const_int(0, false))
+            .map_err(llvm_err)?;
         self.builder
             .build_unconditional_branch(loop_bb)
             .map_err(llvm_err)?;
@@ -669,7 +682,11 @@ impl<'ctx> CodeGen<'ctx> {
             .into_struct_value();
         let elem = self
             .builder
-            .build_call(list_get_fn, &[lst.into(), iv.into()], "el")
+            .build_call(
+                list_get_cached_fn,
+                &[lst.into(), iv.into(), cache_a.into()],
+                "el",
+            )
             .map_err(llvm_err)?
             .try_as_basic_value()
             .unwrap_basic();

@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+  schedule:
+    # Weekly benchmark regression (P1-2); UTC Monday 02:00
+    - cron: '0 2 * * 1'
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -200,6 +203,8 @@ jobs:
           $cow = & $Release run examples/bench_cow.at 2>&1 | Out-String
           if ($cow.Trim().Split("`n")[-1] -ne '11') { throw "bench_cow (release): expected 11" }
           & $Release run examples/test_insert_exit.at | Out-Null
+          & $Release run examples/bench_all.at | Out-Null
+          & $Release run examples/test_list_alias_insert.at | Out-Null
 
       - name: Debug run output
         if: failure()

@@ -85,9 +85,9 @@ JIT (MCJIT) / AOT (obj/exe) + libaction_host_rt.a (JSON/HTTP/线程)
 
 | 资产 | 数量/状态 |
 |------|-----------|
-| Integration 测试 | **152+** 项（语义权威）；HIR golden + bootstrap 子集夹具 |
-| 示例程序 | **234** 个 `.at` |
-| AOT 基准 | **29** 项（`benchmark.sh --mode aot --opt 2`） |
+| Integration 测试 | **155** 项（语义权威）；HIR golden + bootstrap 子集夹具 |
+| 示例程序 | **269** 个 `.at` |
+| AOT 基准 | **30** 项（`benchmark.sh --mode aot --opt 2`） |
 | 单元测试 | lexer 36 / parser 27 / typecheck 23 |
 | 文档 | README、BENCHMARK.md、doc/tutorial.md (~1700 行) |
 
@@ -100,7 +100,7 @@ JIT (MCJIT) / AOT (obj/exe) + libaction_host_rt.a (JSON/HTTP/线程)
 | `stdlib/io.atom` | `external fun` 声明 | 读源文件所需 |
 | `stdlib/http.atom` | HTTP 包装 | 与编译器无关 |
 
-**仓库内无任何** `bootstrap` / `self-host` / 自举相关文档或 `.at` 编译器代码。
+**仓库内** 已有 `bootstrap/` 目录（M4 lexer 试点）；codegen 长期留 Rust。详见 `doc/bootstrap-subset.md`。
 
 ---
 

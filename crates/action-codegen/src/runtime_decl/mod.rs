@@ -138,6 +138,11 @@ impl<'ctx> CodeGen<'ctx> {
             void.fn_type(&[ptr.into(), ptr.into()], false),
             None,
         );
+        self.module.add_function(
+            "action_list_reverse_walk_rec",
+            void.fn_type(&[ptr.into(), ptr.into(), i64.into()], false),
+            None,
+        );
         let _memcmp_fn = self.module.add_function(
             "memcmp",
             i32.fn_type(&[ptr.into(), ptr.into(), i64.into()], false),

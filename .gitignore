@@ -24,6 +24,17 @@ rust_out
 
 # Benchmark results
 benchmark_results.txt
+benchmark_results_*.txt
+
+# Dev bisect scratch (keep out of commits)
+examples/_dev/
+
+# Generated HIR dumps
+examples/**/*.hir.json
+lib/**/*.hir.json
+
+# Python cache
+scripts/__pycache__/
 
 # AOT object files
 examples/*.o
