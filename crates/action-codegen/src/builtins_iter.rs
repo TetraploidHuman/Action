@@ -15,26 +15,22 @@ impl<'ctx> CodeGen<'ctx> {
         // map(filter(map(base))) { outer } — fuse inner map+filter; skip identity outer map
         if let Some(lam) = trailing {
             if args.len() == 1 {
-                if let CallArg::Hir(list_hir) = args[0] {
-                    if let Some((filter_fn_hir, inner)) =
-                        Self::extract_filter_call_args_hir(list_hir)
+                let CallArg::Hir(list_hir) = &args[0];
+                if let Some((filter_fn_hir, inner)) = Self::extract_filter_call_args_hir(list_hir) {
+                    if let Some((map_inner_hir, base_list)) = Self::extract_map_call_args_hir(inner)
                     {
-                        if let Some((map_inner_hir, base_list)) =
-                            Self::extract_map_call_args_hir(inner)
-                        {
-                            let filter_fn_val = self.compile_hir_expr(filter_fn_hir)?;
-                            if Self::is_identity_lambda_call_arg(&lam) {
-                                return self.fused_map_filter_hir(
-                                    map_inner_hir,
-                                    base_list,
-                                    filter_fn_val,
-                                );
-                            }
-                            let mf_list =
-                                self.fused_map_filter_hir(map_inner_hir, base_list, filter_fn_val)?;
-                            let outer_fn = self.compile_call_arg(lam)?;
-                            return self.map_walk_list_value(outer_fn, mf_list);
+                        let filter_fn_val = self.compile_hir_expr(filter_fn_hir)?;
+                        if Self::is_identity_lambda_call_arg(&lam) {
+                            return self.fused_map_filter_hir(
+                                map_inner_hir,
+                                base_list,
+                                filter_fn_val,
+                            );
                         }
+                        let mf_list =
+                            self.fused_map_filter_hir(map_inner_hir, base_list, filter_fn_val)?;
+                        let outer_fn = self.compile_call_arg(lam)?;
+                        return self.map_walk_list_value(outer_fn, mf_list);
                     }
                 }
             }
@@ -1318,10 +1314,10 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     pub(crate) fn is_identity_lambda_call_arg(lam: &CallArg<'_>) -> bool {
-        let CallArg::Hir(expr) = lam else {
-            return false;
-        };
-        Self::is_identity_lambda_hir(expr)
+        match lam {
+            CallArg::Hir(expr) => Self::is_identity_lambda_hir(expr),
+            _ => false,
+        }
     }
 
     pub(crate) fn is_identity_lambda_hir(expr: &action_frontend::hir::HirExpr) -> bool {
