@@ -1,9 +1,9 @@
 # Action Language Benchmark Results
-# 2026-06-21 21:52:37 | binary: /home/miaox99/Action/target/release/action | mode: aot | opt: -O2 | warmup: 1 | iterations: 3 | timed: exe-only (compile excluded)
+# 2026-06-22 | binary: target/release/action | mode: aot | opt: -O2 | warmup: 1 | iterations: 3 | timed: exe-only (compile excluded)
 # benchmark          min(ms)  avg(ms)  max(ms)  status
 bench_all                                    20       20       21  PASS
 bench_cmp                                     5        5        6  PASS
-bench_concat_depth                           13       13       14  PASS
+bench_concat_depth                           15       16       16  PASS
 bench_cow                                     5        5        6  PASS
 bench_enum                                    4        4        5  PASS
 bench_for_chain                               9       10       12  PASS
