@@ -940,9 +940,9 @@ impl<'ctx> CodeGen<'ctx> {
                     let list_sh_bb = self.context.append_basic_block(fn_val, "asg_list_sh");
                     let list_ar_bb = self.context.append_basic_block(fn_val, "asg_list_ar");
                     let list_dec_done = self.context.append_basic_block(fn_val, "asg_list_done");
-                    let _ =
-                        self.builder
-                            .build_conditional_branch(is_shared, list_sh_bb, list_ar_bb);
+                    let _ = self
+                        .builder
+                        .build_conditional_branch(is_shared, list_sh_bb, list_ar_bb);
                     self.builder.position_at_end(list_sh_bb);
                     self.rc_dec(data_ptr)?;
                     let _ = self.builder.build_unconditional_branch(list_dec_done);

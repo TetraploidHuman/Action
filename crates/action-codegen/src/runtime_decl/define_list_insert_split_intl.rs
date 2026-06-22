@@ -461,7 +461,10 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(i64, retry_height_out, "retry_h")
             .map_err(llvm_err)?
             .into_int_value();
-        let _ = self.builder.build_store(out_height, retry_h).map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_store(out_height, retry_h)
+            .map_err(llvm_err)?;
         let _ = self.builder.build_return(Some(&retry_root));
 
         self.builder.position_at_end(fail);

@@ -20,13 +20,7 @@ impl<'ctx> CodeGen<'ctx> {
         let lrr_fn = self.module.add_function(
             "action_list_remove_rec",
             ptr.fn_type(
-                &[
-                    ptr.into(),
-                    i64.into(),
-                    i64.into(),
-                    i64.into(),
-                    ptr.into(),
-                ],
+                &[ptr.into(), i64.into(), i64.into(), i64.into(), ptr.into()],
                 false,
             ),
             None,
@@ -66,7 +60,10 @@ impl<'ctx> CodeGen<'ctx> {
         let lrr_idx = lrr_fn.get_nth_param(2).unwrap().into_int_value();
         let list_root_rc = lrr_fn.get_nth_param(3).unwrap().into_int_value();
         let out_height = lrr_fn.get_nth_param(4).unwrap().into_pointer_value();
-        let _ = self.builder.build_store(out_height, lrr_height).map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_store(out_height, lrr_height)
+            .map_err(llvm_err)?;
         let is_leaf = self
             .builder
             .build_int_compare(IntPredicate::EQ, lrr_height, zero, "is_leaf")
@@ -284,7 +281,10 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_truncate(new_count, i32, "new_count_i32")
             .map_err(llvm_err)?;
-        let _ = self.builder.build_store(wl_i8, new_count_i32).map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_store(wl_i8, new_count_i32)
+            .map_err(llvm_err)?;
         let _ = self.builder.build_return(Some(&work_leaf));
 
         // ---- internal: scan children ----

@@ -724,9 +724,7 @@ impl<'ctx> CodeGen<'ctx> {
             if let Some(result) = self.compile_list_readonly_ufcs(*lp, &recv_val, method, args)? {
                 return Ok(result);
             }
-            if let Some(result) =
-                self.compile_list_callback_ufcs(*lp, method, args, trailing)?
-            {
+            if let Some(result) = self.compile_list_callback_ufcs(*lp, method, args, trailing)? {
                 return Ok(result);
             }
             match method {

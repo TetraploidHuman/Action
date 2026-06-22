@@ -1804,15 +1804,18 @@ impl<'ctx> CodeGen<'ctx> {
             .into_pointer_value();
         let lrm_rec_null = self
             .builder
-            .build_int_compare(IntPredicate::EQ, lrm_rec_root, ptr.const_null(), "rm_rec_null")
+            .build_int_compare(
+                IntPredicate::EQ,
+                lrm_rec_root,
+                ptr.const_null(),
+                "rm_rec_null",
+            )
             .map_err(llvm_err)?;
         let lrm_rec_ok_bb = self.context.append_basic_block(lrm_fn, "rm_rec_ok");
         let lrm_rec_fallback_bb = self.context.append_basic_block(lrm_fn, "rm_rec_fallback");
-        let _ = self.builder.build_conditional_branch(
-            lrm_rec_null,
-            lrm_rec_fallback_bb,
-            lrm_rec_ok_bb,
-        );
+        let _ =
+            self.builder
+                .build_conditional_branch(lrm_rec_null, lrm_rec_fallback_bb, lrm_rec_ok_bb);
         self.builder.position_at_end(lrm_rec_ok_bb);
         let lrm_rec_new_len = self
             .builder
