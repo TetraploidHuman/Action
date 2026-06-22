@@ -55,7 +55,7 @@ nix-shell --run 'cargo test --release --test integration -- --test-threads=1'
 
 | ID | 任务 | 目标基准 | 说明 | 验收 |
 |----|------|----------|------|------|
-| P0-1 | **`insert_rec` 满叶中间 split** | `bench_all`、`bench_insert100` | `count==64 && idx<count`：32/33 分裂 + 半叶 shift insert；根 h=0 晋升 internal（仿 `lp_h0_full`） | insert 少走 `take+push+drop+concat` fallback |
+| P0-1 | **`insert_rec` 满叶中间 split** | `bench_all`、`bench_insert100` | h=0 len=64 中间 insert：`insert_h0_mid` 快路径（待接线）；fallback 受 `drop(32)` bug 影响 | 见 `define_list_insert_h0_mid.rs` |
 | P0-2 | **`insert_rec` internal overflow** | 同上 | 子 `insert_rec` null → `int_split_child`：CoW + split + 兄弟子树；internal 满 64 → 仿 `lp_split_intl` | `action_list_insert` fallback 命中率下降 |
 | P0-3 | **`find_walk_rec` Concat 早退** | `bench_concat_depth`、语义 | 仿 `contains_walk`：concat 左命中跳过右；internal 子树命中跳过后续 sibling | 不改持久化/CoW 语义 |
 | P0-4 | **回归夹具** | CI | `bench_all.ac` 增加 `c.contains(...)`；`opt_pass` 修正 `action_list_find` 命名 | integration + 语义快检 |

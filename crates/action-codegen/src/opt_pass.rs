@@ -22,6 +22,7 @@ impl<'ctx> CodeGen<'ctx> {
             "action_list_contains_walk",
             "action_list_push",
             "action_list_insert",
+            "action_list_insert_h0_mid",
             "action_list_insert_rec_split_child",
             "action_list_remove",
             "action_list_concat",

@@ -228,7 +228,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(done);
 
-        // h=0 leaf
+        // h=0 leaf: initialize pos from skip so we copy [skip .. skip+limit)
         self.builder.position_at_end(h0_leaf);
         let h0_i8 = self
             .builder
@@ -243,8 +243,16 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_z_extend(h0_cnt_r, i64, "h0_cnt")
             .map_err(llvm_err)?;
+        let h0_skip_init = self
+            .builder
+            .build_load(i64, rng_skip_p, "h0_skip_init")
+            .map_err(llvm_err)?
+            .into_int_value();
         let h0_pos_a = self.builder.build_alloca(i64, "h0_pos").map_err(llvm_err)?;
-        self.builder.build_store(h0_pos_a, zero).map_err(llvm_err)?;
+        self.builder
+            .build_store(h0_pos_a, h0_skip_init)
+            .map_err(llvm_err)?;
+        self.builder.build_store(rng_skip_p, zero).map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(h0_loop);
 
         self.builder.position_at_end(h0_loop);

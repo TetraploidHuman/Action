@@ -71,6 +71,8 @@ nix-shell --run 'cargo build --release && cargo test --test integration -- --tes
 
 ## 后续（超出本计划，未纳入待办）
 
-- ~~`filter+map+fold` 单遍 walk（当前两趟 + 中间 List）~~ ✅ `action_list_filter_map_fold_walk`（2026-06-22）
+- ~~`filter+map+fold` 单遍 walk~~ ✅ `action_list_filter_map_fold_walk`（2026-06-22）
+- **P0-1 进行中**：`action_list_insert_h0_mid`（满叶 h=0 中间 insert 快路径，已实现待接线调试 SIGSEGV）
+- **P0-1b**：`range_walk` / `drop(32)` 在 64 元素 h=0 列表返回 0，导致 insert fallback 错误（len=33）
+- List P0：`insert_rec` internal overflow（`int_full` 时 split_intl）
 - `action-codegen` 编译 warning 清零（CI `-D warnings` 已通过）
-- List P0：`insert_rec` 满叶中间 split 晋升 internal（`insert_rec_root_mid` 待修 height 元数据后合入）

@@ -1,0 +1,15 @@
+// h=0 full leaf (64 elems): middle insert promotes to internal via split_child fast path
+fun main() {
+    var lst = List[]
+    var i = 0
+    for i < 64 {
+        lst = lst.append(i)
+        i = i + 1
+    }
+    lst = lst.insert(32, 999)
+    print(lst.len())
+    print(lst.get(32))
+    print(lst.get(0))
+    print(lst.get(63))
+    println("")
+}
