@@ -763,9 +763,16 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.ufcs_forward_call(method, receiver, args, None);
                 }
                 // map, filter, fold, any, all, find, reduce, foldRight, takeWhile, dropWhile, flatMap, sortedBy
+                // Named fn arg: list.op(pred). Trailing lambda: list.op { x => ... }.
                 "map" | "filter" | "any" | "all" | "find" | "reduce" | "takeWhile"
                 | "dropWhile" | "flatMap" | "foldRight" | "sortedBy" | "findIndex" => {
-                    return self.ufcs_forward_call(method, receiver, &[], trailing);
+                    if trailing.is_some() {
+                        return self.ufcs_forward_call(method, receiver, &[], trailing);
+                    }
+                    if args.len() == 1 {
+                        return self.ufcs_forward_call(method, receiver, args, None);
+                    }
+                    return Err(format!("list.{} expects 1 function argument", method));
                 }
                 "fold" => {
                     if args.len() < 1 {

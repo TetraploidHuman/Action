@@ -1,0 +1,12 @@
+// P0-1b: drop(32) on full h=0 leaf + middle insert
+fun main() {
+    var lst = List[]
+    var i = 0
+    for i < 64 {
+        lst = lst.append(i)
+        i = i + 1
+    }
+    println(lst.drop(32).len())
+    var ins = lst.insert(32, 999)
+    println(ins.len())
+}

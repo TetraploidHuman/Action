@@ -1,0 +1,6 @@
+fun pred(x: Int) -> Bool { x == 2 }
+fun main() {
+    var lst = List[1, 2, 3]
+    var idx = lst.findIndex(pred)
+    println(idx != null)
+}

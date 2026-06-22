@@ -1271,6 +1271,16 @@ fn test_bench_insert100() {
 }
 
 #[test]
+fn test_drop_h0_mid() {
+    assert_eq!(run_example("drop_h0_mid.ac"), "32\n65\n");
+}
+
+#[test]
+fn test_find_named_pred() {
+    assert_eq!(run_example("find_pred.ac"), "true\ntrue\n");
+}
+
+#[test]
 fn test_bench_for_chain() {
     assert_eq!(run_example("bench_for_chain.ac"), "1998000\n");
 }

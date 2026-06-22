@@ -540,48 +540,235 @@ impl<'ctx> CodeGen<'ctx> {
         args: &[CallArg<'_>],
         trailing: Option<CallArg<'_>>,
     ) -> Result<TypedValue<'ctx>, String> {
-        let (fn_ptr, list_ptr) = self.extract_callback_args(args, trailing, 1, "find")?;
-        let list_struct = self.load_list(list_ptr)?;
-        let find_cc = self.call_rt(
-            "action_list_find_walk",
-            &[list_struct.into(), fn_ptr.into()],
-        )?;
-        let found_bv = find_cc
-            .try_as_basic_value()
-            .basic()
-            .ok_or("find_walk failed")?;
+        let (fn_val, list_val) = self.extract_callback_fn_and_list(args, trailing, 1, "find")?;
+        let fn_ptr = self.callback_fn_ptr(&fn_val, "find")?;
+        let list_ptr = match list_val {
+            TypedValue::List(p) => p,
+            _ => return Err("find: last argument must be a list".to_string()),
+        };
+
+        if let Some(target) = self.try_direct_lambda(fn_val.clone()) {
+            return self.builtin_find_with_direct_lambda(list_ptr, &target);
+        }
+
+        let fn_type = self.predicate_llvm_fn_type(&fn_val)?;
+        if self.predicate_returns_fat(fn_type) {
+            let list_struct = self.load_list(list_ptr)?;
+            let find_cc = self.call_rt(
+                "action_list_find_walk",
+                &[list_struct.into(), fn_ptr.into()],
+            )?;
+            let found_bv = find_cc
+                .try_as_basic_value()
+                .basic()
+                .ok_or("find_walk failed")?;
+            let found_a = self
+                .builder
+                .build_alloca(self.string_type, "found")
+                .map_err(llvm_err)?;
+            let found_flag_a = self
+                .builder
+                .build_alloca(self.bool_ty(), "found_f")
+                .map_err(llvm_err)?;
+            self.builder
+                .build_store(found_a, found_bv)
+                .map_err(llvm_err)?;
+            let found_tag = self
+                .builder
+                .build_extract_value(found_bv.into_struct_value(), 0, "ft")
+                .map_err(llvm_err)?
+                .into_int_value();
+            let is_found = self
+                .builder
+                .build_int_compare(
+                    IntPredicate::NE,
+                    found_tag,
+                    self.i64_ty().const_int(1, false),
+                    "is_found",
+                )
+                .map_err(llvm_err)?;
+            let found_i64 = self
+                .builder
+                .build_int_z_extend(is_found, self.i64_ty(), "found_i64")
+                .map_err(llvm_err)?;
+            self.builder
+                .build_store(found_flag_a, found_i64)
+                .map_err(llvm_err)?;
+            return self.build_nullable_str(found_a, found_flag_a);
+        }
+
+        self.builtin_find_indexed(list_ptr, fn_ptr, fn_type, &fn_val)
+    }
+
+    fn builtin_find_with_direct_lambda(
+        &mut self,
+        list_ptr: PointerValue<'ctx>,
+        target: &super::lambda_mono::DirectLambdaTarget<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let input_len = self.list_len_val(self.load_list(list_ptr)?)?;
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("no function")?;
+        let i64 = self.i64_ty();
         let found_a = self
             .builder
-            .build_alloca(self.string_type, "found")
+            .build_alloca(self.string_type, "fd_elem")
             .map_err(llvm_err)?;
         let found_flag_a = self
             .builder
-            .build_alloca(self.bool_ty(), "found_f")
+            .build_alloca(self.bool_ty(), "fd_flag")
             .map_err(llvm_err)?;
         self.builder
-            .build_store(found_a, found_bv)
+            .build_store(found_flag_a, self.bool_ty().const_zero())
             .map_err(llvm_err)?;
-        let found_tag = self
+        let i_a = self.builder.build_alloca(i64, "fd_i").map_err(llvm_err)?;
+        self.builder
+            .build_store(i_a, i64.const_int(0, false))
+            .map_err(llvm_err)?;
+        let get_cache = self.alloc_list_get_cache()?;
+        let hdr = self.context.append_basic_block(current_fn, "fd_hdr");
+        let bdy = self.context.append_basic_block(current_fn, "fd_bdy");
+        let set_found = self.context.append_basic_block(current_fn, "fd_set");
+        let ext = self.context.append_basic_block(current_fn, "fd_ext");
+        let one_b = self.bool_ty().const_int(1, false);
+        let _ = self.builder.build_unconditional_branch(hdr);
+        self.builder.position_at_end(hdr);
+        let iv = self
             .builder
-            .build_extract_value(found_bv.into_struct_value(), 0, "ft")
+            .build_load(i64, i_a, "fd_iv")
             .map_err(llvm_err)?
             .into_int_value();
-        let is_found = self
+        let cond = self
             .builder
-            .build_int_compare(
-                IntPredicate::NE,
-                found_tag,
-                self.i64_ty().const_int(1, false),
-                "is_found",
-            )
+            .build_int_compare(IntPredicate::SLT, iv, input_len, "fd_cond")
             .map_err(llvm_err)?;
-        let found_i64 = self
+        let _ = self.builder.build_conditional_branch(cond, bdy, ext);
+        self.builder.position_at_end(bdy);
+        let elem_val = self.list_get_cached_fat(list_ptr, iv, get_cache)?;
+        let elem_tag = self
             .builder
-            .build_int_z_extend(is_found, self.i64_ty(), "found_i64")
+            .build_extract_value(elem_val.into_struct_value(), 0, "fd_et")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let pred = {
+            let cc = self.emit_direct_lambda_call(target, elem_tag, "fd_call")?;
+            if cc.is_struct_value() {
+                self.builder
+                    .build_extract_value(cc.into_struct_value(), 0, "fd_pred")
+                    .map_err(llvm_err)?
+                    .into_int_value()
+            } else {
+                cc.into_int_value()
+            }
+        };
+        let is_true = self
+            .builder
+            .build_int_compare(IntPredicate::NE, pred, i64.const_int(0, false), "fd_true")
             .map_err(llvm_err)?;
         self.builder
-            .build_store(found_flag_a, found_i64)
+            .build_store(found_a, elem_val)
             .map_err(llvm_err)?;
+        let ni = self
+            .builder
+            .build_int_add(iv, i64.const_int(1, false), "fd_ni")
+            .map_err(llvm_err)?;
+        self.builder.build_store(i_a, ni).map_err(llvm_err)?;
+        let chk = self.context.append_basic_block(current_fn, "fd_chk");
+        let _ = self
+            .builder
+            .build_conditional_branch(is_true, set_found, chk);
+        self.builder.position_at_end(set_found);
+        self.builder
+            .build_store(found_flag_a, one_b)
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(ext);
+        self.builder.position_at_end(chk);
+        let _ = self.builder.build_unconditional_branch(hdr);
+        self.builder.position_at_end(ext);
+        self.build_nullable_str(found_a, found_flag_a)
+    }
+
+    fn builtin_find_indexed(
+        &mut self,
+        list_ptr: PointerValue<'ctx>,
+        fn_ptr: PointerValue<'ctx>,
+        fn_type: inkwell::types::FunctionType<'ctx>,
+        fn_val: &TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let input_len = self.list_len_val(self.load_list(list_ptr)?)?;
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("no function")?;
+        let i64 = self.i64_ty();
+        let found_a = self
+            .builder
+            .build_alloca(self.string_type, "fd_elem")
+            .map_err(llvm_err)?;
+        let found_flag_a = self
+            .builder
+            .build_alloca(self.bool_ty(), "fd_flag")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(found_flag_a, self.bool_ty().const_zero())
+            .map_err(llvm_err)?;
+        let i_a = self.builder.build_alloca(i64, "fd_i").map_err(llvm_err)?;
+        self.builder
+            .build_store(i_a, i64.const_int(0, false))
+            .map_err(llvm_err)?;
+        let get_cache = self.alloc_list_get_cache()?;
+        let hdr = self.context.append_basic_block(current_fn, "fd_hdr");
+        let bdy = self.context.append_basic_block(current_fn, "fd_bdy");
+        let set_found = self.context.append_basic_block(current_fn, "fd_set");
+        let ext = self.context.append_basic_block(current_fn, "fd_ext");
+        let one_b = self.bool_ty().const_int(1, false);
+        let _ = self.builder.build_unconditional_branch(hdr);
+        self.builder.position_at_end(hdr);
+        let iv = self
+            .builder
+            .build_load(i64, i_a, "fd_iv")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let cond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, iv, input_len, "fd_cond")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_conditional_branch(cond, bdy, ext);
+        self.builder.position_at_end(bdy);
+        let elem_val = self.list_get_cached_fat(list_ptr, iv, get_cache)?;
+        let elem_tag = self
+            .builder
+            .build_extract_value(elem_val.into_struct_value(), 0, "fd_et")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let pred = self.call_predicate_on_tag_for_val(fn_val, fn_ptr, fn_type, elem_tag, "fd_call")?;
+        let is_true = self
+            .builder
+            .build_int_compare(IntPredicate::NE, pred, i64.const_int(0, false), "fd_true")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(found_a, elem_val)
+            .map_err(llvm_err)?;
+        let ni = self
+            .builder
+            .build_int_add(iv, i64.const_int(1, false), "fd_ni")
+            .map_err(llvm_err)?;
+        self.builder.build_store(i_a, ni).map_err(llvm_err)?;
+        let chk = self.context.append_basic_block(current_fn, "fd_chk");
+        let _ = self
+            .builder
+            .build_conditional_branch(is_true, set_found, chk);
+        self.builder.position_at_end(set_found);
+        self.builder
+            .build_store(found_flag_a, one_b)
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(ext);
+        self.builder.position_at_end(chk);
+        let _ = self.builder.build_unconditional_branch(hdr);
+        self.builder.position_at_end(ext);
         self.build_nullable_str(found_a, found_flag_a)
     }
 
@@ -591,13 +778,14 @@ impl<'ctx> CodeGen<'ctx> {
         args: &[CallArg<'_>],
         trailing: Option<CallArg<'_>>,
     ) -> Result<TypedValue<'ctx>, String> {
-        let (fn_ptr, list_ptr) = self.extract_callback_args(args, trailing, 1, "findIndex")?;
-        let fn_val = if trailing.is_some() {
-            self.compile_call_arg(trailing.unwrap())?
-        } else {
-            self.compile_call_arg(args[0])?
+        let (fn_val, list_val) =
+            self.extract_callback_fn_and_list(args, trailing, 1, "findIndex")?;
+        let fn_ptr = self.callback_fn_ptr(&fn_val, "findIndex")?;
+        let list_ptr = match list_val {
+            TypedValue::List(p) => p,
+            _ => return Err("findIndex: last argument must be a list".to_string()),
         };
-        let direct_target = self.try_direct_lambda(fn_val);
+        let direct_target = self.try_direct_lambda(fn_val.clone());
         let input_len = self.list_len_val(self.load_list(list_ptr)?)?;
         let current_fn = self
             .builder
@@ -647,21 +835,8 @@ impl<'ctx> CodeGen<'ctx> {
                 cc.into_int_value()
             }
         } else {
-            let fat_ret_ty = self.string_type;
-            let fn_type = fat_ret_ty.fn_type(&[i64.into()], false);
-            let call_r = self
-                .builder
-                .build_indirect_call(fn_type, fn_ptr, &[elem_tag.into()], "fi_call")
-                .map_err(llvm_err)?;
-            let pred_bv = call_r.try_as_basic_value().basic().ok_or("call failed")?;
-            if pred_bv.is_struct_value() {
-                self.builder
-                    .build_extract_value(pred_bv.into_struct_value(), 0, "pred")
-                    .map_err(llvm_err)?
-                    .into_int_value()
-            } else {
-                pred_bv.into_int_value()
-            }
+            let fn_type = self.predicate_llvm_fn_type(&fn_val)?;
+            self.call_predicate_on_tag_for_val(&fn_val, fn_ptr, fn_type, elem_tag, "fi_call")?
         };
         let is_true = self
             .builder
@@ -1356,9 +1531,27 @@ impl<'ctx> CodeGen<'ctx> {
             let fv = self.compile_call_arg(lam)?;
             (fv, lv)
         } else if args.len() == expected_args + 1 {
-            let fv = self.compile_call_arg(args[0])?;
-            let lv = self.compile_call_arg(args[expected_args])?;
-            (fv, lv)
+            let a0 = self.compile_call_arg(args[0])?;
+            let a1 = self.compile_call_arg(args[1])?;
+            let (fn_expr, list_expr) = match (&a0, &a1) {
+                (TypedValue::List(_), _) => (a1, a0),
+                (_, TypedValue::List(_)) => (a0, a1),
+                _ => {
+                    return Err(format!(
+                        "{name} expects one list and one function argument"
+                    ));
+                }
+            };
+            let fn_ptr = match fn_expr {
+                TypedValue::Fn(p, _) => p,
+                TypedValue::Closure { fn_ptr, .. } => fn_ptr,
+                _ => return Err(format!("{name}: callback must be a function")),
+            };
+            let list_ptr = match list_expr {
+                TypedValue::List(p) => p,
+                _ => return Err(format!("{name}: last argument must be a list")),
+            };
+            return Ok((fn_ptr, list_ptr));
         } else {
             return Err(format!(
                 "{} expects {} argument(s) (fn, list)",
@@ -1885,19 +2078,141 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<IntValue<'ctx>, String> {
         let i64 = self.i64_ty();
         let fn_type = i64.fn_type(&[i64.into()], false);
+        self.call_predicate_on_tag(fn_ptr, fn_type, tag, name)
+    }
+
+    fn predicate_llvm_fn_type(
+        &self,
+        val: &TypedValue<'ctx>,
+    ) -> Result<inkwell::types::FunctionType<'ctx>, String> {
+        match val {
+            TypedValue::Fn(_, ft) => Ok(*ft),
+            TypedValue::Closure { actual_fn_type, .. } => Ok(*actual_fn_type),
+            _ => Err("predicate must be a function".to_string()),
+        }
+    }
+
+    fn predicate_returns_fat(&self, ft: inkwell::types::FunctionType<'ctx>) -> bool {
+        matches!(
+            ft.get_return_type(),
+            Some(inkwell::types::BasicTypeEnum::StructType(st)) if st == self.string_type
+        )
+    }
+
+    fn callback_fn_ptr(
+        &self,
+        val: &TypedValue<'ctx>,
+        name: &str,
+    ) -> Result<inkwell::values::PointerValue<'ctx>, String> {
+        match val {
+            TypedValue::Fn(p, _) => Ok(*p),
+            TypedValue::Closure { fn_ptr, .. } => Ok(*fn_ptr),
+            _ => Err(format!("{name}: first argument must be a function")),
+        }
+    }
+
+    fn extract_callback_fn_and_list(
+        &mut self,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
+        expected_args: usize,
+        name: &str,
+    ) -> Result<(TypedValue<'ctx>, TypedValue<'ctx>), String> {
+        if let Some(lam) = trailing {
+            if args.len() != expected_args {
+                return Err(format!(
+                    "{name} with trailing lambda expects {expected_args} argument(s) (list)"
+                ));
+            }
+            let lv = self.compile_call_arg(args[0])?;
+            let fv = self.compile_call_arg(lam)?;
+            Ok((fv, lv))
+        } else if args.len() == expected_args + 1 {
+            let a0 = self.compile_call_arg(args[0])?;
+            let a1 = self.compile_call_arg(args[1])?;
+            match (&a0, &a1) {
+                (TypedValue::List(_), _) => Ok((a1, a0)),
+                (_, TypedValue::List(_)) => Ok((a0, a1)),
+                _ => Err(format!(
+                    "{name} expects one list and one function argument"
+                )),
+            }
+        } else {
+            Err(format!(
+                "{name} expects {} argument(s) (fn, list)",
+                expected_args + 1
+            ))
+        }
+    }
+
+    fn call_predicate_on_tag_for_val(
+        &mut self,
+        fn_val: &TypedValue<'ctx>,
+        fn_ptr: inkwell::values::PointerValue<'ctx>,
+        fn_type: inkwell::types::FunctionType<'ctx>,
+        tag: IntValue<'ctx>,
+        name: &str,
+    ) -> Result<IntValue<'ctx>, String> {
+        match fn_val {
+            TypedValue::Closure {
+                closure_ptr,
+                actual_fn_type,
+                fn_ptr,
+                ..
+            } => {
+                let call_r = self
+                    .builder
+                    .build_indirect_call(
+                        *actual_fn_type,
+                        *fn_ptr,
+                        &[(*closure_ptr).into(), tag.into()],
+                        name,
+                    )
+                    .map_err(llvm_err)?;
+                self.predicate_call_result_to_i64(call_r, name)
+            }
+            _ => self.call_predicate_on_tag(fn_ptr, fn_type, tag, name),
+        }
+    }
+
+    fn call_predicate_on_tag(
+        &mut self,
+        fn_ptr: inkwell::values::PointerValue<'ctx>,
+        fn_type: inkwell::types::FunctionType<'ctx>,
+        tag: IntValue<'ctx>,
+        name: &str,
+    ) -> Result<IntValue<'ctx>, String> {
         let call_r = self
             .builder
             .build_indirect_call(fn_type, fn_ptr, &[tag.into()], name)
             .map_err(llvm_err)?;
-        let bv = call_r.try_as_basic_value().basic().ok_or("call failed")?;
+        self.predicate_call_result_to_i64(call_r, name)
+    }
+
+    fn predicate_call_result_to_i64(
+        &mut self,
+        call_r: inkwell::values::CallSiteValue<'ctx>,
+        name: &str,
+    ) -> Result<IntValue<'ctx>, String> {
+        let bv = call_r
+            .try_as_basic_value()
+            .basic()
+            .ok_or_else(|| format!("{name} returned void"))?;
         if bv.is_struct_value() {
+            return Ok(self
+                .builder
+                .build_extract_value(bv.into_struct_value(), 0, &format!("{name}_t"))
+                .map_err(llvm_err)?
+                .into_int_value());
+        }
+        let iv = bv.into_int_value();
+        if iv.get_type().get_bit_width() == 1 {
             Ok(self
                 .builder
-                .build_extract_value(bv.into_struct_value(), 0, &format!("{}_t", name))
-                .map_err(llvm_err)?
-                .into_int_value())
+                .build_int_z_extend(iv, self.i64_ty(), &format!("{name}_z"))
+                .map_err(llvm_err)?)
         } else {
-            Ok(bv.into_int_value())
+            Ok(iv)
         }
     }
 

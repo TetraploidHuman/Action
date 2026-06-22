@@ -6613,7 +6613,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self.builder.build_return(Some(&mtw_res));
 
-        // ---- action_list_find_walk_rec(ptr node, i64 height, ptr fn, ptr acc, ptr buf_p, ptr buf_pos_p) -> void ----
+        // ---- action_list_find_walk_rec(ptr node, i64 height, ptr fn, ptr found_p, ptr found_flag_p) -> void ----
         let fd_find_rec_fn = self.module.add_function(
             "action_list_find_walk_rec",
             void.fn_type(
@@ -6634,6 +6634,9 @@ impl<'ctx> CodeGen<'ctx> {
         let fdr_int_hdr = self.context.append_basic_block(fd_find_rec_fn, "int_hdr");
         let fdr_int_bdy = self.context.append_basic_block(fd_find_rec_fn, "int_bdy");
         let fdr_int_child = self.context.append_basic_block(fd_find_rec_fn, "int_child");
+        let fdr_int_child_body = self
+            .context
+            .append_basic_block(fd_find_rec_fn, "int_child_body");
         let fdr_int_next = self.context.append_basic_block(fd_find_rec_fn, "int_next");
         let fdr_concat = self.context.append_basic_block(fd_find_rec_fn, "concat");
         let fdr_concat_right = self
@@ -6903,6 +6906,21 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_conditional_branch(fdr_done_int, fdr_leaf_done, fdr_int_child);
         self.builder.position_at_end(fdr_int_child);
+        let fdr_int_flag = self
+            .builder
+            .build_load(i64, fdr_found_flag_p, "fdr_int_flag")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let fdr_int_already = self
+            .builder
+            .build_int_compare(IntPredicate::NE, fdr_int_flag, zero, "fdr_int_already")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_conditional_branch(
+            fdr_int_already,
+            fdr_leaf_done,
+            fdr_int_child_body,
+        );
+        self.builder.position_at_end(fdr_int_child_body);
         let fdr_children_base = unsafe {
             self.builder
                 .build_gep(i8, fdr_int_i8, &[i64.const_int(16, false)], "fdr_cb")

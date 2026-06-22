@@ -30,6 +30,7 @@ impl<'ctx> CodeGen<'ctx> {
             "action_list_reverse",
             "action_list_reverse_walk_rec",
             "action_list_range_walk_rec",
+            "action_list_drop",
             "action_list_push_subtree",
             "action_list_map_walk",
             "action_list_map_filter_walk",

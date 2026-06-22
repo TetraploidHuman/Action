@@ -914,6 +914,14 @@ impl<'ctx> CodeGen<'ctx> {
             None,
         );
         let ld_entry = self.context.append_basic_block(ld_fn, "entry");
+        let ld_h0 = self.context.append_basic_block(ld_fn, "h0");
+        let ld_h0_empty = self.context.append_basic_block(ld_fn, "h0_empty");
+        let ld_h0_copy = self.context.append_basic_block(ld_fn, "h0_copy");
+        let ld_h0_ci_loop = self.context.append_basic_block(ld_fn, "h0_ci_loop");
+        let ld_h0_ci_body = self.context.append_basic_block(ld_fn, "h0_ci_body");
+        let ld_h0_ci_done = self.context.append_basic_block(ld_fn, "h0_ci_done");
+        let ld_h0_done = self.context.append_basic_block(ld_fn, "h0_done");
+        let ld_hgt0 = self.context.append_basic_block(ld_fn, "hgt0");
         self.builder.position_at_end(ld_entry);
         let ld_list = ld_fn.get_first_param().unwrap().into_struct_value();
         let ld_n = ld_fn.get_nth_param(1).unwrap().into_int_value();
@@ -948,6 +956,205 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_sub(ld_len, ld_start, "remain")
             .map_err(llvm_err)?;
+        let ld_is_h0 = self
+            .builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                ld_height,
+                i64.const_int(0, false),
+                "is_h0",
+            )
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(ld_is_h0, ld_h0, ld_hgt0);
+        // === h=0: suffix copy into new leaf (symmetric with take prefix path) ===
+        self.builder.position_at_end(ld_h0);
+        let ld_remain_zero = self
+            .builder
+            .build_int_compare(IntPredicate::SLE, ld_remain, zero, "rem_zero")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(ld_remain_zero, ld_h0_empty, ld_h0_copy);
+        self.builder.position_at_end(ld_h0_empty);
+        let ld_empty = self
+            .builder
+            .build_call(list_create_fn, &[zero.into()], "empty")
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .basic()
+            .ok_or("create failed")?;
+        let _ = self.builder.build_return(Some(&ld_empty));
+        self.builder.position_at_end(ld_h0_copy);
+        let ld_leaf_i8 = self
+            .builder
+            .build_pointer_cast(ld_node, ptr, "leaf_i8")
+            .map_err(llvm_err)?;
+        let ld_count_raw = self
+            .builder
+            .build_load(i32, ld_leaf_i8, "count_raw")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let ld_count = self
+            .builder
+            .build_int_z_extend(ld_count_raw, i64, "count")
+            .map_err(llvm_err)?;
+        let ld_s_gt = self
+            .builder
+            .build_int_compare(IntPredicate::SGT, ld_start, ld_count, "s_gt")
+            .map_err(llvm_err)?;
+        let ld_copy_start = self
+            .builder
+            .build_select(ld_s_gt, ld_count, ld_start, "copy_start")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let ld_avail = self
+            .builder
+            .build_int_sub(ld_count, ld_copy_start, "avail")
+            .map_err(llvm_err)?;
+        let ld_avail_neg = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, ld_avail, zero, "avail_neg")
+            .map_err(llvm_err)?;
+        let ld_avail0 = self
+            .builder
+            .build_select(ld_avail_neg, zero, ld_avail, "avail0")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let ld_rem_gt = self
+            .builder
+            .build_int_compare(IntPredicate::SGT, ld_remain, ld_avail0, "rem_gt")
+            .map_err(llvm_err)?;
+        let ld_new_count = self
+            .builder
+            .build_select(ld_rem_gt, ld_avail0, ld_remain, "new_count")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let ld_nc_zero = self
+            .builder
+            .build_int_compare(IntPredicate::SLE, ld_new_count, zero, "nc_zero")
+            .map_err(llvm_err)?;
+        let ld_h0_alloc = self.context.append_basic_block(ld_fn, "h0_alloc");
+        let _ = self
+            .builder
+            .build_conditional_branch(ld_nc_zero, ld_h0_empty, ld_h0_alloc);
+        self.builder.position_at_end(ld_h0_alloc);
+        let leaf_ty = self.leaf_type;
+        let leaf_size = leaf_ty.size_of().ok_or("leaf size")?;
+        let ld_new_leaf = self
+            .builder
+            .build_call(malloc_rc_fn, &[leaf_size.into()], "new_leaf")
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_pointer_value();
+        let ld_memcpy_fn = self.module.get_function("memcpy").unwrap();
+        let ld_old_eb = unsafe {
+            self.builder
+                .build_gep(i8, ld_leaf_i8, &[i64.const_int(8, false)], "old_eb")
+                .map_err(llvm_err)
+        }?;
+        let ld_src = unsafe {
+            self.builder
+                .build_gep(self.string_type, ld_old_eb, &[ld_copy_start], "src")
+                .map_err(llvm_err)
+        }?;
+        let ld_new_i8 = self
+            .builder
+            .build_pointer_cast(ld_new_leaf, ptr, "new_i8")
+            .map_err(llvm_err)?;
+        let ld_new_eb = unsafe {
+            self.builder
+                .build_gep(i8, ld_new_i8, &[i64.const_int(8, false)], "new_eb")
+                .map_err(llvm_err)
+        }?;
+        let ld_dst = unsafe {
+            self.builder
+                .build_gep(self.string_type, ld_new_eb, &[zero], "dst")
+                .map_err(llvm_err)
+        }?;
+        let ld_copy_bytes = self
+            .builder
+            .build_int_mul(ld_new_count, i64.const_int(16, false), "copy_bytes")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_call(
+                ld_memcpy_fn,
+                &[ld_dst.into(), ld_src.into(), ld_copy_bytes.into()],
+                "",
+            )
+            .map_err(llvm_err)?;
+        let ld_ci_i = self.builder.build_alloca(i64, "ci_i").map_err(llvm_err)?;
+        self.builder
+            .build_store(ld_ci_i, zero)
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(ld_h0_ci_loop);
+        self.builder.position_at_end(ld_h0_ci_loop);
+        let ld_ci = self
+            .builder
+            .build_load(i64, ld_ci_i, "ci")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let ld_ci_cond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, ld_ci, ld_new_count, "ci_cond")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(ld_ci_cond, ld_h0_ci_body, ld_h0_ci_done);
+        self.builder.position_at_end(ld_h0_ci_body);
+        let ld_str_rc_inc_fn = self.module.get_function("action_string_rc_inc").unwrap();
+        let ld_ci_ep = unsafe {
+            self.builder
+                .build_gep(self.string_type, ld_new_eb, &[ld_ci], "ci_ep")
+                .map_err(llvm_err)
+        }?;
+        let ld_ci_ev = self
+            .builder
+            .build_load(self.string_type, ld_ci_ep, "ci_ev")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let _ = self
+            .builder
+            .build_call(ld_str_rc_inc_fn, &[ld_ci_ev.into()], "")
+            .map_err(llvm_err)?;
+        let ld_ci_next = self
+            .builder
+            .build_int_add(ld_ci, one, "ci_next")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(ld_ci_i, ld_ci_next)
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(ld_h0_ci_loop);
+        self.builder.position_at_end(ld_h0_ci_done);
+        let ld_new_count_i32 = self
+            .builder
+            .build_int_truncate(ld_new_count, i32, "new_count_i32")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_store(ld_new_i8, ld_new_count_i32)
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(ld_h0_done);
+        self.builder.position_at_end(ld_h0_done);
+        let undef_drop = self.list_type.get_undef();
+        let ld_r1 = self
+            .builder
+            .build_insert_value(undef_drop, ld_new_leaf, 0, "r1")
+            .map_err(llvm_err)?;
+        let ld_r2 = self
+            .builder
+            .build_insert_value(ld_r1, ld_new_count, 1, "r2")
+            .map_err(llvm_err)?;
+        let ld_r3 = self
+            .builder
+            .build_insert_value(ld_r2, i64.const_int(0, false), 2, "r3")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_return(Some(&ld_r3));
+        // === h>0: B-tree range walk ===
+        self.builder.position_at_end(ld_hgt0);
         let ld_new = self
             .builder
             .build_call(list_create_fn, &[zero.into()], "new")

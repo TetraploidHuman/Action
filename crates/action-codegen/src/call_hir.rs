@@ -5,6 +5,7 @@ use action_frontend::hir::{HirExpr, HirExprKind, HirStmt};
 
 use super::builtin_dispatch::BuiltinDispatch;
 use super::call_arg::CallArg;
+use super::lambda_mono::DirectLambdaTarget;
 use super::{CodeGen, TypedValue, ValKind};
 
 impl<'ctx> CodeGen<'ctx> {
@@ -42,6 +43,9 @@ impl<'ctx> CodeGen<'ctx> {
         if let Some(scope_var) = self.scope.get(name) {
             if scope_var.kind == ValKind::Fn {
                 let target = self.compile_ident(name)?;
+                if let Some(result) = self.try_devirtualize_fn_call(&target, args, trailing)? {
+                    return Ok(result);
+                }
                 return self.compile_indirect_call_from_call_args(target, args, trailing);
             }
         }
@@ -302,6 +306,15 @@ impl<'ctx> CodeGen<'ctx> {
                     None,
                 );
             }
+            if let HirExprKind::Lambda { .. } = &hir.kind {
+                if let Ok(lam_val) = self.compile_hir_expr(hir) {
+                    if let Some(result) =
+                        self.try_devirtualize_unary_lambda_call(&lam_val, args[1])?
+                    {
+                        return Ok(result);
+                    }
+                }
+            }
             if let Ok(fn_val) = self.compile_call_arg(args[0]) {
                 if let Some(fn_name) = self.fn_ptr_to_module_name(&fn_val) {
                     return self.compile_direct_function_call_from_call_args(
@@ -309,6 +322,9 @@ impl<'ctx> CodeGen<'ctx> {
                         &[args[1]],
                         None,
                     );
+                }
+                if let Some(result) = self.try_devirtualize_unary_lambda_call(&fn_val, args[1])? {
+                    return Ok(result);
                 }
             }
         }
@@ -418,7 +434,11 @@ impl<'ctx> CodeGen<'ctx> {
         } else if trailing.is_some() {
             Some(0)
         } else if args.len() >= 2 {
-            Some(1)
+            if matches!(self.compile_call_arg(args[0]), Ok(TypedValue::List(_))) {
+                Some(0)
+            } else {
+                Some(1)
+            }
         } else {
             None
         };
@@ -665,6 +685,52 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    fn try_devirtualize_fn_call(
+        &mut self,
+        target: &TypedValue<'ctx>,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
+    ) -> Result<Option<TypedValue<'ctx>>, String> {
+        if trailing.is_some() {
+            return Ok(None);
+        }
+        if let Some(fn_name) = self.fn_ptr_to_module_name(target) {
+            return Ok(Some(
+                self.compile_direct_function_call_from_call_args(&fn_name, args, None)?,
+            ));
+        }
+        if args.len() == 1 {
+            if let Some(result) = self.try_devirtualize_unary_lambda_call(target, args[0])? {
+                return Ok(Some(result));
+            }
+        }
+        Ok(None)
+    }
+
+    fn try_devirtualize_unary_lambda_call(
+        &mut self,
+        target: &TypedValue<'ctx>,
+        arg: CallArg<'_>,
+    ) -> Result<Option<TypedValue<'ctx>>, String> {
+        let Some(dl) = self.try_direct_lambda(target.clone()) else {
+            return Ok(None);
+        };
+        let DirectLambdaTarget::Plain(_) = dl else {
+            return Ok(None);
+        };
+        let av = self.compile_call_arg(arg)?;
+        let iv = match av {
+            TypedValue::Int(i) => i,
+            _ => return Ok(None),
+        };
+        let cc = self.emit_direct_lambda_call(&dl, iv, "apply_direct")?;
+        self.rc_free_intermediate(&av)?;
+        if cc.is_int_value() {
+            return Ok(Some(TypedValue::Int(cc.into_int_value())));
+        }
+        Ok(Some(self.unpack_fat_return(cc, None)?))
+    }
+
     fn fn_ptr_to_module_name(&self, val: &TypedValue<'ctx>) -> Option<String> {
         let fn_ptr = match val {
             TypedValue::Fn(p, _) => *p,
@@ -673,7 +739,11 @@ impl<'ctx> CodeGen<'ctx> {
         };
         for f in self.module.get_functions() {
             if f.as_global_value().as_pointer_value() == fn_ptr {
-                return f.get_name().to_str().ok().map(|s| s.to_string());
+                let name = f.get_name().to_str().ok()?;
+                if name.starts_with(".lambda_") {
+                    continue;
+                }
+                return Some(name.to_string());
             }
         }
         None
