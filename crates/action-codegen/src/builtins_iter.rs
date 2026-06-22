@@ -744,7 +744,8 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(elem_val.into_struct_value(), 0, "fd_et")
             .map_err(llvm_err)?
             .into_int_value();
-        let pred = self.call_predicate_on_tag_for_val(fn_val, fn_ptr, fn_type, elem_tag, "fd_call")?;
+        let pred =
+            self.call_predicate_on_tag_for_val(fn_val, fn_ptr, fn_type, elem_tag, "fd_call")?;
         let is_true = self
             .builder
             .build_int_compare(IntPredicate::NE, pred, i64.const_int(0, false), "fd_true")
@@ -1537,9 +1538,7 @@ impl<'ctx> CodeGen<'ctx> {
                 (TypedValue::List(_), _) => (a1, a0),
                 (_, TypedValue::List(_)) => (a0, a1),
                 _ => {
-                    return Err(format!(
-                        "{name} expects one list and one function argument"
-                    ));
+                    return Err(format!("{name} expects one list and one function argument"));
                 }
             };
             let fn_ptr = match fn_expr {
@@ -2133,9 +2132,7 @@ impl<'ctx> CodeGen<'ctx> {
             match (&a0, &a1) {
                 (TypedValue::List(_), _) => Ok((a1, a0)),
                 (_, TypedValue::List(_)) => Ok((a0, a1)),
-                _ => Err(format!(
-                    "{name} expects one list and one function argument"
-                )),
+                _ => Err(format!("{name} expects one list and one function argument")),
             }
         } else {
             Err(format!(

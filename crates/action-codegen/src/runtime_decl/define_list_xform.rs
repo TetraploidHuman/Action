@@ -1087,9 +1087,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .map_err(llvm_err)?;
         let ld_ci_i = self.builder.build_alloca(i64, "ci_i").map_err(llvm_err)?;
-        self.builder
-            .build_store(ld_ci_i, zero)
-            .map_err(llvm_err)?;
+        self.builder.build_store(ld_ci_i, zero).map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(ld_h0_ci_loop);
         self.builder.position_at_end(ld_h0_ci_loop);
         let ld_ci = self

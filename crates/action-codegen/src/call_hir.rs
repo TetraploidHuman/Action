@@ -695,9 +695,9 @@ impl<'ctx> CodeGen<'ctx> {
             return Ok(None);
         }
         if let Some(fn_name) = self.fn_ptr_to_module_name(target) {
-            return Ok(Some(
-                self.compile_direct_function_call_from_call_args(&fn_name, args, None)?,
-            ));
+            return Ok(Some(self.compile_direct_function_call_from_call_args(
+                &fn_name, args, None,
+            )?));
         }
         if args.len() == 1 {
             if let Some(result) = self.try_devirtualize_unary_lambda_call(target, args[0])? {
