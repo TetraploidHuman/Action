@@ -19,11 +19,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         let fn_ty = self.list_type.fn_type(
-            &[
-                self.list_type.into(),
-                i64.into(),
-                self.string_type.into(),
-            ],
+            &[self.list_type.into(), i64.into(), self.string_type.into()],
             false,
         );
         let h0_mid_fn = self
@@ -104,10 +100,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_pointer_cast(child0, ptr, "c0_p")
             .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_store(c0_p, cow_leaf)
-            .map_err(llvm_err)?;
+        let _ = self.builder.build_store(c0_p, cow_leaf).map_err(llvm_err)?;
         let c0_st = unsafe {
             self.builder
                 .build_gep(i64, c0_p, &[one], "c0_st")
@@ -140,12 +133,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_pointer_value();
         let split_ok = self
             .builder
-            .build_int_compare(
-                IntPredicate::NE,
-                split_result,
-                ptr.const_null(),
-                "split_ok",
-            )
+            .build_int_compare(IntPredicate::NE, split_result, ptr.const_null(), "split_ok")
             .map_err(llvm_err)?;
         let _ = self.builder.build_conditional_branch(split_ok, ok, fail);
 
