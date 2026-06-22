@@ -456,6 +456,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.define_str_basic()?;
         self.define_list_core()?;
         self.define_list_map_filter_map()?;
+        self.define_list_filter_map_fold()?;
         self.define_list_insert_split_child()?;
         self.define_lazy_list()?;
         self.define_list_insert_rec()?;
@@ -485,6 +486,7 @@ mod define_hash_table;
 mod define_lazy_list;
 mod define_list_core;
 mod define_list_extra;
+mod define_list_filter_map_fold;
 mod define_list_index_of_walk;
 mod define_list_insert_rec;
 mod define_list_insert_split;

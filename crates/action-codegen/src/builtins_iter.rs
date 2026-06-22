@@ -144,7 +144,7 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::List(res_a))
     }
 
-    /// filter+map then fold: two tree walks (no intermediate filter/map lists in user code).
+    /// filter+map+fold: single B-tree walk (no intermediate List).
     pub(super) fn fused_filter_map_fold_values(
         &mut self,
         filter_fn_val: TypedValue<'ctx>,
@@ -171,21 +171,19 @@ impl<'ctx> CodeGen<'ctx> {
         };
         let list_struct = self.load_list(list_ptr)?;
         let fm_cc = self.call_rt(
-            "action_list_filter_map_walk",
-            &[list_struct.into(), filter_fn_ptr.into(), map_fn_ptr.into()],
+            "action_list_filter_map_fold_walk",
+            &[
+                list_struct.into(),
+                filter_fn_ptr.into(),
+                map_fn_ptr.into(),
+                fold_fn_ptr.into(),
+                init.into(),
+            ],
         )?;
-        let fm_bv = fm_cc
+        let acc = fm_cc
             .try_as_basic_value()
             .basic()
-            .ok_or("filter_map_walk failed")?;
-        let fold_cc = self.call_rt(
-            "action_list_fold_walk",
-            &[fm_bv.into(), fold_fn_ptr.into(), init.into()],
-        )?;
-        let acc = fold_cc
-            .try_as_basic_value()
-            .basic()
-            .ok_or("fold_walk failed")?
+            .ok_or("filter_map_fold_walk failed")?
             .into_int_value();
         Ok(TypedValue::Int(acc))
     }

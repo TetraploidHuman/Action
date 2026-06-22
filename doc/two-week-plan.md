@@ -71,6 +71,6 @@ nix-shell --run 'cargo build --release && cargo test --test integration -- --tes
 
 ## 后续（超出本计划，未纳入待办）
 
-- `filter+map+fold` 单遍 walk（当前两趟 + 中间 List）
-- `action-codegen` 编译 warning 清零
-- List P0：`insert_rec` internal overflow 等（见 `doc/week-plan.md`）
+- ~~`filter+map+fold` 单遍 walk（当前两趟 + 中间 List）~~ ✅ `action_list_filter_map_fold_walk`（2026-06-22）
+- `action-codegen` 编译 warning 清零（CI `-D warnings` 已通过）
+- List P0：`insert_rec` 满叶中间 split 晋升 internal（`insert_rec_root_mid` 待修 height 元数据后合入）

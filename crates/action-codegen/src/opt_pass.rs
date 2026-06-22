@@ -35,6 +35,8 @@ impl<'ctx> CodeGen<'ctx> {
             "action_list_index_of_walk",
             "action_list_index_of_walk_rec",
             "action_list_filter_walk",
+            "action_list_filter_map_fold_walk",
+            "action_list_filter_map_fold_walk_rec",
             "action_list_fold_walk",
             "action_list_flatten",
             "action_list_push_leaf",
