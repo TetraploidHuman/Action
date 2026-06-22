@@ -44,11 +44,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_struct_value();
         let result = self
             .builder
-            .build_call(
-                concat_fn,
-                &[left_with.into(), right.into()],
-                "result",
-            )
+            .build_call(concat_fn, &[left_with.into(), right.into()], "result")
             .map_err(llvm_err)?
             .try_as_basic_value()
             .unwrap_basic();

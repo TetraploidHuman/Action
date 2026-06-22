@@ -116,11 +116,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let val = self.compile_hir_expr(expr)?;
                     match self.value_to_string_ptr(&val)? {
                         Some(ptr) => Some(ptr),
-                        None => {
-                            return Err(
-                                "Unsupported type in string interpolation".to_string()
-                            )
-                        }
+                        None => return Err("Unsupported type in string interpolation".to_string()),
                     }
                 }
             };

@@ -890,9 +890,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if let Some(result) = self.try_compile_for_invariant_map_hir(condition, body)? {
                     return Ok(result);
                 }
-                if let Some(result) =
-                    self.try_compile_for_invariant_filter_hir(condition, body)?
-                {
+                if let Some(result) = self.try_compile_for_invariant_filter_hir(condition, body)? {
                     return Ok(result);
                 }
                 if let Some(result) = self.try_compile_for_invariant_fold_hir(condition, body)? {
@@ -1163,10 +1161,8 @@ impl<'ctx> CodeGen<'ctx> {
             return Ok(None);
         }
 
-        let filtered = self.builtin_filter(
-            &[CallArg::Hir(&list_hir)],
-            Some(CallArg::Hir(&filter_lam)),
-        )?;
+        let filtered =
+            self.builtin_filter(&[CallArg::Hir(&list_hir)], Some(CallArg::Hir(&filter_lam)))?;
         self.rc_free_intermediate(&filtered)?;
         self.compile_for_condition_hir(condition, &inc_body)
             .map(Some)
@@ -1237,10 +1233,7 @@ impl<'ctx> CodeGen<'ctx> {
             return Ok(None);
         }
 
-        let mapped = self.builtin_map(
-            &[CallArg::Hir(&list_hir)],
-            Some(CallArg::Hir(&map_lam)),
-        )?;
+        let mapped = self.builtin_map(&[CallArg::Hir(&list_hir)], Some(CallArg::Hir(&map_lam)))?;
         let mapped_list = match mapped {
             TypedValue::List(p) => p,
             _ => return Err("map-fold LICM: map did not produce a list".to_string()),

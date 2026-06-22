@@ -289,10 +289,7 @@ impl TypeChecker {
                     // Temporarily add function parameters to the type environment.
                     let mut saved: Vec<(String, Option<Type>)> = Vec::new();
                     for p in params {
-                        let param_ty = p
-                            .ty
-                            .clone()
-                            .unwrap_or_else(|| Type::Named("Int".into()));
+                        let param_ty = p.ty.clone().unwrap_or_else(|| Type::Named("Int".into()));
                         let old = self.type_env.insert(p.name.clone(), param_ty);
                         saved.push((p.name.clone(), old));
                     }

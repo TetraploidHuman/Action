@@ -563,9 +563,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let obj_val = self.compile_hir_expr(obj)?;
                 self.assign_field_on_value(obj_val, field, v)
             }
-            HirExprKind::Tuple(names) => {
-                self.assign_tuple_hir(names, v)
-            }
+            HirExprKind::Tuple(names) => self.assign_tuple_hir(names, v),
             HirExprKind::Index(obj, idx) => self.assign_index_hir(obj, idx, v),
             _ => Err(format!(
                 "Complex assignment not yet supported: {:?}",
@@ -589,10 +587,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .get(name)
                             .ok_or_else(|| format!("Undefined variable: {}", name))?;
                         if !var.mutable {
-                            return Err(format!(
-                                "Cannot assign to immutable variable '{}'",
-                                name
-                            ));
+                            return Err(format!("Cannot assign to immutable variable '{}'", name));
                         }
                         var.ptr
                     };

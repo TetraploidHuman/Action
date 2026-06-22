@@ -1148,9 +1148,9 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(IntPredicate::SGT, li_h0_mid_len, li_len, "h0_mid_ok")
             .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(li_h0_mid_ok, li_h0_mid_ok_bb, li_rec_start_bb);
+        let _ =
+            self.builder
+                .build_conditional_branch(li_h0_mid_ok, li_h0_mid_ok_bb, li_rec_start_bb);
         self.builder.position_at_end(li_h0_mid_ok_bb);
         let _ = self.builder.build_return(Some(&li_h0_mid_r));
         self.builder.position_at_end(li_rec_start_bb);

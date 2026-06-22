@@ -7,9 +7,9 @@
 use inkwell::values::{BasicValue, IntValue, StructValue};
 use inkwell::IntPredicate;
 
-use action_frontend::ast::Type;
 use super::call_arg::CallArg;
 use super::{llvm_err, CodeGen, TypedValue};
+use action_frontend::ast::Type;
 
 impl<'ctx> CodeGen<'ctx> {
     /// Sum elements of an already-loaded list struct (Int tags only).

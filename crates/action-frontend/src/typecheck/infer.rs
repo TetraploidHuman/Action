@@ -1,5 +1,5 @@
-use super::*;
 use super::inference::InferenceEngine;
+use super::*;
 use crate::ast::resolve_type_vars;
 use crate::types::infer_type_args;
 
@@ -161,7 +161,11 @@ impl TypeChecker {
                 }
                 if matches!(
                     op,
-                    BinaryOp::BitAnd | BinaryOp::BitOr | BinaryOp::BitXor | BinaryOp::Shl | BinaryOp::Shr
+                    BinaryOp::BitAnd
+                        | BinaryOp::BitOr
+                        | BinaryOp::BitXor
+                        | BinaryOp::Shl
+                        | BinaryOp::Shr
                 ) {
                     return Ok(Type::Named("Int".into()));
                 }
@@ -414,9 +418,7 @@ impl TypeChecker {
                     }
                     Type::Map(_, v) => return Ok(Type::Nullable(v.clone())),
                     Type::Set(e) => return Ok(Type::Nullable(e.clone())),
-                    Type::Named(ref n) if n == "String" => {
-                        return Ok(Type::Named("Int".into()))
-                    }
+                    Type::Named(ref n) if n == "String" => return Ok(Type::Named("Int".into())),
                     Type::Nullable(inner) => match *inner {
                         Type::Map(_, v) => return Ok(Type::Nullable(v)),
                         Type::Set(e) => return Ok(Type::Nullable(e)),

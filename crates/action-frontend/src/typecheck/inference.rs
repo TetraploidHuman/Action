@@ -50,10 +50,7 @@ impl InferenceEngine {
                     .map(|(n, t)| (n.clone(), self.resolve(t)))
                     .collect(),
             ),
-            Type::Map(k, v) => Type::Map(
-                Box::new(self.resolve(k)),
-                Box::new(self.resolve(v)),
-            ),
+            Type::Map(k, v) => Type::Map(Box::new(self.resolve(k)), Box::new(self.resolve(v))),
             Type::Set(t) => Type::Set(Box::new(self.resolve(t))),
             Type::Task(t) => Type::Task(Box::new(self.resolve(t))),
             Type::Stream(s) => Type::Stream(Box::new(self.resolve(s))),
@@ -67,15 +64,20 @@ impl InferenceEngine {
     fn occurs(&self, id: u32, ty: &Type) -> bool {
         match self.resolve(ty) {
             Type::InferVar(v) => v == id,
-            Type::Generic(base, params) => self.occurs(id, &base) || params.iter().any(|p| self.occurs(id, p)),
+            Type::Generic(base, params) => {
+                self.occurs(id, &base) || params.iter().any(|p| self.occurs(id, p))
+            }
             Type::Function(params, ret) => {
                 params.iter().any(|p| self.occurs(id, p)) || self.occurs(id, &ret)
             }
             Type::Struct(fields) => fields.iter().any(|(_, t)| self.occurs(id, t)),
             Type::Map(k, v) => self.occurs(id, &k) || self.occurs(id, &v),
-            Type::Set(t) | Type::Task(t) | Type::Stream(t) | Type::LazyList(t) | Type::Nullable(t) | Type::Ptr(t) => {
-                self.occurs(id, &t)
-            }
+            Type::Set(t)
+            | Type::Task(t)
+            | Type::Stream(t)
+            | Type::LazyList(t)
+            | Type::Nullable(t)
+            | Type::Ptr(t) => self.occurs(id, &t),
             _ => false,
         }
     }
@@ -160,14 +162,15 @@ impl InferenceEngine {
                         return Ok(());
                     }
                 }
-                Err(format!("Cannot unify type variable {} with {}", name, other))
+                Err(format!(
+                    "Cannot unify type variable {} with {}",
+                    name, other
+                ))
             }
-            (Type::CString, Type::CString)
-            | (Type::FileHandle, Type::FileHandle) => Ok(()),
+            (Type::CString, Type::CString) | (Type::FileHandle, Type::FileHandle) => Ok(()),
             _ => Err(format!("Type mismatch: {} vs {}", t1, t2)),
         }
     }
-
 }
 
 #[cfg(test)]

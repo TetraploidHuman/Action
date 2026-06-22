@@ -286,11 +286,11 @@ impl<'ctx> CodeGen<'ctx> {
         if name == "fib" && args.len() == 1 && trailing.is_none() {
             let CallArg::Hir(hir) = &args[0];
             if let HirExprKind::Literal(Literal::Int(n)) = &hir.kind {
-                    if *n >= 0 && *n <= 92 {
-                        let v = Self::consteval_fib(*n as u64);
-                        return Ok(TypedValue::Int(self.i64_ty().const_int(v, false)));
-                    }
+                if *n >= 0 && *n <= 92 {
+                    let v = Self::consteval_fib(*n as u64);
+                    return Ok(TypedValue::Int(self.i64_ty().const_int(v, false)));
                 }
+            }
         }
 
         if name == "apply" && args.len() == 2 && trailing.is_none() {

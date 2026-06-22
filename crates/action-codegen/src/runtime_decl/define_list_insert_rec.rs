@@ -175,11 +175,11 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(leaf_full);
         let leaf_full_syn = self.context.append_basic_block(lir_fn, "leaf_full_syn");
         let leaf_full_split_bb = self.context.append_basic_block(lir_fn, "leaf_full_split");
-        let leaf_full_split_ok = self.context.append_basic_block(lir_fn, "leaf_full_split_ok");
+        let leaf_full_split_ok = self
+            .context
+            .append_basic_block(lir_fn, "leaf_full_split_ok");
         let leaf_full_fail = self.context.append_basic_block(lir_fn, "leaf_full_fail");
-        let _ = self
-            .builder
-            .build_unconditional_branch(leaf_full_syn);
+        let _ = self.builder.build_unconditional_branch(leaf_full_syn);
 
         // Root full-leaf middle insert: wrap in synthetic 1-child internal, split_child.
         self.builder.position_at_end(leaf_full_syn);
@@ -219,12 +219,7 @@ impl<'ctx> CodeGen<'ctx> {
         }?;
         let lfs_child = self
             .builder
-            .build_insert_value(
-                self.child_entry_type.get_undef(),
-                lir_node,
-                0,
-                "lfs_c0",
-            )
+            .build_insert_value(self.child_entry_type.get_undef(), lir_node, 0, "lfs_c0")
             .map_err(llvm_err)?
             .into_struct_value();
         let lfs_child2 = self
@@ -251,9 +246,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(lfs_syn_rc_p, one)
             .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_unconditional_branch(leaf_full_split_bb);
+        let _ = self.builder.build_unconditional_branch(leaf_full_split_bb);
 
         self.builder.position_at_end(leaf_full_split_bb);
         let lfs_result = self

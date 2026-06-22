@@ -16,10 +16,7 @@ impl<'ctx> CodeGen<'ctx> {
         let null_ptr = ptr.const_null();
         let malloc_rc_fn = self.module.get_function("action_malloc_rc").unwrap();
         let rc_inc_fn = self.module.get_function("action_rc_inc").unwrap();
-        let insert_rec_fn = self
-            .module
-            .get_function("action_list_insert_rec")
-            .unwrap();
+        let insert_rec_fn = self.module.get_function("action_list_insert_rec").unwrap();
 
         let split_fn = self
             .module
@@ -309,10 +306,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self
             .builder
-            .build_store(
-                nr_i8,
-                i32.const_int(2, false),
-            )
+            .build_store(nr_i8, i32.const_int(2, false))
             .map_err(llvm_err)?;
         let grand_total = self
             .builder
