@@ -227,7 +227,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let idx_in_left = self
             .builder
-            .build_int_compare(IntPredicate::SLE, local_idx, half, "idx_in_left")
+            .build_int_compare(IntPredicate::SLT, local_idx, half, "idx_in_left")
             .map_err(llvm_err)?;
         let _ = self
             .builder
@@ -255,13 +255,10 @@ impl<'ctx> CodeGen<'ctx> {
             .build_conditional_branch(ls_done, left_shift_done, left_shift_body);
         self.builder.position_at_end(left_shift_body);
         let ls_cur = ls_i.as_basic_value().into_int_value();
-        let ls_src = self
-            .builder
-            .build_int_sub(half_m1, ls_cur, "ls_src")
-            .map_err(llvm_err)?;
+        let ls_src = ls_cur;
         let ls_dst = self
             .builder
-            .build_int_sub(half, ls_cur, "ls_dst")
+            .build_int_add(ls_cur, one, "ls_dst")
             .map_err(llvm_err)?;
         let ls_sp = unsafe {
             self.builder
@@ -326,13 +323,10 @@ impl<'ctx> CodeGen<'ctx> {
             .build_conditional_branch(rs_done, right_shift_done, right_shift_body);
         self.builder.position_at_end(right_shift_body);
         let rs_cur = rs_i.as_basic_value().into_int_value();
-        let rs_src = self
-            .builder
-            .build_int_sub(half_m1, rs_cur, "rs_src")
-            .map_err(llvm_err)?;
+        let rs_src = rs_cur;
         let rs_dst = self
             .builder
-            .build_int_sub(half, rs_cur, "rs_dst")
+            .build_int_add(rs_cur, one, "rs_dst")
             .map_err(llvm_err)?;
         let rs_sp = unsafe {
             self.builder
@@ -408,20 +402,18 @@ impl<'ctx> CodeGen<'ctx> {
                 )
                 .map_err(llvm_err)?
         };
-        let left_p = self
+        let left_entry = self
             .builder
-            .build_pointer_cast(left_slot, ptr, "left_p")
+            .build_insert_value(self.child_entry_type.get_undef(), work_leaf, 0, "le0")
+            .map_err(llvm_err)?;
+        let left_entry2 = self
+            .builder
+            .build_insert_value(left_entry, lc, 1, "le1")
             .map_err(llvm_err)?;
         let _ = self
             .builder
-            .build_store(left_p, work_leaf)
+            .build_store(left_slot, left_entry2)
             .map_err(llvm_err)?;
-        let left_st_p = unsafe {
-            self.builder
-                .build_gep(i64, left_p, &[one], "left_st_p")
-                .map_err(llvm_err)?
-        };
-        let _ = self.builder.build_store(left_st_p, lc).map_err(llvm_err)?;
 
         let sibling_i = self
             .builder
@@ -492,20 +484,18 @@ impl<'ctx> CodeGen<'ctx> {
                 )
                 .map_err(llvm_err)?
         };
-        let right_p = self
+        let right_entry = self
             .builder
-            .build_pointer_cast(right_slot, ptr, "right_p")
+            .build_insert_value(self.child_entry_type.get_undef(), right_leaf, 0, "re0")
+            .map_err(llvm_err)?;
+        let right_entry2 = self
+            .builder
+            .build_insert_value(right_entry, rc, 1, "re1")
             .map_err(llvm_err)?;
         let _ = self
             .builder
-            .build_store(right_p, right_leaf)
+            .build_store(right_slot, right_entry2)
             .map_err(llvm_err)?;
-        let right_st_p = unsafe {
-            self.builder
-                .build_gep(i64, right_p, &[one], "right_st_p")
-                .map_err(llvm_err)?
-        };
-        let _ = self.builder.build_store(right_st_p, rc).map_err(llvm_err)?;
         let _ = self
             .builder
             .build_call(rc_inc_fn, &[right_leaf.into()], "")
@@ -529,19 +519,12 @@ impl<'ctx> CodeGen<'ctx> {
                 .build_gep(i64, intl_i8, &[one], "total_p")
                 .map_err(llvm_err)?
         };
-        let total_v = self
+        let subtree_total = self
             .builder
-            .build_load(i64, total_p, "total_v")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let _ = self
-            .builder
-            .build_store(
-                total_p,
-                self.builder
-                    .build_int_add(total_v, one, "total_new")
-                    .map_err(llvm_err)?,
-            )
+            .build_int_add(lc, rc, "subtree_total")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(total_p, subtree_total)
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(ok_ret);
 

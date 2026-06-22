@@ -34,6 +34,7 @@ impl<'ctx> CodeGen<'ctx> {
                         i64.into(),
                         self.string_type.into(),
                         i64.into(),
+                        ptr.into(),
                     ],
                     false,
                 ),
@@ -50,6 +51,7 @@ impl<'ctx> CodeGen<'ctx> {
                     i64.into(),
                     self.string_type.into(),
                     i64.into(),
+                    ptr.into(),
                 ],
                 false,
             ),
@@ -93,6 +95,10 @@ impl<'ctx> CodeGen<'ctx> {
         let lir_idx = lir_fn.get_nth_param(2).unwrap().into_int_value();
         let lir_val = lir_fn.get_nth_param(3).unwrap().into_struct_value();
         let list_root_rc = lir_fn.get_nth_param(4).unwrap().into_int_value();
+        let out_height = lir_fn.get_nth_param(5).unwrap().into_pointer_value();
+        self.builder
+            .build_store(out_height, lir_height)
+            .map_err(llvm_err)?;
         let is_leaf = self
             .builder
             .build_int_compare(IntPredicate::EQ, lir_height, zero, "is_leaf")
@@ -169,6 +175,14 @@ impl<'ctx> CodeGen<'ctx> {
         let lfp_new_node = self
             .builder
             .build_extract_value(lfp_pushed.into_struct_value(), 0, "lfp_new_node")
+            .map_err(llvm_err)?;
+        let lfp_new_height = self
+            .builder
+            .build_extract_value(lfp_pushed.into_struct_value(), 2, "lfp_new_height")
+            .map_err(llvm_err)?
+            .into_int_value();
+        self.builder
+            .build_store(out_height, lfp_new_height)
             .map_err(llvm_err)?;
         let _ = self.builder.build_return(Some(&lfp_new_node));
 
@@ -276,6 +290,9 @@ impl<'ctx> CodeGen<'ctx> {
             .build_conditional_branch(lfs_ok, leaf_full_split_ok, leaf_full_fail);
 
         self.builder.position_at_end(leaf_full_split_ok);
+        self.builder
+            .build_store(out_height, one)
+            .map_err(llvm_err)?;
         let _ = self.builder.build_return(Some(&lfs_result));
 
         self.builder.position_at_end(leaf_full_fail);
@@ -718,6 +735,13 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .map_err(llvm_err)?
             .into_pointer_value();
+        let child_height_out = self
+            .builder
+            .build_alloca(i64, "child_height_out")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(child_height_out, child_h)
+            .map_err(llvm_err)?;
         let new_child = self
             .builder
             .build_call(
@@ -728,6 +752,7 @@ impl<'ctx> CodeGen<'ctx> {
                     local_idx.into(),
                     lir_val.into(),
                     list_root_rc.into(),
+                    child_height_out.into(),
                 ],
                 "new_child",
             )
@@ -784,6 +809,7 @@ impl<'ctx> CodeGen<'ctx> {
                     lir_idx.into(),
                     lir_val.into(),
                     list_root_rc.into(),
+                    out_height.into(),
                 ],
                 "split_intl_root",
             )
@@ -808,10 +834,6 @@ impl<'ctx> CodeGen<'ctx> {
                 .build_gep(self.child_entry_type, upd_ce_base, &[found_i], "upcep")
                 .map_err(llvm_err)
         }?;
-        let child_slot = self
-            .builder
-            .build_pointer_cast(upd_ce_ptr, ptr, "child_slot")
-            .map_err(llvm_err)?;
         let child_changed = self
             .builder
             .build_int_compare(
@@ -860,9 +882,6 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self.builder.build_unconditional_branch(store_child);
 
         self.builder.position_at_end(store_child);
-        self.builder
-            .build_store(child_slot, new_child)
-            .map_err(llvm_err)?;
         let inc_child_bb = self.context.append_basic_block(lir_fn, "inc_child");
         let after_inc_bb = self.context.append_basic_block(lir_fn, "after_inc");
         let _ = self
@@ -889,7 +908,17 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_add(st_val, one, "st_new")
             .map_err(llvm_err)?;
-        self.builder.build_store(st_ptr, st_new).map_err(llvm_err)?;
+        let upd_entry = self
+            .builder
+            .build_insert_value(self.child_entry_type.get_undef(), new_child, 0, "upd_e0")
+            .map_err(llvm_err)?;
+        let upd_entry2 = self
+            .builder
+            .build_insert_value(upd_entry, st_new, 1, "upd_e1")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(upd_ce_ptr, upd_entry2)
+            .map_err(llvm_err)?;
         let total_ptr = unsafe {
             self.builder
                 .build_gep(i64, work_i8, &[i64.const_int(1, false)], "total_ptr")

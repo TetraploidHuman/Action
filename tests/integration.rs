@@ -1276,6 +1276,11 @@ fn test_drop_h0_mid() {
 }
 
 #[test]
+fn test_insert_h0_mid() {
+    assert_eq!(run_example("test_insert_h0_mid.ac"), "65\n999\n0\n62\n");
+}
+
+#[test]
 fn test_find_named_pred() {
     assert_eq!(run_example("find_pred.ac"), "true\ntrue\n");
 }

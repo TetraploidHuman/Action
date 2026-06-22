@@ -937,22 +937,15 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(llvm_err)?
                         .into_int_value();
                     let is_shared = self.collection_root_shared_in_scope(var_ptr, data_ptr)?;
-                    let other_list = self.any_other_list_var_in_scope(var_ptr)?;
                     let list_sh_bb = self.context.append_basic_block(fn_val, "asg_list_sh");
-                    let list_pick_bb = self.context.append_basic_block(fn_val, "asg_list_pick");
                     let list_ar_bb = self.context.append_basic_block(fn_val, "asg_list_ar");
-                    let list_full_bb = self.context.append_basic_block(fn_val, "asg_list_full");
                     let list_dec_done = self.context.append_basic_block(fn_val, "asg_list_done");
                     let _ =
                         self.builder
-                            .build_conditional_branch(is_shared, list_sh_bb, list_pick_bb);
+                            .build_conditional_branch(is_shared, list_sh_bb, list_ar_bb);
                     self.builder.position_at_end(list_sh_bb);
                     self.rc_dec(data_ptr)?;
                     let _ = self.builder.build_unconditional_branch(list_dec_done);
-                    self.builder.position_at_end(list_pick_bb);
-                    let _ =
-                        self.builder
-                            .build_conditional_branch(other_list, list_ar_bb, list_full_bb);
                     self.builder.position_at_end(list_ar_bb);
                     let (new_data_ptr, new_height) = match &v {
                         TypedValue::List(np) => {
@@ -978,9 +971,6 @@ impl<'ctx> CodeGen<'ctx> {
                         new_data_ptr,
                         new_height,
                     )?;
-                    let _ = self.builder.build_unconditional_branch(list_dec_done);
-                    self.builder.position_at_end(list_full_bb);
-                    self.emit_rc_release_list_root(data_ptr, height)?;
                     let _ = self.builder.build_unconditional_branch(list_dec_done);
                     self.builder.position_at_end(list_dec_done);
                 }

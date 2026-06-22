@@ -7,9 +7,8 @@ fun main() {
         i = i + 1
     }
     lst = lst.insert(32, 999)
-    print(lst.len())
-    print(lst.get(32))
-    print(lst.get(0))
-    print(lst.get(63))
-    println("")
+    println(lst.len())
+    println(lst.get(32))
+    println(lst.get(0))
+    println(lst.get(63))
 }

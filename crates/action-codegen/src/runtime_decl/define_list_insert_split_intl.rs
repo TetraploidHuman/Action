@@ -34,6 +34,9 @@ impl<'ctx> CodeGen<'ctx> {
         let copy_right_loop = self.context.append_basic_block(split_fn, "copy_right_loop");
         let copy_right_body = self.context.append_basic_block(split_fn, "copy_right_body");
         let copy_right_done = self.context.append_basic_block(split_fn, "copy_right_done");
+        let clear_left_loop = self.context.append_basic_block(split_fn, "clear_left_loop");
+        let clear_left_body = self.context.append_basic_block(split_fn, "clear_left_body");
+        let clear_left_done = self.context.append_basic_block(split_fn, "clear_left_done");
         let retry = self.context.append_basic_block(split_fn, "retry");
 
         self.builder.position_at_end(entry);
@@ -42,6 +45,7 @@ impl<'ctx> CodeGen<'ctx> {
         let ins_idx = split_fn.get_nth_param(2).unwrap().into_int_value();
         let ins_val = split_fn.get_nth_param(3).unwrap().into_struct_value();
         let list_root_rc = split_fn.get_nth_param(4).unwrap().into_int_value();
+        let out_height = split_fn.get_nth_param(5).unwrap().into_pointer_value();
 
         let intl_i8 = self
             .builder
@@ -287,6 +291,55 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self.builder.build_unconditional_branch(copy_right_loop);
 
         self.builder.position_at_end(copy_right_done);
+        let _ = self.builder.build_unconditional_branch(clear_left_loop);
+
+        // Zero stale child slots [32..int_count) on truncated left internal (no rc_dec — right owns inc'd refs)
+        self.builder.position_at_end(clear_left_loop);
+        let cl_i = self.builder.build_phi(i64, "cl_i").map_err(llvm_err)?;
+        let cl_cur = cl_i.as_basic_value().into_int_value();
+        let cl_done = self
+            .builder
+            .build_int_compare(IntPredicate::SGE, cl_cur, int_count, "cl_done")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(cl_done, clear_left_done, clear_left_body);
+
+        self.builder.position_at_end(clear_left_body);
+        let cl_cb = unsafe {
+            self.builder
+                .build_gep(i8, intl_i8, &[i64.const_int(16, false)], "cl_cb")
+                .map_err(llvm_err)?
+        };
+        let cl_ce = unsafe {
+            self.builder
+                .build_gep(self.child_entry_type, cl_cb, &[cl_cur], "cl_ce")
+                .map_err(llvm_err)?
+        };
+        let cl_zero_entry = self
+            .builder
+            .build_insert_value(
+                self.builder
+                    .build_insert_value(self.child_entry_type.get_undef(), null_ptr, 0, "cl_z0")
+                    .map_err(llvm_err)?,
+                zero,
+                1,
+                "cl_z1",
+            )
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_store(cl_ce, cl_zero_entry)
+            .map_err(llvm_err)?;
+        let cl_next = self
+            .builder
+            .build_int_add(cl_cur, one, "cl_next")
+            .map_err(llvm_err)?;
+        let cl_body_bb = self.builder.get_insert_block().unwrap();
+        cl_i.add_incoming(&[(&half, copy_right_done), (&cl_next, cl_body_bb)]);
+        let _ = self.builder.build_unconditional_branch(clear_left_loop);
+
+        self.builder.position_at_end(clear_left_done);
         let _ = self
             .builder
             .build_call(rc_inc_fn, &[right_intl.into()], "")
@@ -381,6 +434,10 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_add(intl_height, one, "new_height")
             .map_err(llvm_err)?;
+        let retry_height_out = self
+            .builder
+            .build_alloca(i64, "retry_height_out")
+            .map_err(llvm_err)?;
         let retry_root = self
             .builder
             .build_call(
@@ -391,6 +448,7 @@ impl<'ctx> CodeGen<'ctx> {
                     ins_idx.into(),
                     ins_val.into(),
                     list_root_rc.into(),
+                    retry_height_out.into(),
                 ],
                 "retry_root",
             )
@@ -398,6 +456,12 @@ impl<'ctx> CodeGen<'ctx> {
             .try_as_basic_value()
             .unwrap_basic()
             .into_pointer_value();
+        let retry_h = self
+            .builder
+            .build_load(i64, retry_height_out, "retry_h")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let _ = self.builder.build_store(out_height, retry_h).map_err(llvm_err)?;
         let _ = self.builder.build_return(Some(&retry_root));
 
         self.builder.position_at_end(fail);

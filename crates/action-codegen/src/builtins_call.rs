@@ -32,7 +32,6 @@ impl<'ctx> CodeGen<'ctx> {
         match method {
             "len" => {
                 let len = self.list_len_val(lv)?;
-                self.rc_free_intermediate(recv_val)?;
                 Ok(Some(TypedValue::Int(len)))
             }
             "isEmpty" => {
@@ -41,7 +40,6 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_int_compare(IntPredicate::EQ, len, zero, "empty")
                     .map_err(llvm_err)?;
-                self.rc_free_intermediate(recv_val)?;
                 Ok(Some(TypedValue::Bool(is_empty)))
             }
             "head" => {
@@ -389,6 +387,50 @@ impl<'ctx> CodeGen<'ctx> {
                 self.rc_free_intermediate(recv_val)?;
                 Ok(Some(TypedValue::List(alloca)))
             }
+            _ => Ok(None),
+        }
+    }
+
+    /// Callback List UFCS (any/all/find/findIndex) using compiled receiver — no rc_free + recompile.
+    pub(super) fn compile_list_callback_ufcs(
+        &mut self,
+        lp: PointerValue<'ctx>,
+        method: &str,
+        args: &[super::call_arg::CallArg<'_>],
+        trailing: Option<super::call_arg::CallArg<'_>>,
+    ) -> Result<Option<TypedValue<'ctx>>, String> {
+        let fn_val = if let Some(lam) = trailing {
+            self.compile_call_arg(lam)?
+        } else if args.len() == 1 {
+            self.compile_call_arg(args[0])?
+        } else {
+            return Ok(None);
+        };
+        match method {
+            "any" => {
+                let fn_ptr = self.callback_fn_ptr(&fn_val, "any")?;
+                let lv = self.load_list(lp)?;
+                let cc = self.call_rt("action_list_any_walk", &[lv.into(), fn_ptr.into()])?;
+                let res = cc
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("any_walk failed")?
+                    .into_int_value();
+                Ok(Some(TypedValue::Bool(res)))
+            }
+            "all" => {
+                let fn_ptr = self.callback_fn_ptr(&fn_val, "all")?;
+                let lv = self.load_list(lp)?;
+                let cc = self.call_rt("action_list_all_walk", &[lv.into(), fn_ptr.into()])?;
+                let res = cc
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("all_walk failed")?
+                    .into_int_value();
+                Ok(Some(TypedValue::Bool(res)))
+            }
+            "find" => Ok(Some(self.find_on_list_ptr(lp, fn_val)?)),
+            "findIndex" => Ok(Some(self.find_index_on_list_ptr(lp, fn_val)?)),
             _ => Ok(None),
         }
     }

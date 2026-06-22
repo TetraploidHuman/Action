@@ -861,34 +861,8 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(acc)
     }
 
-    /// True when another List binding exists in the scope chain (any root).
-    pub(super) fn any_other_list_var_in_scope(
-        &self,
-        exclude_ptr: PointerValue<'ctx>,
-    ) -> Result<inkwell::values::IntValue<'ctx>, String> {
-        let mut acc = self.context.bool_type().const_int(0, false);
-        let mut scope = &self.scope;
-        loop {
-            for var in scope.local_variables().values() {
-                if var.ptr == exclude_ptr || var.kind != ValKind::List {
-                    continue;
-                }
-                acc = self
-                    .builder
-                    .build_or(acc, self.context.bool_type().const_int(1, false), "ol_or")
-                    .map_err(llvm_err)?;
-            }
-            match &scope.parent {
-                Some(p) => scope = p.as_ref(),
-                None => break,
-            }
-        }
-        Ok(acc)
-    }
-
-    /// Release old list on assign when other List bindings exist but roots differ.
-    /// `new_data_ptr` / `new_height` must be included in the live set so nodes shared
-    /// with the incoming value are not freed while the RHS result is still live.
+    /// Release old list on assign when the incoming value may share subtree nodes
+    /// with the previous root (e.g. `lst = lst.insert(...)` after split_child).
     pub(super) fn emit_rc_release_list_on_assign(
         &self,
         exclude_ptr: PointerValue<'ctx>,

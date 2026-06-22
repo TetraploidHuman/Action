@@ -724,10 +724,17 @@ impl<'ctx> CodeGen<'ctx> {
             if let Some(result) = self.compile_list_readonly_ufcs(*lp, &recv_val, method, args)? {
                 return Ok(result);
             }
+            if let Some(result) =
+                self.compile_list_callback_ufcs(*lp, method, args, trailing)?
+            {
+                return Ok(result);
+            }
             match method {
                 "insert" => return self.builtin_list_insert(*lp, args),
                 "remove" => return self.builtin_list_remove(*lp, args),
                 "append" => return self.builtin_list_append(*lp, args),
+                "take" => return self.builtin_list_take(*lp, args),
+                "drop" => return self.builtin_list_drop(*lp, args),
                 _ => {}
             }
             // Read-only UFCS must not rc_free + AST recompile (method-chain SIGSEGV).

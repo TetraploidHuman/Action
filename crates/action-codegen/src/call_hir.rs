@@ -263,6 +263,21 @@ impl<'ctx> CodeGen<'ctx> {
                 return self.fused_map_take_while_hir(map_fn, inner, tw_fn);
             }
         }
+        if method == "fold" {
+            if let Some((map_lam, base_list)) = Self::extract_map_call_args_hir(receiver) {
+                if args.len() == 1 {
+                    let fold_lam = trailing.ok_or(
+                        "fold on map receiver expects trailing lambda: lst.map{}.fold(init){}",
+                    )?;
+                    return self.fused_map_fold_hir(
+                        map_lam,
+                        fold_lam.as_ref(),
+                        base_list,
+                        &args[0],
+                    );
+                }
+            }
+        }
 
         let call_args = Self::call_args_from_hir(args);
         let trailing_ca = Self::trailing_call_arg_hir(trailing);

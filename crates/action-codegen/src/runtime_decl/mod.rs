@@ -129,18 +129,6 @@ impl<'ctx> CodeGen<'ctx> {
             None,
         );
         self.module.add_function(
-            "action_list_insert_h0_mid",
-            self.list_type.fn_type(
-                &[
-                    self.list_type.into(),
-                    self.context.i64_type().into(),
-                    self.string_type.into(),
-                ],
-                false,
-            ),
-            None,
-        );
-        self.module.add_function(
             "action_list_push_subtree",
             void.fn_type(&[ptr.into(), ptr.into(), i64.into()], false),
             None,
@@ -469,10 +457,12 @@ impl<'ctx> CodeGen<'ctx> {
         self.define_list_core()?;
         self.define_list_map_filter_map()?;
         self.define_list_filter_map_fold()?;
+        self.define_list_map_fold()?;
         self.define_list_insert_split_child()?;
         self.define_lazy_list()?;
         self.define_list_insert_rec()?;
         self.define_list_insert_split_intl()?;
+        self.define_list_remove_rec()?;
         self.define_list_iter()?;
         self.define_list_xform()?;
         self.define_list_index_of_walk()?;
@@ -485,7 +475,6 @@ impl<'ctx> CodeGen<'ctx> {
         self.define_str_adv()?;
         self.define_list_extra()?;
         self.define_list_tree()?;
-        self.define_list_insert_h0_mid()?;
         self.define_math_ms()?;
         self.define_misc()?;
         self.define_list_rc_assign()?;
@@ -502,12 +491,13 @@ mod define_list_core;
 mod define_list_extra;
 mod define_list_filter_map_fold;
 mod define_list_index_of_walk;
-mod define_list_insert_h0_mid;
 mod define_list_insert_rec;
 mod define_list_insert_split;
 mod define_list_insert_split_intl;
+mod define_list_remove_rec;
 mod define_list_iter;
 mod define_list_map_filter_map;
+mod define_list_map_fold;
 mod define_list_range;
 mod define_list_rc_assign;
 mod define_list_tree;

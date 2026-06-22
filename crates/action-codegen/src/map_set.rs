@@ -487,6 +487,58 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    /// list.take(n) — receiver alloca is pre-compiled to avoid double compilation.
+    pub(super) fn builtin_list_take(
+        &mut self,
+        list_ptr: PointerValue<'ctx>,
+        args: &[CallArg<'_>],
+    ) -> Result<TypedValue<'ctx>, String> {
+        if args.len() != 1 {
+            return Err("list.take expects 1 argument (count)".to_string());
+        }
+        let n_val = self.compile_call_arg(args[0])?;
+        match &n_val {
+            TypedValue::Int(n) => {
+                let lv = self.load_list(list_ptr)?;
+                let result = self.call_rt("action_list_take", &[lv.into(), (*n).into()])?;
+                let rv = result.try_as_basic_value().basic().ok_or("take failed")?;
+                let alloca = self
+                    .builder
+                    .build_alloca(self.list_type, "take_result")
+                    .map_err(llvm_err)?;
+                self.builder.build_store(alloca, rv).map_err(llvm_err)?;
+                Ok(TypedValue::List(alloca))
+            }
+            _ => Err("list.take expects an integer count".to_string()),
+        }
+    }
+
+    /// list.drop(n) — receiver alloca is pre-compiled to avoid double compilation.
+    pub(super) fn builtin_list_drop(
+        &mut self,
+        list_ptr: PointerValue<'ctx>,
+        args: &[CallArg<'_>],
+    ) -> Result<TypedValue<'ctx>, String> {
+        if args.len() != 1 {
+            return Err("list.drop expects 1 argument (count)".to_string());
+        }
+        let n_val = self.compile_call_arg(args[0])?;
+        match &n_val {
+            TypedValue::Int(n) => {
+                let lv = self.load_list(list_ptr)?;
+                let result = self.call_rt("action_list_drop", &[lv.into(), (*n).into()])?;
+                let rv = result.try_as_basic_value().basic().ok_or("drop failed")?;
+                let alloca = self
+                    .builder
+                    .build_alloca(self.list_type, "drop_result")
+                    .map_err(llvm_err)?;
+                self.builder.build_store(alloca, rv).map_err(llvm_err)?;
+                Ok(TypedValue::List(alloca))
+            }
+            _ => Err("list.drop expects an integer count".to_string()),
+        }
+    }
+
     /// list.append(elem) — receiver alloca is pre-compiled to avoid double compilation.
     pub(super) fn builtin_list_append(
         &mut self,

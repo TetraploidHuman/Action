@@ -247,6 +247,89 @@ impl<'ctx> CodeGen<'ctx> {
         )?))
     }
 
+    /// map+fold: single B-tree walk (no intermediate List).
+    pub(super) fn fused_map_fold_values(
+        &mut self,
+        map_fn_val: TypedValue<'ctx>,
+        fold_fn_val: TypedValue<'ctx>,
+        list_val: TypedValue<'ctx>,
+        init: inkwell::values::IntValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let map_fn_ptr = match map_fn_val {
+            TypedValue::Fn(p, _) | TypedValue::Closure { fn_ptr: p, .. } => p,
+            _ => return Err("fused map+fold: map function required".to_string()),
+        };
+        let fold_fn_ptr = match fold_fn_val {
+            TypedValue::Fn(p, _) | TypedValue::Closure { fn_ptr: p, .. } => p,
+            _ => return Err("fused map+fold: fold function required".to_string()),
+        };
+        let list_ptr = match list_val {
+            TypedValue::List(p) => p,
+            _ => return Err("fused map+fold: list required".to_string()),
+        };
+        let list_struct = self.load_list(list_ptr)?;
+        let mf_cc = self.call_rt(
+            "action_list_map_fold_walk",
+            &[
+                list_struct.into(),
+                map_fn_ptr.into(),
+                fold_fn_ptr.into(),
+                init.into(),
+            ],
+        )?;
+        let acc = mf_cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("map_fold_walk failed")?
+            .into_int_value();
+        Ok(TypedValue::Int(acc))
+    }
+
+    pub(super) fn fused_map_fold_hir(
+        &mut self,
+        map_fn_expr: &action_frontend::hir::HirExpr,
+        fold_fn_expr: &action_frontend::hir::HirExpr,
+        list_expr: &action_frontend::hir::HirExpr,
+        init_expr: &action_frontend::hir::HirExpr,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let map_fn_val = self.compile_hir_expr(map_fn_expr)?;
+        let fold_fn_val = self.compile_hir_expr(fold_fn_expr)?;
+        let list_val = self.compile_hir_expr(list_expr)?;
+        let init_val = self.compile_hir_expr(init_expr)?;
+        let init_i64 = match init_val {
+            TypedValue::Int(v) => v,
+            _ => return Err("fused map+fold: init must be Int".to_string()),
+        };
+        self.fused_map_fold_values(map_fn_val, fold_fn_val, list_val, init_i64)
+    }
+
+    pub(super) fn try_fused_map_fold_fold_args(
+        &mut self,
+        init_arg: &CallArg<'_>,
+        list_arg: &CallArg<'_>,
+        fold_lam: &CallArg<'_>,
+    ) -> Result<Option<TypedValue<'ctx>>, String> {
+        let CallArg::Hir(list_hir) = list_arg;
+        let (map_lam, base_list) = match Self::extract_map_call_args_hir(list_hir) {
+            Some(v) => v,
+            None => return Ok(None),
+        };
+        let init_val = self.compile_call_arg(*init_arg)?;
+        let init_i64 = match init_val {
+            TypedValue::Int(v) => v,
+            _ => return Ok(None),
+        };
+        let map_fn_val = self.compile_call_arg(CallArg::Hir(map_lam))?;
+        let fold_fn_val = self.compile_call_arg(*fold_lam)?;
+        let list_val = self.compile_call_arg(CallArg::Hir(base_list))?;
+        Ok(Some(self.fused_map_fold_values(
+            map_fn_val,
+            fold_fn_val,
+            list_val,
+            init_i64,
+        )?))
+    }
+
     pub(super) fn builtin_filter(
         &mut self,
         args: &[CallArg<'_>],
@@ -343,6 +426,9 @@ impl<'ctx> CodeGen<'ctx> {
                 if let Some(result) =
                     self.try_fused_filter_map_fold_fold_args(&args[0], &args[1], &lam)?
                 {
+                    return Ok(result);
+                }
+                if let Some(result) = self.try_fused_map_fold_fold_args(&args[0], &args[1], &lam)? {
                     return Ok(result);
                 }
             }
@@ -535,22 +621,15 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// find(list, fn) or find(list) { lambda } -> Option<T>
-    pub(super) fn builtin_find(
+    pub(super) fn find_on_list_ptr(
         &mut self,
-        args: &[CallArg<'_>],
-        trailing: Option<CallArg<'_>>,
+        list_ptr: PointerValue<'ctx>,
+        fn_val: TypedValue<'ctx>,
     ) -> Result<TypedValue<'ctx>, String> {
-        let (fn_val, list_val) = self.extract_callback_fn_and_list(args, trailing, 1, "find")?;
         let fn_ptr = self.callback_fn_ptr(&fn_val, "find")?;
-        let list_ptr = match list_val {
-            TypedValue::List(p) => p,
-            _ => return Err("find: last argument must be a list".to_string()),
-        };
-
         if let Some(target) = self.try_direct_lambda(fn_val.clone()) {
             return self.builtin_find_with_direct_lambda(list_ptr, &target);
         }
-
         let fn_type = self.predicate_llvm_fn_type(&fn_val)?;
         if self.predicate_returns_fat(fn_type) {
             let list_struct = self.load_list(list_ptr)?;
@@ -565,18 +644,18 @@ impl<'ctx> CodeGen<'ctx> {
             let found_a = self
                 .builder
                 .build_alloca(self.string_type, "found")
-                .map_err(llvm_err)?;
+                .map_err(super::llvm_err)?;
             let found_flag_a = self
                 .builder
                 .build_alloca(self.bool_ty(), "found_f")
-                .map_err(llvm_err)?;
+                .map_err(super::llvm_err)?;
             self.builder
                 .build_store(found_a, found_bv)
-                .map_err(llvm_err)?;
+                .map_err(super::llvm_err)?;
             let found_tag = self
                 .builder
                 .build_extract_value(found_bv.into_struct_value(), 0, "ft")
-                .map_err(llvm_err)?
+                .map_err(super::llvm_err)?
                 .into_int_value();
             let is_found = self
                 .builder
@@ -586,18 +665,31 @@ impl<'ctx> CodeGen<'ctx> {
                     self.i64_ty().const_int(1, false),
                     "is_found",
                 )
-                .map_err(llvm_err)?;
+                .map_err(super::llvm_err)?;
             let found_i64 = self
                 .builder
                 .build_int_z_extend(is_found, self.i64_ty(), "found_i64")
-                .map_err(llvm_err)?;
+                .map_err(super::llvm_err)?;
             self.builder
                 .build_store(found_flag_a, found_i64)
-                .map_err(llvm_err)?;
+                .map_err(super::llvm_err)?;
             return self.build_nullable_str(found_a, found_flag_a);
         }
-
         self.builtin_find_indexed(list_ptr, fn_ptr, fn_type, &fn_val)
+    }
+
+    /// find(list, fn) or find(list) { lambda } -> Option<T>
+    pub(super) fn builtin_find(
+        &mut self,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let (fn_val, list_val) = self.extract_callback_fn_and_list(args, trailing, 1, "find")?;
+        let list_ptr = match list_val {
+            TypedValue::List(p) => p,
+            _ => return Err("find: last argument must be a list".to_string()),
+        };
+        self.find_on_list_ptr(list_ptr, fn_val)
     }
 
     fn builtin_find_with_direct_lambda(
@@ -773,19 +865,13 @@ impl<'ctx> CodeGen<'ctx> {
         self.build_nullable_str(found_a, found_flag_a)
     }
 
-    /// findIndex(list, fn) or findIndex(list) { lambda } -> Option<Int>
-    pub(super) fn builtin_find_index(
+    /// findIndex(list, fn) on an already-compiled list alloca (UFCS fast path).
+    pub(super) fn find_index_on_list_ptr(
         &mut self,
-        args: &[CallArg<'_>],
-        trailing: Option<CallArg<'_>>,
+        list_ptr: PointerValue<'ctx>,
+        fn_val: TypedValue<'ctx>,
     ) -> Result<TypedValue<'ctx>, String> {
-        let (fn_val, list_val) =
-            self.extract_callback_fn_and_list(args, trailing, 1, "findIndex")?;
         let fn_ptr = self.callback_fn_ptr(&fn_val, "findIndex")?;
-        let list_ptr = match list_val {
-            TypedValue::List(p) => p,
-            _ => return Err("findIndex: last argument must be a list".to_string()),
-        };
         let direct_target = self.try_direct_lambda(fn_val.clone());
         let input_len = self.list_len_val(self.load_list(list_ptr)?)?;
         let current_fn = self
@@ -868,8 +954,22 @@ impl<'ctx> CodeGen<'ctx> {
                 "is_found",
             )
             .map_err(llvm_err)?;
-        // Build nullable Int: set flag 0 + found_idx, or flag 1 (null)
         self.build_nullable_int(found_idx, is_found)
+    }
+
+    /// findIndex(list, fn) or findIndex(list) { lambda } -> Option<Int>
+    pub(super) fn builtin_find_index(
+        &mut self,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let (fn_val, list_val) =
+            self.extract_callback_fn_and_list(args, trailing, 1, "findIndex")?;
+        let list_ptr = match list_val {
+            TypedValue::List(p) => p,
+            _ => return Err("findIndex: last argument must be a list".to_string()),
+        };
+        self.find_index_on_list_ptr(list_ptr, fn_val)
     }
 
     /// reduce(list, fn) or reduce(list) { lambda } -> Option<T>
@@ -2098,7 +2198,7 @@ impl<'ctx> CodeGen<'ctx> {
         )
     }
 
-    fn callback_fn_ptr(
+    pub(super) fn callback_fn_ptr(
         &self,
         val: &TypedValue<'ctx>,
         name: &str,
