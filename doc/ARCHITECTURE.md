@@ -44,11 +44,15 @@ crates/
     src/
       ast.rs lexer.rs parser/ typecheck/ loader/ hir/
       builtin/registry.rs   # stdlib + UFCS 类型表
+      type_registry.rs      # Struct/Enum TypeRegistry（`registry` 为兼容别名）
       session.rs error.rs fmt.rs checked.rs
   action-codegen/           # LLVM IR + runtime_decl + JIT/AOT
     src/
+      scope.rs typed_value.rs   # CodeGen 核心类型
       compile.rs hir_compile.rs call_arg.rs call_hir.rs ufcs.rs
-      runtime_decl/         # define_list_*.rs define_map.rs …
+      builtins/               # call / iter / list / stdlib / …
+      runtime_decl/           # define_* runtime IR
+        list/                 # List B-tree 领域聚合
   action-driver/            # load_checked · compile_checked · emit_*
   action-lsp/               # LSP 语言服务
   host-rt/                  # AOT + JIT host runtime（libaction_host_rt.a）
@@ -65,7 +69,7 @@ include/
   action_rt.h               # Runtime C ABI（scripts/generate_action_rt_header.py）
 
 tests/
-  integration.rs            # 语义 oracle（155 项）
+  integration.rs            # 语义 oracle（172 项）
   hir_golden.rs
   lexer_golden.rs
   bootstrap_subset.rs
@@ -128,6 +132,7 @@ pub use action_lsp as lsp;
 | **R8** | AST codegen 删除；registry 统一；HIR golden；token-aware fmt | ✅ |
 | **R9a** | `host-rt` 迁入 `crates/host-rt/src/` | ✅ |
 | **R9b** | CLI 源码迁入 `crates/action-cli/`；根 lib 纯 facade | ✅ |
+| **R10** | host-rt 依赖统一；codegen scope/builtins/list 模块树；type_registry 重命名 | ✅ |
 | **B0** | Bootstrap 语言子集（`doc/bootstrap-subset.md`） | ✅ |
 
 ## 性能优化（P2）
@@ -175,7 +180,7 @@ Linux 侧**全部**在 **自托管 NixOS runner** 上执行，开发/CI 环境�
 
 持久化编译缓存：`CARGO_TARGET_DIR` 指向 runner 本地目录（如 `~/桌面/Runner/ci-target`），与开发者本机 `nix-shell` 行为一致。
 
-集成测试 **155 项**为语义权威；重构不得降低通过数。类型标注使用 **colon 语法**（`val x: Int = 1`），与 bootstrap 子集及 `doc/language-spec-outline.md` 一致。
+集成测试 **172 项**为语义权威；重构不得降低通过数。类型标注使用 **colon 语法**（`val x: Int = 1`），与 bootstrap 子集及 `doc/language-spec-outline.md` 一致。
 
 ## 与自举的关系
 

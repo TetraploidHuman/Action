@@ -1,0 +1,2349 @@
+// Submodule: builtins_iter
+
+use inkwell::values::{IntValue, PointerValue};
+use inkwell::IntPredicate;
+
+use crate::call_arg::CallArg;
+use crate::{llvm_err, CodeGen, TypedValue};
+
+impl<'ctx> CodeGen<'ctx> {
+    pub(crate) fn builtin_map(
+        &mut self,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        // map(filter(map(base))) { outer } — fuse inner map+filter; skip identity outer map
+        if let Some(lam) = trailing {
+            if args.len() == 1 {
+                let CallArg::Hir(list_hir) = &args[0];
+                if let Some((filter_fn_hir, inner)) = Self::extract_filter_call_args_hir(list_hir) {
+                    if let Some((map_inner_hir, base_list)) = Self::extract_map_call_args_hir(inner)
+                    {
+                        let filter_fn_val = self.compile_hir_expr(filter_fn_hir)?;
+                        if Self::is_identity_lambda_call_arg(&lam) {
+                            return self.fused_map_filter_hir(
+                                map_inner_hir,
+                                base_list,
+                                filter_fn_val,
+                            );
+                        }
+                        let outer_fn = self.compile_call_arg(lam)?;
+                        return self.fused_map_filter_map_hir(
+                            map_inner_hir,
+                            base_list,
+                            filter_fn_val,
+                            outer_fn,
+                        );
+                    }
+                }
+            }
+        }
+
+        // map(fn, list) or map(list) { lambda }
+        let (fn_ptr, list_val) = if let Some(lam) = trailing {
+            // map(list) { lambda }
+            if args.len() != 1 {
+                return Err("map with trailing lambda expects 1 argument (list)".to_string());
+            }
+            let lv = self.compile_call_arg(args[0])?;
+            let fv = self.compile_call_arg(lam)?;
+            (fv, lv)
+        } else if args.len() == 2 {
+            let fv = self.compile_call_arg(args[0])?;
+            let lv = self.compile_call_arg(args[1])?;
+            (fv, lv)
+        } else {
+            return Err("map expects 2 arguments (fn, list)".to_string());
+        };
+
+        if let Some(result) = self.try_builtin_map_direct(fn_ptr, list_val)? {
+            return Ok(result);
+        }
+
+        let fn_ptr = match fn_ptr {
+            TypedValue::Fn(p, _) => p,
+            TypedValue::Closure { fn_ptr, .. } => fn_ptr,
+            _ => return Err("map: first argument must be a function".to_string()),
+        };
+        let list_ptr = match list_val {
+            TypedValue::List(p) => p,
+            _ => return Err("map: second argument must be a list".to_string()),
+        };
+
+        let list_struct = self.load_list(list_ptr)?;
+        let input_list = list_struct;
+
+        let result_alloca = self
+            .builder
+            .build_alloca(self.list_type, "map_result")
+            .map_err(llvm_err)?;
+
+        let map_cc = self.call_rt("action_list_map_walk", &[input_list.into(), fn_ptr.into()])?;
+        let result_bv = map_cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("map_walk failed")?;
+        self.builder
+            .build_store(result_alloca, result_bv)
+            .map_err(llvm_err)?;
+
+        Ok(TypedValue::List(result_alloca))
+    }
+
+    /// Fused map+filter: single tree walk over inner list.
+
+    /// Fused filter+map: single B-tree walk (filter then map on survivors).
+
+    pub(crate) fn fused_filter_map_hir(
+        &mut self,
+        filter_fn_expr: &action_frontend::hir::HirExpr,
+        inner_list_expr: &action_frontend::hir::HirExpr,
+        map_fn_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let filter_fn_val = self.compile_hir_expr(filter_fn_expr)?;
+        let inner_list_val = self.compile_hir_expr(inner_list_expr)?;
+        self.fused_filter_map_values(filter_fn_val, inner_list_val, map_fn_val)
+    }
+
+    fn fused_filter_map_values(
+        &mut self,
+        filter_fn_val: TypedValue<'ctx>,
+        inner_list_val: TypedValue<'ctx>,
+        map_fn_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let filter_fn_ptr = match filter_fn_val {
+            TypedValue::Fn(p, _) => p,
+            TypedValue::Closure { fn_ptr, .. } => fn_ptr,
+            _ => return Err("fused filter+map: filter function required".to_string()),
+        };
+        let map_fn_ptr = match map_fn_val {
+            TypedValue::Fn(p, _) => p,
+            TypedValue::Closure { fn_ptr, .. } => fn_ptr,
+            _ => return Err("fused filter+map: map function required".to_string()),
+        };
+        let list_ptr = match inner_list_val {
+            TypedValue::List(p) => p,
+            _ => return Err("fused filter+map: list required".to_string()),
+        };
+        let list_struct = self.load_list(list_ptr)?;
+        let result_cc = self.call_rt(
+            "action_list_filter_map_walk",
+            &[list_struct.into(), filter_fn_ptr.into(), map_fn_ptr.into()],
+        )?;
+        let result_bv = result_cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("filter_map_walk failed")?;
+        let res_a = self
+            .builder
+            .build_alloca(self.list_type, "fm_res")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(res_a, result_bv)
+            .map_err(llvm_err)?;
+        Ok(TypedValue::List(res_a))
+    }
+
+    /// filter+map+fold: single B-tree walk (no intermediate List).
+    pub(crate) fn fused_filter_map_fold_values(
+        &mut self,
+        filter_fn_val: TypedValue<'ctx>,
+        map_fn_val: TypedValue<'ctx>,
+        fold_fn_val: TypedValue<'ctx>,
+        list_val: TypedValue<'ctx>,
+        init: inkwell::values::IntValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let filter_fn_ptr = match filter_fn_val {
+            TypedValue::Fn(p, _) | TypedValue::Closure { fn_ptr: p, .. } => p,
+            _ => return Err("fused filter+map+fold: filter function required".to_string()),
+        };
+        let map_fn_ptr = match map_fn_val {
+            TypedValue::Fn(p, _) | TypedValue::Closure { fn_ptr: p, .. } => p,
+            _ => return Err("fused filter+map+fold: map function required".to_string()),
+        };
+        let fold_fn_ptr = match fold_fn_val {
+            TypedValue::Fn(p, _) | TypedValue::Closure { fn_ptr: p, .. } => p,
+            _ => return Err("fused filter+map+fold: fold function required".to_string()),
+        };
+        let list_ptr = match list_val {
+            TypedValue::List(p) => p,
+            _ => return Err("fused filter+map+fold: list required".to_string()),
+        };
+        let list_struct = self.load_list(list_ptr)?;
+        let fm_cc = self.call_rt(
+            "action_list_filter_map_fold_walk",
+            &[
+                list_struct.into(),
+                filter_fn_ptr.into(),
+                map_fn_ptr.into(),
+                fold_fn_ptr.into(),
+                init.into(),
+            ],
+        )?;
+        let acc = fm_cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("filter_map_fold_walk failed")?
+            .into_int_value();
+        Ok(TypedValue::Int(acc))
+    }
+
+    pub(crate) fn fused_filter_map_fold_hir(
+        &mut self,
+        filter_fn_expr: &action_frontend::hir::HirExpr,
+        map_fn_expr: &action_frontend::hir::HirExpr,
+        fold_fn_expr: &action_frontend::hir::HirExpr,
+        list_expr: &action_frontend::hir::HirExpr,
+        init_expr: &action_frontend::hir::HirExpr,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let filter_fn_val = self.compile_hir_expr(filter_fn_expr)?;
+        let map_fn_val = self.compile_hir_expr(map_fn_expr)?;
+        let fold_fn_val = self.compile_hir_expr(fold_fn_expr)?;
+        let list_val = self.compile_hir_expr(list_expr)?;
+        let init_val = self.compile_hir_expr(init_expr)?;
+        let init_i64 = match init_val {
+            TypedValue::Int(v) => v,
+            _ => return Err("fused filter+map+fold: init must be Int".to_string()),
+        };
+        self.fused_filter_map_fold_values(
+            filter_fn_val,
+            map_fn_val,
+            fold_fn_val,
+            list_val,
+            init_i64,
+        )
+    }
+
+    pub(crate) fn try_fused_filter_map_fold_fold_args(
+        &mut self,
+        init_arg: &CallArg<'_>,
+        list_arg: &CallArg<'_>,
+        fold_lam: &CallArg<'_>,
+    ) -> Result<Option<TypedValue<'ctx>>, String> {
+        let CallArg::Hir(list_hir) = list_arg;
+        let (map_lam, filter_inner) = match Self::extract_map_call_args_hir(list_hir) {
+            Some(v) => v,
+            None => return Ok(None),
+        };
+        let (filter_lam, base_list) = match Self::extract_filter_call_args_hir(filter_inner) {
+            Some(v) => v,
+            None => return Ok(None),
+        };
+        let init_val = self.compile_call_arg(*init_arg)?;
+        let init_i64 = match init_val {
+            TypedValue::Int(v) => v,
+            _ => return Ok(None),
+        };
+        let filter_fn_val = self.compile_call_arg(CallArg::Hir(filter_lam))?;
+        let map_fn_val = self.compile_call_arg(CallArg::Hir(map_lam))?;
+        let fold_fn_val = self.compile_call_arg(*fold_lam)?;
+        let list_val = self.compile_call_arg(CallArg::Hir(base_list))?;
+        Ok(Some(self.fused_filter_map_fold_values(
+            filter_fn_val,
+            map_fn_val,
+            fold_fn_val,
+            list_val,
+            init_i64,
+        )?))
+    }
+
+    /// map+fold: single B-tree walk (no intermediate List).
+    pub(crate) fn fused_map_fold_values(
+        &mut self,
+        map_fn_val: TypedValue<'ctx>,
+        fold_fn_val: TypedValue<'ctx>,
+        list_val: TypedValue<'ctx>,
+        init: inkwell::values::IntValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let map_fn_ptr = match map_fn_val {
+            TypedValue::Fn(p, _) | TypedValue::Closure { fn_ptr: p, .. } => p,
+            _ => return Err("fused map+fold: map function required".to_string()),
+        };
+        let fold_fn_ptr = match fold_fn_val {
+            TypedValue::Fn(p, _) | TypedValue::Closure { fn_ptr: p, .. } => p,
+            _ => return Err("fused map+fold: fold function required".to_string()),
+        };
+        let list_ptr = match list_val {
+            TypedValue::List(p) => p,
+            _ => return Err("fused map+fold: list required".to_string()),
+        };
+        let list_struct = self.load_list(list_ptr)?;
+        let mf_cc = self.call_rt(
+            "action_list_map_fold_walk",
+            &[
+                list_struct.into(),
+                map_fn_ptr.into(),
+                fold_fn_ptr.into(),
+                init.into(),
+            ],
+        )?;
+        let acc = mf_cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("map_fold_walk failed")?
+            .into_int_value();
+        Ok(TypedValue::Int(acc))
+    }
+
+    pub(crate) fn fused_map_fold_hir(
+        &mut self,
+        map_fn_expr: &action_frontend::hir::HirExpr,
+        fold_fn_expr: &action_frontend::hir::HirExpr,
+        list_expr: &action_frontend::hir::HirExpr,
+        init_expr: &action_frontend::hir::HirExpr,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let map_fn_val = self.compile_hir_expr(map_fn_expr)?;
+        let fold_fn_val = self.compile_hir_expr(fold_fn_expr)?;
+        let list_val = self.compile_hir_expr(list_expr)?;
+        let init_val = self.compile_hir_expr(init_expr)?;
+        let init_i64 = match init_val {
+            TypedValue::Int(v) => v,
+            _ => return Err("fused map+fold: init must be Int".to_string()),
+        };
+        self.fused_map_fold_values(map_fn_val, fold_fn_val, list_val, init_i64)
+    }
+
+    pub(crate) fn try_fused_map_fold_fold_args(
+        &mut self,
+        init_arg: &CallArg<'_>,
+        list_arg: &CallArg<'_>,
+        fold_lam: &CallArg<'_>,
+    ) -> Result<Option<TypedValue<'ctx>>, String> {
+        let CallArg::Hir(list_hir) = list_arg;
+        let (map_lam, base_list) = match Self::extract_map_call_args_hir(list_hir) {
+            Some(v) => v,
+            None => return Ok(None),
+        };
+        let init_val = self.compile_call_arg(*init_arg)?;
+        let init_i64 = match init_val {
+            TypedValue::Int(v) => v,
+            _ => return Ok(None),
+        };
+        let map_fn_val = self.compile_call_arg(CallArg::Hir(map_lam))?;
+        let fold_fn_val = self.compile_call_arg(*fold_lam)?;
+        let list_val = self.compile_call_arg(CallArg::Hir(base_list))?;
+        Ok(Some(self.fused_map_fold_values(
+            map_fn_val,
+            fold_fn_val,
+            list_val,
+            init_i64,
+        )?))
+    }
+
+    pub(crate) fn builtin_filter(
+        &mut self,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        // Fused map+filter optimization: if the list argument is `map(...)`,
+        // fuse map and filter into a single tree walk instead of creating an
+        // intermediate list.
+        let list_arg = if trailing.is_some() {
+            if args.len() != 1 {
+                return Err("filter with trailing lambda expects 1 argument (list)".to_string());
+            }
+            args[0]
+        } else if args.len() == 2 {
+            args[1]
+        } else {
+            return Err("filter expects 2 arguments (fn, list)".to_string());
+        };
+
+        let CallArg::Hir(list_hir) = list_arg;
+        if let Some((map_fn, inner)) = Self::extract_map_call_args_hir(list_hir) {
+            let filter_fn_val = if let Some(lam) = trailing {
+                self.compile_call_arg(lam)?
+            } else {
+                self.compile_call_arg(args[0])?
+            };
+            return self.fused_map_filter_hir(map_fn, inner, filter_fn_val);
+        }
+        if let Some((flat_fn, inner)) = Self::extract_flatmap_call_args_hir(list_hir) {
+            let filter_fn_val = if let Some(lam) = trailing {
+                self.compile_call_arg(lam)?
+            } else {
+                self.compile_call_arg(args[0])?
+            };
+            return self.fused_flatmap_filter_hir(flat_fn, inner, filter_fn_val);
+        }
+
+        // Standard filter path
+        let (fn_ptr, list_val) = if let Some(lam) = trailing {
+            let lv = self.compile_call_arg(args[0])?;
+            let fv = self.compile_call_arg(lam)?;
+            (fv, lv)
+        } else {
+            let fv = self.compile_call_arg(args[0])?;
+            let lv = self.compile_call_arg(args[1])?;
+            (fv, lv)
+        };
+
+        if let Some(result) = self.try_builtin_filter_direct(fn_ptr.clone(), list_val.clone())? {
+            return Ok(result);
+        }
+
+        let fn_ptr = match fn_ptr {
+            TypedValue::Fn(p, _) => p,
+            TypedValue::Closure { fn_ptr, .. } => fn_ptr,
+            _ => return Err("filter: first argument must be a function".to_string()),
+        };
+        let list_ptr = match list_val {
+            TypedValue::List(p) => p,
+            _ => return Err("filter: second argument must be a list".to_string()),
+        };
+
+        let list_struct = self.load_list(list_ptr)?;
+        let input_list = list_struct;
+
+        let result_alloca = self
+            .builder
+            .build_alloca(self.list_type, "filter_result")
+            .map_err(llvm_err)?;
+
+        let filter_cc = self.call_rt(
+            "action_list_filter_walk",
+            &[input_list.into(), fn_ptr.into()],
+        )?;
+        let result_bv = filter_cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("filter_walk failed")?;
+        self.builder
+            .build_store(result_alloca, result_bv)
+            .map_err(llvm_err)?;
+
+        Ok(TypedValue::List(result_alloca))
+    }
+
+    pub(crate) fn builtin_fold(
+        &mut self,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        // fold(fn, init, list) or fold(init, list) { lambda }
+        if let Some(lam) = trailing {
+            if args.len() == 2 {
+                if let Some(result) =
+                    self.try_fused_filter_map_fold_fold_args(&args[0], &args[1], &lam)?
+                {
+                    return Ok(result);
+                }
+                if let Some(result) = self.try_fused_map_fold_fold_args(&args[0], &args[1], &lam)? {
+                    return Ok(result);
+                }
+            }
+        }
+        let (fn_ptr, init_val, list_val) = if let Some(lam) = trailing {
+            if args.len() != 2 {
+                return Err(
+                    "fold with trailing lambda expects 2 arguments (init, list)".to_string()
+                );
+            }
+            let iv = self.compile_call_arg(args[0])?;
+            let lv = self.compile_call_arg(args[1])?;
+            let fv = self.compile_call_arg(lam)?;
+            (fv, iv, lv)
+        } else if args.len() == 3 {
+            let fv = self.compile_call_arg(args[0])?;
+            let iv = self.compile_call_arg(args[1])?;
+            let lv = self.compile_call_arg(args[2])?;
+            (fv, iv, lv)
+        } else {
+            return Err("fold expects 3 arguments (fn, init, list)".to_string());
+        };
+
+        if let Some(result) = self.try_builtin_fold_direct(fn_ptr, init_val, list_val)? {
+            return Ok(result);
+        }
+
+        let fn_ptr = match fn_ptr {
+            TypedValue::Fn(p, _) => p,
+            TypedValue::Closure { fn_ptr, .. } => fn_ptr,
+            _ => return Err("fold: first argument must be a function".to_string()),
+        };
+        let list_ptr = match list_val {
+            TypedValue::List(p) => p,
+            _ => return Err("fold: third argument must be a list".to_string()),
+        };
+        let init_i64 = match init_val {
+            TypedValue::Int(v) => v,
+            _ => return Err("fold: init must be an integer".to_string()),
+        };
+
+        let list_struct = self.load_list(list_ptr)?;
+        let input_list = list_struct;
+
+        let fold_cc = self.call_rt(
+            "action_list_fold_walk",
+            &[input_list.into(), fn_ptr.into(), init_i64.into()],
+        )?;
+        let final_acc = fold_cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("fold_walk failed")?
+            .into_int_value();
+        Ok(TypedValue::Int(final_acc))
+    }
+
+    /// flatMap(fn, list) = flatten(map(fn, list))
+    pub(crate) fn builtin_flat_map_list(
+        &mut self,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let mapped = self.builtin_map(args, trailing)?;
+        match mapped {
+            TypedValue::List(lp) => {
+                let lv = self.load_list(lp)?;
+                let cc = self.call_rt("action_list_flatten", &[lv.into()])?;
+                let result = cc.try_as_basic_value().basic().ok_or("flatten failed")?;
+                let alloca = self
+                    .builder
+                    .build_alloca(self.list_type, "flatMap")
+                    .map_err(llvm_err)?;
+                self.builder.build_store(alloca, result).map_err(llvm_err)?;
+                Ok(TypedValue::List(alloca))
+            }
+            _ => Err("flatMap: map result must be a list".to_string()),
+        }
+    }
+
+    pub(crate) fn builtin_callback_list(
+        &mut self,
+        name: &str,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        match name {
+            "any" => self.builtin_any(args, trailing),
+            "all" => self.builtin_all(args, trailing),
+            "find" => self.builtin_find(args, trailing),
+            "findIndex" => self.builtin_find_index(args, trailing),
+            "reduce" => self.builtin_reduce(args, trailing),
+            "foldRight" => self.builtin_fold_right(args, trailing),
+            "takeWhile" => self.builtin_take_while(args, trailing),
+            "dropWhile" => self.builtin_drop_while(args, trailing),
+            "sortedBy" => self.builtin_sorted_by(args, trailing),
+            "partition" => self.builtin_partition(args, trailing),
+            "count" => self.builtin_count(args, trailing),
+            _ => Err(format!("Unknown callback list builtin: {}", name)),
+        }
+    }
+
+    /// any(list, fn) or any(list) { lambda } -> Bool
+    pub(crate) fn builtin_any(
+        &mut self,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let (fn_val, list_val) = if let Some(lam) = trailing {
+            if args.len() != 1 {
+                return Err("any with trailing lambda expects 1 argument (list)".to_string());
+            }
+            let lv = self.compile_call_arg(args[0])?;
+            let fv = self.compile_call_arg(lam)?;
+            (fv, lv)
+        } else if args.len() == 2 {
+            let fv = self.compile_call_arg(args[0])?;
+            let lv = self.compile_call_arg(args[1])?;
+            (fv, lv)
+        } else {
+            return Err("any expects 2 arguments (fn, list)".to_string());
+        };
+
+        if let Some(result) = self.try_builtin_any_direct(fn_val, list_val)? {
+            return Ok(result);
+        }
+
+        let fn_ptr = match fn_val {
+            TypedValue::Fn(p, _) => p,
+            TypedValue::Closure { fn_ptr, .. } => fn_ptr,
+            _ => return Err("any: first argument must be a function".to_string()),
+        };
+        let list_ptr = match list_val {
+            TypedValue::List(p) => p,
+            _ => return Err("any: last argument must be a list".to_string()),
+        };
+        let input_list = self.load_list(list_ptr)?;
+
+        let any_cc = self.call_rt("action_list_any_walk", &[input_list.into(), fn_ptr.into()])?;
+        let res = any_cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("any_walk failed")?
+            .into_int_value();
+        Ok(TypedValue::Bool(res))
+    }
+
+    /// all(list, fn) or all(list) { lambda } -> Bool
+    pub(crate) fn builtin_all(
+        &mut self,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let (fn_val, list_val) = if let Some(lam) = trailing {
+            if args.len() != 1 {
+                return Err("all with trailing lambda expects 1 argument (list)".to_string());
+            }
+            let lv = self.compile_call_arg(args[0])?;
+            let fv = self.compile_call_arg(lam)?;
+            (fv, lv)
+        } else if args.len() == 2 {
+            let fv = self.compile_call_arg(args[0])?;
+            let lv = self.compile_call_arg(args[1])?;
+            (fv, lv)
+        } else {
+            return Err("all expects 2 arguments (fn, list)".to_string());
+        };
+
+        if let Some(result) = self.try_builtin_all_direct(fn_val, list_val)? {
+            return Ok(result);
+        }
+
+        let fn_ptr = match fn_val {
+            TypedValue::Fn(p, _) => p,
+            TypedValue::Closure { fn_ptr, .. } => fn_ptr,
+            _ => return Err("all: first argument must be a function".to_string()),
+        };
+        let list_ptr = match list_val {
+            TypedValue::List(p) => p,
+            _ => return Err("all: last argument must be a list".to_string()),
+        };
+        let input_list = self.load_list(list_ptr)?;
+
+        let all_cc = self.call_rt("action_list_all_walk", &[input_list.into(), fn_ptr.into()])?;
+        let res = all_cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("all_walk failed")?
+            .into_int_value();
+        Ok(TypedValue::Bool(res))
+    }
+
+    /// find(list, fn) or find(list) { lambda } -> Option<T>
+    pub(crate) fn find_on_list_ptr(
+        &mut self,
+        list_ptr: PointerValue<'ctx>,
+        fn_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let fn_ptr = self.callback_fn_ptr(&fn_val, "find")?;
+        if let Some(target) = self.try_direct_lambda(fn_val.clone()) {
+            return self.builtin_find_with_direct_lambda(list_ptr, &target);
+        }
+        let fn_type = self.predicate_llvm_fn_type(&fn_val)?;
+        if self.predicate_returns_fat(fn_type) {
+            let list_struct = self.load_list(list_ptr)?;
+            let find_cc = self.call_rt(
+                "action_list_find_walk",
+                &[list_struct.into(), fn_ptr.into()],
+            )?;
+            let found_bv = find_cc
+                .try_as_basic_value()
+                .basic()
+                .ok_or("find_walk failed")?;
+            let found_a = self
+                .builder
+                .build_alloca(self.string_type, "found")
+                .map_err(crate::llvm_err)?;
+            let found_flag_a = self
+                .builder
+                .build_alloca(self.bool_ty(), "found_f")
+                .map_err(crate::llvm_err)?;
+            self.builder
+                .build_store(found_a, found_bv)
+                .map_err(crate::llvm_err)?;
+            let found_tag = self
+                .builder
+                .build_extract_value(found_bv.into_struct_value(), 0, "ft")
+                .map_err(crate::llvm_err)?
+                .into_int_value();
+            let is_found = self
+                .builder
+                .build_int_compare(
+                    IntPredicate::NE,
+                    found_tag,
+                    self.i64_ty().const_int(1, false),
+                    "is_found",
+                )
+                .map_err(crate::llvm_err)?;
+            let found_i64 = self
+                .builder
+                .build_int_z_extend(is_found, self.i64_ty(), "found_i64")
+                .map_err(crate::llvm_err)?;
+            self.builder
+                .build_store(found_flag_a, found_i64)
+                .map_err(crate::llvm_err)?;
+            return self.build_nullable_str(found_a, found_flag_a);
+        }
+        self.builtin_find_indexed(list_ptr, fn_ptr, fn_type, &fn_val)
+    }
+
+    /// find(list, fn) or find(list) { lambda } -> Option<T>
+    pub(crate) fn builtin_find(
+        &mut self,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let (fn_val, list_val) = self.extract_callback_fn_and_list(args, trailing, 1, "find")?;
+        let list_ptr = match list_val {
+            TypedValue::List(p) => p,
+            _ => return Err("find: last argument must be a list".to_string()),
+        };
+        self.find_on_list_ptr(list_ptr, fn_val)
+    }
+
+    fn builtin_find_with_direct_lambda(
+        &mut self,
+        list_ptr: PointerValue<'ctx>,
+        target: &crate::lambda_mono::DirectLambdaTarget<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let input_len = self.list_len_val(self.load_list(list_ptr)?)?;
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("no function")?;
+        let i64 = self.i64_ty();
+        let found_a = self
+            .builder
+            .build_alloca(self.string_type, "fd_elem")
+            .map_err(llvm_err)?;
+        let found_flag_a = self
+            .builder
+            .build_alloca(self.bool_ty(), "fd_flag")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(found_flag_a, self.bool_ty().const_zero())
+            .map_err(llvm_err)?;
+        let i_a = self.builder.build_alloca(i64, "fd_i").map_err(llvm_err)?;
+        self.builder
+            .build_store(i_a, i64.const_int(0, false))
+            .map_err(llvm_err)?;
+        let get_cache = self.alloc_list_get_cache()?;
+        let hdr = self.context.append_basic_block(current_fn, "fd_hdr");
+        let bdy = self.context.append_basic_block(current_fn, "fd_bdy");
+        let set_found = self.context.append_basic_block(current_fn, "fd_set");
+        let ext = self.context.append_basic_block(current_fn, "fd_ext");
+        let one_b = self.bool_ty().const_int(1, false);
+        let _ = self.builder.build_unconditional_branch(hdr);
+        self.builder.position_at_end(hdr);
+        let iv = self
+            .builder
+            .build_load(i64, i_a, "fd_iv")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let cond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, iv, input_len, "fd_cond")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_conditional_branch(cond, bdy, ext);
+        self.builder.position_at_end(bdy);
+        let elem_val = self.list_get_cached_fat(list_ptr, iv, get_cache)?;
+        let elem_tag = self
+            .builder
+            .build_extract_value(elem_val.into_struct_value(), 0, "fd_et")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let pred = {
+            let cc = self.emit_direct_lambda_call(target, elem_tag, "fd_call")?;
+            if cc.is_struct_value() {
+                self.builder
+                    .build_extract_value(cc.into_struct_value(), 0, "fd_pred")
+                    .map_err(llvm_err)?
+                    .into_int_value()
+            } else {
+                cc.into_int_value()
+            }
+        };
+        let is_true = self
+            .builder
+            .build_int_compare(IntPredicate::NE, pred, i64.const_int(0, false), "fd_true")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(found_a, elem_val)
+            .map_err(llvm_err)?;
+        let ni = self
+            .builder
+            .build_int_add(iv, i64.const_int(1, false), "fd_ni")
+            .map_err(llvm_err)?;
+        self.builder.build_store(i_a, ni).map_err(llvm_err)?;
+        let chk = self.context.append_basic_block(current_fn, "fd_chk");
+        let _ = self
+            .builder
+            .build_conditional_branch(is_true, set_found, chk);
+        self.builder.position_at_end(set_found);
+        self.builder
+            .build_store(found_flag_a, one_b)
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(ext);
+        self.builder.position_at_end(chk);
+        let _ = self.builder.build_unconditional_branch(hdr);
+        self.builder.position_at_end(ext);
+        self.build_nullable_str(found_a, found_flag_a)
+    }
+
+    fn builtin_find_indexed(
+        &mut self,
+        list_ptr: PointerValue<'ctx>,
+        fn_ptr: PointerValue<'ctx>,
+        fn_type: inkwell::types::FunctionType<'ctx>,
+        fn_val: &TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let input_len = self.list_len_val(self.load_list(list_ptr)?)?;
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("no function")?;
+        let i64 = self.i64_ty();
+        let found_a = self
+            .builder
+            .build_alloca(self.string_type, "fd_elem")
+            .map_err(llvm_err)?;
+        let found_flag_a = self
+            .builder
+            .build_alloca(self.bool_ty(), "fd_flag")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(found_flag_a, self.bool_ty().const_zero())
+            .map_err(llvm_err)?;
+        let i_a = self.builder.build_alloca(i64, "fd_i").map_err(llvm_err)?;
+        self.builder
+            .build_store(i_a, i64.const_int(0, false))
+            .map_err(llvm_err)?;
+        let get_cache = self.alloc_list_get_cache()?;
+        let hdr = self.context.append_basic_block(current_fn, "fd_hdr");
+        let bdy = self.context.append_basic_block(current_fn, "fd_bdy");
+        let set_found = self.context.append_basic_block(current_fn, "fd_set");
+        let ext = self.context.append_basic_block(current_fn, "fd_ext");
+        let one_b = self.bool_ty().const_int(1, false);
+        let _ = self.builder.build_unconditional_branch(hdr);
+        self.builder.position_at_end(hdr);
+        let iv = self
+            .builder
+            .build_load(i64, i_a, "fd_iv")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let cond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, iv, input_len, "fd_cond")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_conditional_branch(cond, bdy, ext);
+        self.builder.position_at_end(bdy);
+        let elem_val = self.list_get_cached_fat(list_ptr, iv, get_cache)?;
+        let elem_tag = self
+            .builder
+            .build_extract_value(elem_val.into_struct_value(), 0, "fd_et")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let pred =
+            self.call_predicate_on_tag_for_val(fn_val, fn_ptr, fn_type, elem_tag, "fd_call")?;
+        let is_true = self
+            .builder
+            .build_int_compare(IntPredicate::NE, pred, i64.const_int(0, false), "fd_true")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(found_a, elem_val)
+            .map_err(llvm_err)?;
+        let ni = self
+            .builder
+            .build_int_add(iv, i64.const_int(1, false), "fd_ni")
+            .map_err(llvm_err)?;
+        self.builder.build_store(i_a, ni).map_err(llvm_err)?;
+        let chk = self.context.append_basic_block(current_fn, "fd_chk");
+        let _ = self
+            .builder
+            .build_conditional_branch(is_true, set_found, chk);
+        self.builder.position_at_end(set_found);
+        self.builder
+            .build_store(found_flag_a, one_b)
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(ext);
+        self.builder.position_at_end(chk);
+        let _ = self.builder.build_unconditional_branch(hdr);
+        self.builder.position_at_end(ext);
+        self.build_nullable_str(found_a, found_flag_a)
+    }
+
+    /// findIndex(list, fn) on an already-compiled list alloca (UFCS fast path).
+    pub(crate) fn find_index_on_list_ptr(
+        &mut self,
+        list_ptr: PointerValue<'ctx>,
+        fn_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let fn_ptr = self.callback_fn_ptr(&fn_val, "findIndex")?;
+        let direct_target = self.try_direct_lambda(fn_val.clone());
+        let input_len = self.list_len_val(self.load_list(list_ptr)?)?;
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("no function")?;
+        let i64 = self.i64_ty();
+        let result_a = self.builder.build_alloca(i64, "fi_idx").map_err(llvm_err)?;
+        self.builder
+            .build_store(result_a, i64.const_int((-1i64) as u64, true))
+            .map_err(llvm_err)?;
+        let i_a = self.builder.build_alloca(i64, "i").map_err(llvm_err)?;
+        self.builder
+            .build_store(i_a, i64.const_int(0, false))
+            .map_err(llvm_err)?;
+        let get_cache = self.alloc_list_get_cache()?;
+        let hdr = self.context.append_basic_block(current_fn, "fi_hdr");
+        let bdy = self.context.append_basic_block(current_fn, "fi_bdy");
+        let ext = self.context.append_basic_block(current_fn, "fi_ext");
+        let _ = self.builder.build_unconditional_branch(hdr);
+        self.builder.position_at_end(hdr);
+        let iv = self
+            .builder
+            .build_load(i64, i_a, "iv")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let cond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, iv, input_len, "cond")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_conditional_branch(cond, bdy, ext);
+        self.builder.position_at_end(bdy);
+        let elem_val = self.list_get_cached_fat(list_ptr, iv, get_cache)?;
+        let elem_tag = self
+            .builder
+            .build_extract_value(elem_val.into_struct_value(), 0, "et")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let pred = if let Some(ref target) = direct_target {
+            let cc = self.emit_direct_lambda_call(target, elem_tag, "fi_call")?;
+            if cc.is_struct_value() {
+                self.builder
+                    .build_extract_value(cc.into_struct_value(), 0, "pred")
+                    .map_err(llvm_err)?
+                    .into_int_value()
+            } else {
+                cc.into_int_value()
+            }
+        } else {
+            let fn_type = self.predicate_llvm_fn_type(&fn_val)?;
+            self.call_predicate_on_tag_for_val(&fn_val, fn_ptr, fn_type, elem_tag, "fi_call")?
+        };
+        let is_true = self
+            .builder
+            .build_int_compare(IntPredicate::NE, pred, i64.const_int(0, false), "is_true")
+            .map_err(llvm_err)?;
+        self.builder.build_store(result_a, iv).map_err(llvm_err)?;
+        let ni = self
+            .builder
+            .build_int_add(iv, i64.const_int(1, false), "ni")
+            .map_err(llvm_err)?;
+        self.builder.build_store(i_a, ni).map_err(llvm_err)?;
+        let fi_hdr2 = self.context.append_basic_block(current_fn, "fi_chk");
+        let _ = self.builder.build_conditional_branch(is_true, ext, fi_hdr2);
+        self.builder.position_at_end(fi_hdr2);
+        let _ = self.builder.build_unconditional_branch(hdr);
+        self.builder.position_at_end(ext);
+        let found_idx = self
+            .builder
+            .build_load(i64, result_a, "found_idx")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let is_found = self
+            .builder
+            .build_int_compare(
+                IntPredicate::SGE,
+                found_idx,
+                i64.const_int(0, false),
+                "is_found",
+            )
+            .map_err(llvm_err)?;
+        self.build_nullable_int(found_idx, is_found)
+    }
+
+    /// findIndex(list, fn) or findIndex(list) { lambda } -> Option<Int>
+    pub(crate) fn builtin_find_index(
+        &mut self,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let (fn_val, list_val) =
+            self.extract_callback_fn_and_list(args, trailing, 1, "findIndex")?;
+        let list_ptr = match list_val {
+            TypedValue::List(p) => p,
+            _ => return Err("findIndex: last argument must be a list".to_string()),
+        };
+        self.find_index_on_list_ptr(list_ptr, fn_val)
+    }
+
+    /// reduce(list, fn) or reduce(list) { lambda } -> Option<T>
+    pub(crate) fn builtin_reduce(
+        &mut self,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let (fn_ptr, list_ptr) = self.extract_callback_args(args, trailing, 1, "reduce")?;
+        let input_len = self.list_len_val(self.load_list(list_ptr)?)?;
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("no function")?;
+        let i64 = self.i64_ty();
+        let zero = i64.const_int(0, false);
+        let one = i64.const_int(1, false);
+        let is_empty = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, input_len, zero, "is_empty")
+            .map_err(llvm_err)?;
+        // Accumulator: fat {i64,ptr}
+        let acc_a = self
+            .builder
+            .build_alloca(self.string_type, "reduce_acc")
+            .map_err(llvm_err)?;
+        let i_a = self.builder.build_alloca(i64, "i").map_err(llvm_err)?;
+        self.builder.build_store(i_a, one).map_err(llvm_err)?;
+        let get_cache = self.alloc_list_get_cache()?;
+        // Init: load first element into acc
+        let init_bb = self.context.append_basic_block(current_fn, "reduce_init");
+        let loop_hdr = self.context.append_basic_block(current_fn, "reduce_hdr");
+        let loop_bdy = self.context.append_basic_block(current_fn, "reduce_bdy");
+        let loop_ext = self.context.append_basic_block(current_fn, "reduce_ext");
+        let empty_bb = self.context.append_basic_block(current_fn, "reduce_empty");
+        let merge_bb = self.context.append_basic_block(current_fn, "reduce_merge");
+        let _ = self
+            .builder
+            .build_conditional_branch(is_empty, empty_bb, init_bb);
+        // Init: load first element
+        self.builder.position_at_end(init_bb);
+        let first_val = self.list_get_cached_fat(list_ptr, zero, get_cache)?;
+        self.builder
+            .build_store(acc_a, first_val)
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(loop_hdr);
+        // Loop
+        self.builder.position_at_end(loop_hdr);
+        let iv = self
+            .builder
+            .build_load(i64, i_a, "iv")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let cond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, iv, input_len, "cond")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(cond, loop_bdy, loop_ext);
+        self.builder.position_at_end(loop_bdy);
+        let elem_val = self.list_get_cached_fat(list_ptr, iv, get_cache)?;
+        let elem_tag = self
+            .builder
+            .build_extract_value(elem_val.into_struct_value(), 0, "et")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let acc_fat = self
+            .builder
+            .build_load(self.string_type, acc_a, "acc")
+            .map_err(llvm_err)?;
+        let acc_tag = self
+            .builder
+            .build_extract_value(acc_fat.into_struct_value(), 0, "acc_tag")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let fat_ret_ty = self.string_type;
+        let fn_type = fat_ret_ty.fn_type(&[i64.into(), i64.into()], false);
+        let call_r = self
+            .builder
+            .build_indirect_call(
+                fn_type,
+                fn_ptr,
+                &[acc_tag.into(), elem_tag.into()],
+                "reduce_call",
+            )
+            .map_err(llvm_err)?;
+        let new_acc = call_r.try_as_basic_value().basic().ok_or("call failed")?;
+        self.builder.build_store(acc_a, new_acc).map_err(llvm_err)?;
+        let ni = self
+            .builder
+            .build_int_add(iv, one, "ni")
+            .map_err(llvm_err)?;
+        self.builder.build_store(i_a, ni).map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(loop_hdr);
+        self.builder.position_at_end(loop_ext);
+        let final_acc = self
+            .builder
+            .build_load(self.string_type, acc_a, "final_acc")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(merge_bb);
+        // Empty: build None
+        self.builder.position_at_end(empty_bb);
+        let _ = self.builder.build_unconditional_branch(merge_bb);
+        // Merge: build Option from fat struct or None
+        self.builder.position_at_end(merge_bb);
+        let phi = self
+            .builder
+            .build_phi(self.string_type, "reduce_phi")
+            .map_err(llvm_err)?;
+        phi.add_incoming(&[
+            (&final_acc, loop_ext),
+            (&self.string_type.get_undef(), empty_bb),
+        ]);
+        let phi_val = phi.as_basic_value();
+        let found_flag_a = self
+            .builder
+            .build_alloca(self.bool_ty(), "red_found")
+            .map_err(llvm_err)?;
+        let phi_flag = self
+            .builder
+            .build_phi(self.bool_ty(), "red_flag")
+            .map_err(llvm_err)?;
+        phi_flag.add_incoming(&[
+            (&self.bool_ty().const_int(1, false), loop_ext),
+            (&self.bool_ty().const_zero(), empty_bb),
+        ]);
+        self.builder
+            .build_store(found_flag_a, phi_flag.as_basic_value())
+            .map_err(llvm_err)?;
+        let acc_alloca = self
+            .builder
+            .build_alloca(self.string_type, "red_acc_s")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(acc_alloca, phi_val)
+            .map_err(llvm_err)?;
+        // InnerType defaults to Int — accumulator is a fat struct whose type
+        // is only known at runtime. See comment at builtin_find for details.
+        self.build_nullable_str(acc_alloca, found_flag_a)
+    }
+
+    /// foldRight(list, init, fn) or foldRight(list, init) { lambda } -> T
+    pub(crate) fn builtin_fold_right(
+        &mut self,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let (fn_ptr, list_ptr, init_val) = self.extract_fold_right_args(args, trailing)?;
+        let input_len = self.list_len_val(self.load_list(list_ptr)?)?;
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("no function")?;
+        let i64 = self.i64_ty();
+        let zero = i64.const_int(0, false);
+        let one = i64.const_int(1, false);
+        let acc_a = self.builder.build_alloca(i64, "fr_acc").map_err(llvm_err)?;
+        self.builder
+            .build_store(acc_a, init_val)
+            .map_err(llvm_err)?;
+        // Iterate backwards: i = len-1 down to 0
+        let i_a = self.builder.build_alloca(i64, "i").map_err(llvm_err)?;
+        let start_i = self
+            .builder
+            .build_int_sub(input_len, one, "start_i")
+            .map_err(llvm_err)?;
+        self.builder.build_store(i_a, start_i).map_err(llvm_err)?;
+        let get_cache = self.alloc_list_get_cache()?;
+        let hdr = self.context.append_basic_block(current_fn, "fr_hdr");
+        let bdy = self.context.append_basic_block(current_fn, "fr_bdy");
+        let ext = self.context.append_basic_block(current_fn, "fr_ext");
+        let _ = self.builder.build_unconditional_branch(hdr);
+        self.builder.position_at_end(hdr);
+        let iv = self
+            .builder
+            .build_load(i64, i_a, "iv")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let cond = self
+            .builder
+            .build_int_compare(IntPredicate::SGE, iv, zero, "cond")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_conditional_branch(cond, bdy, ext);
+        self.builder.position_at_end(bdy);
+        let elem_val = self.list_get_cached_fat(list_ptr, iv, get_cache)?;
+        let elem_tag = self
+            .builder
+            .build_extract_value(elem_val.into_struct_value(), 0, "et")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let acc = self
+            .builder
+            .build_load(i64, acc_a, "acc")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let fat_ret_ty = self.string_type;
+        let fn_type = fat_ret_ty.fn_type(&[i64.into(), i64.into()], false);
+        let call_r = self
+            .builder
+            .build_indirect_call(fn_type, fn_ptr, &[elem_tag.into(), acc.into()], "fr_call")
+            .map_err(llvm_err)?;
+        let new_acc_bv = call_r.try_as_basic_value().basic().ok_or("call failed")?;
+        let new_acc = if new_acc_bv.is_struct_value() {
+            self.builder
+                .build_extract_value(new_acc_bv.into_struct_value(), 0, "fr_val")
+                .map_err(llvm_err)?
+                .into_int_value()
+        } else {
+            new_acc_bv.into_int_value()
+        };
+        self.builder.build_store(acc_a, new_acc).map_err(llvm_err)?;
+        let ni = self
+            .builder
+            .build_int_sub(iv, one, "ni")
+            .map_err(llvm_err)?;
+        self.builder.build_store(i_a, ni).map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(hdr);
+        self.builder.position_at_end(ext);
+        let final_acc = self
+            .builder
+            .build_load(i64, acc_a, "final_acc")
+            .map_err(llvm_err)?
+            .into_int_value();
+        Ok(TypedValue::Int(final_acc))
+    }
+
+    /// takeWhile(list, fn) or takeWhile(list) { lambda } -> List<T>
+    pub(crate) fn builtin_take_while(
+        &mut self,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let (fn_ptr, list_ptr) = self.extract_callback_args(args, trailing, 1, "takeWhile")?;
+        let list_struct = self.load_list(list_ptr)?;
+        let tw_cc = self.call_rt(
+            "action_list_take_while_walk",
+            &[list_struct.into(), fn_ptr.into()],
+        )?;
+        let result_bv = tw_cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("take_while_walk failed")?;
+        let res_a = self
+            .builder
+            .build_alloca(self.list_type, "tw_res")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(res_a, result_bv)
+            .map_err(llvm_err)?;
+        Ok(TypedValue::List(res_a))
+    }
+
+    /// dropWhile(list, fn) or dropWhile(list) { lambda } -> List<T>
+    pub(crate) fn builtin_drop_while(
+        &mut self,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let (fn_ptr, list_ptr) = self.extract_callback_args(args, trailing, 1, "dropWhile")?;
+        let list_struct = self.load_list(list_ptr)?;
+        let input_len = self.list_len_val(list_struct)?;
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("no function")?;
+        let i64 = self.i64_ty();
+        let cc = self.call_rt("action_list_create", &[input_len.into()])?;
+        let res_bv = cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("list_create failed")?;
+        let res_a = self
+            .builder
+            .build_alloca(self.list_type, "dw_res")
+            .map_err(llvm_err)?;
+        self.builder.build_store(res_a, res_bv).map_err(llvm_err)?;
+        let dropping_a = self
+            .builder
+            .build_alloca(self.bool_ty(), "dropping")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(dropping_a, self.bool_ty().const_int(1, false))
+            .map_err(llvm_err)?;
+        let i_a = self.builder.build_alloca(i64, "i").map_err(llvm_err)?;
+        self.builder
+            .build_store(i_a, i64.const_int(0, false))
+            .map_err(llvm_err)?;
+        let get_cache = self.alloc_list_get_cache()?;
+        let hdr = self.context.append_basic_block(current_fn, "dw_hdr");
+        let bdy = self.context.append_basic_block(current_fn, "dw_bdy");
+        let ext = self.context.append_basic_block(current_fn, "dw_ext");
+        let _ = self.builder.build_unconditional_branch(hdr);
+        self.builder.position_at_end(hdr);
+        let iv = self
+            .builder
+            .build_load(i64, i_a, "iv")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let cond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, iv, input_len, "cond")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_conditional_branch(cond, bdy, ext);
+        self.builder.position_at_end(bdy);
+        let elem_val = self.list_get_cached_fat(list_ptr, iv, get_cache)?;
+        let elem_tag = self
+            .builder
+            .build_extract_value(elem_val.into_struct_value(), 0, "et")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let dropping = self
+            .builder
+            .build_load(self.bool_ty(), dropping_a, "dropping")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let is_dropping = self
+            .builder
+            .build_int_compare(
+                IntPredicate::NE,
+                dropping,
+                self.bool_ty().const_zero(),
+                "is_dropping",
+            )
+            .map_err(llvm_err)?;
+        // Only call predicate if still dropping
+        let call_bb = self.context.append_basic_block(current_fn, "dw_call");
+        let push_bb = self.context.append_basic_block(current_fn, "dw_push");
+        let inc_bb = self.context.append_basic_block(current_fn, "dw_inc");
+        let _ = self
+            .builder
+            .build_conditional_branch(is_dropping, call_bb, push_bb);
+        // Call predicate
+        self.builder.position_at_end(call_bb);
+        let fat_ret_ty = self.string_type;
+        let fn_type = fat_ret_ty.fn_type(&[i64.into()], false);
+        let call_r = self
+            .builder
+            .build_indirect_call(fn_type, fn_ptr, &[elem_tag.into()], "dw_call")
+            .map_err(llvm_err)?;
+        let pred_bv = call_r.try_as_basic_value().basic().ok_or("call failed")?;
+        let pred = if pred_bv.is_struct_value() {
+            self.builder
+                .build_extract_value(pred_bv.into_struct_value(), 0, "pred")
+                .map_err(llvm_err)?
+                .into_int_value()
+        } else {
+            pred_bv.into_int_value()
+        };
+        let is_true = self
+            .builder
+            .build_int_compare(IntPredicate::NE, pred, i64.const_int(0, false), "is_true")
+            .map_err(llvm_err)?;
+        // If true, still dropping, skip element (go to inc). If false, stop dropping, push element.
+        let _ = self
+            .builder
+            .build_conditional_branch(is_true, inc_bb, push_bb);
+        // Push element
+        self.builder.position_at_end(push_bb);
+        self.builder
+            .build_store(dropping_a, self.bool_ty().const_zero())
+            .map_err(llvm_err)?;
+        let rl = self
+            .builder
+            .build_load(self.list_type, res_a, "rl")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let rp = self.call_rt("action_list_push", &[rl.into(), elem_val.into()])?;
+        self.builder
+            .build_store(res_a, rp.try_as_basic_value().unwrap_basic())
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(inc_bb);
+        // Increment
+        self.builder.position_at_end(inc_bb);
+        let ni = self
+            .builder
+            .build_int_add(iv, i64.const_int(1, false), "ni")
+            .map_err(llvm_err)?;
+        self.builder.build_store(i_a, ni).map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(hdr);
+        self.builder.position_at_end(ext);
+        Ok(TypedValue::List(res_a))
+    }
+
+    /// sortedBy(list, fn) or sortedBy(list) { lambda } -> List<T>
+    pub(crate) fn builtin_sorted_by(
+        &mut self,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let (fn_ptr, list_ptr) = self.extract_callback_args(args, trailing, 1, "sortedBy")?;
+        let list_struct = self.load_list(list_ptr)?;
+        let cc = self.call_rt(
+            "action_list_sorted_by",
+            &[list_struct.into(), fn_ptr.into()],
+        )?;
+        let result = cc.try_as_basic_value().basic().ok_or("sortedBy failed")?;
+        let alloca = self
+            .builder
+            .build_alloca(self.list_type, "sb_res")
+            .map_err(llvm_err)?;
+        self.builder.build_store(alloca, result).map_err(llvm_err)?;
+        Ok(TypedValue::List(alloca))
+    }
+
+    /// partition(list, fn) or partition(list) { lambda } -> (List<T>, List<T>)
+    pub(crate) fn builtin_partition(
+        &mut self,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let (fn_ptr, list_ptr) = self.extract_callback_args(args, trailing, 1, "partition")?;
+        let input_len = self.list_len_val(self.load_list(list_ptr)?)?;
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("no function")?;
+        let i64 = self.i64_ty();
+        let i_a = self.builder.build_alloca(i64, "i").map_err(llvm_err)?;
+        self.builder
+            .build_store(i_a, i64.const_int(0, false))
+            .map_err(llvm_err)?;
+        let get_cache = self.alloc_list_get_cache()?;
+        // Create two result lists
+        let cap = i64.const_int(4, false);
+        let left_cc = self.call_rt("action_list_create", &[cap.into()])?;
+        let left_bv = left_cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("list_create left")?;
+        let left_a = self
+            .builder
+            .build_alloca(self.list_type, "part_left")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(left_a, left_bv)
+            .map_err(llvm_err)?;
+        let right_cc = self.call_rt("action_list_create", &[cap.into()])?;
+        let right_bv = right_cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("list_create right")?;
+        let right_a = self
+            .builder
+            .build_alloca(self.list_type, "part_right")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(right_a, right_bv)
+            .map_err(llvm_err)?;
+        let hdr = self.context.append_basic_block(current_fn, "part_hdr");
+        let bdy = self.context.append_basic_block(current_fn, "part_bdy");
+        let ext = self.context.append_basic_block(current_fn, "part_ext");
+        let _ = self.builder.build_unconditional_branch(hdr);
+        self.builder.position_at_end(hdr);
+        let iv = self
+            .builder
+            .build_load(i64, i_a, "iv")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let cond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, iv, input_len, "cond")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_conditional_branch(cond, bdy, ext);
+        self.builder.position_at_end(bdy);
+        let elem_val = self.list_get_cached_fat(list_ptr, iv, get_cache)?;
+        let elem_tag = self
+            .builder
+            .build_extract_value(elem_val.into_struct_value(), 0, "et")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let fat_ret_ty = self.string_type;
+        let fn_type = fat_ret_ty.fn_type(&[i64.into()], false);
+        let call_r = self
+            .builder
+            .build_indirect_call(fn_type, fn_ptr, &[elem_tag.into()], "part_call")
+            .map_err(llvm_err)?;
+        let pred_bv = call_r.try_as_basic_value().basic().ok_or("call failed")?;
+        let pred = if pred_bv.is_struct_value() {
+            self.builder
+                .build_extract_value(pred_bv.into_struct_value(), 0, "pred")
+                .map_err(llvm_err)?
+                .into_int_value()
+        } else {
+            pred_bv.into_int_value()
+        };
+        let is_true = self
+            .builder
+            .build_int_compare(IntPredicate::NE, pred, i64.const_int(0, false), "is_true")
+            .map_err(llvm_err)?;
+        let left_bb = self.context.append_basic_block(current_fn, "part_left");
+        let right_bb = self.context.append_basic_block(current_fn, "part_right");
+        let part_merge = self.context.append_basic_block(current_fn, "part_merge2");
+        let _ = self
+            .builder
+            .build_conditional_branch(is_true, left_bb, right_bb);
+        // Push to left
+        self.builder.position_at_end(left_bb);
+        let ll = self.load_list(left_a)?;
+        let lp = self.call_rt("action_list_push", &[ll.into(), elem_val.into()])?;
+        let lp_bv = lp.try_as_basic_value().basic().ok_or("push left")?;
+        self.builder.build_store(left_a, lp_bv).map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(part_merge);
+        // Push to right
+        self.builder.position_at_end(right_bb);
+        let rl = self.load_list(right_a)?;
+        let rp = self.call_rt("action_list_push", &[rl.into(), elem_val.into()])?;
+        let rp_bv = rp.try_as_basic_value().basic().ok_or("push right")?;
+        self.builder.build_store(right_a, rp_bv).map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(part_merge);
+        self.builder.position_at_end(part_merge);
+        let ni = self
+            .builder
+            .build_int_add(iv, i64.const_int(1, false), "ni")
+            .map_err(llvm_err)?;
+        self.builder.build_store(i_a, ni).map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(hdr);
+        self.builder.position_at_end(ext);
+        // Build tuple struct: {list_type, list_type}
+        let lv = self
+            .builder
+            .build_load(self.list_type, left_a, "lv")
+            .map_err(llvm_err)?;
+        let rv = self
+            .builder
+            .build_load(self.list_type, right_a, "rv")
+            .map_err(llvm_err)?;
+        let tuple_ty = self
+            .context
+            .struct_type(&[self.list_type.into(), self.list_type.into()], false);
+        let undef = tuple_ty.get_undef();
+        let t1 = self
+            .builder
+            .build_insert_value(undef, lv, 0, "t_l")
+            .map_err(llvm_err)?;
+        let t2 = self
+            .builder
+            .build_insert_value(t1, rv, 1, "t_r")
+            .map_err(llvm_err)?;
+        let alloca = self
+            .builder
+            .build_alloca(tuple_ty, "part_tuple")
+            .map_err(llvm_err)?;
+        self.builder.build_store(alloca, t2).map_err(llvm_err)?;
+        Ok(TypedValue::Struct(alloca, tuple_ty))
+    }
+
+    /// count(list, fn) or count(list) { lambda } -> Int
+    pub(crate) fn builtin_count(
+        &mut self,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let (fn_ptr, list_ptr) = self.extract_callback_args(args, trailing, 1, "count")?;
+        let input_len = self.list_len_val(self.load_list(list_ptr)?)?;
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("no function")?;
+        let i64 = self.i64_ty();
+        let i_a = self.builder.build_alloca(i64, "i").map_err(llvm_err)?;
+        self.builder
+            .build_store(i_a, i64.const_int(0, false))
+            .map_err(llvm_err)?;
+        let cnt_a = self.builder.build_alloca(i64, "cnt").map_err(llvm_err)?;
+        self.builder
+            .build_store(cnt_a, i64.const_int(0, false))
+            .map_err(llvm_err)?;
+        let get_cache = self.alloc_list_get_cache()?;
+        let hdr = self.context.append_basic_block(current_fn, "cnt_hdr");
+        let bdy = self.context.append_basic_block(current_fn, "cnt_bdy");
+        let ext = self.context.append_basic_block(current_fn, "cnt_ext");
+        let _ = self.builder.build_unconditional_branch(hdr);
+        self.builder.position_at_end(hdr);
+        let iv = self
+            .builder
+            .build_load(i64, i_a, "iv")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let cond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, iv, input_len, "cond")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_conditional_branch(cond, bdy, ext);
+        self.builder.position_at_end(bdy);
+        let elem_val = self.list_get_cached_fat(list_ptr, iv, get_cache)?;
+        let elem_tag = self
+            .builder
+            .build_extract_value(elem_val.into_struct_value(), 0, "et")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let fat_ret_ty = self.string_type;
+        let fn_type = fat_ret_ty.fn_type(&[i64.into()], false);
+        let call_r = self
+            .builder
+            .build_indirect_call(fn_type, fn_ptr, &[elem_tag.into()], "cnt_call")
+            .map_err(llvm_err)?;
+        let pred_bv = call_r.try_as_basic_value().basic().ok_or("call failed")?;
+        let pred = if pred_bv.is_struct_value() {
+            self.builder
+                .build_extract_value(pred_bv.into_struct_value(), 0, "pred")
+                .map_err(llvm_err)?
+                .into_int_value()
+        } else {
+            pred_bv.into_int_value()
+        };
+        let is_true = self
+            .builder
+            .build_int_compare(IntPredicate::NE, pred, i64.const_int(0, false), "is_true")
+            .map_err(llvm_err)?;
+        let one_or_zero = self
+            .builder
+            .build_int_z_extend(is_true, i64, "one_or_zero")
+            .map_err(llvm_err)?;
+        let cur = self
+            .builder
+            .build_load(i64, cnt_a, "cur")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let inc = self
+            .builder
+            .build_int_add(cur, one_or_zero, "inc")
+            .map_err(llvm_err)?;
+        self.builder.build_store(cnt_a, inc).map_err(llvm_err)?;
+        let ni = self
+            .builder
+            .build_int_add(iv, i64.const_int(1, false), "ni")
+            .map_err(llvm_err)?;
+        self.builder.build_store(i_a, ni).map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(hdr);
+        self.builder.position_at_end(ext);
+        let result = self
+            .builder
+            .build_load(i64, cnt_a, "result")
+            .map_err(llvm_err)?;
+        Ok(TypedValue::Int(result.into_int_value()))
+    }
+
+    /// Helper: extract (fn_ptr, list_ptr) from args for callback-based list functions
+    pub(crate) fn extract_callback_args(
+        &mut self,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
+        expected_args: usize,
+        name: &str,
+    ) -> Result<(PointerValue<'ctx>, PointerValue<'ctx>), String> {
+        let (fn_expr, list_expr) = if let Some(lam) = trailing {
+            if args.len() != expected_args {
+                return Err(format!(
+                    "{} with trailing lambda expects {} argument(s) (list)",
+                    name, expected_args
+                ));
+            }
+            let lv = self.compile_call_arg(args[0])?;
+            let fv = self.compile_call_arg(lam)?;
+            (fv, lv)
+        } else if args.len() == expected_args + 1 {
+            let a0 = self.compile_call_arg(args[0])?;
+            let a1 = self.compile_call_arg(args[1])?;
+            let (fn_expr, list_expr) = match (&a0, &a1) {
+                (TypedValue::List(_), _) => (a1, a0),
+                (_, TypedValue::List(_)) => (a0, a1),
+                _ => {
+                    return Err(format!("{name} expects one list and one function argument"));
+                }
+            };
+            let fn_ptr = match fn_expr {
+                TypedValue::Fn(p, _) => p,
+                TypedValue::Closure { fn_ptr, .. } => fn_ptr,
+                _ => return Err(format!("{name}: callback must be a function")),
+            };
+            let list_ptr = match list_expr {
+                TypedValue::List(p) => p,
+                _ => return Err(format!("{name}: last argument must be a list")),
+            };
+            return Ok((fn_ptr, list_ptr));
+        } else {
+            return Err(format!(
+                "{} expects {} argument(s) (fn, list)",
+                name,
+                expected_args + 1
+            ));
+        };
+        let fn_ptr = match fn_expr {
+            TypedValue::Fn(p, _) => p,
+            _ => return Err(format!("{}: first argument must be a function", name)),
+        };
+        let list_ptr = match list_expr {
+            TypedValue::List(p) => p,
+            _ => return Err(format!("{}: last argument must be a list", name)),
+        };
+        Ok((fn_ptr, list_ptr))
+    }
+
+    /// Helper: extract (fn_ptr, list_ptr, init_i64) for foldRight
+    pub(crate) fn extract_fold_right_args(
+        &mut self,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
+    ) -> Result<(PointerValue<'ctx>, PointerValue<'ctx>, IntValue<'ctx>), String> {
+        let (fn_expr, list_expr, init_expr) = if let Some(lam) = trailing {
+            if args.len() != 2 {
+                return Err(
+                    "foldRight with trailing lambda expects 2 arguments (init, list)".to_string(),
+                );
+            }
+            let iv = self.compile_call_arg(args[0])?;
+            let lv = self.compile_call_arg(args[1])?;
+            let fv = self.compile_call_arg(lam)?;
+            (fv, lv, iv)
+        } else if args.len() == 3 {
+            let fv = self.compile_call_arg(args[0])?;
+            let iv = self.compile_call_arg(args[1])?;
+            let lv = self.compile_call_arg(args[2])?;
+            (fv, lv, iv)
+        } else {
+            return Err("foldRight expects 3 arguments (fn, init, list)".to_string());
+        };
+        let fn_ptr = match fn_expr {
+            TypedValue::Fn(p, _) => p,
+            _ => return Err("foldRight: first argument must be a function".to_string()),
+        };
+        let list_ptr = match list_expr {
+            TypedValue::List(p) => p,
+            _ => return Err("foldRight: last argument must be a list".to_string()),
+        };
+        let init_val = match init_expr {
+            TypedValue::Int(v) => v,
+            _ => return Err("foldRight: init must be an integer".to_string()),
+        };
+        Ok((fn_ptr, list_ptr, init_val))
+    }
+
+    pub(crate) fn is_identity_lambda_call_arg(lam: &CallArg<'_>) -> bool {
+        let CallArg::Hir(expr) = lam;
+        Self::is_identity_lambda_hir(expr)
+    }
+
+    pub(crate) fn is_identity_lambda_hir(expr: &action_frontend::hir::HirExpr) -> bool {
+        use action_frontend::hir::HirExprKind;
+        let HirExprKind::Lambda {
+            params,
+            body,
+            implicit_it,
+            ..
+        } = &expr.kind
+        else {
+            return false;
+        };
+        if *implicit_it {
+            matches!(&body.kind, HirExprKind::Ident(name) if name == "it")
+        } else if params.len() == 1 {
+            matches!(&body.kind, HirExprKind::Ident(name) if name == &params[0])
+        } else {
+            false
+        }
+    }
+
+    pub(crate) fn extract_filter_call_args_hir(
+        expr: &action_frontend::hir::HirExpr,
+    ) -> Option<(
+        &action_frontend::hir::HirExpr,
+        &action_frontend::hir::HirExpr,
+    )> {
+        use action_frontend::hir::HirExprKind;
+        let HirExprKind::Call {
+            func,
+            args,
+            trailing_lambda,
+        } = &expr.kind
+        else {
+            return None;
+        };
+        let is_filter = match &func.kind {
+            HirExprKind::Ident(name) => name == "filter",
+            HirExprKind::FieldAccess(_, method) => method == "filter",
+            _ => false,
+        };
+        if !is_filter {
+            return None;
+        }
+        match trailing_lambda {
+            Some(lam) => {
+                let inner = match &func.kind {
+                    HirExprKind::Ident(_) if args.len() == 1 => Some(&args[0]),
+                    HirExprKind::FieldAccess(obj, _) if args.is_empty() => Some(obj.as_ref()),
+                    _ => None,
+                };
+                inner.map(|list| (lam.as_ref(), list))
+            }
+            None if args.len() == 2 => Some((&args[0], &args[1])),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn extract_map_call_args_hir(
+        expr: &action_frontend::hir::HirExpr,
+    ) -> Option<(
+        &action_frontend::hir::HirExpr,
+        &action_frontend::hir::HirExpr,
+    )> {
+        use action_frontend::hir::HirExprKind;
+        let HirExprKind::Call {
+            func,
+            args,
+            trailing_lambda,
+        } = &expr.kind
+        else {
+            return None;
+        };
+        let is_map = match &func.kind {
+            HirExprKind::Ident(name) => name == "map",
+            HirExprKind::FieldAccess(_, method) => method == "map",
+            _ => false,
+        };
+        if !is_map {
+            return None;
+        }
+        match trailing_lambda {
+            Some(lam) => {
+                let inner = match &func.kind {
+                    HirExprKind::Ident(_) if args.len() == 1 => Some(&args[0]),
+                    HirExprKind::FieldAccess(obj, _) if args.is_empty() => Some(obj.as_ref()),
+                    _ => None,
+                };
+                inner.map(|list| (lam.as_ref(), list))
+            }
+            None if args.len() == 2 => Some((&args[0], &args[1])),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn extract_flatmap_call_args_hir(
+        expr: &action_frontend::hir::HirExpr,
+    ) -> Option<(
+        &action_frontend::hir::HirExpr,
+        &action_frontend::hir::HirExpr,
+    )> {
+        use action_frontend::hir::HirExprKind;
+        let HirExprKind::Call {
+            func,
+            args,
+            trailing_lambda,
+        } = &expr.kind
+        else {
+            return None;
+        };
+        let is_flat = match &func.kind {
+            HirExprKind::Ident(name) => name == "flatMap",
+            HirExprKind::FieldAccess(_, method) => method == "flatMap",
+            _ => false,
+        };
+        if !is_flat {
+            return None;
+        }
+        match trailing_lambda {
+            Some(lam) => {
+                let inner = match &func.kind {
+                    HirExprKind::Ident(_) if args.len() == 1 => Some(&args[0]),
+                    HirExprKind::FieldAccess(obj, _) if args.is_empty() => Some(obj.as_ref()),
+                    _ => None,
+                };
+                inner.map(|list| (lam.as_ref(), list))
+            }
+            None if args.len() == 2 => Some((&args[0], &args[1])),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn fused_map_filter_hir(
+        &mut self,
+        map_fn_expr: &action_frontend::hir::HirExpr,
+        inner_list_expr: &action_frontend::hir::HirExpr,
+        filter_fn_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let map_fn_val = self.compile_hir_expr(map_fn_expr)?;
+        let inner_list_val = self.compile_hir_expr(inner_list_expr)?;
+        self.fused_map_filter_values(map_fn_val, inner_list_val, filter_fn_val)
+    }
+
+    fn fused_map_filter_values(
+        &mut self,
+        map_fn_val: TypedValue<'ctx>,
+        inner_list_val: TypedValue<'ctx>,
+        filter_fn_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let filter_fn_ptr = match filter_fn_val {
+            TypedValue::Fn(p, _) => p,
+            TypedValue::Closure { fn_ptr, .. } => fn_ptr,
+            _ => return Err("fused map+filter: filter function required".to_string()),
+        };
+        let map_fn_ptr = match map_fn_val {
+            TypedValue::Fn(p, _) => p,
+            TypedValue::Closure { fn_ptr, .. } => fn_ptr,
+            _ => return Err("fused map+filter: map function required".to_string()),
+        };
+        let inner_list_ptr = match inner_list_val {
+            TypedValue::List(p) => p,
+            _ => return Err("fused map+filter: list required".to_string()),
+        };
+
+        let inner_list_struct = self.load_list(inner_list_ptr)?;
+        let result_alloca = self
+            .builder
+            .build_alloca(self.list_type, "mf_result")
+            .map_err(llvm_err)?;
+
+        let mf_cc = self.call_rt(
+            "action_list_map_filter_walk",
+            &[
+                inner_list_struct.into(),
+                map_fn_ptr.into(),
+                filter_fn_ptr.into(),
+            ],
+        )?;
+        let result_bv = mf_cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("map_filter_walk failed")?;
+        self.builder
+            .build_store(result_alloca, result_bv)
+            .map_err(llvm_err)?;
+
+        Ok(TypedValue::List(result_alloca))
+    }
+
+    pub(crate) fn fused_map_filter_map_hir(
+        &mut self,
+        map_inner_expr: &action_frontend::hir::HirExpr,
+        base_list_expr: &action_frontend::hir::HirExpr,
+        filter_fn_val: TypedValue<'ctx>,
+        map_outer_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let map_inner_val = self.compile_hir_expr(map_inner_expr)?;
+        let base_list_val = self.compile_hir_expr(base_list_expr)?;
+        self.fused_map_filter_map_values(map_inner_val, base_list_val, filter_fn_val, map_outer_val)
+    }
+
+    pub(crate) fn fused_map_filter_map_values(
+        &mut self,
+        map_inner_val: TypedValue<'ctx>,
+        base_list_val: TypedValue<'ctx>,
+        filter_fn_val: TypedValue<'ctx>,
+        map_outer_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let filter_fn_ptr = match filter_fn_val {
+            TypedValue::Fn(p, _) => p,
+            TypedValue::Closure { fn_ptr, .. } => fn_ptr,
+            _ => return Err("fused map+filter+map: filter function required".to_string()),
+        };
+        let map_inner_ptr = match map_inner_val {
+            TypedValue::Fn(p, _) => p,
+            TypedValue::Closure { fn_ptr, .. } => fn_ptr,
+            _ => return Err("fused map+filter+map: inner map function required".to_string()),
+        };
+        let map_outer_ptr = match map_outer_val {
+            TypedValue::Fn(p, _) => p,
+            TypedValue::Closure { fn_ptr, .. } => fn_ptr,
+            _ => return Err("fused map+filter+map: outer map function required".to_string()),
+        };
+        let inner_list_ptr = match base_list_val {
+            TypedValue::List(p) => p,
+            _ => return Err("fused map+filter+map: list required".to_string()),
+        };
+
+        let inner_list_struct = self.load_list(inner_list_ptr)?;
+        let result_alloca = self
+            .builder
+            .build_alloca(self.list_type, "mfm_result")
+            .map_err(llvm_err)?;
+
+        let mfm_cc = self.call_rt(
+            "action_list_map_filter_map_walk",
+            &[
+                inner_list_struct.into(),
+                map_inner_ptr.into(),
+                filter_fn_ptr.into(),
+                map_outer_ptr.into(),
+            ],
+        )?;
+        let result_bv = mfm_cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("map_filter_map_walk failed")?;
+        self.builder
+            .build_store(result_alloca, result_bv)
+            .map_err(llvm_err)?;
+
+        Ok(TypedValue::List(result_alloca))
+    }
+
+    pub(crate) fn fused_map_take_while_hir(
+        &mut self,
+        map_fn_expr: &action_frontend::hir::HirExpr,
+        inner_list_expr: &action_frontend::hir::HirExpr,
+        take_while_fn_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let map_fn_val = self.compile_hir_expr(map_fn_expr)?;
+        let inner_list_val = self.compile_hir_expr(inner_list_expr)?;
+        self.fused_map_take_while_values(map_fn_val, inner_list_val, take_while_fn_val)
+    }
+
+    fn fused_map_take_while_values(
+        &mut self,
+        map_fn_val: TypedValue<'ctx>,
+        inner_list_val: TypedValue<'ctx>,
+        take_while_fn_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let map_fn_ptr = match map_fn_val {
+            TypedValue::Fn(p, _) => p,
+            TypedValue::Closure { fn_ptr, .. } => fn_ptr,
+            _ => return Err("fused map+takeWhile: map function required".to_string()),
+        };
+        let tw_fn_ptr = match take_while_fn_val {
+            TypedValue::Fn(p, _) => p,
+            TypedValue::Closure { fn_ptr, .. } => fn_ptr,
+            _ => return Err("fused map+takeWhile: predicate function required".to_string()),
+        };
+        let list_ptr = match inner_list_val {
+            TypedValue::List(p) => p,
+            _ => return Err("fused map+takeWhile: list required".to_string()),
+        };
+
+        let list_struct = self.load_list(list_ptr)?;
+        let mtw_cc = self.call_rt(
+            "action_list_map_take_while_walk",
+            &[list_struct.into(), map_fn_ptr.into(), tw_fn_ptr.into()],
+        )?;
+        let result_bv = mtw_cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("map_take_while_walk failed")?;
+        let res_a = self
+            .builder
+            .build_alloca(self.list_type, "mtw_res")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(res_a, result_bv)
+            .map_err(llvm_err)?;
+        Ok(TypedValue::List(res_a))
+    }
+
+    pub(crate) fn fused_flatmap_filter_hir(
+        &mut self,
+        flat_fn_expr: &action_frontend::hir::HirExpr,
+        inner_list_expr: &action_frontend::hir::HirExpr,
+        filter_fn_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let flat_fn_val = self.compile_hir_expr(flat_fn_expr)?;
+        let inner_list_val = self.compile_hir_expr(inner_list_expr)?;
+        self.fused_flatmap_filter_values(flat_fn_val, inner_list_val, filter_fn_val)
+    }
+
+    fn fused_flatmap_filter_values(
+        &mut self,
+        flat_fn_val: TypedValue<'ctx>,
+        inner_list_val: TypedValue<'ctx>,
+        filter_fn_val: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let flat_fn_ptr = match flat_fn_val {
+            TypedValue::Fn(p, _) => p,
+            TypedValue::Closure { fn_ptr, .. } => fn_ptr,
+            _ => return Err("fused flatMap+filter: flatMap function required".to_string()),
+        };
+        let filter_fn_ptr = match filter_fn_val {
+            TypedValue::Fn(p, _) => p,
+            TypedValue::Closure { fn_ptr, .. } => fn_ptr,
+            _ => return Err("fused flatMap+filter: filter function required".to_string()),
+        };
+        let list_ptr = match inner_list_val {
+            TypedValue::List(p) => p,
+            _ => return Err("fused flatMap+filter: list required".to_string()),
+        };
+
+        let list_struct = self.load_list(list_ptr)?;
+        let input_len = self.list_len_val(list_struct)?;
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("no function")?;
+        let i64 = self.i64_ty();
+        let cc = self.call_rt("action_list_create", &[input_len.into()])?;
+        let res_a = self
+            .builder
+            .build_alloca(self.list_type, "ff_res")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(res_a, cc.try_as_basic_value().unwrap_basic())
+            .map_err(llvm_err)?;
+        let outer_i = self.builder.build_alloca(i64, "ff_oi").map_err(llvm_err)?;
+        self.builder
+            .build_store(outer_i, i64.const_int(0, false))
+            .map_err(llvm_err)?;
+        let cache = self.alloc_list_get_cache()?;
+        let hdr = self.context.append_basic_block(current_fn, "ff_hdr");
+        let bdy = self.context.append_basic_block(current_fn, "ff_bdy");
+        let ext = self.context.append_basic_block(current_fn, "ff_ext");
+        let _ = self.builder.build_unconditional_branch(hdr);
+        self.builder.position_at_end(hdr);
+        let oi = self
+            .builder
+            .build_load(i64, outer_i, "ff_oiv")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let ocond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, oi, input_len, "ff_ocond")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_conditional_branch(ocond, bdy, ext);
+        self.builder.position_at_end(bdy);
+        let elem_fat = self.list_get_cached_fat(list_ptr, oi, cache)?;
+        let elem_tag = self
+            .builder
+            .build_extract_value(elem_fat.into_struct_value(), 0, "ff_et")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let sublist_fat = self.call_list_fn_on_tag(flat_fn_ptr, elem_tag, "ff_flat")?;
+        let sublist_ptr = self
+            .builder
+            .build_alloca(self.list_type, "ff_sub")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(sublist_ptr, sublist_fat)
+            .map_err(llvm_err)?;
+        let sub_loaded = self.load_list(sublist_ptr)?;
+        let sub_len = self.list_len_val(sub_loaded)?;
+        let inner_i = self.builder.build_alloca(i64, "ff_ii").map_err(llvm_err)?;
+        self.builder
+            .build_store(inner_i, i64.const_int(0, false))
+            .map_err(llvm_err)?;
+        let ihdr = self.context.append_basic_block(current_fn, "ff_ihdr");
+        let ibdy = self.context.append_basic_block(current_fn, "ff_ibdy");
+        let iaft = self.context.append_basic_block(current_fn, "ff_iaft");
+        let _ = self.builder.build_unconditional_branch(ihdr);
+        self.builder.position_at_end(ihdr);
+        let ii = self
+            .builder
+            .build_load(i64, inner_i, "ff_iiv")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let icond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, ii, sub_len, "ff_icond")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_conditional_branch(icond, ibdy, iaft);
+        self.builder.position_at_end(ibdy);
+        let inner_fat = self.list_get_cached_fat(sublist_ptr, ii, cache)?;
+        let inner_tag = self
+            .builder
+            .build_extract_value(inner_fat.into_struct_value(), 0, "ff_it")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let keep = self.call_i64_fn_on_tag(filter_fn_ptr, inner_tag, "ff_filt")?;
+        let keep_b = self
+            .builder
+            .build_int_compare(IntPredicate::NE, keep, i64.const_int(0, false), "ff_keep")
+            .map_err(llvm_err)?;
+        let push_bb = self.context.append_basic_block(current_fn, "ff_push");
+        let skip_bb = self.context.append_basic_block(current_fn, "ff_skip");
+        let _ = self
+            .builder
+            .build_conditional_branch(keep_b, push_bb, skip_bb);
+        self.builder.position_at_end(push_bb);
+        let rl = self
+            .builder
+            .build_load(self.list_type, res_a, "ff_rl")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let rp = self.call_rt("action_list_push", &[rl.into(), inner_fat.into()])?;
+        self.builder
+            .build_store(res_a, rp.try_as_basic_value().unwrap_basic())
+            .map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(skip_bb)
+            .map_err(llvm_err)?;
+        self.builder.position_at_end(skip_bb);
+        let nii = self
+            .builder
+            .build_int_add(ii, i64.const_int(1, false), "ff_nii")
+            .map_err(llvm_err)?;
+        self.builder.build_store(inner_i, nii).map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(ihdr);
+        self.builder.position_at_end(iaft);
+        let noi = self
+            .builder
+            .build_int_add(oi, i64.const_int(1, false), "ff_noi")
+            .map_err(llvm_err)?;
+        self.builder.build_store(outer_i, noi).map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(hdr);
+        self.builder.position_at_end(ext);
+        Ok(TypedValue::List(res_a))
+    }
+
+    fn call_i64_fn_on_tag(
+        &mut self,
+        fn_ptr: inkwell::values::PointerValue<'ctx>,
+        tag: IntValue<'ctx>,
+        name: &str,
+    ) -> Result<IntValue<'ctx>, String> {
+        let i64 = self.i64_ty();
+        let fn_type = i64.fn_type(&[i64.into()], false);
+        self.call_predicate_on_tag(fn_ptr, fn_type, tag, name)
+    }
+
+    fn predicate_llvm_fn_type(
+        &self,
+        val: &TypedValue<'ctx>,
+    ) -> Result<inkwell::types::FunctionType<'ctx>, String> {
+        match val {
+            TypedValue::Fn(_, ft) => Ok(*ft),
+            TypedValue::Closure { actual_fn_type, .. } => Ok(*actual_fn_type),
+            _ => Err("predicate must be a function".to_string()),
+        }
+    }
+
+    fn predicate_returns_fat(&self, ft: inkwell::types::FunctionType<'ctx>) -> bool {
+        matches!(
+            ft.get_return_type(),
+            Some(inkwell::types::BasicTypeEnum::StructType(st)) if st == self.string_type
+        )
+    }
+
+    pub(crate) fn callback_fn_ptr(
+        &self,
+        val: &TypedValue<'ctx>,
+        name: &str,
+    ) -> Result<inkwell::values::PointerValue<'ctx>, String> {
+        match val {
+            TypedValue::Fn(p, _) => Ok(*p),
+            TypedValue::Closure { fn_ptr, .. } => Ok(*fn_ptr),
+            _ => Err(format!("{name}: first argument must be a function")),
+        }
+    }
+
+    fn extract_callback_fn_and_list(
+        &mut self,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
+        expected_args: usize,
+        name: &str,
+    ) -> Result<(TypedValue<'ctx>, TypedValue<'ctx>), String> {
+        if let Some(lam) = trailing {
+            if args.len() != expected_args {
+                return Err(format!(
+                    "{name} with trailing lambda expects {expected_args} argument(s) (list)"
+                ));
+            }
+            let lv = self.compile_call_arg(args[0])?;
+            let fv = self.compile_call_arg(lam)?;
+            Ok((fv, lv))
+        } else if args.len() == expected_args + 1 {
+            let a0 = self.compile_call_arg(args[0])?;
+            let a1 = self.compile_call_arg(args[1])?;
+            match (&a0, &a1) {
+                (TypedValue::List(_), _) => Ok((a1, a0)),
+                (_, TypedValue::List(_)) => Ok((a0, a1)),
+                _ => Err(format!("{name} expects one list and one function argument")),
+            }
+        } else {
+            Err(format!(
+                "{name} expects {} argument(s) (fn, list)",
+                expected_args + 1
+            ))
+        }
+    }
+
+    fn call_predicate_on_tag_for_val(
+        &mut self,
+        fn_val: &TypedValue<'ctx>,
+        fn_ptr: inkwell::values::PointerValue<'ctx>,
+        fn_type: inkwell::types::FunctionType<'ctx>,
+        tag: IntValue<'ctx>,
+        name: &str,
+    ) -> Result<IntValue<'ctx>, String> {
+        match fn_val {
+            TypedValue::Closure {
+                closure_ptr,
+                actual_fn_type,
+                fn_ptr,
+                ..
+            } => {
+                let call_r = self
+                    .builder
+                    .build_indirect_call(
+                        *actual_fn_type,
+                        *fn_ptr,
+                        &[(*closure_ptr).into(), tag.into()],
+                        name,
+                    )
+                    .map_err(llvm_err)?;
+                self.predicate_call_result_to_i64(call_r, name)
+            }
+            _ => self.call_predicate_on_tag(fn_ptr, fn_type, tag, name),
+        }
+    }
+
+    fn call_predicate_on_tag(
+        &mut self,
+        fn_ptr: inkwell::values::PointerValue<'ctx>,
+        fn_type: inkwell::types::FunctionType<'ctx>,
+        tag: IntValue<'ctx>,
+        name: &str,
+    ) -> Result<IntValue<'ctx>, String> {
+        let call_r = self
+            .builder
+            .build_indirect_call(fn_type, fn_ptr, &[tag.into()], name)
+            .map_err(llvm_err)?;
+        self.predicate_call_result_to_i64(call_r, name)
+    }
+
+    fn predicate_call_result_to_i64(
+        &mut self,
+        call_r: inkwell::values::CallSiteValue<'ctx>,
+        name: &str,
+    ) -> Result<IntValue<'ctx>, String> {
+        let bv = call_r
+            .try_as_basic_value()
+            .basic()
+            .ok_or_else(|| format!("{name} returned void"))?;
+        if bv.is_struct_value() {
+            return Ok(self
+                .builder
+                .build_extract_value(bv.into_struct_value(), 0, &format!("{name}_t"))
+                .map_err(llvm_err)?
+                .into_int_value());
+        }
+        let iv = bv.into_int_value();
+        if iv.get_type().get_bit_width() == 1 {
+            Ok(self
+                .builder
+                .build_int_z_extend(iv, self.i64_ty(), &format!("{name}_z"))
+                .map_err(llvm_err)?)
+        } else {
+            Ok(iv)
+        }
+    }
+
+    fn call_list_fn_on_tag(
+        &mut self,
+        fn_ptr: inkwell::values::PointerValue<'ctx>,
+        tag: IntValue<'ctx>,
+        name: &str,
+    ) -> Result<inkwell::values::StructValue<'ctx>, String> {
+        let i64 = self.i64_ty();
+        let fn_type = self.list_type.fn_type(&[i64.into()], false);
+        let call_r = self
+            .builder
+            .build_indirect_call(fn_type, fn_ptr, &[tag.into()], name)
+            .map_err(llvm_err)?;
+        Ok(call_r
+            .try_as_basic_value()
+            .basic()
+            .ok_or("flatMap call failed")?
+            .into_struct_value())
+    }
+
+    /// Callback-based map functions: mapFilter, mapMapValues, mapFold
+    pub(crate) fn builtin_callback_map(
+        &mut self,
+        name: &str,
+        args: &[CallArg<'_>],
+        trailing: Option<CallArg<'_>>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        match name {
+            "mapFilter" => self.builtin_map_filter(args, trailing),
+            "mapMapValues" => self.builtin_map_map_values(args, trailing),
+            "mapFold" => self.builtin_map_fold(args, trailing),
+            _ => Err(format!("Unknown callback map builtin: {}", name)),
+        }
+    }
+}

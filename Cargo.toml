@@ -30,6 +30,7 @@ action-frontend = { path = "crates/action-frontend" }
 action-codegen = { path = "crates/action-codegen" }
 action-driver = { path = "crates/action-driver" }
 action-lsp = { path = "crates/action-lsp" }
+action-host-rt = { path = "crates/host-rt" }
 inkwell = { version = "0.9", features = ["llvm21-1"] }
 llvm-sys = { version = "211" }
 ariadne = "0.4"

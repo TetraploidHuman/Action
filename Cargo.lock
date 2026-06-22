@@ -9,6 +9,7 @@ dependencies = [
  "action-codegen",
  "action-driver",
  "action-frontend",
+ "action-host-rt",
  "action-lsp",
  "action-span",
  "ariadne",

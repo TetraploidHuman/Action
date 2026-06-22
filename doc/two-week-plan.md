@@ -52,7 +52,7 @@
 | 状态 | 任务 | 验收 |
 |------|------|------|
 | [x] | `cargo build --release` | 无编译错误 |
-| [x] | `cargo test --test integration -- --test-threads=1` | **169** 项全绿 |
+| [x] | `cargo test --test integration -- --test-threads=1` | **172** 项全绿 |
 | [x] | 语义快检：`bench_cow.ac`→11、`map_filter.ac`→210215、`bench_all.ac` 无 SIGSEGV | 手动 / CI |
 | [x] | commit + push；`gh run watch` 直至 CI 绿 | Actions 全通过 |
 

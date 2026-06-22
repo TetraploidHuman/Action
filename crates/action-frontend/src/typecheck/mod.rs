@@ -1,8 +1,10 @@
+//! Type checking: HM inference engine (`inference`) + expression inference (`expr_infer`).
+
 mod check_stmt;
-mod infer;
+mod expr_infer;
 mod inference;
 
-pub use crate::registry::{EnumInfo, EnumVariantInfo, StructInfo, TypeRegistry};
+pub use crate::type_registry::{EnumInfo, EnumVariantInfo, StructInfo, TypeRegistry};
 
 use crate::ast::*;
 use crate::builtin;
