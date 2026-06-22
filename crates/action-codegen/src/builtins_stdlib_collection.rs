@@ -7,6 +7,7 @@
 use inkwell::values::{BasicValue, IntValue, StructValue};
 use inkwell::IntPredicate;
 
+use action_frontend::ast::Type;
 use super::call_arg::CallArg;
 use super::{llvm_err, CodeGen, TypedValue};
 
@@ -1327,7 +1328,29 @@ impl<'ctx> CodeGen<'ctx> {
                 match v {
                     TypedValue::List(lp) => {
                         let lv = self.load_list(lp)?;
-                        let cc = self.call_rt("action_list_sorted", &[lv.into()])?;
+                        let is_float = match args[0] {
+                            CallArg::Hir(h) => matches!(
+                                &h.ty,
+                                Type::Generic(base, params)
+                                    if matches!(base.as_ref(), Type::Named(n) if n == "List")
+                                        && params.first().map(|t| matches!(t, Type::Named(n) if n == "Float")).unwrap_or(false)
+                            ),
+                        };
+                        let cc = if is_float {
+                            let cmp_fn = self
+                                .module
+                                .get_function("action_float_bits_gt")
+                                .ok_or("action_float_bits_gt not found")?;
+                            self.call_rt(
+                                "action_list_sorted_by",
+                                &[
+                                    lv.into(),
+                                    cmp_fn.as_global_value().as_pointer_value().into(),
+                                ],
+                            )?
+                        } else {
+                            self.call_rt("action_list_sorted", &[lv.into()])?
+                        };
                         let result = cc.try_as_basic_value().basic().ok_or("sorted failed")?;
                         let alloca = self
                             .builder

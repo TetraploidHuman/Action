@@ -114,7 +114,14 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 HirStringPart::Expr(expr) => {
                     let val = self.compile_hir_expr(expr)?;
-                    self.value_to_string_ptr(&val)?
+                    match self.value_to_string_ptr(&val)? {
+                        Some(ptr) => Some(ptr),
+                        None => {
+                            return Err(
+                                "Unsupported type in string interpolation".to_string()
+                            )
+                        }
+                    }
                 }
             };
 
@@ -204,7 +211,6 @@ impl<'ctx> CodeGen<'ctx> {
                     None => Ok(None),
                 }
             }
-            TypedValue::Str(ptr) => Ok(Some(*ptr)),
             TypedValue::Bool(bv) => {
                 // Convert bool to string "true" or "false"
                 let true_str = self.compile_string_literal("true")?;
@@ -247,7 +253,73 @@ impl<'ctx> CodeGen<'ctx> {
                     Ok(None)
                 }
             }
-            _ => Ok(None), // Floats and other types not yet supported in interpolation
+            TypedValue::Str(ptr) => Ok(Some(*ptr)),
+            TypedValue::Nullable(np, inner_ty) => {
+                let null_bt = self.get_nullable_type(*inner_ty, "interp_null");
+                let loaded = self
+                    .builder
+                    .build_load(null_bt, *np, "interp_null_ld")
+                    .map_err(llvm_err)?
+                    .into_struct_value();
+                let flag = self
+                    .builder
+                    .build_extract_value(loaded, 0, "interp_null_flag")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                let is_null = self
+                    .builder
+                    .build_int_compare(
+                        inkwell::IntPredicate::EQ,
+                        flag,
+                        self.null_flag_ty().const_int(1, false),
+                        "interp_is_null",
+                    )
+                    .map_err(llvm_err)?;
+                let current_fn = self
+                    .builder
+                    .get_insert_block()
+                    .and_then(|b| b.get_parent())
+                    .ok_or("no function")?;
+                let null_bb = self.context.append_basic_block(current_fn, "interp_null");
+                let val_bb = self.context.append_basic_block(current_fn, "interp_val");
+                let merge_bb = self.context.append_basic_block(current_fn, "interp_merge");
+                self.builder
+                    .build_conditional_branch(is_null, null_bb, val_bb)
+                    .map_err(llvm_err)?;
+                self.builder.position_at_end(null_bb);
+                let null_str = self.compile_string_literal("null")?;
+                let null_ptr = match null_str {
+                    TypedValue::Str(p) => p,
+                    _ => return Ok(None),
+                };
+                self.builder
+                    .build_unconditional_branch(merge_bb)
+                    .map_err(llvm_err)?;
+                self.builder.position_at_end(val_bb);
+                let inner = self
+                    .builder
+                    .build_extract_value(loaded, 1, "interp_inner")
+                    .map_err(llvm_err)?;
+                let inner_tv = self.bv_to_typed(inner)?;
+                let inner_ptr = self.value_to_string_ptr(&inner_tv)?;
+                self.builder
+                    .build_unconditional_branch(merge_bb)
+                    .map_err(llvm_err)?;
+                self.builder.position_at_end(merge_bb);
+                let phi = self
+                    .builder
+                    .build_phi(self.ptr_ty(), "interp_null_str")
+                    .map_err(llvm_err)?;
+                if let Some(ip) = inner_ptr {
+                    let np_bv: BasicValueEnum = null_ptr.into();
+                    let ip_bv: BasicValueEnum = ip.into();
+                    phi.add_incoming(&[(&np_bv, null_bb), (&ip_bv, val_bb)]);
+                    Ok(Some(phi.as_basic_value().into_pointer_value()))
+                } else {
+                    Ok(Some(null_ptr))
+                }
+            }
+            _ => Ok(None),
         }
     }
 

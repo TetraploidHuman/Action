@@ -72,6 +72,7 @@ pub fn types_compatible(declared: &Type, inferred: &Type) -> bool {
             }
         }
         (Type::TypeVar(_), _) | (_, Type::TypeVar(_)) => true,
+        (Type::InferVar(_), _) | (_, Type::InferVar(_)) => true,
         (_, Type::Nullable(inner)) if matches!(inner.as_ref(), Type::Named(n) if n == "Nothing") => {
             matches!(declared, Type::Nullable(_))
         }
@@ -104,6 +105,10 @@ pub fn unify(
                 type_map.insert(name.clone(), actual.clone());
                 Ok(())
             }
+        }
+        (Type::InferVar(_), _) | (_, Type::InferVar(_)) => {
+            // Generic call-site inference uses source TypeVar only; InferVar resolved earlier
+            Ok(())
         }
         (Type::Named(a), Type::Named(b)) => {
             if normalize_type_name(a) == normalize_type_name(b) {

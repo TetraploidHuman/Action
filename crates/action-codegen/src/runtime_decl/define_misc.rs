@@ -96,7 +96,101 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(scmp_ret_eq);
         let _ = self.builder.build_return(Some(&i32.const_int(0, false)));
 
-        // ---- action_list_sorted({ptr, i64, i64}) -> {ptr, i64, i64} (Int-only for now) ----
+        // ---- action_list_sorted_cmp_float: qsort comparator for Float elements ----
+        let fcmp_fn = self.module.add_function(
+            "action_list_sorted_cmp_float",
+            i32.fn_type(&[ptr.into(), ptr.into()], false),
+            None,
+        );
+        let fcmp_entry = self.context.append_basic_block(fcmp_fn, "entry");
+        let fcmp_ret_gt = self.context.append_basic_block(fcmp_fn, "ret_gt");
+        let fcmp_chk_lt = self.context.append_basic_block(fcmp_fn, "chk_lt");
+        let fcmp_ret_lt = self.context.append_basic_block(fcmp_fn, "ret_lt");
+        let fcmp_ret_eq = self.context.append_basic_block(fcmp_fn, "ret_eq");
+        self.builder.position_at_end(fcmp_entry);
+        let fcmp_a = fcmp_fn.get_first_param().unwrap().into_pointer_value();
+        let fcmp_b = fcmp_fn.get_nth_param(1).unwrap().into_pointer_value();
+        let fcmp_ea = self
+            .builder
+            .build_load(self.string_type, fcmp_a, "ea")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let fcmp_eb = self
+            .builder
+            .build_load(self.string_type, fcmp_b, "eb")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let fcmp_ba = self
+            .builder
+            .build_extract_value(fcmp_ea, 0, "ba")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let fcmp_bb = self
+            .builder
+            .build_extract_value(fcmp_eb, 0, "bb")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let fcmp_fa = self
+            .builder
+            .build_bit_cast(fcmp_ba, self.f64_ty(), "fa")
+            .map_err(llvm_err)?
+            .into_float_value();
+        let fcmp_fb = self
+            .builder
+            .build_bit_cast(fcmp_bb, self.f64_ty(), "fb")
+            .map_err(llvm_err)?
+            .into_float_value();
+        let fcmp_gt = self
+            .builder
+            .build_float_compare(inkwell::FloatPredicate::OGT, fcmp_fa, fcmp_fb, "gt")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(fcmp_gt, fcmp_ret_gt, fcmp_chk_lt);
+        self.builder.position_at_end(fcmp_ret_gt);
+        let _ = self.builder.build_return(Some(&i32.const_int(1, false)));
+        self.builder.position_at_end(fcmp_chk_lt);
+        let fcmp_lt = self
+            .builder
+            .build_float_compare(inkwell::FloatPredicate::OLT, fcmp_fa, fcmp_fb, "lt")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(fcmp_lt, fcmp_ret_lt, fcmp_ret_eq);
+        self.builder.position_at_end(fcmp_ret_lt);
+        let _ = self
+            .builder
+            .build_return(Some(&i32.const_int(-1i64 as u64, true)));
+        self.builder.position_at_end(fcmp_ret_eq);
+        let _ = self.builder.build_return(Some(&i32.const_int(0, false)));
+
+        // ---- action_float_bits_gt(i64, i64) -> i1: compare float bit patterns ----
+        let fgt_fn = self.module.add_function(
+            "action_float_bits_gt",
+            self.bool_ty().fn_type(&[i64.into(), i64.into()], false),
+            None,
+        );
+        let fgt_entry = self.context.append_basic_block(fgt_fn, "entry");
+        self.builder.position_at_end(fgt_entry);
+        let fgt_a = fgt_fn.get_first_param().unwrap().into_int_value();
+        let fgt_b = fgt_fn.get_nth_param(1).unwrap().into_int_value();
+        let fgt_fa = self
+            .builder
+            .build_bit_cast(fgt_a, self.f64_ty(), "fa")
+            .map_err(llvm_err)?
+            .into_float_value();
+        let fgt_fb = self
+            .builder
+            .build_bit_cast(fgt_b, self.f64_ty(), "fb")
+            .map_err(llvm_err)?
+            .into_float_value();
+        let fgt_res = self
+            .builder
+            .build_float_compare(inkwell::FloatPredicate::OGT, fgt_fa, fgt_fb, "gt")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_return(Some(&fgt_res));
+
+        // ---- action_list_sorted({ptr, i64, i64}) -> {ptr, i64, i64} (Int default) ----
         let srt_fn = self.module.add_function(
             "action_list_sorted",
             self.list_type.fn_type(&[self.list_type.into()], false),

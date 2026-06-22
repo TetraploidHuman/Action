@@ -528,14 +528,10 @@ impl<'ctx> CodeGen<'ctx> {
         let lt_concat_take_both = self.context.append_basic_block(lt_fn, "concat_take_both");
         let lt_normal = self.context.append_basic_block(lt_fn, "normal");
         let lt_h0 = self.context.append_basic_block(lt_fn, "h0");
-        let lt_h0_dec_loop = self.context.append_basic_block(lt_fn, "h0_dec_loop");
-        let lt_h0_dec_body = self.context.append_basic_block(lt_fn, "h0_dec_body");
-        let lt_h0_dec_done = self.context.append_basic_block(lt_fn, "h0_dec_done");
         let lt_h0_cow = self.context.append_basic_block(lt_fn, "h0_cow");
         let lt_h0_ci_loop = self.context.append_basic_block(lt_fn, "h0_ci_loop");
         let lt_h0_ci_body = self.context.append_basic_block(lt_fn, "h0_ci_body");
         let lt_h0_ci_done = self.context.append_basic_block(lt_fn, "h0_ci_done");
-        let lt_h0_reuse = self.context.append_basic_block(lt_fn, "h0_reuse");
         let lt_h0_done = self.context.append_basic_block(lt_fn, "h0_done");
         let lt_hgt0 = self.context.append_basic_block(lt_fn, "hgt0");
         self.builder.position_at_end(lt_entry);
@@ -736,86 +732,8 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .map_err(llvm_err)?
             .into_int_value();
-        // Dec loop: rc_dec truncated elements [actual..count-1]
-        let lt_dec_i = self.builder.build_alloca(i64, "dec_i").map_err(llvm_err)?;
-        self.builder
-            .build_store(lt_dec_i, lt_actual)
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(lt_h0_dec_loop);
-        self.builder.position_at_end(lt_h0_dec_loop);
-        let lt_di = self
-            .builder
-            .build_load(i64, lt_dec_i, "di")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let lt_di_cond = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, lt_di, lt_count, "di_cond")
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(lt_di_cond, lt_h0_dec_body, lt_h0_dec_done);
-        self.builder.position_at_end(lt_h0_dec_body);
-        let lt_eb = unsafe {
-            self.builder
-                .build_gep(i8, lt_leaf_i8, &[i64.const_int(8, false)], "eb")
-                .map_err(llvm_err)
-        }?;
-        let lt_ep = unsafe {
-            self.builder
-                .build_gep(self.string_type, lt_eb, &[lt_di], "ep")
-                .map_err(llvm_err)
-        }?;
-        let lt_ev = self
-            .builder
-            .build_load(self.string_type, lt_ep, "ev")
-            .map_err(llvm_err)?
-            .into_struct_value();
-        let lt_str_rc_dec_fn = self.module.get_function("action_string_rc_dec").unwrap();
-        let _ = self
-            .builder
-            .build_call(lt_str_rc_dec_fn, &[lt_ev.into()], "")
-            .map_err(llvm_err)?;
-        let lt_di_next = self
-            .builder
-            .build_int_add(lt_di, i64.const_int(1, false), "di_next")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(lt_dec_i, lt_di_next)
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(lt_h0_dec_loop);
-        // Check RC for CoW vs reuse
-        self.builder.position_at_end(lt_h0_dec_done);
-        let lt_node_int = self
-            .builder
-            .build_ptr_to_int(lt_node, i64, "node_int")
-            .map_err(llvm_err)?;
-        let lt_rc_addr = self
-            .builder
-            .build_int_sub(lt_node_int, i64.const_int(8, false), "rc_addr")
-            .map_err(llvm_err)?;
-        let lt_rc_ptr = self
-            .builder
-            .build_int_to_ptr(lt_rc_addr, ptr, "rc_ptr")
-            .map_err(llvm_err)?;
-        let lt_rc_val = self
-            .builder
-            .build_load(i64, lt_rc_ptr, "rc_val")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let lt_need_cow = self
-            .builder
-            .build_int_compare(
-                IntPredicate::SGT,
-                lt_rc_val,
-                i64.const_int(1, false),
-                "need_cow",
-            )
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(lt_need_cow, lt_h0_cow, lt_h0_reuse);
-        // CoW: allocate new leaf, copy count+pad+first actual elements
+        // Persistent take: always copy prefix into a new leaf; never mutate the source leaf.
+        let _ = self.builder.build_unconditional_branch(lt_h0_cow);
         self.builder.position_at_end(lt_h0_cow);
         let leaf_ty = self.leaf_type;
         let leaf_size = leaf_ty.size_of().ok_or("leaf size")?;
@@ -910,22 +828,9 @@ impl<'ctx> CodeGen<'ctx> {
             .build_store(lt_nl_count_p, lt_actual_trunc)
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(lt_h0_done);
-        // Reuse: just set count on original leaf
-        self.builder.position_at_end(lt_h0_reuse);
-        let lt_actual_trunc2 = self
-            .builder
-            .build_int_truncate(lt_actual, i32, "actual_i32b")
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_store(lt_leaf_i8, lt_actual_trunc2)
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(lt_h0_done);
         // h0 done: build result
         self.builder.position_at_end(lt_h0_done);
-        let lt_phi_leaf = self.builder.build_phi(ptr, "phi_leaf").map_err(llvm_err)?;
-        lt_phi_leaf.add_incoming(&[(&lt_new_leaf, lt_h0_ci_done), (&lt_node, lt_h0_reuse)]);
-        let lt_result_node = lt_phi_leaf.as_basic_value().into_pointer_value();
+        let lt_result_node = lt_new_leaf;
         let undef_take = self.list_type.get_undef();
         let lt_r1 = self
             .builder

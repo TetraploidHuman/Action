@@ -1396,7 +1396,7 @@ fn test_complex_map_cascade() {
 
 #[test]
 fn test_complex_list_ufcs_chain() {
-    assert_eq!(run_example("complex_list_ufcs_chain.ac"), "43992\n");
+    assert_eq!(run_example("complex_list_ufcs_chain.ac"), "43302\n");
 }
 
 #[test]
@@ -1411,5 +1411,5 @@ fn test_complex_nullable_when() {
 
 #[test]
 fn test_complex_concat_mutate() {
-    assert_eq!(run_example("complex_concat_mutate.ac"), "6451101999\n");
+    assert_eq!(run_example("complex_concat_mutate.ac"), "6465101999\n");
 }

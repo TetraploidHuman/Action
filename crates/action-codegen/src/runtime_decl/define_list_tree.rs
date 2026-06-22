@@ -1100,8 +1100,60 @@ impl<'ctx> CodeGen<'ctx> {
             .try_as_basic_value()
             .unwrap_basic();
         let _ = self.builder.build_return(Some(&li_push_rv));
-        // Split: try insert_rec (path-copy CoW); null → take + push + drop + concat
+        // Split: h=0 full leaf middle → h0_mid; else insert_rec; null → take+push+drop+concat
         self.builder.position_at_end(li_split_bb);
+        let li_h0_mid_try_bb = self.context.append_basic_block(li_fn, "h0_mid_try");
+        let li_h0_mid_ok_bb = self.context.append_basic_block(li_fn, "h0_mid_ok");
+        let li_rec_start_bb = self.context.append_basic_block(li_fn, "rec_start");
+        let li_b64 = i64.const_int(64, false);
+        let li_h0_mid_is_h0 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, li_height, zero, "h0_mid_h0")
+            .map_err(llvm_err)?;
+        let li_h0_mid_is_full = self
+            .builder
+            .build_int_compare(IntPredicate::SGE, li_len, li_b64, "h0_mid_full")
+            .map_err(llvm_err)?;
+        let li_h0_mid_eligible = self
+            .builder
+            .build_and(li_h0_mid_is_h0, li_h0_mid_is_full, "h0_mid_elig")
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_conditional_branch(
+            li_h0_mid_eligible,
+            li_h0_mid_try_bb,
+            li_rec_start_bb,
+        );
+        self.builder.position_at_end(li_h0_mid_try_bb);
+        let li_h0_mid_fn = self
+            .module
+            .get_function("action_list_insert_h0_mid")
+            .unwrap();
+        let li_h0_mid_r = self
+            .builder
+            .build_call(
+                li_h0_mid_fn,
+                &[li_list.into(), li_idx3.into(), li_elem.into()],
+                "h0_mid_r",
+            )
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_struct_value();
+        let li_h0_mid_len = self
+            .builder
+            .build_extract_value(li_h0_mid_r, 1, "h0_mid_len")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let li_h0_mid_ok = self
+            .builder
+            .build_int_compare(IntPredicate::SGT, li_h0_mid_len, li_len, "h0_mid_ok")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(li_h0_mid_ok, li_h0_mid_ok_bb, li_rec_start_bb);
+        self.builder.position_at_end(li_h0_mid_ok_bb);
+        let _ = self.builder.build_return(Some(&li_h0_mid_r));
+        self.builder.position_at_end(li_rec_start_bb);
         let li_insert_rec_fn = self.module.get_function("action_list_insert_rec").unwrap();
         let li_root_rc_p = self
             .builder
@@ -1163,9 +1215,31 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_insert_value(li_rec_r1, li_rec_new_len, 1, "rec_r2")
             .map_err(llvm_err)?;
+        let li_b64 = i64.const_int(64, false);
+        let li_was_full_h0 = self
+            .builder
+            .build_and(
+                self.builder
+                    .build_int_compare(IntPredicate::EQ, li_height, zero, "rec_h0")
+                    .map_err(llvm_err)?,
+                self.builder
+                    .build_int_compare(IntPredicate::SGE, li_len, li_b64, "rec_full")
+                    .map_err(llvm_err)?,
+                "rec_promote",
+            )
+            .map_err(llvm_err)?;
+        let li_rec_height = self
+            .builder
+            .build_select(
+                li_was_full_h0,
+                i64.const_int(1, false),
+                li_height,
+                "rec_new_height",
+            )
+            .map_err(llvm_err)?;
         let li_rec_r3 = self
             .builder
-            .build_insert_value(li_rec_r2, li_height, 2, "rec_r3")
+            .build_insert_value(li_rec_r2, li_rec_height, 2, "rec_r3")
             .map_err(llvm_err)?;
         let _ = self.builder.build_return(Some(&li_rec_r3));
         self.builder.position_at_end(li_rec_fallback_bb);
@@ -3443,6 +3517,9 @@ impl<'ctx> CodeGen<'ctx> {
             .build_and(both_h0, total_small, "can_merge")
             .map_err(llvm_err)?;
         let cc_do_merge = self.context.append_basic_block(concat_fn, "do_merge");
+        let cc_sm_ci_loop = self.context.append_basic_block(concat_fn, "sm_ci_loop");
+        let cc_sm_ci_body = self.context.append_basic_block(concat_fn, "sm_ci_body");
+        let cc_sm_ci_done = self.context.append_basic_block(concat_fn, "sm_ci_done");
         let _ = self
             .builder
             .build_conditional_branch(can_merge, cc_do_merge, cc_lazy_concat);
@@ -3514,8 +3591,52 @@ impl<'ctx> CodeGen<'ctx> {
                 "",
             )
             .map_err(llvm_err)?;
-        // Set leaf count
-        let _ = self.builder.build_store(nl_i8, total).map_err(llvm_err)?;
+        // Set leaf count (i32 at offset 0)
+        let sm_count = self
+            .builder
+            .build_int_truncate(total, i32, "sm_count")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_store(nl_i8, sm_count)
+            .map_err(llvm_err)?;
+        // RC-inc each element copied into the merged leaf (shared string refs)
+        let _ = self.builder.build_unconditional_branch(cc_sm_ci_loop);
+        self.builder.position_at_end(cc_sm_ci_loop);
+        let sm_ci_i = self.builder.build_phi(i64, "sm_ci_i").map_err(llvm_err)?;
+        let sm_ci_cur = sm_ci_i.as_basic_value().into_int_value();
+        let sm_ci_done = self
+            .builder
+            .build_int_compare(IntPredicate::SGE, sm_ci_cur, total, "sm_ci_done")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(sm_ci_done, cc_sm_ci_done, cc_sm_ci_body);
+        self.builder.position_at_end(cc_sm_ci_body);
+        let sm_str_rc_inc_fn = self.module.get_function("action_string_rc_inc").unwrap();
+        let sm_ci_ep = unsafe {
+            self.builder
+                .build_gep(self.string_type, nl_dst, &[sm_ci_cur], "sm_ci_ep")
+                .map_err(llvm_err)?
+        };
+        let sm_ci_ev = self
+            .builder
+            .build_load(self.string_type, sm_ci_ep, "sm_ci_ev")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let _ = self
+            .builder
+            .build_call(sm_str_rc_inc_fn, &[sm_ci_ev.into()], "")
+            .map_err(llvm_err)?;
+        let sm_ci_next = self
+            .builder
+            .build_int_add(sm_ci_cur, one, "sm_ci_next")
+            .map_err(llvm_err)?;
+        let sm_ci_body_bb = self.builder.get_insert_block().unwrap();
+        sm_ci_i.add_incoming(&[(&zero, cc_do_merge), (&sm_ci_next, sm_ci_body_bb)]);
+        let _ = self.builder.build_unconditional_branch(cc_sm_ci_loop);
+
+        self.builder.position_at_end(cc_sm_ci_done);
         // Return {new_leaf, total, 0}
         let sm_undef = self.list_type.get_undef();
         let sm_r1 = self
@@ -3702,7 +3823,7 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self.builder.build_unconditional_branch(cc_balance_chk);
 
         self.builder.position_at_end(cc_balance_chk);
-        let max_concat_depth = i64.const_int(24, false);
+        let max_concat_depth = i64.const_int(32, false);
         let needs_balance = self
             .builder
             .build_int_compare(IntPredicate::SGT, new_depth, max_concat_depth, "needs_bal")

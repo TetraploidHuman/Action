@@ -20,6 +20,27 @@ impl<'ctx> CodeGen<'ctx> {
             .get_function("action_list_insert_rec_split_child")
             .unwrap();
 
+        if self
+            .module
+            .get_function("action_list_insert_rec_split_intl")
+            .is_none()
+        {
+            self.module.add_function(
+                "action_list_insert_rec_split_intl",
+                ptr.fn_type(
+                    &[
+                        ptr.into(),
+                        i64.into(),
+                        i64.into(),
+                        self.string_type.into(),
+                        i64.into(),
+                    ],
+                    false,
+                ),
+                None,
+            );
+        }
+
         let lir_fn = self.module.add_function(
             "action_list_insert_rec",
             ptr.fn_type(
@@ -65,7 +86,6 @@ impl<'ctx> CodeGen<'ctx> {
         let int_ret = self.context.append_basic_block(lir_fn, "int_ret");
         let dec_old = self.context.append_basic_block(lir_fn, "dec_old");
         let store_child = self.context.append_basic_block(lir_fn, "store_child");
-        let fail_ret = self.context.append_basic_block(lir_fn, "fail_ret");
 
         self.builder.position_at_end(entry);
         let lir_node = lir_fn.get_first_param().unwrap().into_pointer_value();
@@ -153,6 +173,119 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self.builder.build_return(Some(&lfp_new_node));
 
         self.builder.position_at_end(leaf_full);
+        let leaf_full_syn = self.context.append_basic_block(lir_fn, "leaf_full_syn");
+        let leaf_full_split_bb = self.context.append_basic_block(lir_fn, "leaf_full_split");
+        let leaf_full_split_ok = self.context.append_basic_block(lir_fn, "leaf_full_split_ok");
+        let leaf_full_fail = self.context.append_basic_block(lir_fn, "leaf_full_fail");
+        let _ = self
+            .builder
+            .build_unconditional_branch(leaf_full_syn);
+
+        // Root full-leaf middle insert: wrap in synthetic 1-child internal, split_child.
+        self.builder.position_at_end(leaf_full_syn);
+        let lfs_int_sz = self.internal_type.size_of().ok_or("internal size")?;
+        let lfs_syn = self
+            .builder
+            .build_call(malloc_rc_fn, &[lfs_int_sz.into()], "lfs_syn")
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_pointer_value();
+        let lfs_i8 = self
+            .builder
+            .build_pointer_cast(lfs_syn, ptr, "lfs_i8")
+            .map_err(llvm_err)?;
+        let lfs_one_i32 = self.context.i32_type().const_int(1, false);
+        self.builder
+            .build_store(lfs_i8, lfs_one_i32)
+            .map_err(llvm_err)?;
+        let lfs_total_p = unsafe {
+            self.builder
+                .build_gep(i8, lfs_i8, &[i64.const_int(8, false)], "lfs_total_p")
+                .map_err(llvm_err)
+        }?;
+        self.builder
+            .build_store(lfs_total_p, count)
+            .map_err(llvm_err)?;
+        let lfs_ce_base = unsafe {
+            self.builder
+                .build_gep(i8, lfs_i8, &[i64.const_int(16, false)], "lfs_ce_base")
+                .map_err(llvm_err)
+        }?;
+        let lfs_ce_ptr = unsafe {
+            self.builder
+                .build_gep(self.child_entry_type, lfs_ce_base, &[zero], "lfs_ce")
+                .map_err(llvm_err)
+        }?;
+        let lfs_child = self
+            .builder
+            .build_insert_value(
+                self.child_entry_type.get_undef(),
+                lir_node,
+                0,
+                "lfs_c0",
+            )
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let lfs_child2 = self
+            .builder
+            .build_insert_value(lfs_child, count, 1, "lfs_c1")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(lfs_ce_ptr, lfs_child2)
+            .map_err(llvm_err)?;
+        let lfs_syn_rc = self
+            .builder
+            .build_int_sub(
+                self.builder
+                    .build_ptr_to_int(lfs_syn, i64, "lfs_syn_i")
+                    .map_err(llvm_err)?,
+                i64.const_int(8, false),
+                "lfs_syn_rc_a",
+            )
+            .map_err(llvm_err)?;
+        let lfs_syn_rc_p = self
+            .builder
+            .build_int_to_ptr(lfs_syn_rc, ptr, "lfs_syn_rc_p")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(lfs_syn_rc_p, one)
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_unconditional_branch(leaf_full_split_bb);
+
+        self.builder.position_at_end(leaf_full_split_bb);
+        let lfs_result = self
+            .builder
+            .build_call(
+                split_child_fn,
+                &[
+                    lfs_syn.into(),
+                    zero.into(),
+                    lir_node.into(),
+                    lir_idx.into(),
+                    lir_val.into(),
+                    list_root_rc.into(),
+                ],
+                "lfs_split",
+            )
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_pointer_value();
+        let lfs_ok = self
+            .builder
+            .build_int_compare(IntPredicate::NE, lfs_result, null_ptr, "lfs_ok")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(lfs_ok, leaf_full_split_ok, leaf_full_fail);
+
+        self.builder.position_at_end(leaf_full_split_ok);
+        let _ = self.builder.build_return(Some(&lfs_result));
+
+        self.builder.position_at_end(leaf_full_fail);
         let _ = self.builder.build_return(Some(&null_ptr));
 
         self.builder.position_at_end(leaf_cow);
@@ -639,11 +772,33 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(IntPredicate::EQ, split_result, null_ptr, "split_fail")
             .map_err(llvm_err)?;
+        let int_split_intl_bb = self.context.append_basic_block(lir_fn, "int_split_intl");
         let _ = self
             .builder
-            .build_conditional_branch(split_failed, fail_ret, int_ret);
-        self.builder.position_at_end(fail_ret);
-        let _ = self.builder.build_return(Some(&null_ptr));
+            .build_conditional_branch(split_failed, int_split_intl_bb, int_ret);
+        self.builder.position_at_end(int_split_intl_bb);
+        let split_intl_fn = self
+            .module
+            .get_function("action_list_insert_rec_split_intl")
+            .unwrap();
+        let split_intl_root = self
+            .builder
+            .build_call(
+                split_intl_fn,
+                &[
+                    work_node.into(),
+                    lir_height.into(),
+                    lir_idx.into(),
+                    lir_val.into(),
+                    list_root_rc.into(),
+                ],
+                "split_intl_root",
+            )
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_pointer_value();
+        let _ = self.builder.build_return(Some(&split_intl_root));
 
         self.builder.position_at_end(int_update);
         let work_i8 = self

@@ -891,6 +891,19 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(result);
                 }
                 if let Some(result) =
+                    self.try_compile_for_invariant_filter_hir(condition, body)?
+                {
+                    return Ok(result);
+                }
+                if let Some(result) = self.try_compile_for_invariant_fold_hir(condition, body)? {
+                    return Ok(result);
+                }
+                if let Some(result) =
+                    self.try_compile_for_invariant_map_fold_hir(condition, body)?
+                {
+                    return Ok(result);
+                }
+                if let Some(result) =
                     self.try_compile_for_invariant_filter_map_fold_hir(condition, body)?
                 {
                     return Ok(result);
@@ -1123,6 +1136,256 @@ impl<'ctx> CodeGen<'ctx> {
             .map(Some)
     }
 
+    fn try_compile_for_invariant_filter_hir(
+        &mut self,
+        condition: &action_frontend::hir::HirExpr,
+        body: &action_frontend::hir::HirExpr,
+    ) -> Result<Option<TypedValue<'ctx>>, String> {
+        use super::call_arg::CallArg;
+        use action_frontend::ast::BinaryOp;
+        use action_frontend::hir::HirExprKind;
+
+        let idx_var = match &condition.kind {
+            HirExprKind::Binary(lhs, BinaryOp::Lt, _) => match &lhs.kind {
+                HirExprKind::Ident(v) => v.clone(),
+                _ => return Ok(None),
+            },
+            _ => return Ok(None),
+        };
+        let (list_hir, filter_lam, inc_body) =
+            match Self::extract_invariant_filter_loop_body(body, &idx_var) {
+                Some(v) => v,
+                None => return Ok(None),
+            };
+        if Self::hir_expr_refs_var(&list_hir, &idx_var)
+            || Self::hir_expr_refs_var(&filter_lam, &idx_var)
+        {
+            return Ok(None);
+        }
+
+        let filtered = self.builtin_filter(
+            &[CallArg::Hir(&list_hir)],
+            Some(CallArg::Hir(&filter_lam)),
+        )?;
+        self.rc_free_intermediate(&filtered)?;
+        self.compile_for_condition_hir(condition, &inc_body)
+            .map(Some)
+    }
+
+    fn try_compile_for_invariant_fold_hir(
+        &mut self,
+        condition: &action_frontend::hir::HirExpr,
+        body: &action_frontend::hir::HirExpr,
+    ) -> Result<Option<TypedValue<'ctx>>, String> {
+        use super::call_arg::CallArg;
+        use action_frontend::ast::BinaryOp;
+        use action_frontend::hir::HirExprKind;
+
+        let idx_var = match &condition.kind {
+            HirExprKind::Binary(lhs, BinaryOp::Lt, _) => match &lhs.kind {
+                HirExprKind::Ident(v) => v.clone(),
+                _ => return Ok(None),
+            },
+            _ => return Ok(None),
+        };
+        let (list_hir, fold_init, fold_lam, inc_body) =
+            match Self::extract_invariant_fold_loop_body(body, &idx_var) {
+                Some(v) => v,
+                None => return Ok(None),
+            };
+        if Self::hir_expr_refs_var(&list_hir, &idx_var)
+            || Self::hir_expr_refs_var(&fold_init, &idx_var)
+            || Self::hir_expr_refs_var(&fold_lam, &idx_var)
+        {
+            return Ok(None);
+        }
+
+        let _sum = self.builtin_fold(
+            &[CallArg::Hir(&fold_init), CallArg::Hir(&list_hir)],
+            Some(CallArg::Hir(&fold_lam)),
+        )?;
+        self.compile_for_condition_hir(condition, &inc_body)
+            .map(Some)
+    }
+
+    fn try_compile_for_invariant_map_fold_hir(
+        &mut self,
+        condition: &action_frontend::hir::HirExpr,
+        body: &action_frontend::hir::HirExpr,
+    ) -> Result<Option<TypedValue<'ctx>>, String> {
+        use super::call_arg::CallArg;
+        use action_frontend::ast::BinaryOp;
+        use action_frontend::hir::HirExprKind;
+
+        let idx_var = match &condition.kind {
+            HirExprKind::Binary(lhs, BinaryOp::Lt, _) => match &lhs.kind {
+                HirExprKind::Ident(v) => v.clone(),
+                _ => return Ok(None),
+            },
+            _ => return Ok(None),
+        };
+        let (list_hir, map_lam, fold_init, fold_lam, inc_body) =
+            match Self::extract_invariant_map_fold_loop_body(body, &idx_var) {
+                Some(v) => v,
+                None => return Ok(None),
+            };
+        if Self::hir_expr_refs_var(&list_hir, &idx_var)
+            || Self::hir_expr_refs_var(&map_lam, &idx_var)
+            || Self::hir_expr_refs_var(&fold_init, &idx_var)
+            || Self::hir_expr_refs_var(&fold_lam, &idx_var)
+        {
+            return Ok(None);
+        }
+
+        let mapped = self.builtin_map(
+            &[CallArg::Hir(&list_hir)],
+            Some(CallArg::Hir(&map_lam)),
+        )?;
+        let mapped_list = match mapped {
+            TypedValue::List(p) => p,
+            _ => return Err("map-fold LICM: map did not produce a list".to_string()),
+        };
+        let list_struct = self.load_list(mapped_list)?;
+        let fold_fn = self.compile_hir_expr(&fold_lam)?;
+        let init_val = self.compile_hir_expr(&fold_init)?;
+        let fn_ptr = match fold_fn {
+            TypedValue::Fn(p, _) | TypedValue::Closure { fn_ptr: p, .. } => p,
+            _ => return Err("map-fold LICM: fold function required".to_string()),
+        };
+        let init_i64 = match init_val {
+            TypedValue::Int(v) => v,
+            _ => return Err("map-fold LICM: fold init must be Int".to_string()),
+        };
+        let fold_cc = self.call_rt(
+            "action_list_fold_walk",
+            &[list_struct.into(), fn_ptr.into(), init_i64.into()],
+        )?;
+        if fold_cc.try_as_basic_value().basic().is_none() {
+            return Err("map-fold LICM: fold_walk failed".to_string());
+        }
+        self.rc_free_intermediate(&TypedValue::List(mapped_list))?;
+        self.compile_for_condition_hir(condition, &inc_body)
+            .map(Some)
+    }
+
+    fn extract_invariant_filter_loop_body(
+        body: &action_frontend::hir::HirExpr,
+        idx_var: &str,
+    ) -> Option<(
+        action_frontend::hir::HirExpr,
+        action_frontend::hir::HirExpr,
+        action_frontend::hir::HirExpr,
+    )> {
+        use action_frontend::hir::{HirExprKind, HirStmt};
+        let stmts = match &body.kind {
+            HirExprKind::Block(stmts) => stmts,
+            _ => return None,
+        };
+        if stmts.len() != 2 {
+            return None;
+        }
+        let (filter_lam, list_hir) = match &stmts[0] {
+            HirStmt::Let { value, .. } | HirStmt::Expr { expr: value, .. } => {
+                Self::extract_filter_trailing_lambda_hir(value)?
+            }
+            _ => return None,
+        };
+        let inc_expr = match &stmts[1] {
+            HirStmt::Let { value, .. } | HirStmt::Expr { expr: value, .. } => {
+                if Self::hir_stmt_is_increment_expr(value, idx_var) {
+                    Some(value.clone())
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }?;
+        Some((list_hir, filter_lam, inc_expr))
+    }
+
+    fn extract_invariant_fold_loop_body(
+        body: &action_frontend::hir::HirExpr,
+        idx_var: &str,
+    ) -> Option<(
+        action_frontend::hir::HirExpr,
+        action_frontend::hir::HirExpr,
+        action_frontend::hir::HirExpr,
+        action_frontend::hir::HirExpr,
+    )> {
+        use action_frontend::hir::{HirExprKind, HirStmt};
+        let stmts = match &body.kind {
+            HirExprKind::Block(stmts) => stmts,
+            _ => return None,
+        };
+        if stmts.len() != 2 {
+            return None;
+        };
+        let (fold_init, fold_lam, list_hir) = match &stmts[0] {
+            HirStmt::Let { value, .. } | HirStmt::Expr { expr: value, .. } => {
+                Self::extract_fold_trailing_lambda_hir(value, None)?
+            }
+            _ => return None,
+        };
+        let inc_expr = match &stmts[1] {
+            HirStmt::Let { value, .. } | HirStmt::Expr { expr: value, .. } => {
+                if Self::hir_stmt_is_increment_expr(value, idx_var) {
+                    Some(value.clone())
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }?;
+        Some((list_hir, fold_init, fold_lam, inc_expr))
+    }
+
+    fn extract_invariant_map_fold_loop_body(
+        body: &action_frontend::hir::HirExpr,
+        idx_var: &str,
+    ) -> Option<(
+        action_frontend::hir::HirExpr,
+        action_frontend::hir::HirExpr,
+        action_frontend::hir::HirExpr,
+        action_frontend::hir::HirExpr,
+        action_frontend::hir::HirExpr,
+    )> {
+        use action_frontend::hir::{HirExprKind, HirStmt};
+        let stmts = match &body.kind {
+            HirExprKind::Block(stmts) => stmts,
+            _ => return None,
+        };
+        if stmts.len() != 3 {
+            return None;
+        };
+        let (list_hir, map_lam) = match &stmts[0] {
+            HirStmt::Let { value, .. } | HirStmt::Expr { expr: value, .. } => {
+                Self::extract_map_trailing_lambda_hir(value)?
+            }
+            _ => return None,
+        };
+        let map_bind = match &stmts[0] {
+            HirStmt::Let { name, .. } => name.clone(),
+            _ => return None,
+        };
+        let (fold_init, fold_lam, _) = match &stmts[1] {
+            HirStmt::Let { value, .. } | HirStmt::Expr { expr: value, .. } => {
+                Self::extract_fold_trailing_lambda_hir(value, Some(&map_bind))?
+            }
+            _ => return None,
+        };
+        let inc_expr = match &stmts[2] {
+            HirStmt::Let { value, .. } | HirStmt::Expr { expr: value, .. } => {
+                if Self::hir_stmt_is_increment_expr(value, idx_var) {
+                    Some(value.clone())
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }?;
+        Some((list_hir, map_lam, fold_init, fold_lam, inc_expr))
+    }
+
     fn extract_invariant_filter_map_fold_loop_body(
         body: &action_frontend::hir::HirExpr,
         idx_var: &str,
@@ -1155,9 +1418,9 @@ impl<'ctx> CodeGen<'ctx> {
         };
         let map_pair = match &stmts[1] {
             HirStmt::Let { value, .. } | HirStmt::Expr { expr: value, .. } => {
-                let (map_lam, inner) = Self::extract_map_trailing_lambda_hir(value)?;
-                match &inner.kind {
-                    HirExprKind::Ident(name) if name == &filter_bind => Some((map_lam, inner)),
+                let (map_input, map_lam) = Self::extract_map_trailing_lambda_hir(value)?;
+                match &map_input.kind {
+                    HirExprKind::Ident(name) if name == &filter_bind => Some((map_lam, map_input)),
                     _ => None,
                 }
             }
@@ -1170,7 +1433,7 @@ impl<'ctx> CodeGen<'ctx> {
         };
         let fold_pair = match &stmts[2] {
             HirStmt::Let { value, .. } | HirStmt::Expr { expr: value, .. } => {
-                Self::extract_fold_trailing_lambda_hir(value, &map_bind)?
+                Self::extract_fold_trailing_lambda_hir(value, Some(&map_bind))?
             }
             _ => return None,
         };
@@ -1214,7 +1477,7 @@ impl<'ctx> CodeGen<'ctx> {
 
     fn extract_fold_trailing_lambda_hir(
         expr: &action_frontend::hir::HirExpr,
-        expected_list: &str,
+        expected_list: Option<&str>,
     ) -> Option<(
         action_frontend::hir::HirExpr,
         action_frontend::hir::HirExpr,
@@ -1232,9 +1495,11 @@ impl<'ctx> CodeGen<'ctx> {
                     return None;
                 }
                 let lam = trailing_lambda.as_ref()?;
-                match &args[1].kind {
-                    HirExprKind::Ident(name) if name == expected_list => {}
-                    _ => return None,
+                if let Some(expected) = expected_list {
+                    match &args[1].kind {
+                        HirExprKind::Ident(name) if name == expected => {}
+                        _ => return None,
+                    }
                 }
                 Some((args[0].clone(), lam.as_ref().clone(), args[1].clone()))
             }

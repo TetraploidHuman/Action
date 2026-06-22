@@ -454,6 +454,7 @@ fn type_to_detail(ty: &Type) -> String {
         Type::FileHandle => "FileHandle".to_string(),
         Type::Nullable(t) => format!("{}?", type_to_detail(t)),
         Type::TypeVar(name) => name.clone(),
+        Type::InferVar(id) => format!("?{}", id),
         Type::Unit => "()".to_string(),
     }
 }

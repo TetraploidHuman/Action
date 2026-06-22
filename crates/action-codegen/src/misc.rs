@@ -564,18 +564,35 @@ impl<'ctx> CodeGen<'ctx> {
                 self.assign_field_on_value(obj_val, field, v)
             }
             HirExprKind::Tuple(names) => {
-                for (i, (_, name_expr)) in names.iter().enumerate() {
-                    let name = match &name_expr.kind {
-                        HirExprKind::Ident(n) => n,
-                        _ => return Err("Destructuring target must be an identifier".to_string()),
-                    };
+                self.assign_tuple_hir(names, v)
+            }
+            HirExprKind::Index(obj, idx) => self.assign_index_hir(obj, idx, v),
+            _ => Err(format!(
+                "Complex assignment not yet supported: {:?}",
+                target.kind
+            )),
+        }
+    }
+
+    fn assign_tuple_hir(
+        &mut self,
+        names: &[(Option<String>, action_frontend::hir::HirExpr)],
+        v: &TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        use action_frontend::hir::HirExprKind;
+        for (i, (_, name_expr)) in names.iter().enumerate() {
+            match &name_expr.kind {
+                HirExprKind::Ident(name) => {
                     let var_ptr = {
                         let var = self
                             .scope
                             .get(name)
                             .ok_or_else(|| format!("Undefined variable: {}", name))?;
                         if !var.mutable {
-                            return Err(format!("Cannot assign to immutable variable '{}'", name));
+                            return Err(format!(
+                                "Cannot assign to immutable variable '{}'",
+                                name
+                            ));
                         }
                         var.ptr
                     };
@@ -584,14 +601,19 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(var_ptr, bv).map_err(llvm_err)?;
                     }
                 }
-                Ok(v.clone())
+                HirExprKind::Tuple(nested) => {
+                    let nested_val = self.extract_field_from_struct(v, i, None)?;
+                    self.assign_tuple_hir(nested, &nested_val)?;
+                }
+                _ => {
+                    return Err(
+                        "Destructuring assignment target must be an identifier or nested tuple"
+                            .to_string(),
+                    );
+                }
             }
-            HirExprKind::Index(obj, idx) => self.assign_index_hir(obj, idx, v),
-            _ => Err(format!(
-                "Complex assignment not yet supported: {:?}",
-                target.kind
-            )),
         }
+        Ok(v.clone())
     }
 
     fn assign_index_hir(
@@ -602,17 +624,37 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<TypedValue<'ctx>, String> {
         use action_frontend::hir::HirExprKind;
         let idx_val = self.compile_hir_expr(idx)?;
-        let idx_int = match idx_val {
-            TypedValue::Int(v) => v,
-            _ => return Err("Index must be an integer".to_string()),
-        };
         let obj_val = self.compile_hir_expr(obj)?;
         match &obj_val {
+            TypedValue::Map(map_ptr) => {
+                let key_fat = self.to_fat_struct(&idx_val)?;
+                let val_fat = self.to_fat_struct(elem)?;
+                let map_loaded = self.load_list(*map_ptr)?;
+                let cc = self.call_rt(
+                    "action_map_insert",
+                    &[map_loaded.into(), key_fat.into(), val_fat.into()],
+                )?;
+                let new_map = cc.try_as_basic_value().basic().ok_or("map insert failed")?;
+                let scratch = self
+                    .builder
+                    .build_alloca(self.list_type, "map_assign")
+                    .map_err(llvm_err)?;
+                self.builder
+                    .build_store(scratch, new_map)
+                    .map_err(llvm_err)?;
+                self.rc_free_intermediate(&obj_val)?;
+                self.write_back_hir_lvalue(obj, TypedValue::Map(scratch))
+            }
             TypedValue::Struct(ptr, st) => {
+                let idx_int = match idx_val {
+                    TypedValue::Int(v) => v,
+                    _ => return Err("Struct index must be an integer".to_string()),
+                };
                 let index = match &idx.kind {
                     HirExprKind::Literal(Literal::Int(n)) => *n as u32,
                     _ => return Err("Tuple/struct index must be an integer literal".to_string()),
                 };
+                let _ = idx_int;
                 let field_ptr = self
                     .builder
                     .build_struct_gep(*st, *ptr, index, "tuple_set_gep")
@@ -629,6 +671,10 @@ impl<'ctx> CodeGen<'ctx> {
                 Ok(elem.clone())
             }
             TypedValue::List(lp) => {
+                let idx_int = match idx_val {
+                    TypedValue::Int(v) => v,
+                    _ => return Err("List index must be an integer".to_string()),
+                };
                 let new_list = self.list_set_at(*lp, idx_int, elem)?;
                 self.rc_free_intermediate(&obj_val)?;
                 self.write_back_hir_lvalue(obj, new_list)

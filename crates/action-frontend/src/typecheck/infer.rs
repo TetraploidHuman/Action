@@ -1,27 +1,34 @@
 use super::*;
+use super::inference::InferenceEngine;
 use crate::ast::resolve_type_vars;
-use crate::types::{infer_type_args, types_compatible};
+use crate::types::infer_type_args;
 
 impl TypeChecker {
-    /// Infer the type of an expression (structural, not full HM inference)
+    /// Infer the type of an expression (Hindley-Milner with structural fallback)
     pub(crate) fn infer_expr_type(&self, expr: &Expr) -> Result<Type, CompilerError> {
         self.infer_expr_type_with_locals(expr, &HashMap::new())
     }
 
     pub(crate) fn pattern_local_types(&self, pattern: &Pattern) -> HashMap<String, Type> {
+        let mut engine = InferenceEngine::new();
         let mut locals = HashMap::new();
-        self.collect_pattern_locals(pattern, &mut locals);
+        self.collect_pattern_locals_hm(pattern, &mut engine, &mut locals);
         locals
+            .into_iter()
+            .map(|(k, v)| (k, engine.resolve(&v)))
+            .collect()
     }
 
-    pub(crate) fn collect_pattern_locals(
+    fn collect_pattern_locals_hm(
         &self,
         pattern: &Pattern,
+        engine: &mut InferenceEngine,
         out: &mut HashMap<String, Type>,
     ) {
         match pattern {
             Pattern::Variable(name) => {
-                out.entry(name.clone()).or_insert(Type::Named("Int".into()));
+                out.entry(name.clone())
+                    .or_insert_with(|| engine.fresh_var());
             }
             Pattern::Constructor {
                 name,
@@ -45,16 +52,16 @@ impl TypeChecker {
                     if let Pattern::Variable(var) = arg_pat {
                         out.insert(var.clone(), ty.clone());
                     } else {
-                        self.collect_pattern_locals(arg_pat, out);
+                        self.collect_pattern_locals_hm(arg_pat, engine, out);
                     }
                 }
                 for (_, p) in named_fields {
-                    self.collect_pattern_locals(p, out);
+                    self.collect_pattern_locals_hm(p, engine, out);
                 }
             }
             Pattern::Or(ps) | Pattern::Tuple(ps) => {
                 for p in ps {
-                    self.collect_pattern_locals(p, out);
+                    self.collect_pattern_locals_hm(p, engine, out);
                 }
             }
             Pattern::Range(_, _)
@@ -71,6 +78,17 @@ impl TypeChecker {
         expr: &Expr,
         locals: &HashMap<String, Type>,
     ) -> Result<Type, CompilerError> {
+        let mut engine = InferenceEngine::new();
+        let ty = self.hm_infer_expr(expr, locals, &mut engine)?;
+        Ok(engine.resolve(&ty))
+    }
+
+    fn hm_infer_expr(
+        &self,
+        expr: &Expr,
+        locals: &HashMap<String, Type>,
+        engine: &mut InferenceEngine,
+    ) -> Result<Type, CompilerError> {
         match &expr.kind {
             ExprKind::Literal(Literal::String(_)) | ExprKind::StringInterpolate(_) => {
                 Ok(Type::Named("String".into()))
@@ -80,44 +98,76 @@ impl TypeChecker {
             ExprKind::Literal(Literal::Bool(_)) => Ok(Type::Named("Bool".into())),
             ExprKind::Literal(Literal::Char(_)) => Ok(Type::Named("Char".into())),
             ExprKind::Literal(Literal::Unit) => Ok(Type::Unit),
-            ExprKind::MapLiteral(_) => Ok(Type::Map(
-                Box::new(Type::Named("String".into())),
-                Box::new(Type::Named("Int".into())),
-            )),
-            ExprKind::SetLiteral(_) => Ok(Type::Set(Box::new(Type::Named("Int".into())))),
+            ExprKind::MapLiteral(entries) => {
+                if entries.is_empty() {
+                    let k = engine.fresh_var();
+                    let v = engine.fresh_var();
+                    return Ok(Type::Map(Box::new(k), Box::new(v)));
+                }
+                let mut key_ty = self.hm_infer_expr(&entries[0].0, locals, engine)?;
+                let mut val_ty = self.hm_infer_expr(&entries[0].1, locals, engine)?;
+                for (k, v) in entries.iter().skip(1) {
+                    let kt = self.hm_infer_expr(k, locals, engine)?;
+                    let vt = self.hm_infer_expr(v, locals, engine)?;
+                    engine
+                        .unify(&key_ty, &kt)
+                        .map_err(|e| CompilerError::new(e))?;
+                    engine
+                        .unify(&val_ty, &vt)
+                        .map_err(|e| CompilerError::new(e))?;
+                    key_ty = engine.resolve(&key_ty);
+                    val_ty = engine.resolve(&val_ty);
+                }
+                Ok(Type::Map(Box::new(key_ty), Box::new(val_ty)))
+            }
+            ExprKind::SetLiteral(elems) => {
+                if elems.is_empty() {
+                    return Ok(Type::Set(Box::new(engine.fresh_var())));
+                }
+                let mut elem_ty = self.hm_infer_expr(&elems[0], locals, engine)?;
+                for e in elems.iter().skip(1) {
+                    let t = self.hm_infer_expr(e, locals, engine)?;
+                    engine
+                        .unify(&elem_ty, &t)
+                        .map_err(|e| CompilerError::new(e))?;
+                    elem_ty = engine.resolve(&elem_ty);
+                }
+                Ok(Type::Set(Box::new(elem_ty)))
+            }
             ExprKind::Binary(lhs, op, rhs) => {
-                let lt = self.infer_expr_type_with_locals(lhs, locals)?;
-                let rt = self.infer_expr_type_with_locals(rhs, locals)?;
+                let lt = self.hm_infer_expr(lhs, locals, engine)?;
+                let rt = self.hm_infer_expr(rhs, locals, engine)?;
                 if *op == BinaryOp::Add {
-                    if matches!(&lt, Type::Named(ref n) if n == "String")
-                        || matches!(&rt, Type::Named(ref n) if n == "String")
+                    if matches!(&engine.resolve(&lt), Type::Named(ref n) if n == "String")
+                        || matches!(&engine.resolve(&rt), Type::Named(ref n) if n == "String")
                     {
                         return Ok(Type::Named("String".into()));
                     }
                 }
-                if *op == BinaryOp::And
-                    || *op == BinaryOp::Or
-                    || *op == BinaryOp::Eq
-                    || *op == BinaryOp::Neq
-                    || *op == BinaryOp::Lt
-                    || *op == BinaryOp::Gt
-                    || *op == BinaryOp::Lte
-                    || *op == BinaryOp::Gte
-                    || *op == BinaryOp::In
-                    || *op == BinaryOp::Is
-                {
+                if matches!(
+                    op,
+                    BinaryOp::And
+                        | BinaryOp::Or
+                        | BinaryOp::Eq
+                        | BinaryOp::Neq
+                        | BinaryOp::Lt
+                        | BinaryOp::Gt
+                        | BinaryOp::Lte
+                        | BinaryOp::Gte
+                        | BinaryOp::In
+                        | BinaryOp::Is
+                ) {
                     return Ok(Type::Named("Bool".into()));
                 }
-                if *op == BinaryOp::BitAnd
-                    || *op == BinaryOp::BitOr
-                    || *op == BinaryOp::BitXor
-                    || *op == BinaryOp::Shl
-                    || *op == BinaryOp::Shr
-                {
+                if matches!(
+                    op,
+                    BinaryOp::BitAnd | BinaryOp::BitOr | BinaryOp::BitXor | BinaryOp::Shl | BinaryOp::Shr
+                ) {
                     return Ok(Type::Named("Int".into()));
                 }
+                let lt = engine.resolve(&lt);
+                let rt = engine.resolve(&rt);
                 if *op == BinaryOp::Pow {
-                    // Return Float if either operand is Float
                     if matches!(&lt, Type::Named(ref n) if n == "Float")
                         || matches!(&rt, Type::Named(ref n) if n == "Float")
                     {
@@ -125,7 +175,6 @@ impl TypeChecker {
                     }
                     return Ok(lt);
                 }
-                // Arithmetic: return Float if either operand is Float, else Int
                 if matches!(&lt, Type::Named(ref n) if n == "Float")
                     || matches!(&rt, Type::Named(ref n) if n == "Float")
                 {
@@ -136,8 +185,43 @@ impl TypeChecker {
             ExprKind::Call { func, args, .. } => {
                 if let ExprKind::Ident(name) = &func.kind {
                     match name.as_str() {
-                        "launch" => Ok(Type::Task(Box::new(Type::Named("Int".into())))),
-                        "Stream" => Ok(Type::Stream(Box::new(Type::Named("Int".into())))),
+                        "List" => {
+                            if args.is_empty() {
+                                let elem = engine.fresh_var();
+                                return Ok(Type::Generic(
+                                    Box::new(Type::Named("List".into())),
+                                    vec![elem],
+                                ));
+                            }
+                            let mut elem_ty = self.hm_infer_expr(&args[0], locals, engine)?;
+                            for arg in args.iter().skip(1) {
+                                let t = self.hm_infer_expr(arg, locals, engine)?;
+                                engine
+                                    .unify(&elem_ty, &t)
+                                    .map_err(|e| CompilerError::new(e))?;
+                                elem_ty = engine.resolve(&elem_ty);
+                            }
+                            Ok(Type::Generic(
+                                Box::new(Type::Named("List".into())),
+                                vec![elem_ty],
+                            ))
+                        }
+                        "Set" => {
+                            if args.is_empty() {
+                                return Ok(Type::Set(Box::new(engine.fresh_var())));
+                            }
+                            let mut elem_ty = self.hm_infer_expr(&args[0], locals, engine)?;
+                            for arg in args.iter().skip(1) {
+                                let t = self.hm_infer_expr(arg, locals, engine)?;
+                                engine
+                                    .unify(&elem_ty, &t)
+                                    .map_err(|e| CompilerError::new(e))?;
+                                elem_ty = engine.resolve(&elem_ty);
+                            }
+                            Ok(Type::Set(Box::new(elem_ty)))
+                        }
+                        "launch" => Ok(Type::Task(Box::new(engine.fresh_var()))),
+                        "Stream" => Ok(Type::Stream(Box::new(engine.fresh_var()))),
                         _ => {
                             if self.registry.lookup_variant(name).is_some() {
                                 let enum_name = self
@@ -151,91 +235,131 @@ impl TypeChecker {
                             if let Some(generic_stmt) = self.generic_funs.get(name) {
                                 return Ok(self.infer_generic_return_type(generic_stmt, args));
                             }
-                            if let Some(Type::Function(_, ret)) = self.type_env.get(name) {
+                            if let Some(Type::Function(param_tys, ret)) = self.type_env.get(name) {
+                                for (arg, pt) in args.iter().zip(param_tys.iter()) {
+                                    let at = self.hm_infer_expr(arg, locals, engine)?;
+                                    let _ = engine.unify(pt, &at);
+                                }
                                 return Ok(*ret.clone());
                             }
                             if let Some(ty) = builtin::lookup_return_type(name) {
                                 return Ok(ty);
                             }
-                            Ok(Type::Named("Int".into()))
+                            Ok(engine.fresh_var())
                         }
                     }
                 } else if let ExprKind::FieldAccess(receiver, method) = &func.kind {
-                    let recv_type = self.infer_expr_type_with_locals(receiver, locals)?;
+                    let recv_type = self.hm_infer_expr(receiver, locals, engine)?;
+                    let recv_type = engine.resolve(&recv_type);
                     if let Some(kind) = builtin::receiver_kind_from_type(&recv_type) {
                         if let Some(ty) = builtin::lookup_ufcs_return_type(kind, method) {
                             return Ok(ty);
                         }
                     }
-                    // UFCS fallback: receiver.method(args) → method(receiver, args)
                     let mut all_args = vec![receiver.as_ref().clone()];
                     all_args.extend(args.iter().cloned());
-                    self.infer_expr_type_with_locals(
+                    self.hm_infer_expr(
                         &ExprKind::Call {
-                            func: Box::new(Expr::ident(&method)),
+                            func: Box::new(Expr::ident(method)),
                             args: all_args,
                             trailing_lambda: None,
                         }
                         .into(),
                         locals,
+                        engine,
                     )
+                } else if let ExprKind::Ident(_) = &func.kind {
+                    Ok(engine.fresh_var())
                 } else {
-                    Ok(Type::Named("Int".into()))
+                    let ft = self.hm_infer_expr(func, locals, engine)?;
+                    let ft = engine.resolve(&ft);
+                    if let Type::Function(param_tys, ret) = ft {
+                        for (arg, pt) in args.iter().zip(param_tys.iter()) {
+                            let at = self.hm_infer_expr(arg, locals, engine)?;
+                            let _ = engine.unify(pt, &at);
+                        }
+                        Ok(*ret)
+                    } else {
+                        Ok(engine.fresh_var())
+                    }
                 }
             }
             ExprKind::When(w) => {
+                if let WhenKind::OneLine {
+                    then_expr,
+                    else_expr,
+                    ..
+                } = &w.kind
+                {
+                    let then_ty = self.hm_infer_expr(then_expr, locals, engine)?;
+                    let else_ty = self.hm_infer_expr(else_expr, locals, engine)?;
+                    engine
+                        .unify(&then_ty, &else_ty)
+                        .map_err(|e| CompilerError::new(e))?;
+                    return Ok(engine.resolve(&then_ty));
+                }
                 let arms = self.when_arms(w);
-                if let Some(arm) = arms.first() {
+                if arms.is_empty() {
+                    return Ok(Type::Unit);
+                }
+                let mut result: Option<Type> = None;
+                for arm in arms {
                     let arm_locals = self.pattern_local_types(&arm.pattern);
-                    let merged = locals
+                    let merged: HashMap<String, Type> = locals
                         .iter()
                         .chain(arm_locals.iter())
                         .map(|(k, v)| (k.clone(), v.clone()))
                         .collect();
-                    return self.infer_expr_type_with_locals(&arm.body, &merged);
+                    let body_ty = self.hm_infer_expr(&arm.body, &merged, engine)?;
+                    if let Some(ref prev) = result {
+                        engine
+                            .unify(prev, &body_ty)
+                            .map_err(|e| CompilerError::new(e))?;
+                    } else {
+                        result = Some(body_ty);
+                    }
                 }
-                if let WhenKind::OneLine { then_expr, .. } = &w.kind {
-                    return self.infer_expr_type_with_locals(then_expr, locals);
-                }
-                Ok(Type::Unit)
+                Ok(result.unwrap_or(Type::Unit))
             }
             ExprKind::Continue | ExprKind::Break => Ok(Type::Unit),
             ExprKind::For(_) => Ok(Type::Unit),
             ExprKind::FunctionRef(name) => {
                 if let Some(ty) = self.type_env.get(name) {
                     Ok(ty.clone())
+                } else if let Some(def) = builtin::lookup(name) {
+                    Ok(def.return_type.clone())
                 } else {
-                    Ok(Type::Function(
-                        vec![Type::Named("Int".into())],
-                        Box::new(Type::Named("Int".into())),
-                    ))
+                    let a = engine.fresh_var();
+                    let b = engine.fresh_var();
+                    Ok(Type::Function(vec![a], Box::new(b)))
                 }
             }
-            ExprKind::Copy(inner) => self.infer_expr_type_with_locals(inner, locals),
+            ExprKind::Copy(inner) => self.hm_infer_expr(inner, locals, engine),
             ExprKind::Null => Ok(Type::Nullable(Box::new(Type::Named("Nothing".into())))),
             ExprKind::OrBlock { nullable, fallback } => {
-                let nullable_ty = self.infer_expr_type_with_locals(nullable, locals)?;
-                let fallback_ty = self.infer_expr_type_with_locals(fallback, locals)?;
-                // Or-block unwraps nullable: T? or { ... } -> T
+                let nullable_ty = self.hm_infer_expr(nullable, locals, engine)?;
+                let fallback_ty = self.hm_infer_expr(fallback, locals, engine)?;
+                let nullable_ty = engine.resolve(&nullable_ty);
+                let fallback_ty = engine.resolve(&fallback_ty);
                 Ok(match nullable_ty {
                     Type::Nullable(inner) => {
-                        if types_compatible(&inner, &fallback_ty) {
-                            *inner
-                        } else {
-                            fallback_ty
-                        }
+                        let _ = engine.unify(&inner, &fallback_ty);
+                        engine.resolve(&inner)
                     }
-                    _ => nullable_ty,
+                    other => {
+                        let _ = engine.unify(&other, &fallback_ty);
+                        engine.resolve(&other)
+                    }
                 })
             }
-            ExprKind::Unsafe(inner) => self.infer_expr_type_with_locals(inner, locals),
+            ExprKind::Unsafe(inner) => self.hm_infer_expr(inner, locals, engine),
             ExprKind::Block(stmts) => stmts
                 .last()
                 .map(|s| match s {
-                    Stmt::Expr { expr: e, .. } => self.infer_expr_type_with_locals(e, locals),
+                    Stmt::Expr { expr: e, .. } => self.hm_infer_expr(e, locals, engine),
                     Stmt::Return { value: e, .. } => e
                         .as_ref()
-                        .map(|re| self.infer_expr_type_with_locals(re, locals))
+                        .map(|re| self.hm_infer_expr(re, locals, engine))
                         .unwrap_or(Ok(Type::Unit)),
                     _ => Ok(Type::Unit),
                 })
@@ -253,40 +377,61 @@ impl TypeChecker {
                         .unwrap_or_default();
                     Ok(Type::Named(enum_name))
                 } else if let Some(ty) = self.type_env.get(name) {
-                    // Smart cast: if variable is known non-null, unwrap nullable type
                     if self.not_null_set.borrow().contains(name) {
                         if let Type::Nullable(inner) = ty {
                             return Ok(*inner.clone());
                         }
                     }
                     Ok(ty.clone())
-                } else if builtin::lookup(name).is_some() {
-                    Ok(builtin::lookup(name).unwrap().return_type.clone())
+                } else if let Some(def) = builtin::lookup(name) {
+                    Ok(def.return_type.clone())
                 } else {
                     Err(CompilerError::new(format!("Unknown variable: '{}'", name)))
                 }
             }
-            ExprKind::Lambda { body, .. } => self.infer_expr_type_with_locals(body, locals),
-            ExprKind::Index(obj, _) => {
-                let obj_type = self.infer_expr_type_with_locals(obj, locals)?;
-                match obj_type {
-                    // Map/Set indexing returns nullable T? (was Option<T>)
-                    Type::Map(_, v) => Ok(Type::Nullable(v.clone())),
-                    Type::Set(e) => Ok(Type::Nullable(e.clone())),
-                    Type::Named(ref n) if n == "String" => Ok(Type::Named("Int".into())),
-                    // If obj is nullable, indexing auto short-circuits to nullable
-                    Type::Nullable(inner) => match *inner {
-                        Type::Map(_, v) => Ok(Type::Nullable(v)),
-                        Type::Set(e) => Ok(Type::Nullable(e)),
-                        Type::Named(ref n) if n == "String" => Ok(Type::Named("Int".into())),
-                        _ => Ok(Type::Nullable(Box::new(Type::Named("Int".into())))),
-                    },
-                    _ => Ok(Type::Named("Int".into())),
+            ExprKind::Lambda { params, body, .. } => {
+                if params.is_empty() {
+                    return self.hm_infer_expr(body, locals, engine);
                 }
+                let mut lambda_locals = locals.clone();
+                let mut param_tys = Vec::new();
+                for p in params {
+                    let pt = engine.fresh_var();
+                    lambda_locals.insert(p.clone(), pt.clone());
+                    param_tys.push(pt);
+                }
+                let body_ty = self.hm_infer_expr(body, &lambda_locals, engine)?;
+                Ok(Type::Function(param_tys, Box::new(body_ty)))
+            }
+            ExprKind::Index(obj, _) => {
+                let obj_ty = self.hm_infer_expr(obj, locals, engine)?;
+                let obj_type = engine.resolve(&obj_ty);
+                match obj_type {
+                    Type::Generic(base, args) if args.len() == 1 => {
+                        if matches!(base.as_ref(), Type::Named(ref n) if n == "List") {
+                            return Ok(args[0].clone());
+                        }
+                    }
+                    Type::Map(_, v) => return Ok(Type::Nullable(v.clone())),
+                    Type::Set(e) => return Ok(Type::Nullable(e.clone())),
+                    Type::Named(ref n) if n == "String" => {
+                        return Ok(Type::Named("Int".into()))
+                    }
+                    Type::Nullable(inner) => match *inner {
+                        Type::Map(_, v) => return Ok(Type::Nullable(v)),
+                        Type::Set(e) => return Ok(Type::Nullable(e)),
+                        Type::Named(ref n) if n == "String" => {
+                            return Ok(Type::Named("Int".into()))
+                        }
+                        _ => return Ok(Type::Nullable(Box::new(engine.fresh_var()))),
+                    },
+                    _ => {}
+                }
+                Ok(engine.fresh_var())
             }
             ExprKind::FieldAccess(obj, field) => {
-                let obj_type = self.infer_expr_type_with_locals(obj, locals)?;
-                // If obj is nullable, field access short-circuits to nullable result
+                let obj_ty = self.hm_infer_expr(obj, locals, engine)?;
+                let obj_type = engine.resolve(&obj_ty);
                 let (inner_obj_type, is_nullable) = match &obj_type {
                     Type::Nullable(inner) => (inner.as_ref(), true),
                     other => (other, false),
@@ -301,13 +446,13 @@ impl TypeChecker {
                         if let Some(index) = struct_info.field_index.get(field) {
                             struct_info.fields[*index].1.clone()
                         } else {
-                            Type::Named("Int".into())
+                            engine.fresh_var()
                         }
                     } else {
-                        Type::Named("Int".into())
+                        engine.fresh_var()
                     }
                 } else {
-                    Type::Named("Int".into())
+                    engine.fresh_var()
                 };
                 if is_nullable {
                     Ok(Type::Nullable(Box::new(field_type)))
@@ -320,17 +465,29 @@ impl TypeChecker {
                 if let Some(struct_info) = self.registry.find_struct_by_fields(&field_names) {
                     Ok(Type::Named(struct_info.name.clone()))
                 } else {
-                    Ok(Type::Named("Int".into()))
+                    Ok(engine.fresh_var())
                 }
             }
-            ExprKind::Assign { value, .. } => self.infer_expr_type_with_locals(value, locals),
+            ExprKind::Assign { value, .. } => self.hm_infer_expr(value, locals, engine),
             ExprKind::Unary(op, inner) => match op {
                 UnaryOp::Not => Ok(Type::Named("Bool".into())),
-                UnaryOp::Neg | UnaryOp::BitNot => {
-                    Ok(self.infer_expr_type_with_locals(inner, locals)?)
-                }
+                UnaryOp::Neg | UnaryOp::BitNot => self.hm_infer_expr(inner, locals, engine),
             },
-            _ => Ok(Type::Named("Int".into())),
+            ExprKind::Tuple(exprs) => {
+                let field_tys: Result<Vec<(String, Type)>, CompilerError> = exprs
+                    .iter()
+                    .enumerate()
+                    .map(|(i, (_, e))| {
+                        self.hm_infer_expr(e, locals, engine)
+                            .map(|t| (format!("_{}", i), t))
+                    })
+                    .collect();
+                Ok(Type::Struct(field_tys?))
+            }
+            ExprKind::Range(_, _) => Ok(Type::Generic(
+                Box::new(Type::Named("List".into())),
+                vec![Type::Named("Int".into())],
+            )),
         }
     }
 
@@ -363,5 +520,29 @@ impl TypeChecker {
             }
         }
         Type::Named("Int".into())
+    }
+
+    /// Infer an unannotated function parameter type from its usage in the body.
+    pub(crate) fn infer_param_type_from_body(
+        &self,
+        param: &str,
+        all_params: &[Param],
+        body: &Expr,
+    ) -> Type {
+        let mut eng = InferenceEngine::new();
+        let mut locals = HashMap::new();
+        let pv = eng.fresh_var();
+        locals.insert(param.to_string(), pv.clone());
+        for p in all_params {
+            if p.name != param {
+                if let Some(ty) = &p.ty {
+                    locals.insert(p.name.clone(), ty.clone());
+                } else if p.name != "self" {
+                    locals.insert(p.name.clone(), eng.fresh_var());
+                }
+            }
+        }
+        let _ = self.hm_infer_expr(body, &locals, &mut eng);
+        eng.resolve(&pv)
     }
 }

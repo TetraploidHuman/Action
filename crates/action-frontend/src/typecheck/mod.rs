@@ -1,5 +1,6 @@
 mod check_stmt;
 mod infer;
+mod inference;
 
 pub use crate::registry::{EnumInfo, EnumVariantInfo, StructInfo, TypeRegistry};
 
@@ -285,23 +286,13 @@ impl TypeChecker {
                     type_params,
                     ..
                 } => {
-                    // Require type annotations on all parameters (except 'self')
-                    for p in params {
-                        if p.ty.is_none() && p.name != "self" {
-                            errors.push(
-                                CompilerError::new(format!(
-                                    "Parameter '{}' in function '{}' must have a type annotation",
-                                    p.name, name
-                                ))
-                                .with_span(self.current_span),
-                            );
-                        }
-                    }
-
-                    // Temporarily add function parameters to the type environment
+                    // Temporarily add function parameters to the type environment.
                     let mut saved: Vec<(String, Option<Type>)> = Vec::new();
                     for p in params {
-                        let param_ty = p.ty.clone().unwrap_or(Type::Named("Int".into()));
+                        let param_ty = p
+                            .ty
+                            .clone()
+                            .unwrap_or_else(|| Type::Named("Int".into()));
                         let old = self.type_env.insert(p.name.clone(), param_ty);
                         saved.push((p.name.clone(), old));
                     }
@@ -314,6 +305,29 @@ impl TypeChecker {
                     }
 
                     self.collect_expr_errors(body, &mut errors);
+
+                    // HM: patch unannotated param types in type_env from body usage
+                    let resolved_param_tys: Vec<Type> = params
+                        .iter()
+                        .map(|p| {
+                            if p.ty.is_some() {
+                                p.ty.clone().unwrap()
+                            } else if p.name == "self" {
+                                Type::Named("Int".into())
+                            } else {
+                                self.infer_param_type_from_body(&p.name, params, body)
+                            }
+                        })
+                        .collect();
+                    if params.iter().any(|p| p.ty.is_none() && p.name != "self") {
+                        let ret_ty = return_type
+                            .clone()
+                            .unwrap_or_else(|| self.try_infer_expr_type(body));
+                        let fn_type =
+                            Type::Function(resolved_param_tys.clone(), Box::new(ret_ty.clone()));
+                        self.type_env.insert(name.clone(), fn_type);
+                    }
+
                     // Validate return type annotation if present
                     if let Some(declared_ret) = return_type {
                         // Skip return type check for generic functions (validated per-instantiation)
@@ -609,13 +623,21 @@ mod tests {
 
     #[test]
     fn test_param_missing_type_annotation() {
-        let errors = check_source("fun f(x) { x }");
-        assert!(!errors.is_empty(), "Expected missing type annotation error");
-        let msg = errors[0].message.to_lowercase();
+        let errors = check_source("fun f(x) { x + 1 }");
         assert!(
-            msg.contains("must have a type annotation"),
-            "Expected type annotation error, got: {}",
-            errors[0].message
+            errors.is_empty(),
+            "HM should infer unannotated param type, got: {:?}",
+            errors.iter().map(|e| &e.message).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn test_param_inferred_as_float() {
+        let errors = check_source("fun f(x) { x + 1.0 }");
+        assert!(
+            errors.is_empty(),
+            "Expected x inferred as Float, got: {:?}",
+            errors.iter().map(|e| &e.message).collect::<Vec<_>>()
         );
     }
 

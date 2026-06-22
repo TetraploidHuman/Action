@@ -11,6 +11,29 @@ use std::collections::HashMap;
 use super::{llvm_err, CodeGen, GepCursor, InnerType, Scope, TypedValue};
 
 impl<'ctx> CodeGen<'ctx> {
+    /// Desugar `p1, p2 -> body` into separate arms so each Or alternative binds correctly.
+    fn expand_hir_or_when_arms(
+        arms: &[action_frontend::hir::HirWhenArm],
+    ) -> Vec<action_frontend::hir::HirWhenArm> {
+        use action_frontend::hir::{HirPattern, HirWhenArm};
+        let mut out = Vec::new();
+        for arm in arms {
+            match &arm.pattern {
+                HirPattern::Or(alts) if !alts.is_empty() => {
+                    for alt in alts {
+                        out.push(HirWhenArm {
+                            pattern: alt.clone(),
+                            guard: arm.guard.clone(),
+                            body: arm.body.clone(),
+                        });
+                    }
+                }
+                _ => out.push(arm.clone()),
+            }
+        }
+        out
+    }
+
     /// Compile a guard expression and return the boolean result.
 
     /// Compile a pattern as a boolean condition (for ConditionChain).
@@ -501,7 +524,6 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
             Pattern::Or(patterns) => {
-                // For Or patterns, bind the first pattern's variables (simplified)
                 if let Some(first) = patterns.first() {
                     self.bind_pattern_vars(first, matched_val, matched_type)?;
                 }
@@ -789,11 +811,12 @@ impl<'ctx> CodeGen<'ctx> {
         value: &action_frontend::hir::HirExpr,
         arms: &[action_frontend::hir::HirWhenArm],
     ) -> Result<TypedValue<'ctx>, String> {
-        if arms.is_empty() {
+        let expanded = Self::expand_hir_or_when_arms(arms);
+        if expanded.is_empty() {
             return Ok(TypedValue::Unit);
         }
         self.registry
-            .check_when_exhaustive(&arms.iter().map(|a| a.to_when_arm()).collect::<Vec<_>>())?;
+            .check_when_exhaustive(&expanded.iter().map(|a| a.to_when_arm()).collect::<Vec<_>>())?;
 
         let current_fn = self
             .builder
@@ -803,7 +826,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let matched_val = self.compile_hir_expr(value)?;
         let matched_type = value.ty.clone();
-        let result_type = arms
+        let result_type = expanded
             .first()
             .map(|a| self.infer_hir_expr_type(&a.body))
             .unwrap_or_else(|| Type::Named("Int".into()));
@@ -834,9 +857,9 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self.builder.build_unconditional_branch(next_check);
         let mut result_enum_info: Option<(InnerType, bool)> = None;
 
-        for (i, hir_arm) in arms.iter().enumerate() {
+        for (i, hir_arm) in expanded.iter().enumerate() {
             let arm = hir_arm.to_when_arm();
-            let is_last = i == arms.len() - 1;
+            let is_last = i == expanded.len() - 1;
             self.builder.position_at_end(next_check);
 
             let matches = self.compile_hir_pattern_match(&hir_arm.pattern, &matched_val)?;

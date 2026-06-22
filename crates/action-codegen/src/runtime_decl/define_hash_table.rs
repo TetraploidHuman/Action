@@ -16,8 +16,8 @@ impl<'ctx> CodeGen<'ctx> {
     const HT_SCALAR_MARKER: u64 = 1;
     const HT_TOMBSTONE: u64 = 2;
     const HT_MIN_CAP: u64 = 8;
-    const HT_LOAD_NUM: u64 = 3;
-    const HT_LOAD_DEN: u64 = 4;
+    const HT_LOAD_NUM: u64 = 7;
+    const HT_LOAD_DEN: u64 = 8;
     const FNV_OFFSET: u64 = 14695981039346656037;
     const FNV_PRIME: u64 = 1099511628211;
     const GOLDEN: u64 = 0x9e3779b97f4a7c15;

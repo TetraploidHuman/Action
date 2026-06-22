@@ -12,6 +12,7 @@ impl<'ctx> CodeGen<'ctx> {
         let ptr = self.ptr_ty();
         let one = i64.const_int(1, false);
         let half = i64.const_int(32, false);
+        let half_m1 = i64.const_int(31, false);
         let half_sz = i64.const_int(32 * 16, false);
         let fanout = i64.const_int(64, false);
         let null_ptr = ptr.const_null();
@@ -254,13 +255,9 @@ impl<'ctx> CodeGen<'ctx> {
             .build_conditional_branch(ls_done, left_shift_done, left_shift_body);
         self.builder.position_at_end(left_shift_body);
         let ls_cur = ls_i.as_basic_value().into_int_value();
-        let ls_from = self
-            .builder
-            .build_int_sub(half, one, "ls_from")
-            .map_err(llvm_err)?;
         let ls_src = self
             .builder
-            .build_int_sub(ls_from, ls_cur, "ls_src")
+            .build_int_sub(half_m1, ls_cur, "ls_src")
             .map_err(llvm_err)?;
         let ls_dst = self
             .builder
@@ -283,10 +280,10 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self.builder.build_store(ls_dp, ls_v).map_err(llvm_err)?;
         let ls_next = self
             .builder
-            .build_int_add(ls_cur, one, "ls_next")
+            .build_int_sub(ls_cur, one, "ls_next")
             .map_err(llvm_err)?;
         let ls_body_bb = self.builder.get_insert_block().unwrap();
-        ls_i.add_incoming(&[(&half, left_shift_entry), (&ls_next, ls_body_bb)]);
+        ls_i.add_incoming(&[(&half_m1, left_shift_entry), (&ls_next, ls_body_bb)]);
         let _ = self.builder.build_unconditional_branch(left_shift_loop);
         self.builder.position_at_end(left_shift_done);
         let ls_ins_p = unsafe {
@@ -329,13 +326,9 @@ impl<'ctx> CodeGen<'ctx> {
             .build_conditional_branch(rs_done, right_shift_done, right_shift_body);
         self.builder.position_at_end(right_shift_body);
         let rs_cur = rs_i.as_basic_value().into_int_value();
-        let rs_from = self
-            .builder
-            .build_int_sub(half, one, "rs_from")
-            .map_err(llvm_err)?;
         let rs_src = self
             .builder
-            .build_int_sub(rs_from, rs_cur, "rs_src")
+            .build_int_sub(half_m1, rs_cur, "rs_src")
             .map_err(llvm_err)?;
         let rs_dst = self
             .builder
@@ -358,10 +351,10 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self.builder.build_store(rs_dp, rs_v).map_err(llvm_err)?;
         let rs_next = self
             .builder
-            .build_int_add(rs_cur, one, "rs_next")
+            .build_int_sub(rs_cur, one, "rs_next")
             .map_err(llvm_err)?;
         let rs_body_bb = self.builder.get_insert_block().unwrap();
-        rs_i.add_incoming(&[(&half, right_shift_entry), (&rs_next, rs_body_bb)]);
+        rs_i.add_incoming(&[(&half_m1, right_shift_entry), (&rs_next, rs_body_bb)]);
         let _ = self.builder.build_unconditional_branch(right_shift_loop);
         self.builder.position_at_end(right_shift_done);
         let rs_ins_p = unsafe {

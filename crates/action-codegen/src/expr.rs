@@ -1819,10 +1819,16 @@ impl<'ctx> CodeGen<'ctx> {
                 ("String", "contains") => "action_string_contains",
                 ("String", "toInt") | ("String", "toFloat") => {
                     return Err(format!(
-                        "::{}::{} cannot be used as a function reference (requires parsing)",
+                        "::{}::{} cannot be used as a function reference (nullable parse result)",
                         type_name, method
                     ));
                 }
+                ("String", "chars") => "action_string_chars",
+                ("String", "join") => "action_string_join",
+                ("String", "replace") => "action_string_replace",
+                ("String", "repeat") => "action_string_repeat",
+                ("String", "trimStart") => "action_string_trim_start",
+                ("String", "trimEnd") => "action_string_trim_end",
                 // List methods
                 ("list", "len") | ("map", "len") | ("set", "len") => "action_list_len",
                 ("list", "head") => "action_list_head",
@@ -1837,27 +1843,20 @@ impl<'ctx> CodeGen<'ctx> {
                 ("list", "get") => "action_list_get",
                 ("list", "append") | ("list", "push") => "action_list_push",
                 ("list", "range") => "action_list_range",
+                ("list", "sorted") => "action_list_sorted",
+                ("list", "unique") => "action_list_unique",
+                ("list", "flatten") => "action_list_flatten",
                 // Map methods
                 ("map", "contains") => "action_map_contains",
                 ("map", "get") => "action_map_get",
                 ("map", "insert") => "action_map_insert",
                 ("map", "remove") => "action_map_remove",
-                // Other String methods with runtime functions
-                ("String", "chars") => "action_string_chars",
-                ("String", "join") => "action_string_join",
-                ("String", "replace") => "action_string_replace",
-                ("String", "repeat") => "action_string_repeat",
-                ("String", "trimStart") => "action_string_trim_start",
-                ("String", "trimEnd") => "action_string_trim_end",
                 // Methods without simple runtime function counterparts
                 ("list", "map")
                 | ("list", "filter")
                 | ("list", "fold")
                 | ("list", "flatMap")
-                | ("list", "flatten")
-                | ("list", "unique")
                 | ("list", "withIndex")
-                | ("list", "sorted")
                 | ("list", "sum")
                 | ("list", "product")
                 | ("list", "prepend")

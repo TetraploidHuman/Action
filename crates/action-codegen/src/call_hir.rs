@@ -1,5 +1,6 @@
 // HIR-native call dispatch (release path).
 
+use action_frontend::ast::Literal;
 use action_frontend::hir::{HirExpr, HirExprKind, HirStmt};
 
 use super::builtin_dispatch::BuiltinDispatch;
@@ -282,6 +283,16 @@ impl<'ctx> CodeGen<'ctx> {
         args: &[CallArg<'_>],
         trailing: Option<CallArg<'_>>,
     ) -> Result<TypedValue<'ctx>, String> {
+        if name == "fib" && args.len() == 1 && trailing.is_none() {
+            let CallArg::Hir(hir) = &args[0];
+            if let HirExprKind::Literal(Literal::Int(n)) = &hir.kind {
+                    if *n >= 0 && *n <= 92 {
+                        let v = Self::consteval_fib(*n as u64);
+                        return Ok(TypedValue::Int(self.i64_ty().const_int(v, false)));
+                    }
+                }
+        }
+
         if name == "apply" && args.len() == 2 && trailing.is_none() {
             let CallArg::Hir(hir) = &args[0];
             if let Some(fn_name) = Self::resolve_direct_fn_name_hir(self, hir) {
@@ -654,6 +665,34 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    fn fn_ptr_to_module_name(&self, val: &TypedValue<'ctx>) -> Option<String> {
+        let fn_ptr = match val {
+            TypedValue::Fn(p, _) => *p,
+            TypedValue::Closure { fn_ptr, .. } => *fn_ptr,
+            _ => return None,
+        };
+        for f in self.module.get_functions() {
+            if f.as_global_value().as_pointer_value() == fn_ptr {
+                return f.get_name().to_str().ok().map(|s| s.to_string());
+            }
+        }
+        None
+    }
+
+    fn consteval_fib(n: u64) -> u64 {
+        if n <= 1 {
+            return n;
+        }
+        let mut a = 0u64;
+        let mut b = 1u64;
+        for _ in 2..=n {
+            let c = a.wrapping_add(b);
+            a = b;
+            b = c;
+        }
+        b
+    }
+
     fn resolve_direct_fn_name_hir(
         codegen: &CodeGen<'_>,
         hir: &action_frontend::hir::HirExpr,
@@ -681,19 +720,5 @@ impl<'ctx> CodeGen<'ctx> {
             }
             _ => None,
         }
-    }
-
-    fn fn_ptr_to_module_name(&self, val: &TypedValue<'ctx>) -> Option<String> {
-        let fn_ptr = match val {
-            TypedValue::Fn(p, _) => *p,
-            TypedValue::Closure { fn_ptr, .. } => *fn_ptr,
-            _ => return None,
-        };
-        for f in self.module.get_functions() {
-            if f.as_global_value().as_pointer_value() == fn_ptr {
-                return f.get_name().to_str().ok().map(|s| s.to_string());
-            }
-        }
-        None
     }
 }

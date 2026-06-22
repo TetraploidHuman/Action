@@ -10,6 +10,8 @@ pub enum Type {
     Named(String),
     /// Type variable: T (from fun <T>, enum Option[T], etc.)
     TypeVar(String),
+    /// Internal inference variable (HM solver only; resolved before codegen/HIR emit)
+    InferVar(u32),
     /// Generic instantiation: List[Int], Option[String]
     Generic(Box<Type>, Vec<Type>),
     /// Function type: (Int, String) -> Bool
@@ -43,6 +45,7 @@ impl fmt::Display for Type {
         match self {
             Type::Named(name) => write!(f, "{}", name),
             Type::TypeVar(name) => write!(f, "{}", name),
+            Type::InferVar(id) => write!(f, "?{}", id),
             Type::Generic(base, args) => {
                 write!(f, "{}[", base)?;
                 for (i, arg) in args.iter().enumerate() {
@@ -92,6 +95,7 @@ impl fmt::Display for Type {
 pub fn resolve_type_vars(ty: &Type, type_map: &HashMap<String, Type>) -> Type {
     match ty {
         Type::TypeVar(name) => type_map.get(name).cloned().unwrap_or_else(|| ty.clone()),
+        Type::InferVar(_) => ty.clone(),
         Type::Named(_) => ty.clone(),
         Type::Generic(base, params) => Type::Generic(
             Box::new(resolve_type_vars(base, type_map)),
