@@ -946,7 +946,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if let HirExprKind::Binary(lhs, BinaryOp::Lt, _) = &condition.kind {
                     if let HirExprKind::Ident(cond_var) = &lhs.kind {
                         if cond_var == &idx_var {
-                            self.loop_control.list_loop_get_cache = Some(self.alloc_list_get_cache()?);
+                            self.loop_control.list_loop_get_cache =
+                                Some(self.alloc_list_get_cache()?);
                         }
                     }
                 }
