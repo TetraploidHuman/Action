@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "action"
-version = "0.5.2"
+version = "0.5.4"
 dependencies = [
  "action-codegen",
  "action-driver",
@@ -25,7 +25,7 @@ dependencies = [
 
 [[package]]
 name = "action-codegen"
-version = "0.5.2"
+version = "0.5.4"
 dependencies = [
  "action-frontend",
  "inkwell",
@@ -34,7 +34,7 @@ dependencies = [
 
 [[package]]
 name = "action-driver"
-version = "0.5.2"
+version = "0.5.4"
 dependencies = [
  "action-codegen",
  "action-frontend",
@@ -45,7 +45,7 @@ dependencies = [
 
 [[package]]
 name = "action-frontend"
-version = "0.5.2"
+version = "0.5.4"
 dependencies = [
  "action-span",
  "ariadne",
@@ -64,7 +64,7 @@ dependencies = [
 
 [[package]]
 name = "action-lsp"
-version = "0.5.2"
+version = "0.5.4"
 dependencies = [
  "action-frontend",
  "action-span",
@@ -76,7 +76,7 @@ dependencies = [
 
 [[package]]
 name = "action-span"
-version = "0.5.2"
+version = "0.5.4"
 dependencies = [
  "serde",
 ]
