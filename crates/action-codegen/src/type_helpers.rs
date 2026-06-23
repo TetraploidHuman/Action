@@ -150,13 +150,14 @@ impl<'ctx> CodeGen<'ctx> {
         inner_type: BasicTypeEnum<'ctx>,
         name_hint: &str,
     ) -> StructType<'ctx> {
-        if let Some(ct) = self.nullable_types.get(name_hint) {
+        if let Some(ct) = self.nullable_state.nullable_types.get(name_hint) {
             return *ct;
         }
         let nullable_ty = self
             .context
             .struct_type(&[self.null_flag_ty().into(), inner_type], false);
-        self.nullable_types
+        self.nullable_state
+            .nullable_types
             .insert(name_hint.to_string(), nullable_ty);
         nullable_ty
     }
@@ -293,8 +294,10 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     match sv.kind {
                         ValKind::Enum => {
-                            for enum_name in self.enum_types.keys() {
-                                if sv.ty == (*self.enum_types.get(enum_name).unwrap()).into() {
+                            for enum_name in self.type_layout.enum_types.keys() {
+                                if sv.ty
+                                    == (*self.type_layout.enum_types.get(enum_name).unwrap()).into()
+                                {
                                     return Type::Named(enum_name.clone());
                                 }
                             }
@@ -379,9 +382,9 @@ impl<'ctx> CodeGen<'ctx> {
                 "list" | "set" | "map" => self.list_type.fn_type(param_tys, false),
                 "LazyList" => self.lazylist_type.fn_type(param_tys, false),
                 name => {
-                    if let Some(st) = self.named_structs.get(name) {
+                    if let Some(st) = self.type_layout.named_structs.get(name) {
                         (*st).fn_type(param_tys, false)
-                    } else if let Some(et) = self.enum_types.get(name) {
+                    } else if let Some(et) = self.type_layout.enum_types.get(name) {
                         (*et).fn_type(param_tys, false)
                     } else {
                         self.i64_ty().fn_type(param_tys, false)
@@ -449,7 +452,7 @@ impl<'ctx> CodeGen<'ctx> {
             TypedValue::List(_) => "list".to_string(),
             TypedValue::Struct(_, st) => {
                 // Try to find the named struct type
-                for (name, ty) in &self.named_structs {
+                for (name, ty) in &self.type_layout.named_structs {
                     if *ty == *st {
                         return name.clone();
                     }

@@ -351,6 +351,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Get or create the enum LLVM type {i64, i8*}
         let enum_ty = *self
+            .type_layout
             .enum_types
             .get(&enum_info.name)
             .ok_or_else(|| format!("Enum '{}' not in type map", enum_info.name))?;

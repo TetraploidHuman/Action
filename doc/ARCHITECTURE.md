@@ -133,7 +133,19 @@ pub use action_lsp as lsp;
 | **R9a** | `host-rt` 迁入 `crates/host-rt/src/` | ✅ |
 | **R9b** | CLI 源码迁入 `crates/action-cli/`；根 lib 纯 facade | ✅ |
 | **R10** | host-rt 依赖统一；codegen scope/builtins/list 模块树；type_registry 重命名 | ✅ |
+| **R3** | 健康度：list core/tree 拆分、CodeGen 状态分组、runtime extern 提取、LSP handlers 拆分、driver emit、测试补强 | ✅ |
 | **B0** | Bootstrap 语言子集（`doc/bootstrap-subset.md`） | ✅ |
+
+## 模块 ownership（改 API 需动哪些文件）
+
+| 能力 | 类型表 / 前端 | Codegen 调度 | Runtime IR | Host |
+|------|---------------|--------------|------------|------|
+| **List** | `frontend/builtin/registry.rs` | `codegen/builtins/list.rs` | `runtime_decl/list/core/*.inc.rs` + `tree/*.inc.rs` | — |
+| **Map** | 同上 | `builtins/` + `map_set.rs` | `define_map.rs`, `define_hash_table.rs` | — |
+| **String** | 同上 | `builtins/stdlib/` | `define_str_*.rs` | — |
+| **Builtin UFCS** | `registry.rs` | `ufcs.rs`, `call_hir.rs` | `runtime_decl/` | `host-rt/`（JSON/HTTP） |
+
+详见 `doc/stdlib-layers.md` 四层模型。
 
 ## 性能优化（P2）
 

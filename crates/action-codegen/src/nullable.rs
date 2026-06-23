@@ -228,8 +228,8 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
 
         // Push synthetic scope variable
-        let counter = self.synthetic_counter;
-        self.synthetic_counter += 1;
+        let counter = self.nullable_state.synthetic_counter;
+        self.nullable_state.synthetic_counter += 1;
         let synthetic_name = format!("__nmc_{}", counter);
         self.scope.set(
             synthetic_name.clone(),
@@ -297,8 +297,10 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         let result_bt = method_result.get_value_type(self);
-        let nty =
-            self.get_nullable_type(result_bt, &format!("__nmc_res_{}", self.synthetic_counter));
+        let nty = self.get_nullable_type(
+            result_bt,
+            &format!("__nmc_res_{}", self.nullable_state.synthetic_counter),
+        );
         let wrapped = self.wrap_in_nullable(&method_result, nty)?;
         let (wrapped_ptr, wrapped_bt) = match &wrapped {
             TypedValue::Nullable(p, t) => (*p, *t),

@@ -1,44 +1,30 @@
 // Atomic CodeGen — LLVM IR code generation
-// Core types and compilation entry point. See submodules for other methods.
-
-// Atomic CodeGen — LLVM IR code generation
 //
-// File structure (line ranges approximate):
-//   Lines    1-11   Imports
-//   Lines   12-75   Scope / ScopeVar / ValKind types
-//   Lines   77-127  TypedValue type
-//   Lines  129-163  CodeGen struct, TcoState
-//   Lines  165-203  CodeGen::new() + type helpers (i64_ty, f64_ty, ptr_ty, etc.)
-//   Lines  204-4074 define_runtime() — LLVM runtime function declarations (~3900 lines)
-//   Lines 4076-4116 Runtime helpers: call_rt, load_string, load_list, etc.
-//   Lines 4119-4300 Type inference: infer_hir_expr_type, build_fn_type, etc.
-//   Lines 4302-4418 compile(), print_ir(), verify()
-//   HIR-only: compile_hir_*, compile_checked → compile_hir (no AST compile_expr/compile_stmt)
-//   Lines 5975-6395 compile_call() (continued)
-//   Lines 6396-8237 Builtin functions: print, list, map, filter, fold, flat_map, etc.
-//   Lines 8238-10902 builtin_stdlib() — stdlib function dispatcher (~2600 lines)
-//   Lines 10903-11544 Pattern matching: compile_when, compile_pattern_match, bind_pattern_vars
-//   Lines 11545-12267 For loops: compile_for, compile_for_iterate, compile_for_yield, etc.
-//   Lines 12260-13308 Expressions: compile_range, compile_if, compile_block, compile_index,
-//          compile_field_access, compile_struct_lit, compile_tuple, compile_map_lit, compile_set_lit,
-//          compile_string_interp, compile_enum_construct
-//   Lines 13058-13220 Map/Set operations: builtin_map_insert, builtin_set_contains, etc.
-//   Lines 13290-13343 run_jit(), TypedValue helpers
-//
-// To split further: break the `impl<'ctx> CodeGen<'ctx>` block into submodules
-// by closing/reopening at the boundaries marked above.
+// Submodules: scope, typed_value, loop_control, nullable_state, mono_cache, type_layout,
+// compile/hir_compile, expr/stmt/pattern/for_loop, builtins/*, runtime_decl/* (see list/core/).
+// Runtime IR: runtime_decl/mod.rs → declare_c_runtime_externs + define_runtime_groups.
 
 use action_frontend::ast::*;
 use action_frontend::typecheck::TypeRegistry;
 use inkwell::builder::BuilderError;
 use inkwell::context::Context;
 use inkwell::module::Module;
-use inkwell::types::{BasicTypeEnum, StructType};
+use inkwell::types::StructType;
 use inkwell::values::PointerValue;
 use std::collections::{HashMap, HashSet};
 
+mod loop_control;
+mod mono_cache;
+mod nullable_state;
+mod type_layout;
+
 mod scope;
 mod typed_value;
+
+pub(crate) use loop_control::LoopControl;
+pub(crate) use mono_cache::MonoCache;
+pub(crate) use nullable_state::NullableState;
+pub(crate) use type_layout::TypeLayoutCache;
 
 pub(crate) use scope::{Scope, ScopeVar, ValKind};
 pub(crate) use typed_value::{InnerType, TypedValue};
@@ -64,19 +50,10 @@ pub struct CodeGen<'ctx> {
     pub(crate) lambda_count: usize,
     pub(crate) str_pat_counter: usize,
     pub(crate) registry: TypeRegistry,
-    pub(crate) named_structs: HashMap<String, StructType<'ctx>>,
-    pub(crate) enum_types: HashMap<String, StructType<'ctx>>,
-    pub(crate) anon_structs: HashMap<Vec<String>, StructType<'ctx>>,
-    /// Compile-time constants: name → (global pointer, element type, ValKind)
-    pub(crate) consts: HashMap<String, (PointerValue<'ctx>, BasicTypeEnum<'ctx>, ValKind)>,
+    pub(crate) type_layout: TypeLayoutCache<'ctx>,
     /// Reused scratch slot for map/set insert results (one alloca per function).
     pub(crate) ht_result_scratch: Option<inkwell::values::PointerValue<'ctx>>,
-    /// Target block for `continue` — set inside for loops, cleared on exit
-    pub(crate) continue_target: Option<inkwell::basic_block::BasicBlock<'ctx>>,
-    /// Target block for `break` — set inside for loops, cleared on exit
-    pub(crate) break_target: Option<inkwell::basic_block::BasicBlock<'ctx>>,
-    /// When compiling a sequential `for i < n` loop that indexes a List, reuse one get cache.
-    pub(crate) list_loop_get_cache: Option<inkwell::values::PointerValue<'ctx>>,
+    pub(crate) loop_control: LoopControl<'ctx>,
     /// Extension method mapping: "TypeName.method" → "TypeName_method"
     pub(crate) extension_methods: HashMap<String, String>,
     /// TCO (Tail Call Optimization) state for the current function.
@@ -118,19 +95,8 @@ pub struct CodeGen<'ctx> {
     pub(crate) target_triple: Option<String>,
     /// Counter for unique wrapper function names (lazy_map, lazy_filter, etc.)
     pub(crate) wrapper_counter: u64,
-    /// Counter for synthetic receiver names in nullable method call short-circuit
-    pub(crate) synthetic_counter: u64,
-    /// Nullable type cache: type name string → {i1, T} LLVM struct type
-    pub(crate) nullable_types: HashMap<String, StructType<'ctx>>,
-    /// Smart cast: variables known to be non-null in current scope (from when matching)
-    pub(crate) not_null_set: HashSet<String>,
-    /// Generic function definitions with type_params, indexed by name.
-    /// Used for monomorphization at call sites.
-    pub(crate) generic_fun_defs: HashMap<String, action_frontend::hir::HirStmt>,
-    /// Monomorphized LLVM function names already compiled (or in progress).
-    pub(crate) monomorphized_fns: HashSet<String>,
-    /// LLVM function name → AST return type (Pass 1), for call-site List/Map/Set tagging.
-    pub(crate) fun_return_types: HashMap<String, Type>,
+    pub(crate) nullable_state: NullableState<'ctx>,
+    pub(crate) mono_cache: MonoCache,
     /// Tracks whether compile_block did an rc_inc on the last expression.
     /// val stmt uses this to apply a balancing rc_dec.
     pub(crate) block_did_rc_inc: bool,
@@ -268,14 +234,9 @@ impl<'ctx> CodeGen<'ctx> {
             lambda_count: 0,
             str_pat_counter: 0,
             registry,
-            named_structs: HashMap::new(),
-            enum_types: HashMap::new(),
-            anon_structs: HashMap::new(),
-            consts: HashMap::new(),
-            continue_target: None,
-            break_target: None,
+            type_layout: TypeLayoutCache::default(),
             ht_result_scratch: None,
-            list_loop_get_cache: None,
+            loop_control: LoopControl::default(),
             extension_methods: HashMap::new(),
             tco_state: None,
             coroutine_collector: None,
@@ -292,12 +253,8 @@ impl<'ctx> CodeGen<'ctx> {
             opt_level: 0,
             target_triple,
             wrapper_counter: 0,
-            synthetic_counter: 0,
-            nullable_types: HashMap::new(),
-            not_null_set: HashSet::new(),
-            generic_fun_defs: HashMap::new(),
-            monomorphized_fns: HashSet::new(),
-            fun_return_types: HashMap::new(),
+            nullable_state: NullableState::default(),
+            mono_cache: MonoCache::default(),
             block_did_rc_inc: false,
         }
     }
@@ -572,5 +529,29 @@ mod tests {
             1,
             "pickFirst_Bool_Int should be defined once"
         );
+    }
+
+    #[test]
+    fn runtime_defines_list_get() {
+        let ir = compile_program("fun main() { println(1) }");
+        assert!(ir.contains("declare") && ir.contains("action_list_get"));
+    }
+
+    #[test]
+    fn runtime_defines_rc_ops() {
+        let ir = compile_program("fun main() { println(1) }");
+        assert!(ir.contains("action_rc_inc") && ir.contains("action_rc_dec"));
+    }
+
+    #[test]
+    fn runtime_defines_map_insert() {
+        let ir = compile_program("fun main() { println(1) }");
+        assert!(ir.contains("action_map_insert"));
+    }
+
+    #[test]
+    fn runtime_defines_list_concat_and_push_subtree() {
+        let ir = compile_program("fun main() { println(1) }");
+        assert!(ir.contains("action_list_concat") && ir.contains("action_list_push_subtree"));
     }
 }

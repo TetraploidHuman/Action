@@ -282,10 +282,10 @@ impl<'ctx> CodeGen<'ctx> {
         let loop_exit = self.context.append_basic_block(current_fn, "for_exit");
 
         // Set continue target so `continue` inside the body branches here
-        let saved_continue_target = self.continue_target;
-        let saved_break_target = self.break_target;
-        self.continue_target = Some(loop_next);
-        self.break_target = Some(loop_exit);
+        let saved_continue_target = self.loop_control.continue_target;
+        let saved_break_target = self.loop_control.break_target;
+        self.loop_control.continue_target = Some(loop_next);
+        self.loop_control.break_target = Some(loop_exit);
 
         // Branch to header
         let _ = self.builder.build_unconditional_branch(loop_header);
@@ -386,8 +386,8 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(loop_exit);
 
         // Restore continue target
-        self.continue_target = saved_continue_target;
-        self.break_target = saved_break_target;
+        self.loop_control.continue_target = saved_continue_target;
+        self.loop_control.break_target = saved_break_target;
 
         if let Some(list_ptr) = result_list {
             Ok(TypedValue::List(list_ptr))
@@ -462,10 +462,10 @@ impl<'ctx> CodeGen<'ctx> {
         let loop_next = self.context.append_basic_block(current_fn, "for_idx_next");
         let loop_exit = self.context.append_basic_block(current_fn, "for_idx_exit");
 
-        let saved_continue_target = self.continue_target;
-        let saved_break_target = self.break_target;
-        self.continue_target = Some(loop_next);
-        self.break_target = Some(loop_exit);
+        let saved_continue_target = self.loop_control.continue_target;
+        let saved_break_target = self.loop_control.break_target;
+        self.loop_control.continue_target = Some(loop_next);
+        self.loop_control.break_target = Some(loop_exit);
 
         self.builder
             .build_unconditional_branch(loop_header)
@@ -549,8 +549,8 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
 
         self.builder.position_at_end(loop_exit);
-        self.continue_target = saved_continue_target;
-        self.break_target = saved_break_target;
+        self.loop_control.continue_target = saved_continue_target;
+        self.loop_control.break_target = saved_break_target;
 
         Ok(TypedValue::Unit)
     }
@@ -568,8 +568,8 @@ impl<'ctx> CodeGen<'ctx> {
             .ok_or("Cannot compile nested for outside function")?;
 
         let i64 = self.i64_ty();
-        let saved_continue_target = self.continue_target;
-        let saved_break_target = self.break_target;
+        let saved_continue_target = self.loop_control.continue_target;
+        let saved_break_target = self.loop_control.break_target;
 
         // Pre-allocate all loop counters and bounds: (idx_alloca, start_val, end_val)
         let mut loops: Vec<(PointerValue, IntValue, IntValue)> = Vec::new();
@@ -626,8 +626,8 @@ impl<'ctx> CodeGen<'ctx> {
 
         // continue targets the innermost next block so `continue` inside the inner loop body
         // increments the innermost counter (not the outermost one).
-        self.continue_target = Some(nexts[n - 1]);
-        self.break_target = Some(exit_block);
+        self.loop_control.continue_target = Some(nexts[n - 1]);
+        self.loop_control.break_target = Some(exit_block);
 
         // Branch to first header
         let _ = self.builder.build_unconditional_branch(headers[0]);
@@ -728,8 +728,8 @@ impl<'ctx> CodeGen<'ctx> {
         // ---- Exit ----
         self.builder.position_at_end(exit_block);
 
-        self.continue_target = saved_continue_target;
-        self.break_target = saved_break_target;
+        self.loop_control.continue_target = saved_continue_target;
+        self.loop_control.break_target = saved_break_target;
 
         if let Some(list_ptr) = result_list {
             Ok(TypedValue::List(list_ptr))
@@ -828,10 +828,10 @@ impl<'ctx> CodeGen<'ctx> {
         let header = self.context.append_basic_block(current_fn, "seq_hdr");
         let body_bb = self.context.append_basic_block(current_fn, "seq_body");
         let exit = self.context.append_basic_block(current_fn, "seq_exit");
-        let saved_continue = self.continue_target;
-        let saved_break = self.break_target;
-        self.continue_target = Some(header);
-        self.break_target = Some(exit);
+        let saved_continue = self.loop_control.continue_target;
+        let saved_break = self.loop_control.break_target;
+        self.loop_control.continue_target = Some(header);
+        self.loop_control.break_target = Some(exit);
         self.builder
             .build_unconditional_branch(header)
             .map_err(llvm_err)?;
@@ -864,8 +864,8 @@ impl<'ctx> CodeGen<'ctx> {
             .build_unconditional_branch(header)
             .map_err(llvm_err)?;
         self.builder.position_at_end(exit);
-        self.continue_target = saved_continue;
-        self.break_target = saved_break;
+        self.loop_control.continue_target = saved_continue;
+        self.loop_control.break_target = saved_break;
         Ok(TypedValue::Unit)
     }
 
@@ -940,13 +940,13 @@ impl<'ctx> CodeGen<'ctx> {
         use action_frontend::ast::BinaryOp;
         use action_frontend::hir::HirExprKind;
 
-        let saved_cache = self.list_loop_get_cache;
+        let saved_cache = self.loop_control.list_loop_get_cache;
         if let Some((_, idx_var)) = Self::find_sequential_list_access_in_hir(body) {
             if Self::body_increments_var_hir(body, &idx_var) {
                 if let HirExprKind::Binary(lhs, BinaryOp::Lt, _) = &condition.kind {
                     if let HirExprKind::Ident(cond_var) = &lhs.kind {
                         if cond_var == &idx_var {
-                            self.list_loop_get_cache = Some(self.alloc_list_get_cache()?);
+                            self.loop_control.list_loop_get_cache = Some(self.alloc_list_get_cache()?);
                         }
                     }
                 }
@@ -963,10 +963,10 @@ impl<'ctx> CodeGen<'ctx> {
         let body_block = self.context.append_basic_block(current_fn, "for_cond_body");
         let exit = self.context.append_basic_block(current_fn, "for_cond_exit");
 
-        let saved_continue = self.continue_target;
-        let saved_break = self.break_target;
-        self.continue_target = Some(header);
-        self.break_target = Some(exit);
+        let saved_continue = self.loop_control.continue_target;
+        let saved_break = self.loop_control.break_target;
+        self.loop_control.continue_target = Some(header);
+        self.loop_control.break_target = Some(exit);
 
         let _ = self.builder.build_unconditional_branch(header);
         self.builder.position_at_end(header);
@@ -994,9 +994,9 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self.builder.build_unconditional_branch(header);
 
         self.builder.position_at_end(exit);
-        self.continue_target = saved_continue;
-        self.break_target = saved_break;
-        self.list_loop_get_cache = saved_cache;
+        self.loop_control.continue_target = saved_continue;
+        self.loop_control.break_target = saved_break;
+        self.loop_control.list_loop_get_cache = saved_cache;
 
         Ok(TypedValue::Unit)
     }
@@ -1014,10 +1014,10 @@ impl<'ctx> CodeGen<'ctx> {
         let body_block = self.context.append_basic_block(current_fn, "for_inf_body");
         let exit = self.context.append_basic_block(current_fn, "for_inf_exit");
 
-        let saved_continue = self.continue_target;
-        let saved_break = self.break_target;
-        self.continue_target = Some(body_block);
-        self.break_target = Some(exit);
+        let saved_continue = self.loop_control.continue_target;
+        let saved_break = self.loop_control.break_target;
+        self.loop_control.continue_target = Some(body_block);
+        self.loop_control.break_target = Some(exit);
 
         let _ = self.builder.build_unconditional_branch(body_block);
         self.builder.position_at_end(body_block);
@@ -1026,8 +1026,8 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = self.builder.build_unconditional_branch(body_block);
 
         self.builder.position_at_end(exit);
-        self.continue_target = saved_continue;
-        self.break_target = saved_break;
+        self.loop_control.continue_target = saved_continue;
+        self.loop_control.break_target = saved_break;
 
         Ok(TypedValue::Unit)
     }

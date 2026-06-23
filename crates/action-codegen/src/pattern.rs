@@ -404,9 +404,10 @@ impl<'ctx> CodeGen<'ctx> {
                             .ok_or_else(|| "Missing resolved params".to_string())?;
                         if let Some(param_ty) = param_types.first() {
                             if let Type::Named(name) = param_ty {
-                                if self.named_structs.contains_key(name.as_str()) && args.len() == 1
+                                if self.type_layout.named_structs.contains_key(name.as_str())
+                                    && args.len() == 1
                                 {
-                                    let st = self.named_structs[name.as_str()];
+                                    let st = self.type_layout.named_structs[name.as_str()];
                                     let bt: BasicTypeEnum = st.into();
                                     let alloca = self
                                         .builder
@@ -785,16 +786,16 @@ impl<'ctx> CodeGen<'ctx> {
                             .builder
                             .build_not(c_bool, "neg_cond")
                             .map_err(llvm_err)?;
-                        self.not_null_set.insert(var.clone());
+                        self.nullable_state.not_null_set.insert(var.clone());
                         let result =
                             self.compile_when_branch_lazy_hir(negated, else_expr, then_expr);
-                        self.not_null_set.remove(var);
+                        self.nullable_state.not_null_set.remove(var);
                         result
                     } else {
-                        self.not_null_set.insert(var.clone());
+                        self.nullable_state.not_null_set.insert(var.clone());
                         let result =
                             self.compile_when_branch_lazy_hir(c_bool, then_expr, else_expr);
-                        self.not_null_set.remove(var);
+                        self.nullable_state.not_null_set.remove(var);
                         result
                     }
                 } else {
@@ -907,7 +908,7 @@ impl<'ctx> CodeGen<'ctx> {
                 _ => None,
             };
             if let Some(ref var) = smart_var {
-                self.not_null_set.insert(var.clone());
+                self.nullable_state.not_null_set.insert(var.clone());
             }
             let mut saved_scope = Scope::new();
             std::mem::swap(&mut self.scope, &mut saved_scope);
@@ -923,7 +924,7 @@ impl<'ctx> CodeGen<'ctx> {
                 self.compile_hir_expr(&hir_arm.body)?
             };
             if let Some(ref var) = smart_var {
-                self.not_null_set.remove(var);
+                self.nullable_state.not_null_set.remove(var);
             }
             if result_enum_info.is_none() {
                 if let TypedValue::Enum(_, _, inner, rc) = &body_val {

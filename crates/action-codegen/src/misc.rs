@@ -181,7 +181,7 @@ impl<'ctx> CodeGen<'ctx> {
         };
         match obj_val {
             TypedValue::List(list_ptr) => {
-                let fat = if let Some(cache) = self.list_loop_get_cache {
+                let fat = if let Some(cache) = self.loop_control.list_loop_get_cache {
                     self.list_get_cached_fat(list_ptr, index_val, cache)?
                         .into_struct_value()
                 } else {

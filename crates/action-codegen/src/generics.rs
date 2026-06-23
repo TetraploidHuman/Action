@@ -124,7 +124,11 @@ impl<'ctx> CodeGen<'ctx> {
         mangled_name: &str,
         type_map: &HashMap<String, Type>,
     ) -> Result<(), String> {
-        if !self.monomorphized_fns.insert(mangled_name.to_string()) {
+        if !self
+            .mono_cache
+            .monomorphized_fns
+            .insert(mangled_name.to_string())
+        {
             return Ok(());
         }
 

@@ -1,9 +1,0 @@
-fun main() {
-    // Subset with single element not in superset - should be false
-    val r = setIsSubset(Set["x"], Set["y"])
-    print("subset ({x}) of ({y}): ")
-    print(r)
-    println("")
-
-    println("done")
-}

@@ -1,6 +1,6 @@
 //! List runtime LLVM IR definitions (B-tree, insert/remove, iterators, transforms).
 
-mod define_list_core;
+mod core;
 mod define_list_extra;
 mod define_list_filter_fold;
 mod define_list_filter_map_fold;
@@ -14,5 +14,5 @@ mod define_list_map_fold;
 mod define_list_range;
 mod define_list_rc_assign;
 mod define_list_remove_rec;
-mod define_list_tree;
 mod define_list_xform;
+mod tree;

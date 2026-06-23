@@ -418,7 +418,7 @@ impl<'ctx> CodeGen<'ctx> {
 
     pub(super) fn compile_ident(&mut self, name: &str) -> Result<TypedValue<'ctx>, String> {
         // Check compile-time constants first
-        if let Some(&(global_ptr, ty, kind)) = self.consts.get(name) {
+        if let Some(&(global_ptr, ty, kind)) = self.type_layout.consts.get(name) {
             let loaded = self
                 .builder
                 .build_load(ty, global_ptr, name)
@@ -783,7 +783,7 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(TypedValue::Enum(var.ptr, et, inner_type, rc_managed));
                 }
                 ValKind::Nullable => {
-                    if self.not_null_set.contains(name) {
+                    if self.nullable_state.not_null_set.contains(name) {
                         // Smart cast: extract inner value from nullable struct
                         let val = self
                             .builder
@@ -970,7 +970,7 @@ impl<'ctx> CodeGen<'ctx> {
                     Ok(TypedValue::List(alloca))
                 } else if st == self.lazylist_type {
                     Ok(TypedValue::LazyList(alloca))
-                } else if self.enum_types.values().any(|et| *et == st) {
+                } else if self.type_layout.enum_types.values().any(|et| *et == st) {
                     // Matches a registered enum type (anonymous {i64,ptr})
                     let (inner_type, rc_managed) = self
                         .last_enum_inner
@@ -997,7 +997,7 @@ impl<'ctx> CodeGen<'ctx> {
                     ValKind::Str
                 } else if st == self.list_type {
                     ValKind::List
-                } else if self.enum_types.values().any(|et| *et == st) {
+                } else if self.type_layout.enum_types.values().any(|et| *et == st) {
                     ValKind::Enum
                 } else {
                     ValKind::Struct
@@ -1633,7 +1633,7 @@ impl<'ctx> CodeGen<'ctx> {
             TypedValue::Bool(_) => "Bool".to_string(),
             TypedValue::Str(_) => "String".to_string(),
             TypedValue::Struct(_, st) => {
-                for (name, ty) in &self.named_structs {
+                for (name, ty) in &self.type_layout.named_structs {
                     if *ty == *st {
                         return name.clone();
                     }

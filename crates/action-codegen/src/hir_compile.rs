@@ -30,14 +30,16 @@ impl<'ctx> CodeGen<'ctx> {
                             .map(|(_, ty)| self.ast_type_to_basic_type(ty))
                             .collect();
                         let struct_ty = self.context.struct_type(&field_tys, false);
-                        self.named_structs.insert(name.clone(), struct_ty);
+                        self.type_layout
+                            .named_structs
+                            .insert(name.clone(), struct_ty);
                     }
                 }
                 HirStmt::Enum { name, .. } => {
                     let i64 = self.i64_ty();
                     let ptr = self.ptr_ty();
                     let enum_ty = self.context.struct_type(&[i64.into(), ptr.into()], false);
-                    self.enum_types.insert(name.clone(), enum_ty);
+                    self.type_layout.enum_types.insert(name.clone(), enum_ty);
                 }
                 _ => {}
             }
@@ -70,7 +72,9 @@ impl<'ctx> CodeGen<'ctx> {
             } = stmt
             {
                 if !type_params.is_empty() {
-                    self.generic_fun_defs.insert(name.clone(), stmt.clone());
+                    self.mono_cache
+                        .generic_fun_defs
+                        .insert(name.clone(), stmt.clone());
                     continue;
                 }
                 let param_types: Vec<Type> = params
@@ -110,7 +114,7 @@ impl<'ctx> CodeGen<'ctx> {
                 self.module.add_function(&mangled, fn_type, None);
                 if name != "main" {
                     if let Some(rt) = ret_type {
-                        self.fun_return_types.insert(mangled, rt);
+                        self.mono_cache.fun_return_types.insert(mangled, rt);
                     }
                 }
             }
@@ -150,7 +154,7 @@ impl<'ctx> CodeGen<'ctx> {
                             self.build_fn_type(ret_type.as_ref(), &mangled, &param_llvm_tys);
                         self.module.add_function(&mangled, fn_type, None);
                         if let Some(rt) = ret_type {
-                            self.fun_return_types.insert(mangled, rt);
+                            self.mono_cache.fun_return_types.insert(mangled, rt);
                         }
                     }
                 }
@@ -186,7 +190,7 @@ impl<'ctx> CodeGen<'ctx> {
                             self.build_fn_type(ret_type.as_ref(), &fn_name, &param_llvm_tys);
                         self.module.add_function(&fn_name, fn_type, None);
                         if let Some(rt) = ret_type {
-                            self.fun_return_types.insert(fn_name, rt);
+                            self.mono_cache.fun_return_types.insert(fn_name, rt);
                         }
                     }
                 }
@@ -438,7 +442,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     fn compile_hir_continue(&mut self) -> Result<TypedValue<'ctx>, String> {
-        if let Some(target) = self.continue_target {
+        if let Some(target) = self.loop_control.continue_target {
             self.builder
                 .build_unconditional_branch(target)
                 .map_err(llvm_err)?;
@@ -449,7 +453,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     fn compile_hir_break(&mut self) -> Result<TypedValue<'ctx>, String> {
-        if let Some(target) = self.break_target {
+        if let Some(target) = self.loop_control.break_target {
             self.builder
                 .build_unconditional_branch(target)
                 .map_err(llvm_err)?;
@@ -842,7 +846,9 @@ impl<'ctx> CodeGen<'ctx> {
             return Err("compile_hir_external_type expects ExternalType".to_string());
         };
         let opaque_ty = self.context.opaque_struct_type(name);
-        self.named_structs.insert(name.clone(), opaque_ty);
+        self.type_layout
+            .named_structs
+            .insert(name.clone(), opaque_ty);
         Ok(())
     }
 
@@ -979,6 +985,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .into_struct_value();
                     let field_names: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
                     let field_indices: Vec<usize> = if let Some((key, _)) = self
+                        .type_layout
                         .anon_structs
                         .iter()
                         .find(|(k, _)| k.as_slice() == field_names)
@@ -1138,7 +1145,9 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                     }
                 };
-                self.consts.insert(name.to_string(), (global_ptr, ty, kind));
+                self.type_layout
+                    .consts
+                    .insert(name.to_string(), (global_ptr, ty, kind));
             }
             _ => {
                 let val = self.compile_hir_expr(value)?;
@@ -1146,7 +1155,8 @@ impl<'ctx> CodeGen<'ctx> {
                     let ty = bv.get_type();
                     let g = self.add_module_global(ty, name)?;
                     g.set_initializer(&bv);
-                    self.consts
+                    self.type_layout
+                        .consts
                         .insert(name.to_string(), (g.as_pointer_value(), ty, val.val_kind()));
                 } else {
                     return Err(format!("Non-basic-value const '{}' is not supported", name));

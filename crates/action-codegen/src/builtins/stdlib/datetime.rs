@@ -262,8 +262,12 @@ impl<'ctx> CodeGen<'ctx> {
                         let enum_ty = self
                             .context
                             .struct_type(&[self.i64_ty().into(), self.ptr_ty().into()], false);
-                        let some_sty =
-                            self.named_structs.get("Date").copied().unwrap_or_else(|| {
+                        let some_sty = self
+                            .type_layout
+                            .named_structs
+                            .get("Date")
+                            .copied()
+                            .unwrap_or_else(|| {
                                 self.context.struct_type(&[self.i64_ty().into(); 3], false)
                             });
                         let current_fn = self
@@ -514,6 +518,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .context
                     .struct_type(&[i64_ty.into(), self.ptr_ty().into()], false);
                 let date_sty = self
+                    .type_layout
                     .named_structs
                     .get("Date")
                     .copied()
@@ -784,6 +789,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .context
                     .struct_type(&[i64_ty.into(), self.ptr_ty().into()], false);
                 let dt_sty = self
+                    .type_layout
                     .named_structs
                     .get("DateTime")
                     .copied()
@@ -1789,8 +1795,9 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
 
         if include_time {
-            let dt_struct = self.named_structs.get("DateTime").or_else(|| {
-                self.anon_structs
+            let dt_struct = self.type_layout.named_structs.get("DateTime").or_else(|| {
+                self.type_layout
+                    .anon_structs
                     .values()
                     .find(|s| s.get_field_types().len() == 6)
             });
@@ -1846,8 +1853,9 @@ impl<'ctx> CodeGen<'ctx> {
                 None => Err("now: DateTime type not defined".to_string()),
             }
         } else {
-            let date_struct = self.named_structs.get("Date").or_else(|| {
-                self.anon_structs
+            let date_struct = self.type_layout.named_structs.get("Date").or_else(|| {
+                self.type_layout
+                    .anon_structs
                     .values()
                     .find(|s| s.get_field_types().len() == 3)
             });

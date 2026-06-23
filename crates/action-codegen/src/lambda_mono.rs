@@ -211,7 +211,7 @@ impl<'ctx> CodeGen<'ctx> {
         target: DirectLambdaTarget<'ctx>,
     ) -> Result<FunctionValue<'ctx>, String> {
         let cache_key = self.direct_lambda_cache_key(".mono_map", &target);
-        if !self.monomorphized_fns.insert(cache_key.clone()) {
+        if !self.mono_cache.monomorphized_fns.insert(cache_key.clone()) {
             return self
                 .module
                 .get_function(&cache_key)
@@ -226,7 +226,7 @@ impl<'ctx> CodeGen<'ctx> {
         target: DirectLambdaTarget<'ctx>,
     ) -> Result<FunctionValue<'ctx>, String> {
         let cache_key = self.direct_lambda_cache_key(".mono_filter", &target);
-        if !self.monomorphized_fns.insert(cache_key.clone()) {
+        if !self.mono_cache.monomorphized_fns.insert(cache_key.clone()) {
             return self
                 .module
                 .get_function(&cache_key)
@@ -241,7 +241,7 @@ impl<'ctx> CodeGen<'ctx> {
         target: DirectLambdaTarget<'ctx>,
     ) -> Result<FunctionValue<'ctx>, String> {
         let cache_key = self.direct_lambda_cache_key(".mono_fold", &target);
-        if !self.monomorphized_fns.insert(cache_key.clone()) {
+        if !self.mono_cache.monomorphized_fns.insert(cache_key.clone()) {
             return self
                 .module
                 .get_function(&cache_key)
@@ -256,7 +256,7 @@ impl<'ctx> CodeGen<'ctx> {
         target: DirectLambdaTarget<'ctx>,
     ) -> Result<FunctionValue<'ctx>, String> {
         let cache_key = self.direct_lambda_cache_key(".mono_any", &target);
-        if !self.monomorphized_fns.insert(cache_key.clone()) {
+        if !self.mono_cache.monomorphized_fns.insert(cache_key.clone()) {
             return self
                 .module
                 .get_function(&cache_key)
@@ -271,7 +271,7 @@ impl<'ctx> CodeGen<'ctx> {
         target: DirectLambdaTarget<'ctx>,
     ) -> Result<FunctionValue<'ctx>, String> {
         let cache_key = self.direct_lambda_cache_key(".mono_all", &target);
-        if !self.monomorphized_fns.insert(cache_key.clone()) {
+        if !self.mono_cache.monomorphized_fns.insert(cache_key.clone()) {
             return self
                 .module
                 .get_function(&cache_key)

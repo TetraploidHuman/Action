@@ -15,7 +15,7 @@ impl<'ctx> CodeGen<'ctx> {
         field: &str,
     ) -> Result<u32, String> {
         // Find the named struct whose LLVM type matches st
-        for (name, named_st) in &self.named_structs {
+        for (name, named_st) in &self.type_layout.named_structs {
             if named_st == st {
                 if let Some(si) = self.registry.structs.values().find(|si| si.name == *name) {
                     return si
@@ -34,7 +34,7 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// ValKind for a struct field from the type registry (List vs Map vs Set).
     pub(super) fn struct_field_val_kind(&self, st: &StructType<'ctx>, field_idx: u32) -> ValKind {
-        for (name, named_st) in &self.named_structs {
+        for (name, named_st) in &self.type_layout.named_structs {
             if named_st == st {
                 if let Some(si) = self.registry.structs.get(name) {
                     if let Some((_, ty)) = si.fields.get(field_idx as usize) {
@@ -320,14 +320,14 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     pub(super) fn lookup_struct_field_names(&self, struct_ty: StructType<'ctx>) -> Vec<String> {
-        for (name, st) in &self.named_structs {
+        for (name, st) in &self.type_layout.named_structs {
             if *st == struct_ty {
                 if let Some(info) = self.registry.get_struct(name) {
                     return info.fields.iter().map(|(n, _)| n.clone()).collect();
                 }
             }
         }
-        for (names, st) in &self.anon_structs {
+        for (names, st) in &self.type_layout.anon_structs {
             if *st == struct_ty {
                 return names.clone();
             }
@@ -342,16 +342,19 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<TypedValue<'ctx>, String> {
         let struct_ty = if let Some(info) = self.registry.find_struct_by_fields(&field_names) {
             *self
+                .type_layout
                 .named_structs
                 .get(&info.name)
                 .ok_or_else(|| format!("Struct '{}' not in LLVM type map", info.name))?
-        } else if let Some(ct) = self.anon_structs.get(field_names) {
+        } else if let Some(ct) = self.type_layout.anon_structs.get(field_names) {
             *ct
         } else {
             let field_tys: Vec<BasicTypeEnum> =
                 field_vals.iter().map(|v| v.get_value_type(self)).collect();
             let anon_ty = self.context.struct_type(&field_tys, false);
-            self.anon_structs.insert(field_names.to_vec(), anon_ty);
+            self.type_layout
+                .anon_structs
+                .insert(field_names.to_vec(), anon_ty);
             anon_ty
         };
 
@@ -498,7 +501,10 @@ impl<'ctx> CodeGen<'ctx> {
 
         let struct_ty = self.context.struct_type(&field_tys, false);
         // Register in anon_structs so field access by name works
-        self.anon_structs.entry(field_names).or_insert(struct_ty);
+        self.type_layout
+            .anon_structs
+            .entry(field_names)
+            .or_insert(struct_ty);
         let bt: BasicTypeEnum = struct_ty.into();
         let alloca = self.builder.build_alloca(bt, "tuple").map_err(llvm_err)?;
 

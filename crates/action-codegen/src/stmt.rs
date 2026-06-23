@@ -711,9 +711,9 @@ impl<'ctx> CodeGen<'ctx> {
                 "String" | "Str" => self.string_type.into(),
                 "Unit" => self.i64_ty().into(),
                 name => {
-                    if let Some(st) = self.named_structs.get(name) {
+                    if let Some(st) = self.type_layout.named_structs.get(name) {
                         (*st).into()
-                    } else if let Some(et) = self.enum_types.get(name) {
+                    } else if let Some(et) = self.type_layout.enum_types.get(name) {
                         (*et).into()
                     } else {
                         self.i64_ty().into()
@@ -756,9 +756,9 @@ impl<'ctx> CodeGen<'ctx> {
                 "Stream" => self.ptr_ty().into(),
                 "Ptr" | "CString" | "FileHandle" => self.ptr_ty().into(),
                 name => {
-                    if let Some(st) = self.named_structs.get(name) {
+                    if let Some(st) = self.type_layout.named_structs.get(name) {
                         (*st).into()
-                    } else if let Some(et) = self.enum_types.get(name) {
+                    } else if let Some(et) = self.type_layout.enum_types.get(name) {
                         (*et).into()
                     } else {
                         self.i64_ty().into()
@@ -809,9 +809,9 @@ impl<'ctx> CodeGen<'ctx> {
                 "Bool" => ValKind::Bool,
                 "String" | "Str" => ValKind::Str,
                 name => {
-                    if self.named_structs.contains_key(name) {
+                    if self.type_layout.named_structs.contains_key(name) {
                         ValKind::Struct
-                    } else if self.enum_types.contains_key(name) {
+                    } else if self.type_layout.enum_types.contains_key(name) {
                         ValKind::Enum
                     } else {
                         ValKind::Int

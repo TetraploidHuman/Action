@@ -93,7 +93,7 @@ impl<'ctx> CodeGen<'ctx> {
             return self.maybe_builtin_callback_list_call_args(name, args, trailing);
         }
 
-        if let Some(generic_stmt) = self.generic_fun_defs.get(name).cloned() {
+        if let Some(generic_stmt) = self.mono_cache.generic_fun_defs.get(name).cloned() {
             if let HirStmt::Fun { type_params, .. } = &generic_stmt {
                 if !type_params.is_empty() {
                     return self.compile_generic_call_from_call_args(
@@ -384,7 +384,7 @@ impl<'ctx> CodeGen<'ctx> {
         for av in &direct_arg_vals {
             self.rc_free_intermediate(av)?;
         }
-        let ast_ret = self.fun_return_types.get(name).cloned();
+        let ast_ret = self.mono_cache.fun_return_types.get(name).cloned();
         match cc.try_as_basic_value().basic() {
             Some(bv) => self.unpack_call_return(bv, fn_type.get_return_type(), ast_ret.as_ref()),
             None => Ok(TypedValue::Unit),

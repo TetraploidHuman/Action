@@ -38,3 +38,4 @@ scripts/__pycache__/
 
 # AOT object files
 examples/*.o
+examples/_dev/
