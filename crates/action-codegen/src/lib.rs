@@ -635,4 +635,36 @@ mod tests {
             "hir_compile stmt split must compile tuple destructure"
         );
     }
+
+    #[test]
+    fn runtime_defines_str_split() {
+        let ir = compile_program("fun main() { println(1) }");
+        assert!(
+            ir.contains("define") && ir.contains("action_string_split"),
+            "str_adv submodule split must keep string split runtime"
+        );
+    }
+
+    #[test]
+    fn codegen_stdlib_collection_sum() {
+        let ir = compile_program(
+            "fun main() {\n\
+                 val xs = List[1, 2, 3]\n\
+                 println(sum(xs))\n\
+             }",
+        );
+        assert!(
+            ir.contains("@main"),
+            "collection submodule split must compile sum()"
+        );
+    }
+
+    #[test]
+    fn codegen_stdlib_datetime_rand() {
+        let ir = compile_program("fun main() { println(randInt(1, 10)) }");
+        assert!(
+            ir.contains("@main"),
+            "datetime submodule split must compile randInt"
+        );
+    }
 }

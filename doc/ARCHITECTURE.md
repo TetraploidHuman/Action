@@ -136,6 +136,7 @@ pub use action_lsp as lsp;
 | **R3** | 健康度：list core/tree 拆分、CodeGen 状态分组、runtime extern 提取、LSP handlers 拆分、driver emit、测试补强 | ✅ |
 | **R4** | 代码质量与稳定性：完成 R3-7 次级 codegen 拆分、LSP helpers 再拆、push.inc 拆分、build 集成 list concat、稳定性测试 | ✅ |
 | **R5** | 运行时与 HIR 大文件拆分：`hash_table/`、`hir_compile/`、`builtins/lazy/`、稳定性测试 | ✅ |
+| **R6** | stdlib 与字符串运行时拆分：`collection/`、`datetime/`、`str_adv/`、稳定性测试 | ✅ |
 | **B0** | Bootstrap 语言子集（`doc/bootstrap-subset.md`） | ✅ |
 
 ## 模块 ownership（改 API 需动哪些文件）
@@ -148,7 +149,7 @@ pub use action_lsp as lsp;
 | **Map** | 同上 | `builtins/` + `map_set.rs` | `define_map.rs`, `hash_table/` | — |
 | **HIR compile** | 同上 | `hir_compile/` | — | — |
 | **LazyList** | 同上 | `builtins/lazy/` | `define_lazy_list.rs` | — |
-| **String** | 同上 | `builtins/stdlib/` | `define_str_*.rs` | — |
+| **String** | 同上 | `builtins/stdlib/` | `str_adv/`、`define_str_*.rs` | — |
 | **Builtin UFCS** | `registry.rs` | `ufcs.rs`, `call_hir.rs` | `runtime_decl/` | `host-rt/`（JSON/HTTP） |
 
 详见 `doc/stdlib-layers.md` 四层模型。
