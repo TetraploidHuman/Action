@@ -597,4 +597,42 @@ mod tests {
             "for-loop should emit control flow"
         );
     }
+
+    #[test]
+    fn runtime_defines_ht_insert() {
+        let ir = compile_program("fun main() { println(1) }");
+        assert!(
+            ir.contains("define") && ir.contains("action_ht_insert"),
+            "hash_table submodule split must keep ht insert runtime"
+        );
+    }
+
+    #[test]
+    fn codegen_hir_lazy_map() {
+        let ir = compile_program(
+            "fun main() {\n\
+                 val ll = lazy_list(0) { it + 1 }\n\
+                 val mapped = lazyMap({ it * 2 }, ll)\n\
+                 println(lazyHead(mapped))\n\
+             }",
+        );
+        assert!(
+            ir.contains("@main"),
+            "lazy submodule split must compile lazyMap program"
+        );
+    }
+
+    #[test]
+    fn codegen_hir_destructure() {
+        let ir = compile_program(
+            "fun main() {\n\
+                 val (a, b) = (1, 2)\n\
+                 println(a + b)\n\
+             }",
+        );
+        assert!(
+            ir.contains("@main") && (ir.contains("extractvalue") || ir.contains("extract_value")),
+            "hir_compile stmt split must compile tuple destructure"
+        );
+    }
 }

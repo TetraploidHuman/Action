@@ -82,7 +82,6 @@ impl<'ctx> CodeGen<'ctx> {
 // ---- Submodules ----
 mod declare_groups;
 mod define_file_parse;
-mod define_hash_table;
 mod define_lazy_list;
 mod define_map;
 mod define_math_ms;
@@ -95,4 +94,5 @@ mod define_str_core;
 mod define_str_extra;
 mod define_str_util;
 mod extern_decls;
+mod hash_table;
 mod list;
