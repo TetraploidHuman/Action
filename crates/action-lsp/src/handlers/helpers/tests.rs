@@ -4,9 +4,7 @@ mod tests {
         document::{handle_did_change, handle_did_close, handle_did_open, handle_formatting},
         editing::handle_completion,
         navigation::{handle_goto_definition, handle_hover, handle_references},
-        symbols::{
-            handle_document_symbols, handle_semantic_tokens, handle_workspace_symbol,
-        },
+        symbols::{handle_document_symbols, handle_semantic_tokens, handle_workspace_symbol},
         ServerState,
     };
     use crate::project::Project;
