@@ -1,0 +1,563 @@
+//! For-loop codegen (R4-4).
+
+use inkwell::basic_block::BasicBlock;
+use inkwell::values::{IntValue, PointerValue};
+use inkwell::IntPredicate;
+
+use super::ForExprSrc;
+use super::{llvm_err, CodeGen, TypedValue, ValKind};
+use crate::Scope;
+
+impl<'ctx> CodeGen<'ctx> {
+    pub(crate) fn compile_for_iterate(
+        &mut self,
+        variable: &str,
+        iterator: ForExprSrc<'_>,
+        body: ForExprSrc<'_>,
+        collect: bool,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("Cannot compile for outside function".to_string())?;
+
+        let i64 = self.i64_ty();
+
+        // Determine iteration kind: range or list
+        let (start_val, end_val, input_list_ptr) =
+            if let Some((s, e)) = iterator.range_start_end(self)? {
+                (s, e, None)
+            } else {
+                let (zero, len, list_ptr) = iterator.compile_list_iterable(self)?;
+                (zero, len, Some(list_ptr))
+            };
+
+        // Create result list if collecting
+        let result_list = if collect {
+            let len = self
+                .builder
+                .build_int_sub(end_val, start_val, "est_len")
+                .map_err(llvm_err)?;
+            let list_cc = self.call_rt("action_list_create", &[len.into()])?;
+            let list_bv = list_cc
+                .try_as_basic_value()
+                .basic()
+                .ok_or("list_create failed")?;
+            let result_alloca = self
+                .builder
+                .build_alloca(self.list_type, "collect_result")
+                .map_err(llvm_err)?;
+            self.builder
+                .build_store(result_alloca, list_bv)
+                .map_err(llvm_err)?;
+            Some(result_alloca)
+        } else {
+            None
+        };
+
+        // Track write position in result list (separate from loop counter,
+        // needed when continue skips some elements)
+        let _collect_pos = if result_list.is_some() {
+            let pos = self
+                .builder
+                .build_alloca(i64, "collect_pos")
+                .map_err(llvm_err)?;
+            self.builder
+                .build_store(pos, i64.const_int(0, false))
+                .map_err(llvm_err)?;
+            Some(pos)
+        } else {
+            None
+        };
+
+        // Allocate loop counter (index)
+        let idx_alloca = self
+            .builder
+            .build_alloca(i64, "for_idx")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(idx_alloca, start_val)
+            .map_err(llvm_err)?;
+
+        // Sequential get cache for list iteration (for x in lst / walk optimization)
+        let list_get_cache = if input_list_ptr.is_some() {
+            Some(self.alloc_list_get_cache()?)
+        } else {
+            None
+        };
+
+        // For list iteration, allocate separate element value storage (fat struct {i64, ptr})
+        let val_alloca = if input_list_ptr.is_some() {
+            Some(
+                self.builder
+                    .build_alloca(i64, "for_val")
+                    .map_err(llvm_err)?,
+            )
+        } else {
+            None
+        };
+
+        // Create blocks
+        let loop_header = self.context.append_basic_block(current_fn, "for_header");
+        let loop_body = self.context.append_basic_block(current_fn, "for_body");
+        let loop_next = self.context.append_basic_block(current_fn, "for_next"); // continue target + increment
+        let loop_exit = self.context.append_basic_block(current_fn, "for_exit");
+
+        // Set continue target so `continue` inside the body branches here
+        let saved_continue_target = self.loop_control.continue_target;
+        let saved_break_target = self.loop_control.break_target;
+        self.loop_control.continue_target = Some(loop_next);
+        self.loop_control.break_target = Some(loop_exit);
+
+        // Branch to header
+        let _ = self.builder.build_unconditional_branch(loop_header);
+
+        // Loop header: check condition
+        self.builder.position_at_end(loop_header);
+        let current = self
+            .builder
+            .build_load(i64, idx_alloca, "i_val")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let cond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, current, end_val, "for_cond")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(cond, loop_body, loop_exit);
+
+        // Loop body
+        self.builder.position_at_end(loop_body);
+
+        // For list iteration: load element via cached sequential walk (O(1) within leaf)
+        if let (Some(va), Some(list_ptr), Some(cache)) =
+            (val_alloca, input_list_ptr, list_get_cache)
+        {
+            let tag = self.list_get_cached_tag(list_ptr, current, cache)?;
+            self.builder.build_store(va, tag).map_err(llvm_err)?;
+        }
+
+        // Add loop variable to scope
+        let mut saved_scope = Scope::new();
+        std::mem::swap(&mut self.scope, &mut saved_scope);
+        self.scope = Scope::with_parent(saved_scope);
+        if let Some(va) = val_alloca {
+            self.scope
+                .set(variable.to_string(), va, i64.into(), ValKind::Int);
+        } else {
+            self.scope
+                .set(variable.to_string(), idx_alloca, i64.into(), ValKind::Int);
+        };
+
+        // Compile body
+        let body_val = body.compile(self)?;
+
+        // Collect result if needed
+        if let Some(list_ptr) = result_list {
+            // action_list_push handles rc_inc of the element data_ptr internally
+            let list_loaded = self.load_list(list_ptr)?;
+            let elem_fat = self.to_fat_struct(&body_val)?;
+            let push_cc =
+                self.call_rt("action_list_push", &[list_loaded.into(), elem_fat.into()])?;
+            let pushed = push_cc
+                .try_as_basic_value()
+                .basic()
+                .ok_or("list_push failed")?;
+            self.builder
+                .build_store(list_ptr, pushed)
+                .map_err(llvm_err)?;
+        } else {
+            self.rc_discard_value(&body_val)?;
+        }
+
+        // Branch to loop_next (increment)
+        self.builder
+            .build_unconditional_branch(loop_next)
+            .map_err(llvm_err)?;
+
+        // loop_next: restore scope, increment, loop back (also the continue target)
+        self.builder.position_at_end(loop_next);
+
+        // Restore scope
+        let mut parent = Scope::new();
+        std::mem::swap(&mut self.scope, &mut parent);
+        if let Some(p) = parent.parent {
+            self.scope = *p;
+        }
+
+        // Increment counter
+        let next_val = self
+            .builder
+            .build_load(i64, idx_alloca, "i_next")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let one = i64.const_int(1, false);
+        let inc = self
+            .builder
+            .build_int_add(next_val, one, "i_inc")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(idx_alloca, inc)
+            .map_err(llvm_err)?;
+
+        // Jump back to header
+        let _ = self.builder.build_unconditional_branch(loop_header);
+
+        // Continue at exit
+        self.builder.position_at_end(loop_exit);
+
+        // Restore continue target
+        self.loop_control.continue_target = saved_continue_target;
+        self.loop_control.break_target = saved_break_target;
+
+        if let Some(list_ptr) = result_list {
+            Ok(TypedValue::List(list_ptr))
+        } else {
+            Ok(TypedValue::Unit)
+        }
+    }
+
+    pub(crate) fn compile_for_with_index(
+        &mut self,
+        vars: &[String],
+        iterator: ForExprSrc<'_>,
+        body: ForExprSrc<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        if vars.len() != 2 {
+            return Err("for with index requires exactly two variables".to_string());
+        }
+        let index_var = &vars[0];
+        let item_var = &vars[1];
+
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("Cannot compile for outside function".to_string())?;
+
+        let i64 = self.i64_ty();
+        let zero = i64.const_int(0, false);
+
+        enum IterMode<'a> {
+            Range {
+                start: IntValue<'a>,
+                count: IntValue<'a>,
+            },
+            List {
+                list_ptr: PointerValue<'a>,
+                len: IntValue<'a>,
+            },
+        }
+
+        let mode = if let Some((start, end)) = iterator.range_start_end(self)? {
+            let count = self
+                .builder
+                .build_int_sub(end, start, "range_count")
+                .map_err(llvm_err)?;
+            IterMode::Range { start, count }
+        } else {
+            let (_, len, list_ptr) = iterator.compile_list_iterable(self)?;
+            IterMode::List { list_ptr, len }
+        };
+
+        let idx_alloca = self
+            .builder
+            .build_alloca(i64, "for_idx_pos")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(idx_alloca, zero)
+            .map_err(llvm_err)?;
+
+        let list_get_cache = match &mode {
+            IterMode::List { .. } => Some(self.alloc_list_get_cache()?),
+            _ => None,
+        };
+
+        let item_alloca = self
+            .builder
+            .build_alloca(i64, "for_idx_item")
+            .map_err(llvm_err)?;
+
+        let loop_header = self.context.append_basic_block(current_fn, "for_idx_hdr");
+        let loop_body = self.context.append_basic_block(current_fn, "for_idx_body");
+        let loop_next = self.context.append_basic_block(current_fn, "for_idx_next");
+        let loop_exit = self.context.append_basic_block(current_fn, "for_idx_exit");
+
+        let saved_continue_target = self.loop_control.continue_target;
+        let saved_break_target = self.loop_control.break_target;
+        self.loop_control.continue_target = Some(loop_next);
+        self.loop_control.break_target = Some(loop_exit);
+
+        self.builder
+            .build_unconditional_branch(loop_header)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(loop_header);
+        let current_idx = self
+            .builder
+            .build_load(i64, idx_alloca, "idx_val")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let bound = match &mode {
+            IterMode::Range { count, .. } => *count,
+            IterMode::List { len, .. } => *len,
+        };
+        let cond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, current_idx, bound, "for_idx_cond")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_conditional_branch(cond, loop_body, loop_exit)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(loop_body);
+        match &mode {
+            IterMode::Range { start, .. } => {
+                let item_val = self
+                    .builder
+                    .build_int_add(*start, current_idx, "range_item")
+                    .map_err(llvm_err)?;
+                self.builder
+                    .build_store(item_alloca, item_val)
+                    .map_err(llvm_err)?;
+            }
+            IterMode::List { list_ptr, .. } => {
+                let cache = list_get_cache.expect("list for-with-index always has get cache");
+                let tag = self.list_get_cached_tag(*list_ptr, current_idx, cache)?;
+                self.builder
+                    .build_store(item_alloca, tag)
+                    .map_err(llvm_err)?;
+            }
+        }
+
+        let mut saved_scope = Scope::new();
+        std::mem::swap(&mut self.scope, &mut saved_scope);
+        self.scope = Scope::with_parent(saved_scope);
+        self.scope
+            .set(index_var.clone(), idx_alloca, i64.into(), ValKind::Int);
+        self.scope
+            .set(item_var.clone(), item_alloca, i64.into(), ValKind::Int);
+
+        let body_val = body.compile(self)?;
+        self.rc_discard_value(&body_val)?;
+
+        self.builder
+            .build_unconditional_branch(loop_next)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(loop_next);
+        let mut parent = Scope::new();
+        std::mem::swap(&mut self.scope, &mut parent);
+        if let Some(p) = parent.parent {
+            self.scope = *p;
+        }
+
+        let next_idx = self
+            .builder
+            .build_load(i64, idx_alloca, "idx_next")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let one = i64.const_int(1, false);
+        let inc = self
+            .builder
+            .build_int_add(next_idx, one, "idx_inc")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(idx_alloca, inc)
+            .map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(loop_header)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(loop_exit);
+        self.loop_control.continue_target = saved_continue_target;
+        self.loop_control.break_target = saved_break_target;
+
+        Ok(TypedValue::Unit)
+    }
+
+    pub(crate) fn compile_for_nested_iterate(
+        &mut self,
+        bindings: &[(String, ForExprSrc<'_>)],
+        body: ForExprSrc<'_>,
+        collect: bool,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("Cannot compile nested for outside function")?;
+
+        let i64 = self.i64_ty();
+        let saved_continue_target = self.loop_control.continue_target;
+        let saved_break_target = self.loop_control.break_target;
+
+        // Pre-allocate all loop counters and bounds: (idx_alloca, start_val, end_val)
+        let mut loops: Vec<(PointerValue, IntValue, IntValue)> = Vec::new();
+        for (i, (_var, iterable)) in bindings.iter().enumerate() {
+            let (start, end) = if let Some((s, e)) = iterable.range_start_end(self)? {
+                (s, e)
+            } else {
+                let (zero, len, _list_ptr) = iterable.compile_list_iterable(self)?;
+                (zero, len)
+            };
+            let idx = self
+                .builder
+                .build_alloca(i64, &format!("nested_idx_{}", i))
+                .map_err(llvm_err)?;
+            self.builder.build_store(idx, start).map_err(llvm_err)?;
+            loops.push((idx, start, end));
+        }
+
+        // Create result list if collecting
+        let result_list = if collect {
+            let cap = i64.const_int(16, false);
+            let list_cc = self.call_rt("action_list_create", &[cap.into()])?;
+            let list_bv = list_cc
+                .try_as_basic_value()
+                .basic()
+                .ok_or("list_create failed")?;
+            let ra = self
+                .builder
+                .build_alloca(self.list_type, "nested_result")
+                .map_err(llvm_err)?;
+            self.builder.build_store(ra, list_bv).map_err(llvm_err)?;
+            Some(ra)
+        } else {
+            None
+        };
+
+        let n = loops.len();
+
+        // Create basic blocks for each loop level
+        let mut headers: Vec<BasicBlock> = Vec::with_capacity(n);
+        let mut nexts: Vec<BasicBlock> = Vec::with_capacity(n);
+        for i in 0..n {
+            headers.push(
+                self.context
+                    .append_basic_block(current_fn, &format!("nh{}", i)),
+            );
+            nexts.push(
+                self.context
+                    .append_basic_block(current_fn, &format!("nn{}", i)),
+            );
+        }
+        let innermost_body = self.context.append_basic_block(current_fn, "nested_body");
+        let exit_block = self.context.append_basic_block(current_fn, "nested_exit");
+
+        // continue targets the innermost next block so `continue` inside the inner loop body
+        // increments the innermost counter (not the outermost one).
+        self.loop_control.continue_target = Some(nexts[n - 1]);
+        self.loop_control.break_target = Some(exit_block);
+
+        // Branch to first header
+        let _ = self.builder.build_unconditional_branch(headers[0]);
+
+        // Build loop structure for each level
+        for i in 0..n {
+            self.builder.position_at_end(headers[i]);
+            let (idx, _start, end) = loops[i];
+            let cur_val = self
+                .builder
+                .build_load(i64, idx, &format!("lv{}", i))
+                .map_err(llvm_err)?
+                .into_int_value();
+            let cond = self
+                .builder
+                .build_int_compare(IntPredicate::SLT, cur_val, end, &format!("lc{}", i))
+                .map_err(llvm_err)?;
+
+            // When condition fails, branch to parent's next (or exit for level 0)
+            let fail_target = if i > 0 { nexts[i - 1] } else { exit_block };
+
+            if i < n - 1 {
+                let _ = self
+                    .builder
+                    .build_conditional_branch(cond, headers[i + 1], fail_target);
+            } else {
+                let _ = self
+                    .builder
+                    .build_conditional_branch(cond, innermost_body, fail_target);
+            }
+
+            // Build the "next" block for this level
+            // (increment counter, reset inner counters, branch to this level's header)
+            self.builder.position_at_end(nexts[i]);
+            let cur_load = self
+                .builder
+                .build_load(i64, idx, &format!("nl{}", i))
+                .map_err(llvm_err)?
+                .into_int_value();
+            let inc = self
+                .builder
+                .build_int_add(cur_load, i64.const_int(1, false), &format!("ni{}", i))
+                .map_err(llvm_err)?;
+            self.builder.build_store(idx, inc).map_err(llvm_err)?;
+            // Reset all inner loop counters to their start values
+            for j in (i + 1)..n {
+                let (inner_idx, inner_start, _) = loops[j];
+                self.builder
+                    .build_store(inner_idx, inner_start)
+                    .map_err(llvm_err)?;
+            }
+            let _ = self.builder.build_unconditional_branch(headers[i]);
+        }
+
+        // ---- Innermost body ----
+        self.builder.position_at_end(innermost_body);
+
+        // Set up scope with all binding variables
+        let mut saved_scope = Scope::new();
+        std::mem::swap(&mut self.scope, &mut saved_scope);
+        self.scope = Scope::with_parent(saved_scope);
+        for (i, (var, _)) in bindings.iter().enumerate() {
+            let (idx, _, _) = loops[i];
+            self.scope.set(var.clone(), idx, i64.into(), ValKind::Int);
+        }
+
+        // Compile body
+        let body_val = body.compile(self)?;
+
+        // Collect result
+        if let Some(list_ptr) = result_list {
+            // action_list_push handles rc_inc of the element data_ptr internally
+            let list_loaded = self.load_list(list_ptr)?;
+            let elem_fat = self.to_fat_struct(&body_val)?;
+            let push_cc =
+                self.call_rt("action_list_push", &[list_loaded.into(), elem_fat.into()])?;
+            let pushed = push_cc
+                .try_as_basic_value()
+                .basic()
+                .ok_or("list_push failed")?;
+            self.builder
+                .build_store(list_ptr, pushed)
+                .map_err(llvm_err)?;
+        } else {
+            self.rc_discard_value(&body_val)?;
+        }
+
+        // Restore scope
+        let mut parent = Scope::new();
+        std::mem::swap(&mut self.scope, &mut parent);
+        if let Some(p) = parent.parent {
+            self.scope = *p;
+        }
+
+        // Branch to the innermost next block (increment inner counter)
+        let _ = self.builder.build_unconditional_branch(nexts[n - 1]);
+
+        // ---- Exit ----
+        self.builder.position_at_end(exit_block);
+
+        self.loop_control.continue_target = saved_continue_target;
+        self.loop_control.break_target = saved_break_target;
+
+        if let Some(list_ptr) = result_list {
+            Ok(TypedValue::List(list_ptr))
+        } else {
+            Ok(TypedValue::Unit)
+        }
+    }
+}

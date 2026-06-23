@@ -3,7 +3,55 @@ use std::process::Command;
 
 fn main() {
     configure_llvm_linking();
+    regenerate_list_body_includes();
     build_host_runtime_staticlib();
+}
+
+/// Regenerate list core/tree `body.inc.rs` when fragment `.inc.rs` files change (R4-7).
+fn regenerate_list_body_includes() {
+    let manifest_dir = match std::env::var("CARGO_MANIFEST_DIR") {
+        Ok(d) => PathBuf::from(d),
+        Err(_) => return,
+    };
+    let list_base = manifest_dir.join("crates/action-codegen/src/runtime_decl/list");
+    for sub in ["core", "tree"] {
+        let dir = list_base.join(sub);
+        if !dir.exists() {
+            continue;
+        }
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().is_some_and(|e| e == "rs")
+                    && path
+                        .file_name()
+                        .is_some_and(|n| n != "mod.rs" && n != "body.inc.rs")
+                {
+                    println!("cargo:rerun-if-changed={}", path.display());
+                }
+            }
+        }
+    }
+    println!("cargo:rerun-if-changed=scripts/concat_list_body.py");
+
+    let script = manifest_dir.join("scripts/concat_list_body.py");
+    if !script.exists() {
+        return;
+    }
+    let status = Command::new("python3")
+        .arg(&script)
+        .current_dir(&manifest_dir)
+        .status();
+    match status {
+        Ok(s) if s.success() => {}
+        Ok(s) => {
+            panic!(
+                "concat_list_body.py failed (exit {}); list body.inc.rs not regenerated",
+                s.code().unwrap_or(-1)
+            );
+        }
+        Err(e) => panic!("failed to run concat_list_body.py: {e}"),
+    }
 }
 
 fn configure_llvm_linking() {

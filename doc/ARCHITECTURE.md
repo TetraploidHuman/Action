@@ -134,13 +134,16 @@ pub use action_lsp as lsp;
 | **R9b** | CLI 源码迁入 `crates/action-cli/`；根 lib 纯 facade | ✅ |
 | **R10** | host-rt 依赖统一；codegen scope/builtins/list 模块树；type_registry 重命名 | ✅ |
 | **R3** | 健康度：list core/tree 拆分、CodeGen 状态分组、runtime extern 提取、LSP handlers 拆分、driver emit、测试补强 | ✅ |
+| **R4** | 代码质量与稳定性：完成 R3-7 次级 codegen 拆分、LSP helpers 再拆、push.inc 拆分、build 集成 list concat、稳定性测试 | ✅ |
 | **B0** | Bootstrap 语言子集（`doc/bootstrap-subset.md`） | ✅ |
 
 ## 模块 ownership（改 API 需动哪些文件）
 
 | 能力 | 类型表 / 前端 | Codegen 调度 | Runtime IR | Host |
 |------|---------------|--------------|------------|------|
-| **List** | `frontend/builtin/registry.rs` | `codegen/builtins/list.rs` | `runtime_decl/list/core/*.inc.rs` + `tree/*.inc.rs` | — |
+| **List** | `frontend/builtin/registry.rs` | `codegen/builtins/list.rs` | `runtime_decl/list/core/*.inc.rs` + `tree/*.inc.rs`（`build.rs` 生成 `body.inc.rs`） | — |
+| **Iter / mono** | 同上 | `builtins/iter/` · `mono/` | `action_list_*_walk` in runtime_decl | — |
+| **Expr / for** | 同上 | `expr/` · `for_loop/` | — | — |
 | **Map** | 同上 | `builtins/` + `map_set.rs` | `define_map.rs`, `define_hash_table.rs` | — |
 | **String** | 同上 | `builtins/stdlib/` | `define_str_*.rs` | — |
 | **Builtin UFCS** | `registry.rs` | `ufcs.rs`, `call_hir.rs` | `runtime_decl/` | `host-rt/`（JSON/HTTP） |

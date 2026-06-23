@@ -5,7 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 CORE_ORDER = [
-    "create.inc.rs", "push.inc.rs", "get.inc.rs", "format.inc.rs", "cow.inc.rs", "query.inc.rs",
+    "create.inc.rs", "push_head.inc.rs", "push_tail.inc.rs", "get.inc.rs", "format.inc.rs", "cow.inc.rs", "query.inc.rs",
     "walk_map.inc.rs", "walk_map_filter.inc.rs", "walk_filter_map.inc.rs", "walk_take_while.inc.rs",
     "walk_map_take_while.inc.rs", "walk_find.inc.rs", "walk_fold.inc.rs", "walk_any_all.inc.rs",
     "query_contains.inc.rs",

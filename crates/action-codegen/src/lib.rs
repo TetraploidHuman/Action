@@ -1,8 +1,8 @@
 // Atomic CodeGen — LLVM IR code generation
 //
 // Submodules: scope, typed_value, loop_control, nullable_state, mono_cache, type_layout,
-// compile/hir_compile, expr/stmt/pattern/for_loop, builtins/*, runtime_decl/* (see list/core/).
-// Runtime IR: runtime_decl/mod.rs → declare_c_runtime_externs + define_runtime_groups.
+// compile/hir_compile, expr/ stmt/ pattern/ for_loop/, mono/, builtins/* (iter/ tree),
+// runtime_decl/* (list/core/*.inc.rs → body.inc.rs via build.rs + concat_list_body.py).
 
 use action_frontend::ast::*;
 use action_frontend::typecheck::TypeRegistry;
@@ -311,9 +311,9 @@ mod for_loop;
 mod generics;
 mod gep_cursor;
 mod jit;
-mod lambda_mono;
 mod map_set;
 mod misc;
+mod mono;
 mod nullable;
 mod opt_pass;
 mod pattern;
@@ -553,5 +553,48 @@ mod tests {
     fn runtime_defines_list_concat_and_push_subtree() {
         let ir = compile_program("fun main() { println(1) }");
         assert!(ir.contains("action_list_concat") && ir.contains("action_list_push_subtree"));
+    }
+
+    #[test]
+    fn runtime_defines_list_push() {
+        let ir = compile_program("fun main() { println(1) }");
+        assert!(
+            ir.contains("define") && ir.contains("action_list_push"),
+            "list push runtime must remain linked after push.inc split"
+        );
+    }
+
+    #[test]
+    fn codegen_map_emits_walk_or_mono() {
+        let ir = compile_program(
+            "fun main() {\n\
+                 val xs = List[1, 2, 3]\n\
+                 val ys = map(xs) { x -> x + 1 }\n\
+                 println(ys.len())\n\
+             }",
+        );
+        assert!(
+            ir.contains("action_list_map_walk") || ir.contains(".mono_map"),
+            "map codegen path must survive iter/mono submodule split"
+        );
+    }
+
+    #[test]
+    fn codegen_for_loop_emits_body() {
+        let ir = compile_program(
+            "fun main() {\n\
+                 var sum = 0\n\
+                 for x in 1..4 { sum = sum + x }\n\
+                 println(sum)\n\
+             }",
+        );
+        assert!(
+            ir.contains("@main"),
+            "for-loop submodule split must still compile main"
+        );
+        assert!(
+            ir.contains("icmp") || ir.contains("br"),
+            "for-loop should emit control flow"
+        );
     }
 }

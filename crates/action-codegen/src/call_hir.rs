@@ -5,7 +5,7 @@ use action_frontend::hir::{HirExpr, HirExprKind, HirStmt};
 
 use super::builtin_dispatch::BuiltinDispatch;
 use super::call_arg::CallArg;
-use super::lambda_mono::DirectLambdaTarget;
+use super::mono::DirectLambdaTarget;
 use super::{CodeGen, TypedValue, ValKind};
 
 impl<'ctx> CodeGen<'ctx> {
