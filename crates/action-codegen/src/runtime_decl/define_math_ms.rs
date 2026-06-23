@@ -476,8 +476,10 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_add(su_cap, i64.const_int(4, false), "cap4")
             .map_err(llvm_err)?;
         let map_create_fn = self.module.get_function("action_map_create").unwrap();
-        let mi_fn = self.module.get_function("action_map_insert").unwrap();
-        let mc_fn = self.module.get_function("action_map_contains").unwrap();
+        let bulk_fn = self
+            .module
+            .get_function("action_ht_bulk_copy_active_slots")
+            .unwrap();
         let su_res = self
             .builder
             .build_call(map_create_fn, &[su_cap4.into()], "res")
@@ -488,161 +490,53 @@ impl<'ctx> CodeGen<'ctx> {
             .build_alloca(self.list_type, "su_ra")
             .map_err(llvm_err)?;
         self.builder.build_store(su_ra, su_resv).map_err(llvm_err)?;
-        let su_null = {
-            let u = str_ty.get_undef();
-            let u1 = self
-                .builder
-                .build_insert_value(u, i64.const_int(0, false), 0, "n0")
-                .map_err(llvm_err)?;
-            self.builder
-                .build_insert_value(u1, self.ptr_ty().const_zero(), 1, "n1")
-                .map_err(llvm_err)?
-        };
-        // Open-addressing: scan slots 0..cap-1, skip empty/tombstone
-        let su_i = self.builder.build_alloca(i64, "su_i").map_err(llvm_err)?;
-        self.builder
-            .build_store(su_i, i64.const_int(0, false))
-            .map_err(llvm_err)?;
-        let su_loop1 = self.context.append_basic_block(su_fn, "loop1");
-        let su_chk1 = self.context.append_basic_block(su_fn, "chk1");
-        let su_body1 = self.context.append_basic_block(su_fn, "body1");
-        let su_skip1 = self.context.append_basic_block(su_fn, "skip1");
-        let su_done1 = self.context.append_basic_block(su_fn, "done1");
-        let _ = self.builder.build_unconditional_branch(su_loop1);
-        self.builder.position_at_end(su_loop1);
-        let su_iv = self
+        let su_loaded = self
             .builder
-            .build_load(i64, su_i, "iv")
+            .build_load(self.list_type, su_ra, "su_loaded")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let su_dest_data = self
+            .builder
+            .build_extract_value(su_loaded, 0, "dest_data")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let su_dest_cap = self
+            .builder
+            .build_extract_value(su_loaded, 2, "dest_cap")
             .map_err(llvm_err)?
             .into_int_value();
-        let su_c1 = self
+        let su_len_p = self
             .builder
-            .build_int_compare(IntPredicate::SLT, su_iv, su_acap, "c1")
+            .build_struct_gep(self.list_type, su_ra, 1, "len_p")
             .map_err(llvm_err)?;
         let _ = self
             .builder
-            .build_conditional_branch(su_c1, su_chk1, su_done1);
-        self.builder.position_at_end(su_chk1);
-        self.ht_branch_if_slot_active(su_adata, su_iv, su_body1, su_skip1)?;
-        self.builder.position_at_end(su_body1);
-        let su_key = self.ht_key_fat_at(su_adata, su_iv)?;
-        let su_cl1 = self
-            .builder
-            .build_load(self.list_type, su_ra, "cl1")
-            .map_err(llvm_err)?
-            .into_struct_value();
-        let su_ins = self
-            .builder
             .build_call(
-                mi_fn,
+                bulk_fn,
                 &[
-                    su_cl1.into(),
-                    su_key.into(),
-                    su_null.as_basic_value_enum().into(),
+                    su_dest_data.into(),
+                    su_dest_cap.into(),
+                    su_len_p.into(),
+                    su_adata.into(),
+                    su_acap.into(),
                 ],
-                "ins",
+                "",
             )
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(su_ra, su_ins.try_as_basic_value().unwrap_basic())
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(su_skip1);
-        self.builder.position_at_end(su_skip1);
-        let su_inc = self
-            .builder
-            .build_int_add(su_iv, i64.const_int(1, false), "inc")
-            .map_err(llvm_err)?;
-        self.builder.build_store(su_i, su_inc).map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(su_loop1);
-        // Add from B only if not already in result
-        self.builder.position_at_end(su_done1);
-        let su_j = self.builder.build_alloca(i64, "su_j").map_err(llvm_err)?;
-        self.builder
-            .build_store(su_j, i64.const_int(0, false))
-            .map_err(llvm_err)?;
-        let su_loop2 = self.context.append_basic_block(su_fn, "loop2");
-        let su_chk2 = self.context.append_basic_block(su_fn, "chk2");
-        let su_body2 = self.context.append_basic_block(su_fn, "body2");
-        let su_skip2 = self.context.append_basic_block(su_fn, "skip2");
-        let su_done2 = self.context.append_basic_block(su_fn, "done2");
-        let _ = self.builder.build_unconditional_branch(su_loop2);
-        self.builder.position_at_end(su_loop2);
-        let su_jv = self
-            .builder
-            .build_load(i64, su_j, "jv")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let su_c2 = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, su_jv, su_bcap, "c2")
             .map_err(llvm_err)?;
         let _ = self
             .builder
-            .build_conditional_branch(su_c2, su_chk2, su_done2);
-        self.builder.position_at_end(su_chk2);
-        self.ht_branch_if_slot_active(su_bdata, su_jv, su_body2, su_skip2)?;
-        self.builder.position_at_end(su_body2);
-        let su_key2 = self.ht_key_fat_at(su_bdata, su_jv)?;
-        let su_cl2 = self
-            .builder
-            .build_load(self.list_type, su_ra, "cl2")
-            .map_err(llvm_err)?
-            .into_struct_value();
-        let su_contains = self
-            .builder
             .build_call(
-                mc_fn,
-                &[su_cl2.into(), su_key2.as_basic_value_enum().into()],
-                "cont",
-            )
-            .map_err(llvm_err)?;
-        let su_not_cont = self
-            .builder
-            .build_not(
-                su_contains
-                    .try_as_basic_value()
-                    .unwrap_basic()
-                    .into_int_value(),
-                "nc",
-            )
-            .map_err(llvm_err)?;
-        let su_add = self.context.append_basic_block(su_fn, "add");
-        let su_skip_dup = self.context.append_basic_block(su_fn, "skip_dup");
-        let _ = self
-            .builder
-            .build_conditional_branch(su_not_cont, su_add, su_skip_dup);
-        self.builder.position_at_end(su_add);
-        let su_cl3 = self
-            .builder
-            .build_load(self.list_type, su_ra, "cl3")
-            .map_err(llvm_err)?
-            .into_struct_value();
-        let su_ins2 = self
-            .builder
-            .build_call(
-                mi_fn,
+                bulk_fn,
                 &[
-                    su_cl3.into(),
-                    su_key2.into(),
-                    su_null.as_basic_value_enum().into(),
+                    su_dest_data.into(),
+                    su_dest_cap.into(),
+                    su_len_p.into(),
+                    su_bdata.into(),
+                    su_bcap.into(),
                 ],
-                "ins2",
+                "",
             )
             .map_err(llvm_err)?;
-        self.builder
-            .build_store(su_ra, su_ins2.try_as_basic_value().unwrap_basic())
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(su_skip2);
-        self.builder.position_at_end(su_skip_dup);
-        let _ = self.builder.build_unconditional_branch(su_skip2);
-        self.builder.position_at_end(su_skip2);
-        let su_inc2 = self
-            .builder
-            .build_int_add(su_jv, i64.const_int(1, false), "inc2")
-            .map_err(llvm_err)?;
-        self.builder.build_store(su_j, su_inc2).map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(su_loop2);
-        self.builder.position_at_end(su_done2);
         let su_rt = self
             .builder
             .build_load(self.list_type, su_ra, "su_rt")

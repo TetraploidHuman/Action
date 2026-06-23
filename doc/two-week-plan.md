@@ -72,7 +72,9 @@ nix-shell --run 'cargo build --release && cargo test --test integration -- --tes
 ## 后续（超出本计划，未纳入待办）
 
 - ~~`filter+map+fold` 单遍 walk~~ ✅ `action_list_filter_map_fold_walk`（2026-06-22）
-- **P0-1 进行中**：`action_list_insert_h0_mid`（满叶 h=0 中间 insert 快路径，已实现待接线调试 SIGSEGV）
-- **P0-1b**：`range_walk` / `drop(32)` 在 64 元素 h=0 列表返回 0，导致 insert fallback 错误（len=33）
-- List P0：`insert_rec` internal overflow（`int_full` 时 split_intl）
-- `action-codegen` 编译 warning 清零（CI `-D warnings` 已通过）
+- ~~**P0-1** `insert_h0_mid`~~ ✅ 满叶 h=0 中间 insert 经 `insert_rec` → `split_child` 快路径（`test_insert_h0_mid.ac`）
+- ~~**P0-1b** `drop(32)` / `range_walk`~~ ✅ h=0 `drop` 直扫 + insert 快路径；`drop_h0_mid.ac` 回归
+- ~~List P0~~ ✅ `insert_rec` internal overflow（`split_intl`）、find concat 早退
+- ~~P1-2 filter+fold 融合~~ ✅ `action_list_filter_fold_walk` + LICM
+- ~~P2-2 nounwind~~ ✅ `opt_pass.rs` 扩展 `*_walk_rec` / `push` / `create`
+- ~~P3-3 Map 增量~~ ✅ `map.union` / `setUnion` 使用 `ht_bulk_copy_active_slots`

@@ -55,10 +55,10 @@ nix-shell --run 'cargo test --release --test integration -- --test-threads=1'
 
 | ID | 任务 | 目标基准 | 说明 | 验收 |
 |----|------|----------|------|------|
-| P0-1 | **`insert_rec` 满叶中间 split** | `bench_all`、`bench_insert100` | h=0 len=64 中间 insert：`insert_h0_mid` 快路径（待接线）；fallback 受 `drop(32)` bug 影响 | 见 `define_list_insert_h0_mid.rs` |
-| P0-2 | **`insert_rec` internal overflow** | 同上 | 子 `insert_rec` null → `int_split_child`：CoW + split + 兄弟子树；internal 满 64 → 仿 `lp_split_intl` | `action_list_insert` fallback 命中率下降 |
-| P0-3 | **`find_walk_rec` Concat 早退** | `bench_concat_depth`、语义 | 仿 `contains_walk`：concat 左命中跳过右；internal 子树命中跳过后续 sibling | 不改持久化/CoW 语义 |
-| P0-4 | **回归夹具** | CI | `bench_all.ac` 增加 `c.contains(...)`；`opt_pass` 修正 `action_list_find` 命名 | integration + 语义快检 |
+| P0-1 | **`insert_rec` 满叶中间 split** | `bench_all`、`bench_insert100` | h=0 len=64 中间 insert：`insert_rec` → `split_child` 快路径 | ✅ `test_insert_h0_mid.ac` |
+| P0-2 | **`insert_rec` internal overflow** | 同上 | 子 `insert_rec` null → `int_split_child`：CoW + split + 兄弟子树；internal 满 64 → 仿 `lp_split_intl` | ✅ `split_intl` |
+| P0-3 | **`find_walk_rec` Concat 早退** | `bench_concat_depth`、语义 | 仿 `contains_walk`：concat 左命中跳过右；internal 子树命中跳过后续 sibling | ✅ |
+| P0-4 | **回归夹具** | CI | `bench_all.ac` 增加 `c.contains(...)`；`opt_pass` 修正 `action_list_find` 命名 | ✅ |
 
 **约束（必守）：**
 
@@ -81,9 +81,9 @@ nix-shell --run 'cargo test --release --test integration -- --test-threads=1'
 
 | ID | 任务 | 目标基准 | 说明 | 验收 |
 |----|------|----------|------|------|
-| P1-1 | **`filter+map+fold` 单遍 walk** | `bench_for_chain`（11ms） | 新 `action_list_filter_map_fold_walk` + codegen 融合 | AOT 明显下降 |
-| P1-2 | **`map+fold` / `filter+fold` 融合** | `bench_concat_depth` | UFCS / builtin 识别链式调用 | 语义不变 |
-| P1-3 | **LICM 扩展** | `bench_for_chain` | 循环外提 `filter(lst)`、`fold(0, lst)` 等不变式 | 与 `map` LICM 同模式 |
+| P1-1 | **`filter+map+fold` 单遍 walk** | `bench_for_chain`（11ms） | 新 `action_list_filter_map_fold_walk` + codegen 融合 | ✅ |
+| P1-2 | **`map+fold` / `filter+fold` 融合** | `bench_concat_depth` | UFCS / builtin 识别链式调用 | ✅ `filter_fold_walk` + UFCS |
+| P1-3 | **LICM 扩展** | `bench_for_chain` | 循环外提 `filter(lst)`、`fold(0, lst)` 等不变式 | ✅ filter/fold/map_fold/filter_fold LICM |
 
 ---
 
@@ -91,9 +91,9 @@ nix-shell --run 'cargo test --release --test integration -- --test-threads=1'
 
 | ID | 任务 | 目标基准 | 说明 | 验收 |
 |----|------|----------|------|------|
-| P2-1 | **Concat balance 阈值调优** | `bench_concat_depth`（14ms） | 深度 > 32 flatten；只调参/补路径 | 无 SIGSEGV |
-| P2-2 | **`push_subtree` / walk nounwind** | AOT 全局 | 扩 `opt_pass.rs` | `-O2` IPO 友好 |
-| P2-3 | **`indexOf` / `findIndex` cached walk** | `bench_all` | 替代 `get` 循环（若 profiling 命中） | 可选 |
+| P2-1 | **Concat balance 阈值调优** | `bench_concat_depth`（14ms） | 深度 > 32 flatten；只调参/补路径 | ✅ 无 SIGSEGV |
+| P2-2 | **`push_subtree` / walk nounwind** | AOT 全局 | 扩 `opt_pass.rs` | ✅ `*_walk_rec` + `push`/`create` |
+| P2-3 | **`indexOf` / `findIndex` cached walk** | `bench_all` | 替代 `get` 循环（若 profiling 命中） | ✅ `index_of_walk` |
 
 ---
 
@@ -103,7 +103,7 @@ nix-shell --run 'cargo test --release --test integration -- --test-threads=1'
 |----|------|----------|------|
 | P3-1 | **`fib(30)` 字面量特化** | `bench_funcall` | 常量参数编译期求值；不改变一般 `fib(n)` |
 | P3-2 | **HO 去虚拟化扩展** | `bench_lambda` | `FunctionRef`、局部 `val f = fn` |
-| P3-3 | **Map 增量更新** | `bench_map_10k` | 单独阶段；`define_map.rs` O(n) rebuild |
+| P3-3 | **Map 增量更新** | `bench_map_10k` | 单独阶段；`define_map.rs` O(n) rebuild | ✅ union `bulk_copy` |
 
 ---
 
@@ -121,12 +121,12 @@ nix-shell --run 'cargo test --release --test integration -- --test-threads=1'
 
 ## 验收总表（周末 checklist）
 
-- [ ] Phase A + P0 各至少 1 commit；push 后 CI 绿
-- [ ] `cargo test --release --test integration -- --test-threads=1` → **163 passed**
-- [ ] `bench_cow.ac` → **11**；`map_filter.ac` → **210215**；`bench_all.ac` 无 SIGSEGV
-- [ ] insert 系列 **30×** release 无 crash
-- [ ] `./benchmark.sh --mode aot --opt 2 -n 3` 相对基线无 FAIL；`bench_all` / `bench_insert100` 有改善或持平
-- [ ] P1 完成时 `bench_for_chain` avg **< 11ms**（目标 ~8ms）
+- [x] Phase A + P0 各至少 1 commit；push 后 CI 绿
+- [x] `cargo test --release --test integration -- --test-threads=1` → **172 passed**
+- [x] `bench_cow.ac` → **11**；`map_filter.ac` → **210215**；`bench_all.ac` 无 SIGSEGV
+- [x] insert 系列 **30×** release 无 crash
+- [x] `./benchmark.sh --mode aot --opt 2 -n 3` 相对基线无 FAIL；`bench_all` / `bench_insert100` 有改善或持平
+- [x] P1 完成时 `bench_for_chain` avg **< 11ms**（目标 ~8ms）
 
 ---
 

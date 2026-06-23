@@ -277,6 +277,19 @@ impl<'ctx> CodeGen<'ctx> {
                     );
                 }
             }
+            if let Some((filter_lam, base_list)) = Self::extract_filter_call_args_hir(receiver) {
+                if args.len() == 1 {
+                    let fold_lam = trailing.ok_or(
+                        "fold on filter receiver expects trailing lambda: lst.filter{}.fold(init){}",
+                    )?;
+                    return self.fused_filter_fold_hir(
+                        filter_lam,
+                        fold_lam.as_ref(),
+                        base_list,
+                        &args[0],
+                    );
+                }
+            }
         }
 
         let call_args = Self::call_args_from_hir(args);

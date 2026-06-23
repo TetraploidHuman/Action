@@ -457,6 +457,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.define_list_core()?;
         self.define_list_map_filter_map()?;
         self.define_list_filter_map_fold()?;
+        self.define_list_filter_fold()?;
         self.define_list_map_fold()?;
         self.define_list_insert_split_child()?;
         self.define_lazy_list()?;

@@ -2,6 +2,7 @@
 
 mod define_list_core;
 mod define_list_extra;
+mod define_list_filter_fold;
 mod define_list_filter_map_fold;
 mod define_list_index_of_walk;
 mod define_list_insert_rec;

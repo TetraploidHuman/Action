@@ -330,6 +330,89 @@ impl<'ctx> CodeGen<'ctx> {
         )?))
     }
 
+    /// filter+fold: single B-tree walk (no intermediate List).
+    pub(crate) fn fused_filter_fold_values(
+        &mut self,
+        filter_fn_val: TypedValue<'ctx>,
+        fold_fn_val: TypedValue<'ctx>,
+        list_val: TypedValue<'ctx>,
+        init: inkwell::values::IntValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let filter_fn_ptr = match filter_fn_val {
+            TypedValue::Fn(p, _) | TypedValue::Closure { fn_ptr: p, .. } => p,
+            _ => return Err("fused filter+fold: filter function required".to_string()),
+        };
+        let fold_fn_ptr = match fold_fn_val {
+            TypedValue::Fn(p, _) | TypedValue::Closure { fn_ptr: p, .. } => p,
+            _ => return Err("fused filter+fold: fold function required".to_string()),
+        };
+        let list_ptr = match list_val {
+            TypedValue::List(p) => p,
+            _ => return Err("fused filter+fold: list required".to_string()),
+        };
+        let list_struct = self.load_list(list_ptr)?;
+        let ff_cc = self.call_rt(
+            "action_list_filter_fold_walk",
+            &[
+                list_struct.into(),
+                filter_fn_ptr.into(),
+                fold_fn_ptr.into(),
+                init.into(),
+            ],
+        )?;
+        let acc = ff_cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("filter_fold_walk failed")?
+            .into_int_value();
+        Ok(TypedValue::Int(acc))
+    }
+
+    pub(crate) fn fused_filter_fold_hir(
+        &mut self,
+        filter_fn_expr: &action_frontend::hir::HirExpr,
+        fold_fn_expr: &action_frontend::hir::HirExpr,
+        list_expr: &action_frontend::hir::HirExpr,
+        init_expr: &action_frontend::hir::HirExpr,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let filter_fn_val = self.compile_hir_expr(filter_fn_expr)?;
+        let fold_fn_val = self.compile_hir_expr(fold_fn_expr)?;
+        let list_val = self.compile_hir_expr(list_expr)?;
+        let init_val = self.compile_hir_expr(init_expr)?;
+        let init_i64 = match init_val {
+            TypedValue::Int(v) => v,
+            _ => return Err("fused filter+fold: init must be Int".to_string()),
+        };
+        self.fused_filter_fold_values(filter_fn_val, fold_fn_val, list_val, init_i64)
+    }
+
+    pub(crate) fn try_fused_filter_fold_fold_args(
+        &mut self,
+        init_arg: &CallArg<'_>,
+        list_arg: &CallArg<'_>,
+        fold_lam: &CallArg<'_>,
+    ) -> Result<Option<TypedValue<'ctx>>, String> {
+        let CallArg::Hir(list_hir) = list_arg;
+        let (filter_lam, base_list) = match Self::extract_filter_call_args_hir(list_hir) {
+            Some(v) => v,
+            None => return Ok(None),
+        };
+        let init_val = self.compile_call_arg(*init_arg)?;
+        let init_i64 = match init_val {
+            TypedValue::Int(v) => v,
+            _ => return Ok(None),
+        };
+        let filter_fn_val = self.compile_call_arg(CallArg::Hir(filter_lam))?;
+        let fold_fn_val = self.compile_call_arg(*fold_lam)?;
+        let list_val = self.compile_call_arg(CallArg::Hir(base_list))?;
+        Ok(Some(self.fused_filter_fold_values(
+            filter_fn_val,
+            fold_fn_val,
+            list_val,
+            init_i64,
+        )?))
+    }
+
     pub(crate) fn builtin_filter(
         &mut self,
         args: &[CallArg<'_>],
@@ -429,6 +512,11 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(result);
                 }
                 if let Some(result) = self.try_fused_map_fold_fold_args(&args[0], &args[1], &lam)? {
+                    return Ok(result);
+                }
+                if let Some(result) =
+                    self.try_fused_filter_fold_fold_args(&args[0], &args[1], &lam)?
+                {
                     return Ok(result);
                 }
             }
