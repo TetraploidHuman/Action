@@ -490,8 +490,14 @@ mod tests {
                     else_expr,
                 } => {
                     assert!(matches!(condition.kind, ExprKind::Call { .. }));
-                    assert!(matches!(then_expr.kind, ExprKind::Literal(Literal::Bool(false))));
-                    assert!(matches!(else_expr.kind, ExprKind::Literal(Literal::Bool(true))));
+                    assert!(matches!(
+                        then_expr.kind,
+                        ExprKind::Literal(Literal::Bool(false))
+                    ));
+                    assert!(matches!(
+                        else_expr.kind,
+                        ExprKind::Literal(Literal::Bool(true))
+                    ));
                 }
                 _ => panic!("Expected one-line when"),
             },
@@ -504,12 +510,10 @@ mod tests {
         let expr = parse_expr("when a > b { a } else b").unwrap();
         match expr.kind {
             ExprKind::When(w) => match &w.kind {
-                WhenKind::OneLine { else_expr, .. } => {
-                    match &else_expr.kind {
-                        ExprKind::Ident(s) => assert_eq!(s, "b"),
-                        _ => panic!("Expected else ident b, got {:?}", else_expr.kind),
-                    }
-                }
+                WhenKind::OneLine { else_expr, .. } => match &else_expr.kind {
+                    ExprKind::Ident(s) => assert_eq!(s, "b"),
+                    _ => panic!("Expected else ident b, got {:?}", else_expr.kind),
+                },
                 _ => panic!("Expected one-line when"),
             },
             _ => panic!("Expected when"),
