@@ -37,6 +37,27 @@ pub(crate) enum TypedValue<'ctx> {
     Ptr(PointerValue<'ctx>),
     FileHandle(PointerValue<'ctx>),
     Nullable(PointerValue<'ctx>, BasicTypeEnum<'ctx>),
+    /// Fallible-region intermediate: Int payload + ok flag (i1).
+    FallibleInt {
+        val: IntValue<'ctx>,
+        ok: IntValue<'ctx>,
+    },
+    /// Fallible-region intermediate: Ptr payload + ok flag (i1).
+    FalliblePtr {
+        val: PointerValue<'ctx>,
+        ok: IntValue<'ctx>,
+    },
+    /// Fallible-region intermediate: String payload (alloca) + ok flag (i1).
+    FallibleStr {
+        val: PointerValue<'ctx>,
+        ok: IntValue<'ctx>,
+    },
+    /// Fallible-region intermediate: struct payload (alloca) + ok flag (i1).
+    FallibleStruct {
+        val: PointerValue<'ctx>,
+        ty: StructType<'ctx>,
+        ok: IntValue<'ctx>,
+    },
     Unit,
 }
 
@@ -61,6 +82,10 @@ impl<'ctx> TypedValue<'ctx> {
             TypedValue::Struct(_, _) => None,
             TypedValue::Enum(..) => None,
             TypedValue::Nullable(_, _) => None,
+            TypedValue::FallibleInt { .. } => None,
+            TypedValue::FalliblePtr { .. } => None,
+            TypedValue::FallibleStr { .. } => None,
+            TypedValue::FallibleStruct { .. } => None,
             TypedValue::Unit => None,
         }
     }

@@ -87,6 +87,14 @@ pub struct CodeGen<'ctx> {
     pub(crate) overloaded_functions: HashMap<String, Vec<(Vec<Type>, String)>>,
     /// Whether we are currently compiling inside an `unsafe { }` block
     pub(crate) in_unsafe: bool,
+    /// Fallibility context copied from CheckedProgram (R7).
+    pub(crate) fallibility: action_frontend::typecheck::FallibilityContext,
+    /// Depth of nested `or { }` blocks during codegen.
+    pub(crate) or_block_depth: usize,
+    /// Stack of fail basic blocks for fallible regions (or-block / fn or).
+    pub(crate) fallible_fail_stack: Vec<inkwell::basic_block::BasicBlock<'ctx>>,
+    /// When set, `compile_return_value` wraps returns as `{payload, i1 ok}`.
+    pub(crate) propagating_fallible_ret: Option<action_frontend::ast::Type>,
     /// Builtin wrappers needed for :: function references (e.g., List::head)
     pub(crate) builtin_wrappers_needed: HashSet<String>,
     /// LLVM optimization level (0-3)
@@ -249,6 +257,10 @@ impl<'ctx> CodeGen<'ctx> {
             last_enum_inner: None,
             overloaded_functions: HashMap::new(),
             in_unsafe: false,
+            fallibility: action_frontend::typecheck::FallibilityContext::new(),
+            or_block_depth: 0,
+            fallible_fail_stack: Vec::new(),
+            propagating_fallible_ret: None,
             builtin_wrappers_needed: HashSet::new(),
             opt_level: 0,
             target_triple,
@@ -307,6 +319,7 @@ mod ufcs;
 mod builtin_dispatch;
 mod builtins;
 mod expr;
+mod fallible;
 mod for_loop;
 mod generics;
 mod gep_cursor;

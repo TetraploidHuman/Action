@@ -34,8 +34,10 @@ fun chatOnce(input: String, msgs: String) -> String = {
     val newMsgs = when msgs == "" { userMsg else msgs + ", " + userMsg }
     val body = "{\"model\": \"deepseek-chat\", \"messages\": [" + newMsgs + "]}"
     val headers = "Authorization: Bearer " + apiToken() + "\nContent-Type: application/json"
-    val resp = httpRequest("POST", "https://api.deepseek.com/chat/completions", headers, body)
-    extractContent(resp)
+    val resp = httpRequest("POST", "https://api.deepseek.com/chat/completions", headers, body) or {
+        { status = 0, body = "" }
+    }
+    extractContent(resp.body)
 }
 
 fun storeMessages(input: String, content: String, msgs: String) -> String = {
@@ -45,11 +47,7 @@ fun storeMessages(input: String, content: String, msgs: String) -> String = {
 }
 
 // Parse DeepSeek API response using the JSON library
-fun extractContent(raw: String) -> String = {
-    // Find first newline (HTTP response format: "STATUS\nBODY")
-    var nl = 0
-    for nl < len(raw) and substring(raw, nl, 1) != "\n" { nl = nl + 1 }
-    val jsonStr = substring(raw, nl + 1, len(raw) - nl - 1)
+fun extractContent(jsonStr: String) -> String = {
     val root = jsonParse(jsonStr)
     val choices = jsonGet(root, "choices")
     val first = jsonGetIdx(choices, 0)

@@ -1,8 +1,4 @@
-// Test readLine with no stdin (should return null / EOF)
+// Test readLine with no stdin (EOF -> fallback)
 fun main() {
-    val line = readLine()
-    when line {
-        null -> print("EOF")
-        else -> print(line)
-    }
+    print(readLine() or { "EOF" })
 }

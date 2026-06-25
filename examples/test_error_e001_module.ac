@@ -1,0 +1,5 @@
+import fallible_parse
+
+fun main() {
+    println(fallible_parse.parseLine("1"))
+}

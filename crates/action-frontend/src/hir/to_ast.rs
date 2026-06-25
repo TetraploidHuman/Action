@@ -62,6 +62,7 @@ impl HirStmt {
                 type_params,
                 is_single_expr,
                 is_test,
+                fn_or_fallback,
                 span,
             } => Stmt::Fun {
                 name: name.clone(),
@@ -71,6 +72,7 @@ impl HirStmt {
                 type_params: type_params.clone(),
                 is_single_expr: *is_single_expr,
                 is_test: *is_test,
+                fn_or_fallback: fn_or_fallback.as_ref().map(|e| e.to_expr()),
                 span: *span,
             },
             HirStmt::Expr { expr, span } => Stmt::Expr {

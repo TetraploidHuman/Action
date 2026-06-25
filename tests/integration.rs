@@ -645,16 +645,14 @@ fn test_option_returns() {
          indexOf('bc', 'abcde') != null: true\n\
          indexOf('bc', 'abcde') value: 1\n\
          indexOf('xyz', 'abcde') == null: true\n\
-         toInt('42') != null: true\n\
          toInt('42') value: 42\n\
-         toInt('abc') == null: true\n\
-         toInt(3.14) != null: true\n\
+         toInt('abc') fallback: -999\n\
+         toInt(3.14) value: 3\n\
          toFloat('3.14') != null: true\n\
          toFloat('abc') == null: true\n\
          toFloat(42) != null: true\n\
-         parseInt('123') != null: true\n\
          parseInt('123') value: 123\n\
-         parseInt('not_a_number') == null: true\n\
+         parseInt('not_a_number') fallback: -999\n\
          slice('hello world', 0, 5): hello\n\
          fromList([1,2,3]) contains 2: true\n\
          containsKey(m, 'a'): true\n\
@@ -847,9 +845,116 @@ fn test_nullable_method_call() {
     );
 }
 
+#[test]
+fn test_fallible_or_default() {
+    // R7 fallible or-block: toInt succeeds or falls back
+    assert_eq!(
+        run_example("test_fallible_or_default.ac"),
+        "42\n-1\n"
+    );
+}
+
+#[test]
+fn test_fallible_head_parseInt() {
+    assert_eq!(
+        run_example("test_fallible_head_parseInt.ac"),
+        "1\n-1\n99\n0\n"
+    );
+}
+
+#[test]
+fn test_fallible_fn_or() {
+    assert_eq!(
+        run_example("test_fallible_fn_or.ac"),
+        "42\n-1\n99\n0\n"
+    );
+}
+
+#[test]
+fn test_fallible_readLine() {
+    assert_eq!(run_example("test_fallible_readLine.ac"), "EOF\n");
+}
+
+#[test]
+fn test_fallible_json_parse() {
+    assert_eq!(run_example("test_fallible_json_parse.ac"), "5\n-1\n");
+}
+
+#[test]
+fn test_fallible_user_fn_propagate() {
+    assert_eq!(
+        run_example("test_fallible_user_fn_propagate.ac"),
+        "42\n-1\n"
+    );
+}
+
+#[test]
+fn test_fallible_generic() {
+    assert_eq!(
+        run_example("test_fallible_generic.ac"),
+        "42\n-1\n"
+    );
+}
+
+#[test]
+fn test_fallible_module() {
+    assert_eq!(
+        run_example("test_fallible_module.ac"),
+        "42\n-1\n"
+    );
+}
+
+#[test]
+fn test_error_e003_fn_or_return() {
+    assert_compile_error(
+        "test_error_e003_fn_or.ac",
+        "function or-block fallback type does not match return type",
+    );
+}
+
+#[test]
+fn test_error_e001_module_fallible() {
+    assert_compile_error(
+        "test_error_e001_module.ac",
+        "fallible call 'fallible_parse_parseLine' must be used with 'or { }'",
+    );
+}
+
+#[test]
+fn test_fallible_user_fn_chain() {
+    assert_eq!(
+        run_example("test_fallible_user_fn_chain.ac"),
+        "42\n-1\n"
+    );
+}
+
+#[test]
+fn test_error_e001_user_fn_fallible() {
+    assert_compile_error(
+        "test_error_e001_user_fn.ac",
+        "fallible call 'mustParse' must be used with 'or { }'",
+    );
+}
+
 // ============================================================
 // Compile-error tests — imports, generics, arity
 // ============================================================
+
+#[test]
+fn test_error_e001_fallible_needs_or() {
+    assert_compile_error(
+        "test_error_e001_parseInt.ac",
+        "fallible call 'parseInt' must be used with 'or { }'",
+    );
+}
+
+#[test]
+fn test_error_e002_or_type_mismatch() {
+    assert_compile_error(
+        "test_error_e002_or_type.ac",
+        "or-block fallback type does not match",
+    );
+}
 
 #[test]
 fn test_error_import_not_found() {

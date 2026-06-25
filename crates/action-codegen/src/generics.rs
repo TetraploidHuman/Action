@@ -87,6 +87,16 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.compile_monomorphized_fn_hir(stmt, &mangled_name, &type_map)?;
 
+        if self.in_fallible_region()
+            && self
+                .fallibility
+                .symbols
+                .get(name)
+                .is_some_and(|s| s.is_fallible)
+        {
+            return self.compile_fallible_user_call(&mangled_name, args, trailing);
+        }
+
         let fn_val = self
             .module
             .get_function(&mangled_name)
@@ -133,9 +143,11 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         let HirStmt::Fun {
+            name: orig_name,
             params,
             return_type,
             body,
+            fn_or_fallback,
             ..
         } = stmt
         else {
@@ -160,16 +172,38 @@ impl<'ctx> CodeGen<'ctx> {
             .iter()
             .map(|p| self.ast_type_to_llvm(p.ty.as_ref()))
             .collect();
-        let fn_type = self.build_fn_type(resolved_return.as_ref(), mangled_name, &param_llvm_tys);
+        let is_propagating = fn_or_fallback.is_none()
+            && resolved_return.is_some()
+            && self
+                .fallibility
+                .symbols
+                .get(orig_name)
+                .is_some_and(|s| s.is_fallible);
+        let fn_type = if is_propagating {
+            self.build_fallible_fn_type(resolved_return.as_ref().unwrap(), &param_llvm_tys)
+        } else {
+            self.build_fn_type(resolved_return.as_ref(), mangled_name, &param_llvm_tys)
+        };
         self.module.add_function(mangled_name, fn_type, None);
+        if is_propagating {
+            self.mono_cache
+                .fallible_user_fns
+                .insert(mangled_name.to_string());
+        }
+        if let Some(rt) = resolved_return.clone() {
+            self.mono_cache
+                .fun_return_types
+                .insert(mangled_name.to_string(), rt);
+        }
 
         // Compile the body with resolved types
         self.compile_fun_def_hir(
             mangled_name,
-            mangled_name,
+            orig_name,
             &resolved_params,
             resolved_return.as_ref(),
             body,
+            fn_or_fallback.as_ref(),
         )?;
 
         Ok(())

@@ -104,6 +104,11 @@ impl<'ctx> CodeGen<'ctx> {
         let _strlen_fn =
             self.module
                 .add_function("strlen", i64.fn_type(&[ptr.into()], false), None);
+        let _strchr_fn = self.module.add_function(
+            "strchr",
+            ptr.fn_type(&[ptr.into(), i8.into()], false),
+            None,
+        );
         let _memcpy_fn = self.module.add_function(
             "memcpy",
             ptr.fn_type(&[ptr.into(), ptr.into(), i64.into()], false),

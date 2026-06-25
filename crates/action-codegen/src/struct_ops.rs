@@ -381,7 +381,9 @@ impl<'ctx> CodeGen<'ctx> {
                 TypedValue::Nullable(ptr, ty) => self
                     .builder
                     .build_load(*ty, *ptr, "field_nullable")
-                    .map_err(llvm_err)?,
+                    .map_err(llvm_err)?
+                    .as_basic_value_enum(),
+                TypedValue::Str(ptr) => self.load_string(*ptr)?.into(),
                 _ => {
                     // If the struct field expects a nullable type but we have a scalar,
                     // wrap the scalar in a nullable struct {i8=0, scalar}

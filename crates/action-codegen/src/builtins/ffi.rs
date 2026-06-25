@@ -326,28 +326,135 @@ impl<'ctx> CodeGen<'ctx> {
             let _ = self.builder.build_call(free_fn, &[(*ptr).into()], "");
         }
 
-        // Convert result CString -> String (fromCString logic inline)
+        // Parse "STATUS\nBODY" -> HttpResponse { status: Int, body: String }
         let res_len_val = self.call_rt("strlen", &[result_ptr.into()])?;
         let res_len = res_len_val
             .try_as_basic_value()
             .basic()
             .ok_or("strlen failed")?
             .into_int_value();
-        let str_struct =
-            self.call_rt("action_string_create", &[result_ptr.into(), res_len.into()])?;
-        let str_val = str_struct
+
+        let strchr_fn = self
+            .module
+            .get_function("strchr")
+            .ok_or("strchr not found")?;
+        let nl_byte = self.context.i8_type().const_int(b'\n' as u64, false);
+        let nl_call = self
+            .builder
+            .build_call(strchr_fn, &[result_ptr.into(), nl_byte.into()], "nl")
+            .map_err(llvm_err)?;
+        let nl_ptr = nl_call
             .try_as_basic_value()
             .basic()
-            .ok_or("string_create failed")?;
-        let alloca = self
+            .ok_or("strchr failed")?
+            .into_pointer_value();
+
+        let null_ptr = self.ptr_ty().const_null();
+        let has_nl = self
             .builder
-            .build_alloca(self.string_type, "http_resp")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(alloca, str_val)
+            .build_int_compare(IntPredicate::NE, nl_ptr, null_ptr, "has_nl")
             .map_err(llvm_err)?;
 
-        // Free C result string via action_http_free
+        let status_line_len_raw = self
+            .builder
+            .build_ptr_diff(
+                self.context.i8_type(),
+                nl_ptr,
+                result_ptr,
+                "status_len",
+            )
+            .map_err(llvm_err)?;
+        let status_line_len = self
+            .builder
+            .build_select(has_nl, status_line_len_raw, res_len, "status_line_len")
+            .map_err(llvm_err)?
+            .into_int_value();
+
+        let status_sv = self.call_rt(
+            "action_string_create",
+            &[result_ptr.into(), status_line_len.into()],
+        )?;
+        let status_st = status_sv
+            .try_as_basic_value()
+            .basic()
+            .ok_or("status string failed")?
+            .into_struct_value();
+        let parse_res = self.call_rt("action_parse_int", &[status_st.into()])?;
+        let parse_st = parse_res
+            .try_as_basic_value()
+            .basic()
+            .ok_or("parse failed")?
+            .into_struct_value();
+        let status_val = self
+            .builder
+            .build_extract_value(parse_st, 0, "status")
+            .map_err(llvm_err)?
+            .into_int_value();
+
+        let one = self.i64_ty().const_int(1, false);
+        let body_start_gep = unsafe {
+            self.builder
+                .build_gep(self.context.i8_type(), nl_ptr, &[one], "body_start")
+                .map_err(llvm_err)?
+        };
+        let body_start = self
+            .builder
+            .build_select(has_nl, body_start_gep, result_ptr, "body_ptr")
+            .map_err(llvm_err)?;
+        let skip = self
+            .builder
+            .build_int_add(status_line_len, one, "skip")
+            .map_err(llvm_err)?;
+        let body_len_raw = self
+            .builder
+            .build_int_sub(res_len, skip, "body_len")
+            .map_err(llvm_err)?;
+        let body_len = self
+            .builder
+            .build_select(has_nl, body_len_raw, res_len, "body_len_safe")
+            .map_err(llvm_err)?;
+
+        let body_sv = self.call_rt(
+            "action_string_create",
+            &[body_start.into(), body_len.into()],
+        )?;
+        let body_st = body_sv
+            .try_as_basic_value()
+            .basic()
+            .ok_or("body string failed")?
+            .into_struct_value();
+        let body_alloca = self
+            .builder
+            .build_alloca(self.string_type, "http_body")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(body_alloca, body_st)
+            .map_err(llvm_err)?;
+
+        let http_resp_ty = self
+            .type_layout
+            .named_structs
+            .get("HttpResponse")
+            .copied()
+            .ok_or("HttpResponse type not registered")?;
+        let resp_undef = http_resp_ty.get_undef();
+        let r1 = self
+            .builder
+            .build_insert_value(resp_undef, status_val, 0, "hr_status")
+            .map_err(llvm_err)?;
+        let loaded_body = self.load_string(body_alloca)?;
+        let r2 = self
+            .builder
+            .build_insert_value(r1, loaded_body, 1, "hr_body")
+            .map_err(llvm_err)?;
+        let resp_alloca = self
+            .builder
+            .build_alloca(http_resp_ty, "http_response")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(resp_alloca, r2)
+            .map_err(llvm_err)?;
+
         let http_free_fn = self
             .module
             .get_function("action_http_free")
@@ -356,6 +463,6 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_call(http_free_fn, &[result_ptr.into()], "");
 
-        Ok(TypedValue::Str(alloca))
+        Ok(TypedValue::Struct(resp_alloca, http_resp_ty))
     }
 }

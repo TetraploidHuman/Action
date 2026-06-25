@@ -1,0 +1,14 @@
+fun parseLine(s: String) -> Int {
+    parseInt(s)
+} or { -1 }
+
+fun parseBad(s: String) -> Int {
+    parseInt(s)
+} or { 0 }
+
+fun main() {
+    println(parseLine("42"))
+    println(parseLine("nope"))
+    println(parseBad("99"))
+    println(parseBad("x"))
+}

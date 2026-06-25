@@ -756,6 +756,8 @@ pub enum Stmt {
         is_single_expr: bool,
         /// Whether this function is a test function (@test)
         is_test: bool,
+        /// Function-level fallback: `fun f() { body } or { default }`
+        fn_or_fallback: Option<Expr>,
         span: Span,
     },
     /// Expression statement

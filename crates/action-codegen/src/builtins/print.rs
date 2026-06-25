@@ -20,7 +20,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
         let v = self.compile_call_arg(args[0])?;
         match &v {
-            TypedValue::Int(_) => {
+            TypedValue::Int(_) | TypedValue::FallibleInt { .. } => {
                 if let Some(bv) = v.to_bv() {
                     let _ = self.call_rt("action_print_int", &[bv.into()]);
                 }
@@ -35,7 +35,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let _ = self.call_rt("action_print_bool", &[bv.into()]);
                 }
             }
-            TypedValue::Str(ptr) => {
+            TypedValue::Str(ptr) | TypedValue::FallibleStr { val: ptr, .. } => {
                 let _ = self.call_rt_with_str("action_print_string", *ptr);
             }
             TypedValue::Fn(_, _) | TypedValue::Closure { .. } => {
@@ -92,7 +92,18 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                 }
             }
-            TypedValue::Struct(_, _) => {
+            TypedValue::FalliblePtr { .. } => {
+                if let Some(bv) = v.to_bv() {
+                    if let BasicValueEnum::PointerValue(p) = bv {
+                        let int_val = self
+                            .builder
+                            .build_ptr_to_int(p, self.i64_ty(), "ptr_as_int")
+                            .map_err(llvm_err)?;
+                        let _ = self.call_rt("action_print_int", &[int_val.into()]);
+                    }
+                }
+            }
+            TypedValue::Struct(_, _) | TypedValue::FallibleStruct { .. } => {
                 let _ = self.call_rt("action_print_struct", &[]);
             }
             TypedValue::Enum(ptr, _, inner_type, _) => {

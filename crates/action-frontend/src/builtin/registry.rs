@@ -25,6 +25,7 @@ pub struct BuiltinDef {
     pub ufcs_receiver: UfcsReceiverKind,
     pub readonly: bool,
     pub supports_trailing_lambda: bool,
+    pub fallible: bool,
 }
 
 fn int() -> Type {
@@ -66,6 +67,12 @@ fn task_int() -> Type {
 fn stream_int() -> Type {
     Type::Stream(Box::new(int()))
 }
+fn ptr_json_node() -> Type {
+    Type::Ptr(Box::new(Type::Named("JsonNode".into())))
+}
+fn http_response_ty() -> Type {
+    Type::Named("HttpResponse".into())
+}
 
 fn build_registry() -> Vec<BuiltinDef> {
     vec![
@@ -76,6 +83,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Collection,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "isEmpty",
@@ -84,6 +92,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Collection,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "map",
@@ -92,6 +101,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: false,
             supports_trailing_lambda: true,
+            fallible: false,
         },
         BuiltinDef {
             name: "filter",
@@ -100,6 +110,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: false,
             supports_trailing_lambda: true,
+            fallible: false,
         },
         BuiltinDef {
             name: "fold",
@@ -108,6 +119,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: false,
             supports_trailing_lambda: true,
+            fallible: false,
         },
         BuiltinDef {
             name: "append",
@@ -116,6 +128,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: false,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "prepend",
@@ -124,6 +137,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: false,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "get",
@@ -132,14 +146,16 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "head",
             param_types: vec![list()],
-            return_type: nullable_int(),
+            return_type: int(),
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: true,
         },
         BuiltinDef {
             name: "last",
@@ -148,6 +164,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "contains",
@@ -156,6 +173,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "take",
@@ -164,6 +182,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: false,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "drop",
@@ -172,6 +191,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: false,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "reverse",
@@ -180,6 +200,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "concat",
@@ -188,6 +209,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Global,
             readonly: false,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "flatten",
@@ -196,6 +218,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: false,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "sum",
@@ -204,6 +227,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "print",
@@ -212,6 +236,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Global,
             readonly: false,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "println",
@@ -220,6 +245,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Global,
             readonly: false,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "toString",
@@ -228,6 +254,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Global,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         // Callback-based list builtins (hot path; dispatch via builtin_callback_list)
         BuiltinDef {
@@ -237,6 +264,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: true,
             supports_trailing_lambda: true,
+            fallible: false,
         },
         BuiltinDef {
             name: "all",
@@ -245,6 +273,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: true,
             supports_trailing_lambda: true,
+            fallible: false,
         },
         BuiltinDef {
             name: "indexOf",
@@ -253,6 +282,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "tail",
@@ -261,6 +291,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "remove",
@@ -269,6 +300,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: false,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "insert",
@@ -277,6 +309,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: false,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "withIndex",
@@ -285,6 +318,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         // --- stdlib (global) ---
         BuiltinDef {
@@ -294,6 +328,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Global,
             readonly: false,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "close",
@@ -302,6 +337,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Global,
             readonly: false,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "cancel",
@@ -310,6 +346,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Global,
             readonly: false,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "toCString",
@@ -318,6 +355,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Global,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "fromCString",
@@ -326,22 +364,25 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Global,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "readLine",
             param_types: vec![],
-            return_type: nullable_string(),
+            return_type: string(),
             ufcs_receiver: UfcsReceiverKind::Global,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: true,
         },
         BuiltinDef {
             name: "httpRequest",
-            param_types: vec![string(), string()],
-            return_type: string(),
+            param_types: vec![string(), string(), string(), string()],
+            return_type: http_response_ty(),
             ufcs_receiver: UfcsReceiverKind::Global,
             readonly: false,
             supports_trailing_lambda: false,
+            fallible: true,
         },
         BuiltinDef {
             name: "jsonEscape",
@@ -350,6 +391,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Global,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "unwrapOr",
@@ -358,6 +400,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Global,
             readonly: false,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "substring",
@@ -366,6 +409,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Global,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "str",
@@ -374,6 +418,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Global,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "toUpper",
@@ -382,6 +427,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Global,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "toLower",
@@ -390,6 +436,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Global,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "receive",
@@ -398,6 +445,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Global,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "wait",
@@ -406,6 +454,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Global,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "is_done",
@@ -414,6 +463,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Global,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "is_cancelled",
@@ -422,6 +472,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Global,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "withTimeout",
@@ -430,6 +481,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Global,
             readonly: false,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "__list",
@@ -438,6 +490,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Global,
             readonly: false,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "coroutineScope",
@@ -446,6 +499,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Global,
             readonly: false,
             supports_trailing_lambda: true,
+            fallible: false,
         },
         BuiltinDef {
             name: "find",
@@ -454,6 +508,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: true,
             supports_trailing_lambda: true,
+            fallible: false,
         },
         BuiltinDef {
             name: "findIndex",
@@ -462,6 +517,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: true,
             supports_trailing_lambda: true,
+            fallible: false,
         },
         BuiltinDef {
             name: "reduce",
@@ -470,6 +526,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: true,
             supports_trailing_lambda: true,
+            fallible: false,
         },
         BuiltinDef {
             name: "foldRight",
@@ -478,6 +535,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: false,
             supports_trailing_lambda: true,
+            fallible: false,
         },
         BuiltinDef {
             name: "takeWhile",
@@ -486,6 +544,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: false,
             supports_trailing_lambda: true,
+            fallible: false,
         },
         BuiltinDef {
             name: "dropWhile",
@@ -494,6 +553,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: false,
             supports_trailing_lambda: true,
+            fallible: false,
         },
         BuiltinDef {
             name: "sortedBy",
@@ -502,6 +562,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::List,
             readonly: false,
             supports_trailing_lambda: true,
+            fallible: false,
         },
         // --- Map UFCS (ufcs-only) ---
         BuiltinDef {
@@ -511,6 +572,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Map,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "insert",
@@ -519,6 +581,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Map,
             readonly: false,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "remove",
@@ -527,6 +590,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Map,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "get",
@@ -535,6 +599,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Map,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         // --- Set UFCS (ufcs-only) ---
         BuiltinDef {
@@ -544,6 +609,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Set,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "insert",
@@ -552,6 +618,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Set,
             readonly: false,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "remove",
@@ -560,6 +627,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Set,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         // --- Stream UFCS (ufcs-only) ---
         BuiltinDef {
@@ -569,6 +637,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Stream,
             readonly: false,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "receive",
@@ -577,6 +646,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Stream,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "close",
@@ -585,6 +655,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Stream,
             readonly: false,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         // --- Task UFCS (ufcs-only) ---
         BuiltinDef {
@@ -594,6 +665,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Task,
             readonly: false,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "is_done",
@@ -602,6 +674,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Task,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "is_cancelled",
@@ -610,6 +683,7 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Task,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
         },
         BuiltinDef {
             name: "wait",
@@ -618,6 +692,53 @@ fn build_registry() -> Vec<BuiltinDef> {
             ufcs_receiver: UfcsReceiverKind::Task,
             readonly: true,
             supports_trailing_lambda: false,
+            fallible: false,
+        },
+        // --- Fallible builtins (R7) ---
+        BuiltinDef {
+            name: "toInt",
+            param_types: vec![string()],
+            return_type: int(),
+            ufcs_receiver: UfcsReceiverKind::String,
+            readonly: true,
+            supports_trailing_lambda: false,
+            fallible: true,
+        },
+        BuiltinDef {
+            name: "parseInt",
+            param_types: vec![string()],
+            return_type: int(),
+            ufcs_receiver: UfcsReceiverKind::Global,
+            readonly: true,
+            supports_trailing_lambda: false,
+            fallible: true,
+        },
+        BuiltinDef {
+            name: "__jsonParse",
+            param_types: vec![cstring()],
+            return_type: ptr_json_node(),
+            ufcs_receiver: UfcsReceiverKind::Global,
+            readonly: true,
+            supports_trailing_lambda: false,
+            fallible: true,
+        },
+        BuiltinDef {
+            name: "__jsonGet",
+            param_types: vec![ptr_json_node(), cstring()],
+            return_type: ptr_json_node(),
+            ufcs_receiver: UfcsReceiverKind::Global,
+            readonly: true,
+            supports_trailing_lambda: false,
+            fallible: true,
+        },
+        BuiltinDef {
+            name: "__jsonGetIdx",
+            param_types: vec![ptr_json_node(), int()],
+            return_type: ptr_json_node(),
+            ufcs_receiver: UfcsReceiverKind::Global,
+            readonly: true,
+            supports_trailing_lambda: false,
+            fallible: true,
         },
     ]
 }

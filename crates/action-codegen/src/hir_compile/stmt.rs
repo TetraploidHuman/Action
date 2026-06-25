@@ -483,6 +483,7 @@ impl<'ctx> CodeGen<'ctx> {
                 type_params,
                 is_single_expr,
                 is_test,
+                fn_or_fallback,
                 span,
             } => HirStmt::Fun {
                 name: format!("{}{}", prefix, name),
@@ -492,6 +493,7 @@ impl<'ctx> CodeGen<'ctx> {
                 type_params: type_params.clone(),
                 is_single_expr: *is_single_expr,
                 is_test: *is_test,
+                fn_or_fallback: fn_or_fallback.clone(),
                 span: *span,
             },
             HirStmt::Const {

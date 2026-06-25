@@ -437,15 +437,17 @@ exists("/tmp/test.txt")                    // true
 
 ### HTTP 请求
 
+`httpRequest` 返回 `HttpResponse { status, body }`（fallible；传输失败时 `status == 0`）。须配合 `or {}`：
+
 ```action
 val resp = httpRequest(
     "GET",
     "https://httpbin.org/get",
     "Accept: application/json",
     ""
-)
-println(resp)
-// 返回 "状态码\n响应体"
+) or { { status = 0, body = "" } }
+println(resp.status)
+println(resp.body)
 ```
 
 ### JSON 支持
@@ -470,7 +472,7 @@ jsonFree(root)
 ```action
 val f = toFloat(42)              // int → float: 42.0
 val i = toInt(3.14)              // float → int: 3
-"42".toInt()                     // Int? = 42（可空，解析失败为 null）
+"42".toInt()                     // 须用 or {}：toInt/parseInt 为 fallible
 "3.14".toFloat()                 // float? = 3.14
 ```
 

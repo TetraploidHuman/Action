@@ -1,0 +1,4 @@
+fun main() {
+    val x = toInt("abc") or { "oops" }
+    println(x)
+}

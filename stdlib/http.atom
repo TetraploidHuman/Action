@@ -1,7 +1,7 @@
 // Action HTTP Library (stdlib/http.atom)
 //
 // `httpRequest` is a compiler builtin — call it directly with no import:
-//   val resp = httpRequest("GET", url, headers, body)
+//   val resp = httpRequest("GET", url, headers, body) or { { status = 0, body = "" } }
 //
 // This module adds convenience wrappers. Import selectively or as a module:
 //   import http.{httpGet, httpPost}
@@ -10,20 +10,20 @@
 //
 // Uses system curl for HTTP/HTTPS requests.
 
-// httpRequest(method: String, url: String, headers: String, body: String) -> String
-// Makes an HTTP request. Returns "STATUS_CODE\nRESPONSE_BODY".
-// On error, returns "0\nError message".
-// URL validation blocks private/internal IP addresses (best-effort SSRF prevention).
-// Body can be empty string for GET/HEAD requests.
-external fun httpRequest(method: String, url: String, headers: String, body: String) -> String
+// httpRequest(method, url, headers, body) -> HttpResponse (fallible)
+// Returns HttpResponse { status, body }. Transport/connection errors fail (status == 0).
+// Must be used with `or { }` or function-level `or { }` fallback.
+external fun httpRequest(method: String, url: String, headers: String, body: String) -> HttpResponse
 
-// httpGet(url: String) -> String
-// Convenience: HTTP GET request with empty headers and body.
-fun httpGet(url: String) -> String = httpRequest("GET", url, "", "")
+// httpGet(url) -> HttpResponse
+fun httpGet(url: String) -> HttpResponse {
+    httpRequest("GET", url, "", "")
+} or { { status = 0, body = "" } }
 
-// httpPost(url: String, body: String) -> String
-// Convenience: HTTP POST request with JSON content-type.
-fun httpPost(url: String, body: String) -> String = httpRequest("POST", url, "Content-Type: application/json\n", body)
+// httpPost(url, body) -> HttpResponse
+fun httpPost(url: String, body: String) -> HttpResponse {
+    httpRequest("POST", url, "Content-Type: application/json\n", body)
+} or { { status = 0, body = "" } }
 
 // ---- Networking Utilities ----
 

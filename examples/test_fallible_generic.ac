@@ -1,0 +1,8 @@
+fun <T> pickParse(s: String) -> Int {
+    parseInt(s)
+}
+
+fun main() {
+    println(pickParse("42") or { -1 })
+    println(pickParse("x") or { -1 })
+}

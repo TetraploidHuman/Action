@@ -21,6 +21,20 @@ pub fn normalize_type_name(name: &str) -> &str {
     }
 }
 
+/// `Ptr[T]` surface syntax is `Type::Generic(Named("Ptr"), [T])`; registry uses `Type::Ptr(T)`.
+fn ptr_pointee(ty: &Type) -> Option<&Type> {
+    match ty {
+        Type::Ptr(inner) => Some(inner.as_ref()),
+        Type::Generic(base, args)
+            if matches!(base.as_ref(), Type::Named(n) if n == "Ptr")
+                && args.len() == 1 =>
+        {
+            Some(&args[0])
+        }
+        _ => None,
+    }
+}
+
 /// Check if two types are structurally compatible (no type-var binding).
 pub fn types_compatible(declared: &Type, inferred: &Type) -> bool {
     match (declared, inferred) {
@@ -80,7 +94,10 @@ pub fn types_compatible(declared: &Type, inferred: &Type) -> bool {
             types_compatible(inner, inferred)
         }
         (_, Type::Nullable(_)) => false,
-        _ => false,
+        _ => match (ptr_pointee(declared), ptr_pointee(inferred)) {
+            (Some(a), Some(b)) => types_compatible(a, b),
+            _ => false,
+        },
     }
 }
 

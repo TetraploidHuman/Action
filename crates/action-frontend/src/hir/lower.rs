@@ -76,6 +76,7 @@ impl<'a> Lowerer<'a> {
                 type_params,
                 is_single_expr,
                 is_test,
+                fn_or_fallback,
                 span,
             } => HirStmt::Fun {
                 name: name.clone(),
@@ -85,6 +86,7 @@ impl<'a> Lowerer<'a> {
                 type_params: type_params.clone(),
                 is_single_expr: *is_single_expr,
                 is_test: *is_test,
+                fn_or_fallback: fn_or_fallback.as_ref().map(|e| self.lower_expr(e)),
                 span: *span,
             },
             Stmt::Expr { expr, span } => HirStmt::Expr {

@@ -2,7 +2,10 @@
 
 mod check_stmt;
 mod expr_infer;
+mod fallibility;
 mod inference;
+
+pub use fallibility::FallibilityContext;
 
 pub use crate::type_registry::{EnumInfo, EnumVariantInfo, StructInfo, TypeRegistry};
 
@@ -22,6 +25,7 @@ pub struct TypeChecker {
     pub(crate) not_null_set: RefCell<HashSet<String>>,
     pub(crate) generic_funs: HashMap<String, Stmt>,
     pub(crate) mutable_vars: HashSet<String>,
+    pub fallibility: FallibilityContext,
 }
 
 impl TypeChecker {
@@ -33,6 +37,7 @@ impl TypeChecker {
             not_null_set: RefCell::new(HashSet::new()),
             generic_funs: HashMap::new(),
             mutable_vars: HashSet::new(),
+            fallibility: FallibilityContext::new(),
         }
     }
 
@@ -275,6 +280,28 @@ impl TypeChecker {
     /// Run all checks on the program. Returns a list of errors.
     pub fn check(&mut self, program: &Program) -> Vec<CompilerError> {
         self.build_type_env(program);
+
+        // Fixpoint: infer user-function fallibility before E001 checks (supports mutual recursion).
+        loop {
+            let before = self.fallibility.symbols.clone();
+            for stmt in &program.stmts {
+                if let Stmt::Fun {
+                    name,
+                    return_type,
+                    body,
+                    fn_or_fallback,
+                    ..
+                } = stmt
+                {
+                    self.fallibility
+                        .analyze_function(name, return_type, fn_or_fallback, body);
+                }
+            }
+            if self.fallibility.symbols == before {
+                break;
+            }
+        }
+
         let mut errors = Vec::new();
 
         for stmt in &program.stmts {
@@ -286,6 +313,7 @@ impl TypeChecker {
                     return_type,
                     body,
                     type_params,
+                    fn_or_fallback,
                     ..
                 } => {
                     // Temporarily add function parameters to the type environment.
@@ -303,7 +331,35 @@ impl TypeChecker {
                         saved_tps.push((tp.clone(), old));
                     }
 
+                    if let Some(fb) = fn_or_fallback {
+                        if let Some(ret) = return_type {
+                            if let Some(err) = self.fallibility.check_r3_fn_or_return_match(
+                                ret,
+                                &self.try_infer_expr_type(fb),
+                                fb.span,
+                            ) {
+                                errors.push(err);
+                            }
+                        }
+                    }
+                    let had_fn_or = self.fallibility.fn_or_fallback;
+                    if fn_or_fallback.is_some() {
+                        self.fallibility.fn_or_fallback = true;
+                    }
+                    let allows_propagate = fn_or_fallback.is_none()
+                        && name != "main"
+                        && self
+                            .fallibility
+                            .symbols
+                            .get(name)
+                            .is_some_and(|s| s.is_fallible);
+                    let saved_allow = self.fallibility.allow_bare_fallible_in_fn;
+                    self.fallibility.allow_bare_fallible_in_fn = allows_propagate;
                     self.collect_expr_errors(body, &mut errors);
+                    self.fallibility.allow_bare_fallible_in_fn = saved_allow;
+                    self.fallibility.fn_or_fallback = had_fn_or;
+                    self.fallibility
+                        .analyze_function(name, return_type, fn_or_fallback, body);
 
                     // HM: patch unannotated param types in type_env from body usage
                     let resolved_param_tys: Vec<Type> = params

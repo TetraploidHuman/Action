@@ -15,6 +15,7 @@ impl<'ctx> CodeGen<'ctx> {
             checked.verify_hir_round_trip(),
             "HIR must round-trip to AST in debug builds"
         );
+        self.fallibility = checked.fallibility.clone();
         self.compile_hir(&checked.hir)
     }
 }

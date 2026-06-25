@@ -224,6 +224,9 @@ impl<'ctx> CodeGen<'ctx> {
             self.rc_inc_typed_value(&val)?;
         }
         self.emit_scope_cleanup()?;
+        if let Some(ret_ty) = self.propagating_fallible_ret.clone() {
+            return self.build_fallible_ok_return(&val, &ret_ty);
+        }
         if let Some(bv) = val.to_bv() {
             let _ = self.builder.build_return(Some(&bv));
             return Ok(());

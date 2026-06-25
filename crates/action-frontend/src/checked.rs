@@ -3,6 +3,7 @@
 use crate::ast::Program;
 use crate::hir::{lower_program, HirModule};
 use crate::registry::TypeRegistry;
+use crate::typecheck::FallibilityContext;
 use crate::typecheck::TypeChecker;
 
 /// Result of frontend compilation after successful type-checking.
@@ -11,6 +12,7 @@ pub struct CheckedProgram {
     pub program: Program,
     pub registry: TypeRegistry,
     pub hir: HirModule,
+    pub fallibility: FallibilityContext,
 }
 
 impl CheckedProgram {
@@ -21,6 +23,7 @@ impl CheckedProgram {
             program,
             registry,
             hir,
+            fallibility: checker.fallibility.clone(),
         }
     }
 

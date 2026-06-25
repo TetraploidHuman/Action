@@ -1,0 +1,12 @@
+fun inner(s: String) -> Int {
+    parseInt(s)
+}
+
+fun outer(s: String) -> Int {
+    inner(s)
+}
+
+fun main() {
+    println(outer("42") or { -1 })
+    println(outer("nope") or { -1 })
+}

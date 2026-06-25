@@ -55,6 +55,20 @@ pub fn builtin_types(program: &Program) -> Vec<Stmt> {
             span: Span::default(),
         });
     }
+    let has_http_response = program.stmts.iter().any(|s| {
+        matches!(s, Stmt::TypeAlias { name, .. } if name == "HttpResponse")
+    });
+    if !has_http_response {
+        builtins.push(Stmt::TypeAlias {
+            name: "HttpResponse".into(),
+            type_params: vec![],
+            definition: Type::Struct(vec![
+                ("status".into(), Type::Named("Int".into())),
+                ("body".into(), Type::Named("String".into())),
+            ]),
+            span: Span::default(),
+        });
+    }
     builtins
 }
 

@@ -9,6 +9,7 @@ pub mod config;
 pub mod error;
 pub mod exhaustive;
 pub mod fmt;
+pub mod function_symbol;
 pub mod hir;
 pub mod lexer;
 pub mod loader;

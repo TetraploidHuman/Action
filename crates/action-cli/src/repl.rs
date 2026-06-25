@@ -114,6 +114,7 @@ pub fn eval_repl_line(
                 type_params: vec![],
                 is_single_expr: true,
                 is_test: false,
+                fn_or_fallback: None,
                 span: Span::default(),
             }],
         };

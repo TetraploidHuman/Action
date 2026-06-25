@@ -3,6 +3,7 @@
 mod collection;
 mod datetime;
 mod io;
+mod json;
 mod math;
 mod string;
 
@@ -741,6 +742,7 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 self.builtin_deref_call_arg(args[0])
             }
+            "__jsonParse" | "__jsonGet" | "__jsonGetIdx" => self.builtin_stdlib_json(name, args),
             "ping" => {
                 let result = self.call_rt("action_test_ping", &[])?;
                 let val = result

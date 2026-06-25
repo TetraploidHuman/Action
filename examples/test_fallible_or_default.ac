@@ -1,0 +1,4 @@
+fun main() {
+    println(toInt("42") or { -1 })
+    println(toInt("nope") or { -1 })
+}

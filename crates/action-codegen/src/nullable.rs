@@ -178,6 +178,10 @@ impl<'ctx> CodeGen<'ctx> {
             TypedValue::FileHandle(_) => ValKind::FileHandle,
             TypedValue::Nullable(..) => ValKind::Nullable,
             TypedValue::Unit => ValKind::Unit,
+            TypedValue::FallibleInt { .. } => ValKind::Int,
+            TypedValue::FalliblePtr { .. } => ValKind::Ptr,
+            TypedValue::FallibleStr { .. } => ValKind::Str,
+            TypedValue::FallibleStruct { .. } => ValKind::Struct,
         };
 
         // inner_bt is the full nullable struct type {i8, T} — use the actual
@@ -352,6 +356,21 @@ impl<'ctx> CodeGen<'ctx> {
     /// If nullable is null (flag=1), return fallback; otherwise return inner value
 
     pub(super) fn compile_or_block_hir(
+        &mut self,
+        nullable: &action_frontend::hir::HirExpr,
+        fallback: &action_frontend::hir::HirExpr,
+    ) -> Result<TypedValue<'ctx>, String> {
+        self.or_block_depth += 1;
+        let result = if let Some(v) = self.try_compile_fallible_lhs_for_or(nullable)? {
+            self.compile_or_block_fallible_from_ok(fallback, v)
+        } else {
+            self.compile_or_block_hir_nullable_only(nullable, fallback)
+        };
+        self.or_block_depth -= 1;
+        result
+    }
+
+    pub(super) fn compile_or_block_hir_nullable_only(
         &mut self,
         nullable: &action_frontend::hir::HirExpr,
         fallback: &action_frontend::hir::HirExpr,

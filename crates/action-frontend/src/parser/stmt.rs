@@ -292,10 +292,7 @@ impl Parser {
         // Restore previous type params
         self.current_type_params = saved_type_params;
 
-        // Body
-        // When = is followed by {, treat it as a block body (same as without =)
-        // so that function parameters remain in scope. Without this, { } in
-        // expression position becomes a zero-param lambda which opens a new scope.
+        // Body: `fun f() { ... }` or `fun f() = expr`
         let (body, is_single_expr) = if self.skip(TokenKind::Eq) {
             if self.current_kind() == TokenKind::LBrace {
                 (self.parse_block_expr()?, false)
@@ -306,6 +303,13 @@ impl Parser {
             (self.parse_block_expr()?, false)
         };
 
+        // Function-level or-block: `fun f() { body } or { fallback }`
+        let fn_or_fallback = if !is_single_expr && self.skip(TokenKind::Or) {
+            Some(self.parse_fn_or_fallback()?)
+        } else {
+            None
+        };
+
         Ok(Stmt::Fun {
             name,
             params,
@@ -314,8 +318,23 @@ impl Parser {
             type_params,
             is_single_expr,
             is_test,
+            fn_or_fallback,
             span: start_span,
         })
+    }
+
+    /// Parse `or { fallback }` after a function block body.
+    fn parse_fn_or_fallback(&mut self) -> Result<Expr, ParseError> {
+        self.expect(TokenKind::LBrace)?;
+        if self.current_kind() == TokenKind::LBrace {
+            let inner = self.parse_block_expr()?;
+            self.expect(TokenKind::RBrace)?;
+            Ok(inner)
+        } else {
+            let e = self.parse_expr()?;
+            self.expect(TokenKind::RBrace)?;
+            Ok(e)
+        }
     }
 
     pub(crate) fn parse_return(&mut self) -> Result<Stmt, ParseError> {

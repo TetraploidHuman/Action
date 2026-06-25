@@ -1,0 +1,8 @@
+fun mustParse(s: String) -> Int {
+    parseInt(s)
+}
+
+fun main() {
+    println(mustParse("42") or { -1 })
+    println(mustParse("nope") or { -1 })
+}

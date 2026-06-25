@@ -38,9 +38,8 @@ external fun fileTell(file: FileHandle) -> Int
 // Reads entire text file. Returns empty string on error.
 external fun readFile(path: String) -> String
 
-// readLine() -> String?
-// Reads one line from stdin. Returns null on EOF.
-external fun readLine() -> String?
+// readLine() -> String (fallible; use `or { default }` on EOF)
+external fun readLine() -> String
 
 // fileReadLine(file: FileHandle) -> String?
 // Reads one line from file. Returns null on EOF.

@@ -1,7 +1,9 @@
 fun main() {
     println("Testing httpRequest...")
-    val response = httpRequest("GET", "https://httpbin.org/get", "", "")
-    println("Response:")
-    println(response)
+    val response = httpRequest("GET", "https://httpbin.org/get", "", "") or {
+        { status = 0, body = "request failed" }
+    }
+    println("Response status:")
+    println(response.status)
     println("Done")
 }

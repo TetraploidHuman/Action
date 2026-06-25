@@ -1,0 +1,10 @@
+external type JsonNode
+external fun action_json_type(node: Ptr[JsonNode]) -> Int
+external fun action_json_parse(s: CString) -> Ptr[JsonNode]
+
+fun main() {
+    val ok = __jsonParse(toCString("{\"n\":7}")) or { action_json_parse(toCString("{}")) }
+    println(action_json_type(ok))
+    val bad = __jsonParse(toCString("not json")) or { action_json_parse(toCString("not json")) }
+    println(action_json_type(bad))
+}

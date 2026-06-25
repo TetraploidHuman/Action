@@ -436,6 +436,18 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    pub(super) fn build_fallible_fn_type(
+        &mut self,
+        ret_ast: &Type,
+        param_tys: &[BasicMetadataTypeEnum<'ctx>],
+    ) -> inkwell::types::FunctionType<'ctx> {
+        let payload = self.ast_type_to_basic_type(ret_ast);
+        let st = self
+            .context
+            .struct_type(&[payload, self.bool_ty().into()], false);
+        st.fn_type(param_tys, false)
+    }
+
     /// Mangle a function name by appending param types: add(Int,Float) → add_Int_Float
     pub(super) fn mangle_name(name: &str, param_types: &[Type]) -> String {
         action_frontend::types::mangle_name(name, param_types)
@@ -474,6 +486,10 @@ impl<'ctx> CodeGen<'ctx> {
             TypedValue::FileHandle(_) => "FileHandle".to_string(),
             TypedValue::Nullable(_, _) => "Nullable".to_string(),
             TypedValue::Unit => "Unit".to_string(),
+            TypedValue::FallibleInt { .. } => "Int".to_string(),
+            TypedValue::FalliblePtr { .. } => "Ptr".to_string(),
+            TypedValue::FallibleStr { .. } => "String".to_string(),
+            TypedValue::FallibleStruct { .. } => "Struct".to_string(),
         }
     }
     // ---- TypedValue helpers ----
@@ -499,6 +515,10 @@ impl<'ctx> TypedValue<'ctx> {
             TypedValue::List(_) | TypedValue::Map(_) | TypedValue::Set(_) => cg.list_type.into(),
             TypedValue::Task(_) | TypedValue::Stream(_) => cg.ptr_ty().into(),
             TypedValue::LazyList(_) => cg.lazylist_type.into(),
+            TypedValue::FallibleInt { .. } => cg.i64_ty().into(),
+            TypedValue::FalliblePtr { .. } => cg.ptr_ty().into(),
+            TypedValue::FallibleStr { .. } => cg.string_type.into(),
+            TypedValue::FallibleStruct { ty, .. } => (*ty).into(),
         }
     }
 
@@ -523,6 +543,10 @@ impl<'ctx> TypedValue<'ctx> {
             TypedValue::Unit | TypedValue::Fn(_, _) | TypedValue::Closure { .. } => {
                 cg.ptr_ty().into()
             }
+            TypedValue::FallibleInt { .. } => cg.i64_ty().into(),
+            TypedValue::FalliblePtr { .. } => cg.ptr_ty().into(),
+            TypedValue::FallibleStr { .. } => cg.string_type.into(),
+            TypedValue::FallibleStruct { ty, .. } => (*ty).into(),
         }
     }
 
@@ -546,6 +570,10 @@ impl<'ctx> TypedValue<'ctx> {
             TypedValue::Enum(..) => ValKind::Enum,
             TypedValue::Nullable(_, _) => ValKind::Nullable,
             TypedValue::Unit => ValKind::Unit,
+            TypedValue::FallibleInt { .. } => ValKind::Int,
+            TypedValue::FalliblePtr { .. } => ValKind::Ptr,
+            TypedValue::FallibleStr { .. } => ValKind::Str,
+            TypedValue::FallibleStruct { .. } => ValKind::Struct,
         }
     }
 }

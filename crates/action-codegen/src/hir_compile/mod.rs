@@ -72,6 +72,7 @@ impl<'ctx> CodeGen<'ctx> {
                 return_type,
                 body,
                 type_params,
+                fn_or_fallback,
                 ..
             } = stmt
             {
@@ -114,8 +115,22 @@ impl<'ctx> CodeGen<'ctx> {
                         }
                     })
                 };
-                let fn_type = self.build_fn_type(ret_type.as_ref(), &mangled, &param_llvm_tys);
+                let is_propagating = fn_or_fallback.is_none()
+                    && name != "main"
+                    && self
+                        .fallibility
+                        .symbols
+                        .get(name)
+                        .is_some_and(|s| s.is_fallible);
+                let fn_type = if is_propagating {
+                    self.build_fallible_fn_type(ret_type.as_ref().unwrap(), &param_llvm_tys)
+                } else {
+                    self.build_fn_type(ret_type.as_ref(), &mangled, &param_llvm_tys)
+                };
                 self.module.add_function(&mangled, fn_type, None);
+                if is_propagating {
+                    self.mono_cache.fallible_user_fns.insert(mangled.clone());
+                }
                 if name != "main" {
                     if let Some(rt) = ret_type {
                         self.mono_cache.fun_return_types.insert(mangled, rt);
@@ -154,9 +169,23 @@ impl<'ctx> CodeGen<'ctx> {
                                 None
                             }
                         });
-                        let fn_type =
-                            self.build_fn_type(ret_type.as_ref(), &mangled, &param_llvm_tys);
+                        let is_propagating = self
+                            .fallibility
+                            .symbols
+                            .get(&mangled)
+                            .is_some_and(|s| s.is_fallible);
+                        let fn_type = if is_propagating {
+                            self.build_fallible_fn_type(
+                                ret_type.as_ref().unwrap(),
+                                &param_llvm_tys,
+                            )
+                        } else {
+                            self.build_fn_type(ret_type.as_ref(), &mangled, &param_llvm_tys)
+                        };
                         self.module.add_function(&mangled, fn_type, None);
+                        if is_propagating {
+                            self.mono_cache.fallible_user_fns.insert(mangled.clone());
+                        }
                         if let Some(rt) = ret_type {
                             self.mono_cache.fun_return_types.insert(mangled, rt);
                         }
@@ -336,6 +365,7 @@ impl<'ctx> CodeGen<'ctx> {
                 params,
                 return_type,
                 body,
+                fn_or_fallback,
                 ..
             } => {
                 let all_typed = params.iter().all(|p| p.ty.is_some());
@@ -349,7 +379,14 @@ impl<'ctx> CodeGen<'ctx> {
                 } else {
                     name.clone()
                 };
-                self.compile_fun_def_hir(&fn_name, name, params, return_type.as_ref(), body)?;
+                self.compile_fun_def_hir(
+                    &fn_name,
+                    name,
+                    params,
+                    return_type.as_ref(),
+                    body,
+                    fn_or_fallback.as_ref(),
+                )?;
             }
             HirStmt::Extension {
                 type_name, methods, ..
@@ -360,6 +397,7 @@ impl<'ctx> CodeGen<'ctx> {
                         params,
                         return_type,
                         body,
+                        fn_or_fallback,
                         ..
                     } = m
                     {
@@ -370,6 +408,7 @@ impl<'ctx> CodeGen<'ctx> {
                             params,
                             return_type.as_ref(),
                             body,
+                            fn_or_fallback.as_ref(),
                         )?;
                     }
                 }
@@ -421,7 +460,14 @@ impl<'ctx> CodeGen<'ctx> {
                 func,
                 args,
                 trailing_lambda,
-            } => self.compile_hir_call(func, args, trailing_lambda.as_ref()),
+            } => {
+                if self.in_fallible_region() {
+                    if let Some(v) = self.try_compile_fallible_call_in_region(expr)? {
+                        return self.unwrap_fallible_value(v);
+                    }
+                }
+                self.compile_hir_call(func, args, trailing_lambda.as_ref())
+            }
             HirExprKind::When(w) => self.compile_hir_when(w),
             HirExprKind::For(f) => self.compile_hir_for(f),
             HirExprKind::Assign { target, value } => self.compile_hir_assign(target, value),

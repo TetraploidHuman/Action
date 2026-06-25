@@ -168,6 +168,7 @@ pub fn resolve_imports(program: &Program, search_dirs: &[PathBuf]) -> Result<Vec
                             type_params: type_params.clone(),
                             is_single_expr: *is_single_expr,
                             is_test: false,
+                            fn_or_fallback: None,
                             span: Span::default(),
                         });
                     }
@@ -276,6 +277,7 @@ pub fn resolve_imports(program: &Program, search_dirs: &[PathBuf]) -> Result<Vec
                                 type_params: type_params.clone(),
                                 is_single_expr: *is_single_expr,
                                 is_test: false,
+                                fn_or_fallback: None,
                                 span: Span::default(),
                             });
                         }

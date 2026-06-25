@@ -267,8 +267,16 @@ impl<'ctx> CodeGen<'ctx> {
         params: &[Param],
         return_type: Option<&Type>,
         body: &action_frontend::hir::HirExpr,
+        fn_or_fallback: Option<&action_frontend::hir::HirExpr>,
     ) -> Result<(), String> {
-        self.compile_fun_def_inner(name, original_name, params, return_type, FunBody::Hir(body))
+        self.compile_fun_def_inner(
+            name,
+            original_name,
+            params,
+            return_type,
+            FunBody::Hir(body),
+            fn_or_fallback,
+        )
     }
 
     fn compile_fun_def_inner(
@@ -278,6 +286,7 @@ impl<'ctx> CodeGen<'ctx> {
         params: &[Param],
         _return_type: Option<&Type>,
         body: FunBody<'_>,
+        fn_or_fallback: Option<&action_frontend::hir::HirExpr>,
     ) -> Result<(), String> {
         // Function was already declared in Pass 1; just look it up
         let function = self.module.get_function(name).ok_or_else(|| {
@@ -426,6 +435,32 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
 
+        let is_propagating = fn_or_fallback.is_none()
+            && _original_name != "main"
+            && _return_type.is_some()
+            && self
+                .fallibility
+                .symbols
+                .get(_original_name)
+                .is_some_and(|s| s.is_fallible);
+
+        let mut fn_or_fail_bb = None;
+        let mut fn_or_fallback_expr = None;
+        let mut fn_propagate_fail = false;
+
+        if let Some(fb) = fn_or_fallback {
+            let fail_bb = self.context.append_basic_block(function, "fn_or_fail");
+            self.push_fallible_fail_bb(fail_bb);
+            fn_or_fail_bb = Some(fail_bb);
+            fn_or_fallback_expr = Some(fb);
+        } else if is_propagating {
+            let fail_bb = self.context.append_basic_block(function, "fn_prop_fail");
+            self.push_fallible_fail_bb(fail_bb);
+            self.propagating_fallible_ret = _return_type.cloned();
+            fn_or_fail_bb = Some(fail_bb);
+            fn_propagate_fail = true;
+        }
+
         // Set up TCO: create a tail_entry block that reloads params from allocas
         let tail_entry = self.context.append_basic_block(function, "tail_entry");
         let _ = self.builder.build_unconditional_branch(tail_entry);
@@ -436,7 +471,10 @@ impl<'ctx> CodeGen<'ctx> {
             fn_name: _original_name.to_string(),
         });
 
-        let result = body.compile(self)?;
+        let mut result = body.compile(self)?;
+        if fn_or_fallback.is_some() {
+            result = self.unwrap_fallible_value(result)?;
+        }
 
         // If the body already ended with a return/break/continue, the current block
         // already has a terminator — skip the fallback ret.
@@ -464,6 +502,14 @@ impl<'ctx> CodeGen<'ctx> {
             } else if llvm_void {
                 self.emit_scope_cleanup()?;
                 let _ = self.builder.build_return(None);
+            } else if is_propagating {
+                if self.is_scope_variable(&result) {
+                    self.rc_inc_typed_value(&result)?;
+                }
+                self.emit_scope_cleanup()?;
+                if let Some(ret_ty) = _return_type {
+                    self.build_fallible_ok_return(&result, ret_ty)?;
+                }
             } else {
                 // RC inc the return value before cleaning up scope — same
                 // pattern as Stmt::Return.
@@ -680,6 +726,20 @@ impl<'ctx> CodeGen<'ctx> {
                             }
                         }
                     }
+                }
+            }
+        }
+
+        if let Some(fail_bb) = fn_or_fail_bb {
+            self.pop_fallible_fail_bb();
+            self.propagating_fallible_ret = None;
+            self.builder.position_at_end(fail_bb);
+            if let Some(fallback) = fn_or_fallback_expr {
+                self.compile_fn_or_fallback_return(fallback)?;
+            } else if fn_propagate_fail {
+                if let Some(ret_ty) = _return_type {
+                    self.emit_scope_cleanup()?;
+                    self.build_fallible_fail_return(ret_ty)?;
                 }
             }
         }

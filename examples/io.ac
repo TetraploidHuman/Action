@@ -1,7 +1,6 @@
-// Input/Output: readLine() returns String? (null on EOF)
+// Input/Output: readLine() requires or { } on EOF
 fun main() {
-    val name_opt = readLine()
-    val name = name_opt or { "World" }
+    val name = readLine() or { "World" }
     val greeting = concat("Hello, ", name)
     println(greeting)
 }

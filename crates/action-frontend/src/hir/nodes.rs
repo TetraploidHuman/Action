@@ -39,6 +39,7 @@ pub enum HirStmt {
         type_params: Vec<String>,
         is_single_expr: bool,
         is_test: bool,
+        fn_or_fallback: Option<HirExpr>,
         span: Span,
     },
     Expr {

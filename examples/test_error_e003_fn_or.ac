@@ -1,0 +1,5 @@
+fun bad() -> Int {
+    parseInt("1")
+} or { "nope" }
+
+fun main() {}

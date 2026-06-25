@@ -1,0 +1,6 @@
+fun main() {
+    println(head(List[1, 2]) or { -1 })
+    println(head(List[]) or { -1 })
+    println(parseInt("99") or { 0 })
+    println(parseInt("x") or { 0 })
+}

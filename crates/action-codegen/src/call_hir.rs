@@ -169,6 +169,35 @@ impl<'ctx> CodeGen<'ctx> {
         Err(format!("Unknown function or builtin: {}", name))
     }
 
+    pub(super) fn resolve_user_fn_llvm_name(
+        &mut self,
+        name: &str,
+        args: &[CallArg<'_>],
+    ) -> Result<String, String> {
+        if let Some(overloads) = self.overloaded_functions.get(name).cloned() {
+            let arg_vals: Vec<TypedValue<'ctx>> = args
+                .iter()
+                .map(|a| self.compile_call_arg(*a))
+                .collect::<Result<_, _>>()?;
+            let arg_type_names: Vec<String> = arg_vals
+                .iter()
+                .map(|v| self.typed_value_type_name(v))
+                .collect();
+            let mangled = if arg_type_names.is_empty() {
+                name.to_string()
+            } else {
+                format!("{}_{}", name, arg_type_names.join("_"))
+            };
+            if overloads.iter().any(|(_, mn)| mn == &mangled) {
+                return Ok(mangled);
+            }
+        }
+        if self.module.get_function(name).is_some() {
+            return Ok(name.to_string());
+        }
+        Err(format!("Function '{}' not found", name))
+    }
+
     fn dispatch_stdlib_ident(
         &mut self,
         name: &str,
@@ -315,6 +344,10 @@ impl<'ctx> CodeGen<'ctx> {
         args: &[CallArg<'_>],
         trailing: Option<CallArg<'_>>,
     ) -> Result<TypedValue<'ctx>, String> {
+        if self.in_fallible_region() && self.is_fallible_user_fn(name) {
+            return self.compile_fallible_user_call(name, args, trailing);
+        }
+
         if name == "fib" && args.len() == 1 && trailing.is_none() {
             let CallArg::Hir(hir) = &args[0];
             if let HirExprKind::Literal(Literal::Int(n)) = &hir.kind {

@@ -1,0 +1,6 @@
+import fallible_parse
+
+fun main() {
+    println(fallible_parse.parseLine("42") or { -1 })
+    println(fallible_parse.parseLine("nope") or { -1 })
+}

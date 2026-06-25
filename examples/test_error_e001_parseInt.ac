@@ -1,0 +1,4 @@
+fun main() {
+    val x = parseInt("123")
+    println(x)
+}

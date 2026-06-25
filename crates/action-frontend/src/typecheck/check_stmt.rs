@@ -172,6 +172,7 @@ impl TypeChecker {
                 args,
                 trailing_lambda,
             } => {
+                self.check_fallible_call_e001(func, errors);
                 if let Err(e) = self.check_call(func, args) {
                     errors.push(e);
                 }
@@ -312,7 +313,19 @@ impl TypeChecker {
             }
             ExprKind::Null => {}
             ExprKind::OrBlock { nullable, fallback } => {
+                let lhs_ty = self.try_infer_expr_type(nullable);
+                let fb_ty = self.try_infer_expr_type(fallback);
+                if let Some(err) = self.fallibility.check_r2_or_block_result_type(
+                    &lhs_ty,
+                    &fb_ty,
+                    self.current_span,
+                ) {
+                    errors.push(err);
+                }
+                let saved = self.fallibility.in_or_block;
+                self.fallibility.in_or_block = true;
                 self.collect_expr_errors(nullable, errors);
+                self.fallibility.in_or_block = saved;
                 self.collect_expr_errors(fallback, errors);
             }
             ExprKind::Unary(_, inner) => {
@@ -429,6 +442,53 @@ impl TypeChecker {
             Stmt::Return { value: expr, .. } => {
                 if let Some(e) = expr {
                     self.collect_expr_errors(e, errors);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    pub(crate) fn check_fallible_call_e001(&mut self, func: &Expr, errors: &mut Vec<CompilerError>) {
+        use crate::builtin::{self, UfcsReceiverKind};
+        use crate::error::e001_or_required;
+        use crate::typecheck::fallibility::EMIT_E001;
+
+        if !EMIT_E001 || self.fallibility.in_or_block || self.fallibility.fn_or_fallback
+            || self.fallibility.allow_bare_fallible_in_fn
+        {
+            return;
+        }
+        match &func.kind {
+            ExprKind::Ident(name) => {
+                if self.fallibility.callee_requires_or(name) {
+                    errors.push(e001_or_required(name, self.current_span));
+                }
+            }
+            ExprKind::FieldAccess(obj, field) => {
+                if let ExprKind::Ident(mod_name) = &obj.kind {
+                    let mangled = crate::typecheck::FallibilityContext::module_callee_symbol(
+                        mod_name, field,
+                    );
+                    if self.fallibility.callee_requires_or(&mangled) {
+                        let display = format!("{}.{}", mod_name, field);
+                        errors.push(e001_or_required(&display, self.current_span));
+                        return;
+                    }
+                }
+                for kind in [
+                    UfcsReceiverKind::List,
+                    UfcsReceiverKind::String,
+                    UfcsReceiverKind::Map,
+                    UfcsReceiverKind::Set,
+                    UfcsReceiverKind::Collection,
+                    UfcsReceiverKind::Global,
+                ] {
+                    if let Some(def) = builtin::lookup_ufcs(kind, field) {
+                        if def.fallible {
+                            errors.push(e001_or_required(field, self.current_span));
+                        }
+                        break;
+                    }
                 }
             }
             _ => {}

@@ -42,20 +42,13 @@ fun main() {
     print("indexOf('xyz', 'abcde') == null: ")
     println(sidx2 == null)
 
-    // ---- Test toInt: returns Int? ----
-    val ti1 = toInt("42")
-    print("toInt('42') != null: ")
-    println(ti1 != null)
+    // ---- Test toInt: fallible, requires or {} ----
     print("toInt('42') value: ")
-    println(ti1 or { -1 })
-
-    val ti2 = toInt("abc")
-    print("toInt('abc') == null: ")
-    println(ti2 == null)
-
-    val ti3 = toInt(3.14)
-    print("toInt(3.14) != null: ")
-    println(ti3 != null)
+    println(toInt("42") or { -1 })
+    print("toInt('abc') fallback: ")
+    println(toInt("abc") or { -999 })
+    print("toInt(3.14) value: ")
+    println(toInt(3.14) or { -1 })
 
     // ---- Test toFloat: returns Float? ----
     val tf1 = toFloat("3.14")
@@ -70,16 +63,11 @@ fun main() {
     print("toFloat(42) != null: ")
     println(tf3 != null)
 
-    // ---- Test parseInt: returns Int? ----
-    val pi1 = parseInt("123")
-    print("parseInt('123') != null: ")
-    println(pi1 != null)
+    // ---- Test parseInt: fallible ----
     print("parseInt('123') value: ")
-    println(pi1 or { -1 })
-
-    val pi2 = parseInt("not_a_number")
-    print("parseInt('not_a_number') == null: ")
-    println(pi2 == null)
+    println(parseInt("123") or { -1 })
+    print("parseInt('not_a_number') fallback: ")
+    println(parseInt("not_a_number") or { -999 })
 
     // ---- Test String slice ----
     val ss = slice("hello world", 0, 5)

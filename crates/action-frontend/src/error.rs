@@ -2,12 +2,37 @@ use action_span::Span;
 use ariadne::{Color, Label, Report, ReportKind, Source};
 use serde::{Deserialize, Serialize};
 
+/// Structured diagnostic codes (R7 fallibility).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DiagnosticCode {
+    E001,
+    E002,
+    E003,
+    E004,
+    E005,
+    E006,
+}
+
+impl DiagnosticCode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DiagnosticCode::E001 => "E001",
+            DiagnosticCode::E002 => "E002",
+            DiagnosticCode::E003 => "E003",
+            DiagnosticCode::E004 => "E004",
+            DiagnosticCode::E005 => "E005",
+            DiagnosticCode::E006 => "E006",
+        }
+    }
+}
+
 /// Structured compiler error with optional source location and help text
 #[derive(Debug, Clone)]
 pub struct CompilerError {
     pub message: String,
     pub span: Option<Span>,
     pub help: Option<String>,
+    pub code: Option<DiagnosticCode>,
 }
 
 impl CompilerError {
@@ -16,7 +41,13 @@ impl CompilerError {
             message: message.into(),
             span: None,
             help: None,
+            code: None,
         }
+    }
+
+    pub fn with_code(mut self, code: DiagnosticCode) -> Self {
+        self.code = Some(code);
+        self
     }
 
     pub fn with_span(mut self, span: Span) -> Self {
@@ -117,7 +148,32 @@ pub struct DiagnosticEnvelope {
     pub diagnostics: Vec<Diagnostic>,
 }
 
+pub fn e001_or_required(name: &str, span: Span) -> CompilerError {
+    CompilerError::new(format!(
+        "fallible call '{}' must be used with 'or {{ }}' to provide a default",
+        name
+    ))
+    .with_span(span)
+    .with_code(DiagnosticCode::E001)
+    .with_help("Wrap the call in `or { default }` or append `or { default }` after the function body")
+}
+
+pub fn e002_or_type_mismatch(span: Span) -> CompilerError {
+    CompilerError::new("or-block fallback type does not match fallible expression type")
+        .with_span(span)
+        .with_code(DiagnosticCode::E002)
+}
+
+pub fn e003_fn_or_return(span: Span) -> CompilerError {
+    CompilerError::new("function or-block fallback type does not match return type")
+        .with_span(span)
+        .with_code(DiagnosticCode::E003)
+}
+
 fn diagnostic_code_for(error: &CompilerError) -> &'static str {
+    if let Some(code) = error.code {
+        return code.as_str();
+    }
     let msg = error.message.as_str();
     if msg.contains("Lexer error") || msg.contains("Unexpected") {
         "lex-error"

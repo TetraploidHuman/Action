@@ -33,6 +33,10 @@ impl<'ctx> CodeGen<'ctx> {
             TypedValue::Ptr(_) => "Ptr".to_string(),
             TypedValue::FileHandle(_) => "FileHandle".to_string(),
             TypedValue::Nullable(_, _) => "Nullable".to_string(),
+            TypedValue::FallibleInt { .. } => "Int".to_string(),
+            TypedValue::FalliblePtr { .. } => "Ptr".to_string(),
+            TypedValue::FallibleStr { .. } => "String".to_string(),
+            TypedValue::FallibleStruct { .. } => "Struct".to_string(),
         }
     }
 
@@ -75,6 +79,17 @@ impl<'ctx> CodeGen<'ctx> {
                 .builder
                 .build_load(*ty, *ptr, "arg_nullable")
                 .map_err(llvm_err)?),
+            TypedValue::FallibleInt { val, .. } => Ok(val.as_basic_value_enum()),
+            TypedValue::FalliblePtr { val, .. } => Ok(val.as_basic_value_enum()),
+            TypedValue::FallibleStr { val, .. } => Ok(self.load_string(*val)?.into()),
+            TypedValue::FallibleStruct { val, ty, .. } => {
+                let bt: inkwell::types::BasicTypeEnum = (*ty).into();
+                let loaded = self
+                    .builder
+                    .build_load(bt, *val, "fall_struct_coerce")
+                    .map_err(super::llvm_err)?;
+                Ok(loaded)
+            }
             _ => v
                 .to_bv()
                 .ok_or_else(|| format!("Cannot pass value as argument")),
