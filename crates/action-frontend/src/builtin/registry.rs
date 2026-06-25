@@ -777,10 +777,15 @@ pub fn receiver_kind_from_type(ty: &Type) -> Option<UfcsReceiverKind> {
     match ty {
         Type::Named(n) if n == "list" || n == "List" => Some(UfcsReceiverKind::List),
         Type::Named(n) if n == "String" => Some(UfcsReceiverKind::String),
+        Type::Generic(base, _) if matches!(base.as_ref(), Type::Named(n) if n == "List" || n == "list") => {
+            Some(UfcsReceiverKind::List)
+        }
+        Type::LazyList(_) => Some(UfcsReceiverKind::List),
         Type::Map(_, _) => Some(UfcsReceiverKind::Map),
         Type::Set(_) => Some(UfcsReceiverKind::Set),
         Type::Stream(_) => Some(UfcsReceiverKind::Stream),
         Type::Task(_) => Some(UfcsReceiverKind::Task),
+        Type::Nullable(inner) => receiver_kind_from_type(inner),
         Type::Named(_) => Some(UfcsReceiverKind::Collection),
         _ => None,
     }

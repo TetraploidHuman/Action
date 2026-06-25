@@ -878,6 +878,14 @@ fn test_fallible_or_default() {
 }
 
 #[test]
+fn test_fallible_list_var_index_or() {
+    assert_eq!(
+        run_example("test_fallible_list_var_index_or.ac"),
+        "20\n-1\n"
+    );
+}
+
+#[test]
 fn test_fallible_head_parseInt() {
     assert_eq!(
         run_example("test_fallible_head_parseInt.ac"),

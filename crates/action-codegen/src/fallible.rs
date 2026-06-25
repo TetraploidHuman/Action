@@ -415,10 +415,10 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    pub(crate) fn compile_list_index_literal_fallible(
+    pub(crate) fn compile_list_index_fallible(
         &mut self,
         list_arg: CallArg<'_>,
-        idx: i64,
+        idx_iv: inkwell::values::IntValue<'ctx>,
     ) -> Result<TypedValue<'ctx>, String> {
         let v = self.compile_call_arg(list_arg)?;
         match v {
@@ -429,7 +429,6 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_extract_value(list_val, 1, "len")
                     .map_err(llvm_err)?
                     .into_int_value();
-                let idx_iv = self.i64_ty().const_int(idx as u64, true);
                 let in_range = self
                     .builder
                     .build_int_compare(IntPredicate::ULT, idx_iv, len, "in_range")
@@ -455,6 +454,15 @@ impl<'ctx> CodeGen<'ctx> {
             }
             _ => Err("list index: argument must be a list".to_string()),
         }
+    }
+
+    pub(crate) fn compile_list_index_literal_fallible(
+        &mut self,
+        list_arg: CallArg<'_>,
+        idx: i64,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let idx_iv = self.i64_ty().const_int(idx as u64, true);
+        self.compile_list_index_fallible(list_arg, idx_iv)
     }
 
     pub(crate) fn try_compile_fallible_lhs_for_or(
@@ -549,6 +557,12 @@ impl<'ctx> CodeGen<'ctx> {
                 if let HirExprKind::Literal(Literal::Int(n)) = &idx.kind {
                     return self
                         .compile_list_index_literal_fallible(CallArg::hir(obj), *n)
+                        .map(Some);
+                }
+                let idx_val = self.compile_call_arg(CallArg::hir(idx))?;
+                if let TypedValue::Int(idx_iv) = idx_val {
+                    return self
+                        .compile_list_index_fallible(CallArg::hir(obj), idx_iv)
                         .map(Some);
                 }
             }

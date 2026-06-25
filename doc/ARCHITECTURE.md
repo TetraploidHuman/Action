@@ -69,7 +69,7 @@ include/
   action_rt.h               # Runtime C ABI（scripts/generate_action_rt_header.py）
 
 tests/
-  integration.rs            # 语义 oracle（172 项）
+  integration.rs            # 语义 oracle（195 项）
   hir_golden.rs
   lexer_golden.rs
   bootstrap_subset.rs
@@ -172,7 +172,8 @@ pub use action_lsp as lsp;
 |------|------|------|
 | List/Map CoW | 写时复制、共享引用隔离、语句形式 mutating UFCS | ✅ + `test_map_cow_properties` / `test_collection_stmt_mut` / `test_list_cow_property` / `test_insert_exit` / `test_list_alias_*` |
 | compile-error oracle | import 循环/非法名、泛型、重载 | ✅ |
-| diagnostics JSON | `tests/diagnostics_json.rs` | ✅ |
+| Fallible / `or {}` | E001–E009 诊断码；`lst[i] or {}` 变量下标 codegen | ✅ |
+| diagnostics JSON | `tests/diagnostics_json.rs`（含 E001/E006 `code` 字段） | ✅ |
 | Lexer / bootstrap 子集 | golden token、允许/禁止夹具 | ✅ `lexer_golden.rs` / `bootstrap_subset.rs` |
 | Nullable / UFCS / TCO / 泛型 | 见 integration.rs | ✅ |
 
@@ -195,11 +196,11 @@ Linux 侧**全部**在 **自托管 NixOS runner** 上执行，开发/CI 环境�
 | Linux Benchmark | `[self-hosted, linux, benchmark]` | `nix-shell --run "bash scripts/ci-linux.sh benchmark"` |
 | Windows CI | `windows-2025`（GitHub hosted） | 下载 LLVM 21 预编译包 + `cargo test` |
 
-`scripts/ci-linux.sh` 在 **nix-shell 内**运行：`fmt`/clippy、194 项 integration、debug/release 冒烟（`bench_cow` / insert 系列 / `test_insert_exit` / `test_cow_insert_isolation` 等）。Benchmark job 另跑全量 JIT/AOT + `benchmark_regression.py`。
+`scripts/ci-linux.sh` 在 **nix-shell 内**运行：`fmt`/clippy、195 项 integration、debug/release 冒烟（`bench_cow` / insert 系列 / `test_insert_exit` / `test_cow_insert_isolation` 等）。Benchmark job 另跑全量 JIT/AOT + `benchmark_regression.py`。
 
 持久化编译缓存：`CARGO_TARGET_DIR` 指向 runner 本地目录（如 `~/桌面/Runner/ci-target`），与开发者本机 `nix-shell` 行为一致。
 
-集成测试 **194 项**为语义权威；重构不得降低通过数。类型标注使用 **colon 语法**（`val x: Int = 1`），与 bootstrap 子集及 `doc/language-spec-outline.md` 一致。
+集成测试 **195 项**为语义权威；重构不得降低通过数。类型标注使用 **colon 语法**（`val x: Int = 1`），与 bootstrap 子集及 `doc/language-spec-outline.md` 一致。
 
 ## 与自举的关系
 

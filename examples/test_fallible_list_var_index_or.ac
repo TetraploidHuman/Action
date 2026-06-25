@@ -1,0 +1,7 @@
+fun main() {
+    val lst = List[10, 20, 30]
+    val i = 1
+    println(lst[i] or { -1 })
+    val j = 99
+    println(lst[j] or { -1 })
+}

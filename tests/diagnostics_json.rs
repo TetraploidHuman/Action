@@ -48,3 +48,37 @@ fn test_check_format_json_success_empty() {
     let json: serde_json::Value = serde_json::from_str(&stdout).expect("valid JSON on success");
     assert_eq!(json["diagnostics"].as_array().unwrap().len(), 0);
 }
+
+#[test]
+fn test_check_format_json_reports_e001_code() {
+    let file =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/test_error_e001_parseInt.ac");
+    let output = Command::new(action_binary())
+        .args(["check", "--format", "json", file.to_str().unwrap()])
+        .output()
+        .expect("failed to run action check");
+    assert!(!output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value =
+        serde_json::from_str(&stdout).expect("check --format json should emit valid JSON");
+    let diags = json["diagnostics"].as_array().expect("diagnostics array");
+    assert!(!diags.is_empty());
+    assert_eq!(diags[0]["code"], "E001");
+}
+
+#[test]
+fn test_check_format_json_reports_e006_code() {
+    let file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("examples/test_error_e006_list_var_index.ac");
+    let output = Command::new(action_binary())
+        .args(["check", "--format", "json", file.to_str().unwrap()])
+        .output()
+        .expect("failed to run action check");
+    assert!(!output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let json: serde_json::Value =
+        serde_json::from_str(&stdout).expect("check --format json should emit valid JSON");
+    let diags = json["diagnostics"].as_array().expect("diagnostics array");
+    assert!(!diags.is_empty());
+    assert_eq!(diags[0]["code"], "E006");
+}
