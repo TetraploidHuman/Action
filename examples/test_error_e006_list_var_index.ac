@@ -1,0 +1,5 @@
+fun main() {
+    val lst = List[1, 2, 3]
+    val i = 0
+    println(lst[i])
+}

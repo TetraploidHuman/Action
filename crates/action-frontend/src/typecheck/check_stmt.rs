@@ -1,7 +1,115 @@
 use super::*;
 use crate::types::{infer_type_args, mangle_name, types_compatible};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CollectionIndexKind {
+    List,
+    Map,
+    Set,
+}
+
 impl TypeChecker {
+    fn collection_kind_from_type(ty: &Type) -> Option<CollectionIndexKind> {
+        match ty {
+            Type::Generic(base, _) if matches!(base.as_ref(), Type::Named(n) if n == "List") => {
+                Some(CollectionIndexKind::List)
+            }
+            Type::LazyList(_) => Some(CollectionIndexKind::List),
+            Type::Map(_, _) => Some(CollectionIndexKind::Map),
+            Type::Set(_) => Some(CollectionIndexKind::Set),
+            Type::Named(n) if n == "List" => Some(CollectionIndexKind::List),
+            _ => None,
+        }
+    }
+
+    fn collection_kind_from_ast(expr: &Expr) -> Option<CollectionIndexKind> {
+        match &expr.kind {
+            ExprKind::Call { func, .. } => match &func.kind {
+                ExprKind::Ident(name) if name == "List" || name == "__list" => {
+                    Some(CollectionIndexKind::List)
+                }
+                ExprKind::Ident(name) if name == "Map" || name == "__map" => {
+                    Some(CollectionIndexKind::Map)
+                }
+                ExprKind::Ident(name) if name == "Set" || name == "__set" => {
+                    Some(CollectionIndexKind::Set)
+                }
+                _ => None,
+            },
+            ExprKind::MapLiteral(_) => Some(CollectionIndexKind::Map),
+            ExprKind::SetLiteral(_) => Some(CollectionIndexKind::Set),
+            ExprKind::Index(obj, _) | ExprKind::FieldAccess(obj, _) => {
+                Self::collection_kind_from_ast(obj)
+            }
+            _ => None,
+        }
+    }
+
+    fn collection_index_receiver_kind(&self, obj: &Expr) -> Option<CollectionIndexKind> {
+        Self::collection_kind_from_type(&self.try_infer_expr_type(obj))
+            .or_else(|| {
+                if let ExprKind::Ident(name) = &obj.kind {
+                    self.type_env
+                        .get(name)
+                        .and_then(|ty| Self::collection_kind_from_type(ty))
+                } else {
+                    None
+                }
+            })
+            .or_else(|| Self::collection_kind_from_ast(obj))
+    }
+
+    fn expr_is_nullable_typed(&self, expr: &Expr) -> bool {
+        if matches!(self.try_infer_expr_type(expr), Type::Nullable(_)) {
+            return true;
+        }
+        match &expr.kind {
+            ExprKind::Null => true,
+            ExprKind::Ident(name) => self
+                .type_env
+                .get(name)
+                .is_some_and(|ty| matches!(ty, Type::Nullable(_))),
+            ExprKind::FieldAccess(obj, _) | ExprKind::Index(obj, _) => {
+                self.expr_is_nullable_typed(obj)
+            }
+            ExprKind::Call { func, .. } => self.expr_is_nullable_typed(func),
+            _ => false,
+        }
+    }
+
+    fn expr_uses_nullable_receiver(&self, expr: &Expr) -> bool {
+        match &expr.kind {
+            ExprKind::FieldAccess(obj, _) => self.expr_is_nullable_typed(obj),
+            ExprKind::Call { func, .. } => {
+                if let ExprKind::FieldAccess(obj, _) = &func.kind {
+                    return self.expr_is_nullable_typed(obj);
+                }
+                false
+            }
+            _ => false,
+        }
+    }
+
+    fn expr_is_fallible_or_nullable(&self, expr: &Expr) -> bool {
+        if self.expr_uses_nullable_receiver(expr) {
+            return true;
+        }
+        if let Ok(ty) = self.infer_expr_type(expr) {
+            if matches!(ty, Type::Nullable(_)) {
+                return true;
+            }
+        }
+        match &expr.kind {
+            ExprKind::Call { func, .. } => self.fallibility.call_expr_is_fallible(func),
+            // Index may fail at runtime; `or {}` is the required recovery form (E006).
+            ExprKind::Index(_, _) => true,
+            // Struct field access may be nullable; elvis on fields is idiomatic.
+            ExprKind::FieldAccess(_, _) => true,
+            ExprKind::OrBlock { nullable, .. } => self.expr_is_fallible_or_nullable(nullable),
+            _ => false,
+        }
+    }
+
     pub(crate) fn collect_expr_errors(&mut self, expr: &Expr, errors: &mut Vec<CompilerError>) {
         match &expr.kind {
             ExprKind::Binary(lhs, op, rhs) => {
@@ -315,6 +423,13 @@ impl TypeChecker {
             ExprKind::OrBlock { nullable, fallback } => {
                 let lhs_ty = self.try_infer_expr_type(nullable);
                 let fb_ty = self.try_infer_expr_type(fallback);
+                if !self.expr_is_fallible_or_nullable(nullable)
+                    && !matches!(fb_ty, Type::Nullable(_))
+                {
+                    if let Some(err) = self.fallibility.check_r7_or_unnecessary(self.current_span) {
+                        errors.push(err);
+                    }
+                }
                 if let Some(err) = self.fallibility.check_r2_or_block_result_type(
                     &lhs_ty,
                     &fb_ty,
@@ -334,6 +449,33 @@ impl TypeChecker {
             ExprKind::Index(obj, idx) => {
                 self.collect_expr_errors(obj, errors);
                 self.collect_expr_errors(idx, errors);
+                match self.collection_index_receiver_kind(obj) {
+                    Some(CollectionIndexKind::List) => {
+                        if let Some(err) = self
+                            .fallibility
+                            .check_r6_fallible_index_needs_or(self.current_span)
+                        {
+                            errors.push(err);
+                        }
+                    }
+                    Some(CollectionIndexKind::Map) => {
+                        if let Some(err) = self
+                            .fallibility
+                            .check_r8_map_index_needs_or(self.current_span)
+                        {
+                            errors.push(err);
+                        }
+                    }
+                    Some(CollectionIndexKind::Set) => {
+                        if let Some(err) = self
+                            .fallibility
+                            .check_r9_set_index_needs_or(self.current_span)
+                        {
+                            errors.push(err);
+                        }
+                    }
+                    None => {}
+                }
             }
             ExprKind::Assign { target, value, .. } => {
                 self.collect_expr_errors(target, errors);
@@ -453,50 +595,11 @@ impl TypeChecker {
         func: &Expr,
         errors: &mut Vec<CompilerError>,
     ) {
-        use crate::builtin::{self, UfcsReceiverKind};
-        use crate::error::e001_or_required;
-        use crate::typecheck::fallibility::EMIT_E001;
-
-        if !EMIT_E001
-            || self.fallibility.in_or_block
-            || self.fallibility.fn_or_fallback
-            || self.fallibility.allow_bare_fallible_in_fn
+        if let Some(err) = self
+            .fallibility
+            .check_r1_fallible_call(self.current_span, func)
         {
-            return;
-        }
-        match &func.kind {
-            ExprKind::Ident(name) => {
-                if self.fallibility.callee_requires_or(name) {
-                    errors.push(e001_or_required(name, self.current_span));
-                }
-            }
-            ExprKind::FieldAccess(obj, field) => {
-                if let ExprKind::Ident(mod_name) = &obj.kind {
-                    let mangled =
-                        crate::typecheck::FallibilityContext::module_callee_symbol(mod_name, field);
-                    if self.fallibility.callee_requires_or(&mangled) {
-                        let display = format!("{}.{}", mod_name, field);
-                        errors.push(e001_or_required(&display, self.current_span));
-                        return;
-                    }
-                }
-                for kind in [
-                    UfcsReceiverKind::List,
-                    UfcsReceiverKind::String,
-                    UfcsReceiverKind::Map,
-                    UfcsReceiverKind::Set,
-                    UfcsReceiverKind::Collection,
-                    UfcsReceiverKind::Global,
-                ] {
-                    if let Some(def) = builtin::lookup_ufcs(kind, field) {
-                        if def.fallible {
-                            errors.push(e001_or_required(field, self.current_span));
-                        }
-                        break;
-                    }
-                }
-            }
-            _ => {}
+            errors.push(err);
         }
     }
 
@@ -523,11 +626,10 @@ impl TypeChecker {
                 BinaryOp::Eq | BinaryOp::Neq | BinaryOp::And | BinaryOp::Or => {} // comparison/logical allow
                 BinaryOp::Lt | BinaryOp::Gt | BinaryOp::Lte | BinaryOp::Gte => {} // comparison allow
                 _ => {
-                    return Err(CompilerError::new(format!(
-                        "Arithmetic/bitwise operation '{}' does not accept nullable operands. Use 'or {{ }}' to provide a default",
-                        op
-                    ))
-                    .with_span(self.current_span));
+                    return Err(FallibilityContext::check_r5_nullable_arithmetic(
+                        &format!("{}", op),
+                        self.current_span,
+                    ));
                 }
             }
         }
@@ -682,20 +784,21 @@ impl TypeChecker {
                             }
                             let arg_ty = self.infer_expr_type(arg)?;
                             if !types_compatible(param_ty, &arg_ty) {
-                                let msg = if let Some(hint) =
-                                    Self::check_termination(param_ty, &arg_ty)
-                                {
-                                    hint
-                                } else {
-                                    format!(
-                                        "Argument {} to '{}' expects '{}' but got '{}'",
-                                        i + 1,
-                                        name,
-                                        param_ty,
-                                        arg_ty
-                                    )
-                                };
-                                return Err(CompilerError::new(msg).with_span(self.current_span));
+                                if let Some(err) = FallibilityContext::check_r4_nullable_termination(
+                                    param_ty,
+                                    &arg_ty,
+                                    self.current_span,
+                                ) {
+                                    return Err(err);
+                                }
+                                return Err(CompilerError::new(format!(
+                                    "Argument {} to '{}' expects '{}' but got '{}'",
+                                    i + 1,
+                                    name,
+                                    param_ty,
+                                    arg_ty
+                                ))
+                                .with_span(self.current_span));
                             }
                         }
                     }

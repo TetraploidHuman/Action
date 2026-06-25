@@ -11,6 +11,9 @@ pub enum DiagnosticCode {
     E004,
     E005,
     E006,
+    E007,
+    E008,
+    E009,
 }
 
 impl DiagnosticCode {
@@ -22,6 +25,9 @@ impl DiagnosticCode {
             DiagnosticCode::E004 => "E004",
             DiagnosticCode::E005 => "E005",
             DiagnosticCode::E006 => "E006",
+            DiagnosticCode::E007 => "E007",
+            DiagnosticCode::E008 => "E008",
+            DiagnosticCode::E009 => "E009",
         }
     }
 }
@@ -170,6 +176,55 @@ pub fn e003_fn_or_return(span: Span) -> CompilerError {
     CompilerError::new("function or-block fallback type does not match return type")
         .with_span(span)
         .with_code(DiagnosticCode::E003)
+}
+
+pub fn e004_nullable_termination(inferred: &str, declared: &str, span: Span) -> CompilerError {
+    CompilerError::new(format!(
+        "cannot use nullable '{}' where non-nullable '{}' is expected. Use 'or {{ }}' to provide a default, or check for null first",
+        inferred, declared
+    ))
+    .with_span(span)
+    .with_code(DiagnosticCode::E004)
+    .with_help("Wrap the nullable expression in `or { default }` or narrow with a null check")
+}
+
+pub fn e005_nullable_arithmetic(op: &str, span: Span) -> CompilerError {
+    CompilerError::new(format!(
+        "Arithmetic/bitwise operation '{}' does not accept nullable operands. Use 'or {{ }}' to provide a default",
+        op
+    ))
+    .with_span(span)
+    .with_code(DiagnosticCode::E005)
+}
+
+pub fn e006_fallible_index_required(span: Span) -> CompilerError {
+    CompilerError::new("fallible list index access must be used with 'or { }' to provide a default")
+        .with_span(span)
+        .with_code(DiagnosticCode::E006)
+        .with_help(
+            "Wrap the index expression in `or { default }` when the index may be out of range",
+        )
+}
+
+pub fn e007_or_unnecessary(span: Span) -> CompilerError {
+    CompilerError::new("'or { }' is not required: expression is neither fallible nor nullable")
+        .with_span(span)
+        .with_code(DiagnosticCode::E007)
+        .with_help("Remove `or { }` or use it only on fallible calls or nullable values")
+}
+
+pub fn e008_map_index_required(span: Span) -> CompilerError {
+    CompilerError::new("fallible map index access must be used with 'or { }' to provide a default")
+        .with_span(span)
+        .with_code(DiagnosticCode::E008)
+        .with_help("Wrap the index expression in `or { default }` when the key may be missing")
+}
+
+pub fn e009_set_index_required(span: Span) -> CompilerError {
+    CompilerError::new("fallible set index access must be used with 'or { }' to provide a default")
+        .with_span(span)
+        .with_code(DiagnosticCode::E009)
+        .with_help("Wrap the index expression in `or { default }` when the element may be absent")
 }
 
 fn diagnostic_code_for(error: &CompilerError) -> &'static str {

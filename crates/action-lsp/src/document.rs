@@ -96,7 +96,15 @@ pub fn compiler_errors_to_lsp_diagnostics(
         .collect()
 }
 
-fn compiler_error_to_lsp_diagnostic(error: &CompilerError, source: &str, code: &str) -> Diagnostic {
+fn compiler_error_to_lsp_diagnostic(
+    error: &CompilerError,
+    source: &str,
+    default_code: &str,
+) -> Diagnostic {
+    let code_str = error
+        .code
+        .map(|c| c.as_str().to_string())
+        .unwrap_or_else(|| default_code.to_string());
     let range = match &error.span {
         Some(span) => position::span_to_lsp_range(span, source),
         None => Range {
@@ -114,7 +122,7 @@ fn compiler_error_to_lsp_diagnostic(error: &CompilerError, source: &str, code: &
     let mut diag = Diagnostic {
         range,
         severity: Some(DiagnosticSeverity::ERROR),
-        code: Some(NumberOrString::String(code.to_string())),
+        code: Some(NumberOrString::String(code_str)),
         source: Some("action".to_string()),
         message: error.message.clone(),
         ..Default::default()
@@ -240,6 +248,20 @@ mod tests {
                 || diags
                     .iter()
                     .all(|d| d.severity == Some(lsp_types::DiagnosticSeverity::ERROR))
+        );
+    }
+
+    #[test]
+    fn test_get_diagnostics_fallible_code_e001() {
+        let doc = make_doc("fun main() { parseInt(\"x\") }");
+        let diags = doc.get_diagnostics();
+        assert!(
+            diags.iter().any(|d| matches!(
+                &d.code,
+                Some(lsp_types::NumberOrString::String(s)) if s == "E001"
+            )),
+            "expected structured E001 diagnostic, got: {:?}",
+            diags
         );
     }
 

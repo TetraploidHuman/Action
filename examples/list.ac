@@ -3,8 +3,8 @@ fun main() {
     // Create a List
     val nums = List[10, 20, 30, 40, 50]
 
-    // Access by index
-    print(nums[0])
-    print(nums[2])
-    print(nums[4])
+    // Access by index (fallible — requires or {})
+    print(nums[0] or { 0 })
+    print(nums[2] or { 0 })
+    print(nums[4] or { 0 })
 }

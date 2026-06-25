@@ -1,7 +1,7 @@
 // Nullable flow: or {}, when, safe chaining
 fun main() {
     val maybe = 42
-    val n = maybe or { 0 }
+    val n = maybe
     print(n)
 
     val empty: Int? = null

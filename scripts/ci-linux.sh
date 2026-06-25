@@ -2,7 +2,7 @@
 # CI helpers executed inside nix-shell (LLVM + nix Rust on PATH).
 # Usage: nix-shell --run "bash scripts/ci-linux.sh <command>"
 #
-# Semantic authority: 187 integration tests (tests/integration.rs) — must stay green.
+# Semantic authority: 194 integration tests (tests/integration.rs) — must stay green.
 #
 # Optional: CARGO_TARGET_DIR (persistent self-hosted cache) overrides ./target.
 set -euo pipefail

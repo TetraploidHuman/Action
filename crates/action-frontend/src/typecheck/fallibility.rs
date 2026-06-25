@@ -1,10 +1,14 @@
-//! Fallibility analysis context and R1–R9 rules (R7 vertical slice).
+//! Fallibility analysis context and type rules R1–R9 (diagnostics E001–E009).
 //!
-//! `EMIT_E001` is gated off until the full error surface is enabled.
+//! R1–R6 (E001–E006) and R7–R9 (E007–E009) are implemented in this module.
 
 use crate::ast::{Expr, ExprKind, Stmt, Type};
 use crate::builtin::{self, UfcsReceiverKind};
-use crate::error::{e001_or_required, e002_or_type_mismatch, CompilerError};
+use crate::error::{
+    e001_or_required, e002_or_type_mismatch, e004_nullable_termination, e005_nullable_arithmetic,
+    e006_fallible_index_required, e007_or_unnecessary, e008_map_index_required,
+    e009_set_index_required, CompilerError,
+};
 use crate::function_symbol::FunctionSymbol;
 use crate::types::types_compatible;
 use std::collections::HashMap;
@@ -73,29 +77,83 @@ impl FallibilityContext {
         format!("{}_{}", mod_name, field)
     }
 
-    /// R1: fallible call outside `or {}` with non-nullable expectation → E001 (when enabled).
-    pub fn check_r1_fallible_needs_or(
+    /// R1: fallible call outside `or {}` → E001 (when enabled).
+    pub fn check_r1_fallible_call(
         &self,
         span: action_span::Span,
-        name: &str,
-        expected: &Type,
+        func: &Expr,
+    ) -> Option<CompilerError> {
+        if !EMIT_E001 || self.in_or_block || self.fn_or_fallback || self.allow_bare_fallible_in_fn {
+            return None;
+        }
+        resolve_fallible_call_display(func, self).map(|display| e001_or_required(&display, span))
+    }
+
+    /// Whether a call expression invokes a fallible builtin, UFCS method, or user fn.
+    pub fn call_expr_is_fallible(&self, func: &Expr) -> bool {
+        resolve_fallible_call_display(func, self).is_some()
+    }
+
+    /// R4: nullable value used where non-nullable type is expected.
+    pub fn check_r4_nullable_termination(
+        declared: &Type,
+        inferred: &Type,
+        span: action_span::Span,
+    ) -> Option<CompilerError> {
+        match (declared, inferred) {
+            (Type::Nullable(_), _) => None,
+            (_, Type::Nullable(_)) if !matches!(declared, Type::Named(n) if n == "Nothing") => {
+                Some(e004_nullable_termination(
+                    &format!("{}", inferred),
+                    &format!("{}", declared),
+                    span,
+                ))
+            }
+            _ => None,
+        }
+    }
+
+    /// R5: nullable operand in arithmetic/bitwise (except allowed cases handled by caller).
+    pub fn check_r5_nullable_arithmetic(op: &str, span: action_span::Span) -> CompilerError {
+        e005_nullable_arithmetic(op, span)
+    }
+
+    /// R6: bare fallible list index outside `or {}` / propagating fn.
+    pub fn check_r6_fallible_index_needs_or(
+        &self,
+        span: action_span::Span,
     ) -> Option<CompilerError> {
         if self.in_or_block || self.fn_or_fallback || self.allow_bare_fallible_in_fn {
             return None;
         }
-        let sym = self.symbols.get(name)?;
-        if !sym.is_fallible {
-            return None;
-        }
-        let _ = expected;
-        if EMIT_E001 {
-            Some(e001_or_required(name, span))
-        } else {
-            None
-        }
+        Some(e006_fallible_index_required(span))
     }
 
-    /// R2–R9 placeholders for future rules (skeleton only).
+    /// R7: `or {}` on expression that is neither fallible nor nullable.
+    pub fn check_r7_or_unnecessary(&self, span: action_span::Span) -> Option<CompilerError> {
+        if self.in_or_block || self.fn_or_fallback {
+            return None;
+        }
+        Some(e007_or_unnecessary(span))
+    }
+
+    /// R8: bare fallible map index outside `or {}` / propagating fn.
+    pub fn check_r8_map_index_needs_or(&self, span: action_span::Span) -> Option<CompilerError> {
+        if self.in_or_block || self.fn_or_fallback || self.allow_bare_fallible_in_fn {
+            return None;
+        }
+        Some(e008_map_index_required(span))
+    }
+
+    /// R9: bare fallible set index outside `or {}` / propagating fn.
+    pub fn check_r9_set_index_needs_or(&self, span: action_span::Span) -> Option<CompilerError> {
+        if self.in_or_block || self.fn_or_fallback || self.allow_bare_fallible_in_fn {
+            return None;
+        }
+        Some(e009_set_index_required(span))
+    }
+
+    /// R2: `or {}` fallback type must match fallible/nullable lhs.
     pub fn check_r2_or_block_result_type(
         &self,
         nullable_ty: &Type,
@@ -164,9 +222,46 @@ impl FallibilityContext {
             .insert(name.to_string(), FunctionSymbol::new(is_fallible, ret));
     }
 
-    /// Walk expression tree registering fallible call sites (R4–R9 skeleton).
+    /// Walk expression tree registering fallible call sites for symbol metadata.
     pub fn analyze_expr(&mut self, expr: &Expr) {
         walk_expr(expr, self);
+    }
+}
+
+fn resolve_fallible_call_display(func: &Expr, ctx: &FallibilityContext) -> Option<String> {
+    match &func.kind {
+        ExprKind::Ident(name) => {
+            if ctx.callee_requires_or(name) {
+                Some(name.clone())
+            } else {
+                None
+            }
+        }
+        ExprKind::FieldAccess(obj, field) => {
+            if let ExprKind::Ident(mod_name) = &obj.kind {
+                let mangled = FallibilityContext::module_callee_symbol(mod_name, field);
+                if ctx.callee_requires_or(&mangled) {
+                    return Some(format!("{}.{}", mod_name, field));
+                }
+            }
+            for kind in [
+                UfcsReceiverKind::List,
+                UfcsReceiverKind::String,
+                UfcsReceiverKind::Map,
+                UfcsReceiverKind::Set,
+                UfcsReceiverKind::Collection,
+                UfcsReceiverKind::Global,
+            ] {
+                if let Some(def) = builtin::lookup_ufcs(kind, field) {
+                    if def.fallible {
+                        return Some(field.clone());
+                    }
+                    break;
+                }
+            }
+            None
+        }
+        _ => None,
     }
 }
 

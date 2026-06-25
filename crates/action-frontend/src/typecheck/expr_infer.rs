@@ -189,7 +189,7 @@ impl TypeChecker {
             ExprKind::Call { func, args, .. } => {
                 if let ExprKind::Ident(name) = &func.kind {
                     match name.as_str() {
-                        "List" => {
+                        "List" | "__list" => {
                             if args.is_empty() {
                                 let elem = engine.fresh_var();
                                 return Ok(Type::Generic(

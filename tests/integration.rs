@@ -101,6 +101,32 @@ fn assert_compile_error(name: &str, expected_msg: &str) {
     );
 }
 
+/// Assert `action check --format json` reports structured diagnostic `expected_code`.
+fn assert_compile_error_code(name: &str, expected_code: &str) {
+    let example = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("examples")
+        .join(name);
+    let output = Command::new(action_binary())
+        .args(["check", "--format", "json", example.to_str().unwrap()])
+        .output()
+        .expect(&format!("Failed to check example: {}", name));
+    assert!(
+        !output.status.success(),
+        "Expected {} to fail type-check, but it succeeded.\nstdout: {}",
+        name,
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let needle = format!("\"code\": \"{}\"", expected_code);
+    assert!(
+        stdout.contains(&needle),
+        "Expected diagnostic code {} when checking {}, but got:\n{}",
+        expected_code,
+        name,
+        stdout
+    );
+}
+
 fn assert_compile_error_at(path: &std::path::Path, expected_msg: &str) {
     let output = Command::new(action_binary())
         .args(["run", path.to_str().unwrap()])
@@ -894,18 +920,12 @@ fn test_fallible_module() {
 
 #[test]
 fn test_error_e003_fn_or_return() {
-    assert_compile_error(
-        "test_error_e003_fn_or.ac",
-        "function or-block fallback type does not match return type",
-    );
+    assert_compile_error_code("test_error_e003_fn_or.ac", "E003");
 }
 
 #[test]
 fn test_error_e001_module_fallible() {
-    assert_compile_error(
-        "test_error_e001_module.ac",
-        "fallible call 'fallible_parse_parseLine' must be used with 'or { }'",
-    );
+    assert_compile_error_code("test_error_e001_module.ac", "E001");
 }
 
 #[test]
@@ -915,10 +935,7 @@ fn test_fallible_user_fn_chain() {
 
 #[test]
 fn test_error_e001_user_fn_fallible() {
-    assert_compile_error(
-        "test_error_e001_user_fn.ac",
-        "fallible call 'mustParse' must be used with 'or { }'",
-    );
+    assert_compile_error_code("test_error_e001_user_fn.ac", "E001");
 }
 
 #[test]
@@ -935,19 +952,48 @@ fn test_bootstrap_lexer_keywords() {
 // ============================================================
 
 #[test]
+fn test_error_e004_nullable_assign() {
+    assert_compile_error_code("test_error_nullable_to_nonnullable.ac", "E004");
+}
+
+#[test]
+fn test_error_e005_arithmetic_nullable() {
+    assert_compile_error_code("test_error_arithmetic_nullable.ac", "E005");
+}
+
+#[test]
+fn test_error_e006_list_index() {
+    assert_compile_error_code("test_error_e006_list_index.ac", "E006");
+}
+
+#[test]
+fn test_error_e006_list_var_index() {
+    assert_compile_error_code("test_error_e006_list_var_index.ac", "E006");
+}
+
+#[test]
+fn test_error_e007_or_unnecessary() {
+    assert_compile_error_code("test_error_e007_or_unnecessary.ac", "E007");
+}
+
+#[test]
+fn test_error_e008_map_index() {
+    assert_compile_error_code("test_error_e008_map_index.ac", "E008");
+}
+
+#[test]
+fn test_error_e009_set_index() {
+    assert_compile_error_code("test_error_e009_set_index.ac", "E009");
+}
+
+#[test]
 fn test_error_e001_fallible_needs_or() {
-    assert_compile_error(
-        "test_error_e001_parseInt.ac",
-        "fallible call 'parseInt' must be used with 'or { }'",
-    );
+    assert_compile_error_code("test_error_e001_parseInt.ac", "E001");
 }
 
 #[test]
 fn test_error_e002_or_type_mismatch() {
-    assert_compile_error(
-        "test_error_e002_or_type.ac",
-        "or-block fallback type does not match",
-    );
+    assert_compile_error_code("test_error_e002_or_type.ac", "E002");
 }
 
 #[test]

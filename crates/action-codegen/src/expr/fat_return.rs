@@ -70,10 +70,13 @@ impl<'ctx> CodeGen<'ctx> {
         match t {
             Type::Map(_, _) => Some(ValKind::Map),
             Type::Set(_) => Some(ValKind::Set),
+            Type::Generic(base, _) if matches!(base.as_ref(), Type::Named(n) if n == "List" || n == "list") => {
+                Some(ValKind::List)
+            }
             Type::Named(name) => match name.as_str() {
-                "map" => Some(ValKind::Map),
-                "set" => Some(ValKind::Set),
-                "list" => Some(ValKind::List),
+                "map" | "Map" => Some(ValKind::Map),
+                "set" | "Set" => Some(ValKind::Set),
+                "list" | "List" => Some(ValKind::List),
                 _ => None,
             },
             Type::Nullable(inner) => Self::heap_collection_kind(inner),

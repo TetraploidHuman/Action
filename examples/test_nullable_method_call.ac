@@ -19,7 +19,7 @@ fun main() {
     // Non-null List (type inference)
     val lst = List[10, 20, 30]
     print(lst.head() or { -1 })                              // 10
-    print(lst.len() or { -1 })                               // 3
+    print(lst.len())                               // 3
 
     // Null List (needs type annotation for the null to know its type)
     val nl: List? = null
@@ -33,7 +33,7 @@ fun main() {
 
     // --- Nullable Map ---
     val m = Map["x": 10, "y": 20]
-    print(m.contains("x") or { false })                      // true (1)
+    print(m.contains("x"))                      // true (1)
 
     val nm: Map? = null
     print(nm.contains("x") or { false })                     // false (0)
@@ -42,5 +42,5 @@ fun main() {
     print(getNullMap().contains("a") or { false })           // false (0)
 
     // --- Map from non-null function ---
-    print(getMap().contains("a") or { false })               // true (1)
+    print(getMap().contains("a"))
 }

@@ -379,7 +379,9 @@ impl<'ctx> CodeGen<'ctx> {
                 "String" | "Str" => self.string_type.fn_type(param_tys, false),
                 "Unit" => self.void_ty().fn_type(param_tys, false),
                 "Int" => self.i64_ty().fn_type(param_tys, false),
-                "list" | "set" | "map" => self.list_type.fn_type(param_tys, false),
+                "list" | "List" | "set" | "Set" | "map" | "Map" => {
+                    self.list_type.fn_type(param_tys, false)
+                }
                 "LazyList" => self.lazylist_type.fn_type(param_tys, false),
                 name => {
                     if let Some(st) = self.type_layout.named_structs.get(name) {
@@ -423,7 +425,9 @@ impl<'ctx> CodeGen<'ctx> {
             }
             Some(Type::Generic(base, _)) => match base.as_ref() {
                 Type::Named(n) => match n.as_str() {
-                    "list" | "set" | "map" => self.list_type.fn_type(param_tys, false),
+                    "list" | "List" | "set" | "Set" | "map" | "Map" => {
+                        self.list_type.fn_type(param_tys, false)
+                    }
                     "Task" => self.task_type.fn_type(param_tys, false),
                     "Stream" => self.ptr_ty().fn_type(param_tys, false),
                     "LazyList" => self.lazylist_type.fn_type(param_tys, false),

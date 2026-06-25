@@ -391,15 +391,19 @@ impl TypeChecker {
                                 .infer_expr_type(body)
                                 .unwrap_or(Type::Named("Int".into()));
                             if !types_compatible(declared_ret, &inferred) {
-                                let msg = if let Some(hint) =
-                                    Self::check_termination(declared_ret, &inferred)
-                                {
-                                    hint
+                                if let Some(err) = Self::check_termination(
+                                    declared_ret,
+                                    &inferred,
+                                    self.current_span,
+                                ) {
+                                    errors.push(err);
                                 } else {
-                                    format!("Function '{}' declares return type '{}' but body has type '{}'",
-                                        name, declared_ret, inferred)
-                                };
-                                errors.push(CompilerError::new(msg).with_span(self.current_span));
+                                    errors.push(CompilerError::new(format!(
+                                        "Function '{}' declares return type '{}' but body has type '{}'",
+                                        name, declared_ret, inferred
+                                    ))
+                                    .with_span(self.current_span));
+                                }
                             }
                         }
                     }
@@ -467,15 +471,19 @@ impl TypeChecker {
                             .infer_expr_type(value)
                             .unwrap_or(Type::Named("Int".into()));
                         if !types_compatible(ann, &inferred) {
-                            let msg = if let Some(hint) = Self::check_termination(ann, &inferred) {
-                                hint
+                            if let Some(err) =
+                                Self::check_termination(ann, &inferred, self.current_span)
+                            {
+                                errors.push(err);
                             } else {
-                                format!(
-                                    "Variable '{}' declared as '{}' but initialized with '{}'",
-                                    name, ann, inferred
-                                )
-                            };
-                            errors.push(CompilerError::new(msg).with_span(self.current_span));
+                                errors.push(
+                                    CompilerError::new(format!(
+                                        "Variable '{}' declared as '{}' but initialized with '{}'",
+                                        name, ann, inferred
+                                    ))
+                                    .with_span(self.current_span),
+                                );
+                            }
                         }
                     }
                 }
@@ -494,15 +502,19 @@ impl TypeChecker {
                             .infer_expr_type(value)
                             .unwrap_or(Type::Named("Int".into()));
                         if !types_compatible(ann, &inferred) {
-                            let msg = if let Some(hint) = Self::check_termination(ann, &inferred) {
-                                hint
+                            if let Some(err) =
+                                Self::check_termination(ann, &inferred, self.current_span)
+                            {
+                                errors.push(err);
                             } else {
-                                format!(
-                                    "Constant '{}' declared as '{}' but initialized with '{}'",
-                                    name, ann, inferred
-                                )
-                            };
-                            errors.push(CompilerError::new(msg).with_span(self.current_span));
+                                errors.push(
+                                    CompilerError::new(format!(
+                                        "Constant '{}' declared as '{}' but initialized with '{}'",
+                                        name, ann, inferred
+                                    ))
+                                    .with_span(self.current_span),
+                                );
+                            }
                         }
                     }
                 }
@@ -523,23 +535,12 @@ impl TypeChecker {
     }
 
     /// Check for nullable termination violation: T? used where T is expected.
-    /// Returns Some(error_suffix) if declared expects T but inferred is T?.
-    fn check_termination(declared: &Type, inferred: &Type) -> Option<String> {
-        match (declared, inferred) {
-            (Type::Nullable(_), _) => None, // declared is nullable, assignment of non-null to T? is fine
-            (_, Type::Nullable(_inner)) => {
-                // T? used where T is expected
-                if !matches!(declared, Type::Named(n) if n == "Nothing") {
-                    Some(format!(
-                        "cannot use nullable '{}' where non-nullable '{}' is expected. Use 'or {{ }}' to provide a default, or check for null first",
-                        inferred, declared
-                    ))
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        }
+    fn check_termination(
+        declared: &Type,
+        inferred: &Type,
+        span: action_span::Span,
+    ) -> Option<CompilerError> {
+        FallibilityContext::check_r4_nullable_termination(declared, inferred, span)
     }
 }
 
@@ -569,6 +570,37 @@ mod tests {
         type_env.insert("Char".to_string(), Type::Named("Char".into()));
         checker.seed_type_env(&type_env);
         checker.check(&program)
+    }
+
+    #[test]
+    fn test_e006_list_index_needs_or() {
+        for src in [
+            "fun main() { println(List[][0]) }",
+            "fun main() { List[][0] }",
+            "fun main() { val lst = List[1, 2]; val i = 0; println(lst[i]) }",
+        ] {
+            let errors = check_source(src);
+            assert!(
+                errors
+                    .iter()
+                    .any(|e| e.code == Some(crate::error::DiagnosticCode::E006)),
+                "expected E006 for {:?}, got: {:?}",
+                src,
+                errors
+            );
+        }
+    }
+
+    #[test]
+    fn test_e007_or_unnecessary() {
+        let errors = check_source("fun main() { 42 or { 0 } }");
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.code == Some(crate::error::DiagnosticCode::E007)),
+            "expected E007, got: {:?}",
+            errors
+        );
     }
 
     #[test]
