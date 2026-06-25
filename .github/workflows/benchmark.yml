@@ -19,7 +19,8 @@ jobs:
       CARGO_INCREMENTAL: 1
       CARGO_BUILD_JOBS: 16
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        run: bash scripts/checkout-codeload.sh
 
       - uses: dtolnay/rust-toolchain@stable
         with:
