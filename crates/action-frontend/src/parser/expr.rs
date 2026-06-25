@@ -284,6 +284,7 @@ impl Parser {
         let is_simple_target = matches!(&func.kind, ExprKind::Ident(_))
             || matches!(&func.kind, ExprKind::FieldAccess(_, _));
         if is_simple_target
+            && !self.no_trailing_lambda
             && self.current_kind() == TokenKind::LBrace
             && self.brace_is_lambda_like()
         {

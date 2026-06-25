@@ -921,6 +921,15 @@ fn test_error_e001_user_fn_fallible() {
     );
 }
 
+#[test]
+fn test_bootstrap_lexer_keywords() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("bootstrap/lexer.ac");
+    assert_eq!(
+        run_action_file(&path),
+        "fun\nmain\n(\n)\n{\nval\nx\n=\n1\nvar\ny\n=\n2\n}\n"
+    );
+}
+
 // ============================================================
 // Compile-error tests — imports, generics, arity
 // ============================================================

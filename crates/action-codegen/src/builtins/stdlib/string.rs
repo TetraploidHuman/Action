@@ -511,19 +511,13 @@ impl<'ctx> CodeGen<'ctx> {
                     .try_as_basic_value()
                     .unwrap_basic()
                     .into_int_value();
-                // Allocate nbytes+1 (for null terminator)
+                // Allocate nbytes+1 (for null terminator) with RC header so param
+                // cleanup and scope rc_dec_string_val can release the buffer.
                 let alloc_sz = self
                     .builder
                     .build_int_add(nbytes, self.i64_ty().const_int(1, false), "alloc_sz")
                     .map_err(llvm_err)?;
-                let malloc_fn = self.module.get_function("malloc").unwrap();
-                let buf = self
-                    .builder
-                    .build_call(malloc_fn, &[alloc_sz.into()], "buf")
-                    .map_err(llvm_err)?
-                    .try_as_basic_value()
-                    .unwrap_basic()
-                    .into_pointer_value();
+                let buf = self.malloc_rc(alloc_sz)?;
                 // memcpy nbytes from sdata+real_idx to buf
                 let memcpy_fn = self.module.get_function("memcpy").unwrap();
                 let src = unsafe {
@@ -615,16 +609,9 @@ impl<'ctx> CodeGen<'ctx> {
                 };
                 let i64 = self.i64_ty();
                 let i8 = self.context.i8_type();
-                // Allocate 5 bytes (max 4 byte UTF-8 + null terminator)
-                let malloc_fn = self.module.get_function("malloc").unwrap();
+                // Allocate 5 bytes (max 4 byte UTF-8 + null terminator) with RC header.
                 let alloc_sz = i64.const_int(5, false);
-                let buf = self
-                    .builder
-                    .build_call(malloc_fn, &[alloc_sz.into()], "buf")
-                    .map_err(llvm_err)?
-                    .try_as_basic_value()
-                    .unwrap_basic()
-                    .into_pointer_value();
+                let buf = self.malloc_rc(alloc_sz)?;
                 // Call runtime UTF-8 encoder: nbytes = action_utf8_encode(code, buf)
                 let nbytes = self
                     .call_rt("action_utf8_encode", &[code.into(), buf.into()])?

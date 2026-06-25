@@ -186,6 +186,8 @@ pub struct Parser {
     pub(crate) pos: usize,
     pub(crate) current_type_params: Vec<String>,
     pub(crate) no_postfix_call: bool,
+    /// When true, do not attach `{ ... }` after a call as trailing lambda (when condition).
+    pub(crate) no_trailing_lambda: bool,
     pub(crate) block_parse_stack: Vec<BlockFrame>,
 }
 
@@ -196,6 +198,7 @@ impl Parser {
             pos: 0,
             current_type_params: Vec::new(),
             no_postfix_call: false,
+            no_trailing_lambda: false,
             block_parse_stack: Vec::new(),
         }
     }
@@ -470,6 +473,43 @@ mod tests {
         match expr.kind {
             ExprKind::When(w) => match &w.kind {
                 WhenKind::OneLine { .. } => {}
+                _ => panic!("Expected one-line when"),
+            },
+            _ => panic!("Expected when"),
+        }
+    }
+
+    #[test]
+    fn test_when_call_condition_not_trailing_lambda() {
+        let expr = parse_expr("when atEnd(s, i) { false else true }").unwrap();
+        match expr.kind {
+            ExprKind::When(w) => match &w.kind {
+                WhenKind::OneLine {
+                    condition,
+                    then_expr,
+                    else_expr,
+                } => {
+                    assert!(matches!(condition.kind, ExprKind::Call { .. }));
+                    assert!(matches!(then_expr.kind, ExprKind::Literal(Literal::Bool(false))));
+                    assert!(matches!(else_expr.kind, ExprKind::Literal(Literal::Bool(true))));
+                }
+                _ => panic!("Expected one-line when"),
+            },
+            _ => panic!("Expected when"),
+        }
+    }
+
+    #[test]
+    fn test_when_multiline_trailing_else() {
+        let expr = parse_expr("when a > b { a } else b").unwrap();
+        match expr.kind {
+            ExprKind::When(w) => match &w.kind {
+                WhenKind::OneLine { else_expr, .. } => {
+                    match &else_expr.kind {
+                        ExprKind::Ident(s) => assert_eq!(s, "b"),
+                        _ => panic!("Expected else ident b, got {:?}", else_expr.kind),
+                    }
+                }
                 _ => panic!("Expected one-line when"),
             },
             _ => panic!("Expected when"),

@@ -1,6 +1,88 @@
-// Bootstrap M4 pilot: fixed token demo (full scanner in progress).
-// Output mirrors Rust lexer golden for a minimal subset sample.
+// Bootstrap M4: recursive scanner — token kinds for `keywords.ac` golden fixture.
+
+fun atEnd(s: String, pos: Int) -> Bool {
+    return pos == len(s)
+}
+
+fun containsAt(alphabet: String, ch: String, i: Int) -> Bool {
+    return when atEnd(alphabet, i) { false else containsAtStep(alphabet, ch, i) }
+}
+
+fun containsAtStep(alphabet: String, ch: String, i: Int) -> Bool {
+    val at: String = charAt(alphabet, i)
+    return when ch == at { true else containsAt(alphabet, ch, i + 1) }
+}
+
+fun skipWsEnd(s: String, pos: Int) -> Int {
+    return when atEnd(s, pos) { pos else skipWsMore(s, pos) }
+}
+
+fun skipWsMore(s: String, pos: Int) -> Int {
+    val ch: String = charAt(s, pos)
+    val ws: Bool = containsAt(" \t\n\r", ch, 0)
+    return when ws { skipWsEnd(s, pos + 1) else pos }
+}
+
+fun readWhileAlnumEnd(s: String, pos: Int) -> Int {
+    return when atEnd(s, pos) { pos else readWhileAlnumMore(s, pos) }
+}
+
+fun readWhileAlnumMore(s: String, pos: Int) -> Int {
+    val ch: String = charAt(s, pos)
+    val al: Bool = containsAt("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", ch, 0)
+    return when al { readWhileAlnumEnd(s, pos + 1) else pos }
+}
+
+fun readWhileDigitEnd(s: String, pos: Int) -> Int {
+    return when atEnd(s, pos) { pos else readWhileDigitMore(s, pos) }
+}
+
+fun readWhileDigitMore(s: String, pos: Int) -> Int {
+    val ch: String = charAt(s, pos)
+    val dg: Bool = containsAt("0123456789", ch, 0)
+    return when dg { readWhileDigitEnd(s, pos + 1) else pos }
+}
+
+fun emitSlice(s: String, start: Int, end: Int) -> Int {
+    val text: String = substring(s, start, end - start)
+    println(text)
+    return tokenize(s, end)
+}
+
+fun emitOneChar(s: String, pos: Int) -> Int {
+    val ch: String = charAt(s, pos)
+    println(ch)
+    return tokenize(s, pos + 1)
+}
+
+fun emitIdent(s: String, pos: Int) -> Int {
+    val end: Int = readWhileAlnumEnd(s, pos)
+    return emitSlice(s, pos, end)
+}
+
+fun emitNumber(s: String, pos: Int) -> Int {
+    val end: Int = readWhileDigitEnd(s, pos)
+    return emitSlice(s, pos, end)
+}
+
+fun tokenizeAtNonPunct(s: String, pos: Int, ch: String) -> Int {
+    val digit: Bool = containsAt("0123456789", ch, 0)
+    return when digit { emitNumber(s, pos) else emitIdent(s, pos) }
+}
+
+fun tokenizeAt(s: String, pos: Int) -> Int {
+    val ch: String = charAt(s, pos)
+    val punct: Bool = containsAt("(){}=", ch, 0)
+    return when punct { emitOneChar(s, pos) else tokenizeAtNonPunct(s, pos, ch) }
+}
+
+fun tokenize(s: String, pos: Int) -> Int {
+    val p: Int = skipWsEnd(s, pos)
+    return when atEnd(s, p) { p else tokenizeAt(s, p) }
+}
+
 fun main() -> Int {
-    println("tokens: fun main ( ) { val x = 1 var y = 2 }")
+    val src: String = "fun main() {\n    val x = 1\n    var y = 2\n}"
+    tokenize(src, 0)
     return 0
 }

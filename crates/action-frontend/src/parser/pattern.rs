@@ -48,7 +48,9 @@ impl Parser {
         }
 
         // Parse the condition or value
+        self.no_trailing_lambda = true;
         let first = self.parse_expr()?;
+        self.no_trailing_lambda = false;
 
         // when first { ... }
         if self.current_kind() == TokenKind::LBrace {
@@ -127,13 +129,20 @@ impl Parser {
                 // which needs its own {} pair.
                 // The when-block's closing } must still appear after the last arm.
                 let true_expr = self.parse_when_arm_expr()?;
-                let false_expr = if self.current_kind() == TokenKind::Else {
+                let mut false_expr = if self.current_kind() == TokenKind::Else {
                     self.advance();
                     self.parse_when_arm_expr()?
                 } else {
                     ExprKind::Literal(Literal::Unit).into()
                 };
                 self.expect(TokenKind::RBrace)?;
+                // Multiline: when cond { then } else { alt }
+                if matches!(false_expr.kind, ExprKind::Literal(Literal::Unit))
+                    && self.current_kind() == TokenKind::Else
+                {
+                    self.advance();
+                    false_expr = self.parse_when_arm_expr()?;
+                }
                 return Ok(ExprKind::When(Box::new(When {
                     kind: WhenKind::OneLine {
                         condition: Box::new(first),

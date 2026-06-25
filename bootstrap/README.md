@@ -12,7 +12,7 @@ Action-in-Action 编译器前端的首个试点目录。首版仅使用 `doc/boo
 
 ## 当前文件
 
-- `lexer.ac` — 固定样例输出（完整 scanner 进行中）
+- `lexer.ac` — recursive scanner; emits `keywords.ac` golden token kinds via `tokenize`/`containsAt`/…
 
 ## 验证
 
