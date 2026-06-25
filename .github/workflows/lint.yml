@@ -18,7 +18,10 @@ jobs:
       CARGO_BUILD_JOBS: 16
     steps:
       - name: Checkout repository
-        run: bash scripts/checkout-codeload.sh
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: bash /home/miaox99/桌面/Runner/checkout-codeload.sh
 
       - uses: dtolnay/rust-toolchain@stable
         with:
