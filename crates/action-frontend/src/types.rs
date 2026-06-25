@@ -26,8 +26,7 @@ fn ptr_pointee(ty: &Type) -> Option<&Type> {
     match ty {
         Type::Ptr(inner) => Some(inner.as_ref()),
         Type::Generic(base, args)
-            if matches!(base.as_ref(), Type::Named(n) if n == "Ptr")
-                && args.len() == 1 =>
+            if matches!(base.as_ref(), Type::Named(n) if n == "Ptr") && args.len() == 1 =>
         {
             Some(&args[0])
         }

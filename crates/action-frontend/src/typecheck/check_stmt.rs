@@ -448,12 +448,18 @@ impl TypeChecker {
         }
     }
 
-    pub(crate) fn check_fallible_call_e001(&mut self, func: &Expr, errors: &mut Vec<CompilerError>) {
+    pub(crate) fn check_fallible_call_e001(
+        &mut self,
+        func: &Expr,
+        errors: &mut Vec<CompilerError>,
+    ) {
         use crate::builtin::{self, UfcsReceiverKind};
         use crate::error::e001_or_required;
         use crate::typecheck::fallibility::EMIT_E001;
 
-        if !EMIT_E001 || self.fallibility.in_or_block || self.fallibility.fn_or_fallback
+        if !EMIT_E001
+            || self.fallibility.in_or_block
+            || self.fallibility.fn_or_fallback
             || self.fallibility.allow_bare_fallible_in_fn
         {
             return;
@@ -466,9 +472,8 @@ impl TypeChecker {
             }
             ExprKind::FieldAccess(obj, field) => {
                 if let ExprKind::Ident(mod_name) = &obj.kind {
-                    let mangled = crate::typecheck::FallibilityContext::module_callee_symbol(
-                        mod_name, field,
-                    );
+                    let mangled =
+                        crate::typecheck::FallibilityContext::module_callee_symbol(mod_name, field);
                     if self.fallibility.callee_requires_or(&mangled) {
                         let display = format!("{}.{}", mod_name, field);
                         errors.push(e001_or_required(&display, self.current_span));

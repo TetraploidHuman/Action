@@ -357,12 +357,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let status_line_len_raw = self
             .builder
-            .build_ptr_diff(
-                self.context.i8_type(),
-                nl_ptr,
-                result_ptr,
-                "status_len",
-            )
+            .build_ptr_diff(self.context.i8_type(), nl_ptr, result_ptr, "status_len")
             .map_err(llvm_err)?;
         let status_line_len = self
             .builder

@@ -155,7 +155,9 @@ pub fn e001_or_required(name: &str, span: Span) -> CompilerError {
     ))
     .with_span(span)
     .with_code(DiagnosticCode::E001)
-    .with_help("Wrap the call in `or { default }` or append `or { default }` after the function body")
+    .with_help(
+        "Wrap the call in `or { default }` or append `or { default }` after the function body",
+    )
 }
 
 pub fn e002_or_type_mismatch(span: Span) -> CompilerError {

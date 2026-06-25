@@ -56,10 +56,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    pub(crate) fn json_ptr_arg(
-        &mut self,
-        arg: CallArg<'_>,
-    ) -> Result<PointerValue<'ctx>, String> {
+    pub(crate) fn json_ptr_arg(&mut self, arg: CallArg<'_>) -> Result<PointerValue<'ctx>, String> {
         let v = self.compile_call_arg(arg)?;
         match v {
             TypedValue::Ptr(p) => Ok(p),

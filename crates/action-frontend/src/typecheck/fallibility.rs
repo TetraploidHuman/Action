@@ -149,11 +149,7 @@ impl FallibilityContext {
         self.fn_or_fallback = fn_or_fallback.is_some();
         if let Some(fb) = fn_or_fallback {
             if let Some(ret) = return_type {
-                let _ = self.check_r3_fn_or_return_match(
-                    ret,
-                    &infer_expr_type_simple(fb),
-                    fb.span,
-                );
+                let _ = self.check_r3_fn_or_return_match(ret, &infer_expr_type_simple(fb), fb.span);
             }
         }
         walk_expr(body, self);
@@ -194,9 +190,7 @@ fn call_requires_or(name: &str, ctx: &FallibilityContext) -> bool {
     if let Some(def) = builtin::lookup(name) {
         return def.fallible;
     }
-    ctx.symbols
-        .get(name)
-        .is_some_and(|sym| sym.is_fallible)
+    ctx.symbols.get(name).is_some_and(|sym| sym.is_fallible)
 }
 
 /// Bare fallible call (builtin/UFCS or propagating user fn) makes the enclosing function use `{T,i1}` ABI.
@@ -241,8 +235,7 @@ fn expr_has_bare_propagating_inner(
                 }
                 ExprKind::FieldAccess(obj, method) => {
                     if let ExprKind::Ident(mod_name) = &obj.kind {
-                        let mangled =
-                            FallibilityContext::module_callee_symbol(mod_name, method);
+                        let mangled = FallibilityContext::module_callee_symbol(mod_name, method);
                         if !in_or && !in_fn_or && call_requires_or(&mangled, ctx) {
                             bare = true;
                         }
@@ -252,10 +245,9 @@ fn expr_has_bare_propagating_inner(
                 }
                 _ => {}
             }
-            bare
-                || args.iter().any(|a| {
-                    expr_has_bare_propagating_inner(a, ctx, in_or, in_fn_or)
-                })
+            bare || args
+                .iter()
+                .any(|a| expr_has_bare_propagating_inner(a, ctx, in_or, in_fn_or))
         }
         ExprKind::OrBlock { nullable, fallback } => {
             expr_has_bare_propagating_inner(nullable, ctx, true, in_fn_or)
@@ -274,9 +266,9 @@ fn expr_has_bare_propagating_inner(
                 || expr_has_bare_propagating_inner(b, ctx, in_or, in_fn_or)
         }
         ExprKind::Unary(_, a) => expr_has_bare_propagating_inner(a, ctx, in_or, in_fn_or),
-        ExprKind::Block(stmts) => stmts.iter().any(|s| {
-            stmt_has_bare_propagating(s, ctx, in_or, in_fn_or)
-        }),
+        ExprKind::Block(stmts) => stmts
+            .iter()
+            .any(|s| stmt_has_bare_propagating(s, ctx, in_or, in_fn_or)),
         ExprKind::When(w) => when_has_bare_propagating(w, ctx, in_or, in_fn_or),
         ExprKind::For(f) => for_has_bare_propagating(f, ctx, in_or, in_fn_or),
         ExprKind::Lambda { body, .. } => {
@@ -289,9 +281,9 @@ fn expr_has_bare_propagating_inner(
         ExprKind::Copy(a) | ExprKind::Unsafe(a) => {
             expr_has_bare_propagating_inner(a, ctx, in_or, in_fn_or)
         }
-        ExprKind::StructLiteral(fields) => fields.iter().any(|(_, e)| {
-            expr_has_bare_propagating_inner(e, ctx, in_or, in_fn_or)
-        }),
+        ExprKind::StructLiteral(fields) => fields
+            .iter()
+            .any(|(_, e)| expr_has_bare_propagating_inner(e, ctx, in_or, in_fn_or)),
         ExprKind::MapLiteral(entries) => entries.iter().any(|(k, v)| {
             expr_has_bare_propagating_inner(k, ctx, in_or, in_fn_or)
                 || expr_has_bare_propagating_inner(v, ctx, in_or, in_fn_or)
@@ -299,9 +291,9 @@ fn expr_has_bare_propagating_inner(
         ExprKind::SetLiteral(elems) => elems
             .iter()
             .any(|e| expr_has_bare_propagating_inner(e, ctx, in_or, in_fn_or)),
-        ExprKind::Tuple(items) => items.iter().any(|(_, e)| {
-            expr_has_bare_propagating_inner(e, ctx, in_or, in_fn_or)
-        }),
+        ExprKind::Tuple(items) => items
+            .iter()
+            .any(|(_, e)| expr_has_bare_propagating_inner(e, ctx, in_or, in_fn_or)),
         ExprKind::StringInterpolate(parts) => {
             for p in parts {
                 if let crate::ast::StringPart::Expr(e) = p {
@@ -335,11 +327,10 @@ fn stmt_has_bare_propagating(
             ..
         } => {
             let inner_fn_or = fn_or_fallback.is_some();
-            let fb_bare = fn_or_fallback.as_ref().is_some_and(|fb| {
-                expr_has_bare_propagating_inner(fb, ctx, true, inner_fn_or)
-            });
-            fb_bare
-                || expr_has_bare_propagating_inner(body, ctx, in_or, in_fn_or || inner_fn_or)
+            let fb_bare = fn_or_fallback
+                .as_ref()
+                .is_some_and(|fb| expr_has_bare_propagating_inner(fb, ctx, true, inner_fn_or));
+            fb_bare || expr_has_bare_propagating_inner(body, ctx, in_or, in_fn_or || inner_fn_or)
         }
         _ => false,
     }
@@ -365,15 +356,17 @@ fn when_has_bare_propagating(
         WhenKind::ValueMatch { value, arms } => {
             expr_has_bare_propagating_inner(value, ctx, in_or, in_fn_or)
                 || arms.iter().any(|arm| {
-                    arm.guard.as_ref().is_some_and(|g| {
-                        expr_has_bare_propagating_inner(g, ctx, in_or, in_fn_or)
-                    }) || expr_has_bare_propagating_inner(&arm.body, ctx, in_or, in_fn_or)
+                    arm.guard
+                        .as_ref()
+                        .is_some_and(|g| expr_has_bare_propagating_inner(g, ctx, in_or, in_fn_or))
+                        || expr_has_bare_propagating_inner(&arm.body, ctx, in_or, in_fn_or)
                 })
         }
         WhenKind::ConditionChain { arms } => arms.iter().any(|arm| {
-            arm.guard.as_ref().is_some_and(|g| {
-                expr_has_bare_propagating_inner(g, ctx, in_or, in_fn_or)
-            }) || expr_has_bare_propagating_inner(&arm.body, ctx, in_or, in_fn_or)
+            arm.guard
+                .as_ref()
+                .is_some_and(|g| expr_has_bare_propagating_inner(g, ctx, in_or, in_fn_or))
+                || expr_has_bare_propagating_inner(&arm.body, ctx, in_or, in_fn_or)
         }),
     }
 }
@@ -399,13 +392,12 @@ fn for_has_bare_propagating(
                 || expr_has_bare_propagating_inner(body, ctx, in_or, in_fn_or)
         }
         ForKind::NestedIterate { bindings, body, .. } => {
-            bindings.iter().any(|(_, e)| {
-                expr_has_bare_propagating_inner(e, ctx, in_or, in_fn_or)
-            }) || expr_has_bare_propagating_inner(body, ctx, in_or, in_fn_or)
+            bindings
+                .iter()
+                .any(|(_, e)| expr_has_bare_propagating_inner(e, ctx, in_or, in_fn_or))
+                || expr_has_bare_propagating_inner(body, ctx, in_or, in_fn_or)
         }
-        ForKind::Infinite { body } => {
-            expr_has_bare_propagating_inner(body, ctx, in_or, in_fn_or)
-        }
+        ForKind::Infinite { body } => expr_has_bare_propagating_inner(body, ctx, in_or, in_fn_or),
     }
 }
 
@@ -488,7 +480,11 @@ fn walk_stmt(stmt: &Stmt, ctx: &mut FallibilityContext) {
     match stmt {
         Stmt::Let { value, .. } | Stmt::Expr { expr: value, .. } => walk_expr(value, ctx),
         Stmt::Return { value: Some(v), .. } => walk_expr(v, ctx),
-        Stmt::Fun { body, fn_or_fallback, .. } => {
+        Stmt::Fun {
+            body,
+            fn_or_fallback,
+            ..
+        } => {
             if let Some(fb) = fn_or_fallback {
                 let saved = ctx.in_or_block;
                 ctx.in_or_block = true;

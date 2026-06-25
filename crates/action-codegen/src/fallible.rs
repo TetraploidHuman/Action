@@ -3,13 +3,13 @@
 use action_frontend::ast::{Literal, Type};
 use action_frontend::builtin;
 use action_frontend::hir::{HirExpr, HirExprKind};
-use inkwell::IntPredicate;
 use inkwell::basic_block::BasicBlock;
 use inkwell::types::BasicTypeEnum;
 use inkwell::values::{BasicValueEnum, IntValue, PointerValue};
+use inkwell::IntPredicate;
 
-use crate::call_arg::CallArg;
 use super::{llvm_err, CodeGen, TypedValue};
+use crate::call_arg::CallArg;
 
 impl<'ctx> CodeGen<'ctx> {
     pub(crate) fn is_fallible_user_fn(&self, llvm_name: &str) -> bool {
@@ -109,10 +109,7 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
-    pub(crate) fn build_fallible_fail_return(
-        &mut self,
-        ret_ast: &Type,
-    ) -> Result<(), String> {
+    pub(crate) fn build_fallible_fail_return(&mut self, ret_ast: &Type) -> Result<(), String> {
         let payload = self.zero_fallible_payload_bv(ret_ast)?;
         let zero = self.bool_ty().const_zero();
         let pair = self.build_fallible_ret_pair(payload, zero, ret_ast)?;
@@ -182,10 +179,16 @@ impl<'ctx> CodeGen<'ctx> {
                         ok: ok_i1,
                     })
                 } else {
-                    Err(format!("fallible call: unknown struct return type {}", name))
+                    Err(format!(
+                        "fallible call: unknown struct return type {}",
+                        name
+                    ))
                 }
             }
-            _ => Err(format!("fallible call: unsupported return type {}", ret_ast)),
+            _ => Err(format!(
+                "fallible call: unsupported return type {}",
+                ret_ast
+            )),
         }
     }
 
@@ -476,7 +479,12 @@ impl<'ctx> CodeGen<'ctx> {
         expr: &HirExpr,
     ) -> Result<Option<TypedValue<'ctx>>, String> {
         match &expr.kind {
-            HirExprKind::Call { func, args, trailing_lambda: None, .. } => {
+            HirExprKind::Call {
+                func,
+                args,
+                trailing_lambda: None,
+                ..
+            } => {
                 if let HirExprKind::Ident(name) = &func.kind {
                     if self
                         .fallibility
@@ -484,16 +492,14 @@ impl<'ctx> CodeGen<'ctx> {
                         .get(name)
                         .is_some_and(|s| s.is_fallible)
                     {
-                        let call_args: Vec<CallArg<'_>> =
-                            args.iter().map(CallArg::hir).collect();
+                        let call_args: Vec<CallArg<'_>> = args.iter().map(CallArg::hir).collect();
                         if let Some(stmt) = self.mono_cache.generic_fun_defs.get(name).cloned() {
                             return self
                                 .compile_generic_call_from_call_args(&stmt, name, &call_args, None)
                                 .map(Some);
                         }
                         if builtin::lookup(name).is_none() {
-                            let llvm_name =
-                                self.resolve_user_fn_llvm_name(name, &call_args)?;
+                            let llvm_name = self.resolve_user_fn_llvm_name(name, &call_args)?;
                             return self
                                 .compile_fallible_user_call(&llvm_name, &call_args, None)
                                 .map(Some);
@@ -506,9 +512,9 @@ impl<'ctx> CodeGen<'ctx> {
                         "parseInt" if args.len() == 1 => self
                             .compile_to_int_fallible_call(CallArg::hir(&args[0]))
                             .map(Some),
-                        "head" if args.len() == 1 => self
-                            .compile_head_fallible(CallArg::hir(&args[0]))
-                            .map(Some),
+                        "head" if args.len() == 1 => {
+                            self.compile_head_fallible(CallArg::hir(&args[0])).map(Some)
+                        }
                         "readLine" if args.is_empty() => {
                             self.compile_read_line_fallible().map(Some)
                         }
@@ -516,7 +522,10 @@ impl<'ctx> CodeGen<'ctx> {
                             .compile_json_parse_fallible(CallArg::hir(&args[0]))
                             .map(Some),
                         "__jsonGet" if args.len() == 2 => self
-                            .compile_json_get_fallible(CallArg::hir(&args[0]), CallArg::hir(&args[1]))
+                            .compile_json_get_fallible(
+                                CallArg::hir(&args[0]),
+                                CallArg::hir(&args[1]),
+                            )
                             .map(Some),
                         "__jsonGetIdx" if args.len() == 2 => self
                             .compile_json_get_idx_fallible(
@@ -534,9 +543,7 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
             HirExprKind::FieldAccess(obj, method) if method == "head" => {
-                return self
-                    .compile_head_fallible(CallArg::hir(obj))
-                    .map(Some);
+                return self.compile_head_fallible(CallArg::hir(obj)).map(Some);
             }
             HirExprKind::Index(obj, idx) => {
                 if let HirExprKind::Literal(Literal::Int(n)) = &idx.kind {
@@ -578,7 +585,12 @@ impl<'ctx> CodeGen<'ctx> {
         let ok_i1 = self.ok_i1(ok)?;
         let failed = self
             .builder
-            .build_int_compare(IntPredicate::EQ, ok_i1, self.bool_ty().const_zero(), "or_fail")
+            .build_int_compare(
+                IntPredicate::EQ,
+                ok_i1,
+                self.bool_ty().const_zero(),
+                "or_fail",
+            )
             .map_err(llvm_err)?;
 
         let fail_bb = self.context.append_basic_block(current_fn, "orblk_fail");
@@ -628,7 +640,12 @@ impl<'ctx> CodeGen<'ctx> {
         let ok_i1 = self.ok_i1(ok)?;
         let failed = self
             .builder
-            .build_int_compare(IntPredicate::EQ, ok_i1, self.bool_ty().const_zero(), "or_fail")
+            .build_int_compare(
+                IntPredicate::EQ,
+                ok_i1,
+                self.bool_ty().const_zero(),
+                "or_fail",
+            )
             .map_err(llvm_err)?;
         let fail_bb = self.context.append_basic_block(current_fn, "orblk_fail");
         let ok_bb = self.context.append_basic_block(current_fn, "orblk_ok");
@@ -685,7 +702,12 @@ impl<'ctx> CodeGen<'ctx> {
         let ok_i1 = self.ok_i1(ok)?;
         let failed = self
             .builder
-            .build_int_compare(IntPredicate::EQ, ok_i1, self.bool_ty().const_zero(), "or_fail")
+            .build_int_compare(
+                IntPredicate::EQ,
+                ok_i1,
+                self.bool_ty().const_zero(),
+                "or_fail",
+            )
             .map_err(llvm_err)?;
         let fail_bb = self.context.append_basic_block(current_fn, "orblk_fail");
         let ok_bb = self.context.append_basic_block(current_fn, "orblk_ok");
@@ -729,7 +751,12 @@ impl<'ctx> CodeGen<'ctx> {
         let ok_i1 = self.ok_i1(ok)?;
         let failed = self
             .builder
-            .build_int_compare(IntPredicate::EQ, ok_i1, self.bool_ty().const_zero(), "or_fail")
+            .build_int_compare(
+                IntPredicate::EQ,
+                ok_i1,
+                self.bool_ty().const_zero(),
+                "or_fail",
+            )
             .map_err(llvm_err)?;
         let fail_bb = self.context.append_basic_block(current_fn, "orblk_fail");
         let ok_bb = self.context.append_basic_block(current_fn, "orblk_ok");
@@ -756,9 +783,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_phi(self.ptr_ty(), "or_str")
             .map_err(llvm_err)?;
         phi.add_incoming(&[(&val, ok_bb), (&fb_ptr, fail_bb)]);
-        Ok(TypedValue::Str(
-            phi.as_basic_value().into_pointer_value(),
-        ))
+        Ok(TypedValue::Str(phi.as_basic_value().into_pointer_value()))
     }
 
     fn compile_json_ptr_fallible(

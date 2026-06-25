@@ -848,10 +848,7 @@ fn test_nullable_method_call() {
 #[test]
 fn test_fallible_or_default() {
     // R7 fallible or-block: toInt succeeds or falls back
-    assert_eq!(
-        run_example("test_fallible_or_default.ac"),
-        "42\n-1\n"
-    );
+    assert_eq!(run_example("test_fallible_or_default.ac"), "42\n-1\n");
 }
 
 #[test]
@@ -864,10 +861,7 @@ fn test_fallible_head_parseInt() {
 
 #[test]
 fn test_fallible_fn_or() {
-    assert_eq!(
-        run_example("test_fallible_fn_or.ac"),
-        "42\n-1\n99\n0\n"
-    );
+    assert_eq!(run_example("test_fallible_fn_or.ac"), "42\n-1\n99\n0\n");
 }
 
 #[test]
@@ -890,18 +884,12 @@ fn test_fallible_user_fn_propagate() {
 
 #[test]
 fn test_fallible_generic() {
-    assert_eq!(
-        run_example("test_fallible_generic.ac"),
-        "42\n-1\n"
-    );
+    assert_eq!(run_example("test_fallible_generic.ac"), "42\n-1\n");
 }
 
 #[test]
 fn test_fallible_module() {
-    assert_eq!(
-        run_example("test_fallible_module.ac"),
-        "42\n-1\n"
-    );
+    assert_eq!(run_example("test_fallible_module.ac"), "42\n-1\n");
 }
 
 #[test]
@@ -922,10 +910,7 @@ fn test_error_e001_module_fallible() {
 
 #[test]
 fn test_fallible_user_fn_chain() {
-    assert_eq!(
-        run_example("test_fallible_user_fn_chain.ac"),
-        "42\n-1\n"
-    );
+    assert_eq!(run_example("test_fallible_user_fn_chain.ac"), "42\n-1\n");
 }
 
 #[test]
