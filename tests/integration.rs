@@ -969,7 +969,6 @@ fn test_generic_enum() {
 }
 
 #[test]
-#[ignore = "mutual closure capture SIGSEGV: RC peer skip fix pending"]
 fn test_rc_cycle() {
     let out = run_example("rc_cycle_test.ac");
     assert!(out.contains("RC cycle test completed"));

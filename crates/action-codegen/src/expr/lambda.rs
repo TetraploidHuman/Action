@@ -129,7 +129,13 @@ impl<'ctx> CodeGen<'ctx> {
                             if let (Some(ct), Some(cfp), Some(aft)) =
                                 (sv.closure_ty, sv.closure_fn_ptr, sv.actual_fn_type)
                             {
-                                self.scope.set_closure_info(name, ct, cfp, aft);
+                                self.scope.set_closure_info(
+                                    name,
+                                    ct,
+                                    cfp,
+                                    aft,
+                                    sv.closure_capture_ptr_rc_mask,
+                                );
                             }
                         }
                     } else {
@@ -182,10 +188,14 @@ impl<'ctx> CodeGen<'ctx> {
             // Populate captures struct with captured values
             let undef = cst.get_undef();
             let mut cap_struct = undef;
+            let mut capture_ptr_rc_mask = 0u64;
             for (i, name) in free_vars.iter().enumerate() {
                 let val = self.scope.get(name).ok_or_else(|| {
                     format!("Captured variable '{}' not found in parent scope", name)
                 })?;
+                if val.kind == ValKind::Fn && val.is_closure {
+                    capture_ptr_rc_mask |= 1u64 << i;
+                }
                 let loaded = self
                     .builder
                     .build_load(val.ty, val.ptr, &format!("cap_val_{}", name))
@@ -254,6 +264,7 @@ impl<'ctx> CodeGen<'ctx> {
                 closure_ptr,
                 closure_ty: cst,
                 alloca: None,
+                capture_ptr_rc_mask,
             })
         } else {
             Ok(TypedValue::Fn(fn_ptr, fn_type))

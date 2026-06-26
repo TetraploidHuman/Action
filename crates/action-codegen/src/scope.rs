@@ -25,7 +25,6 @@ pub(crate) enum ValKind {
     FileHandle,
     Struct,
     Enum,
-    Nullable,
     Unit,
 }
 
@@ -45,6 +44,7 @@ pub(crate) struct ScopeVar<'ctx> {
     pub(crate) closure_ty: Option<StructType<'ctx>>,
     pub(crate) closure_fn_ptr: Option<PointerValue<'ctx>>,
     pub(crate) actual_fn_type: Option<FunctionType<'ctx>>,
+    pub(crate) closure_capture_ptr_rc_mask: u64,
 }
 
 #[derive(Clone)]
@@ -98,6 +98,7 @@ impl<'ctx> Scope<'ctx> {
                 closure_ty: None,
                 closure_fn_ptr: None,
                 actual_fn_type: None,
+                closure_capture_ptr_rc_mask: 0,
             },
         );
     }
@@ -127,6 +128,7 @@ impl<'ctx> Scope<'ctx> {
                 closure_ty: None,
                 closure_fn_ptr: None,
                 actual_fn_type: None,
+                closure_capture_ptr_rc_mask: 0,
             },
         );
     }
@@ -156,6 +158,7 @@ impl<'ctx> Scope<'ctx> {
                 closure_ty: None,
                 closure_fn_ptr: None,
                 actual_fn_type: None,
+                closure_capture_ptr_rc_mask: 0,
             },
         );
     }
@@ -187,6 +190,7 @@ impl<'ctx> Scope<'ctx> {
                 closure_ty: None,
                 closure_fn_ptr: None,
                 actual_fn_type: None,
+                closure_capture_ptr_rc_mask: 0,
             },
         );
     }
@@ -217,6 +221,7 @@ impl<'ctx> Scope<'ctx> {
                 closure_ty: None,
                 closure_fn_ptr: None,
                 actual_fn_type: None,
+                closure_capture_ptr_rc_mask: 0,
             },
         );
     }
@@ -227,6 +232,7 @@ impl<'ctx> Scope<'ctx> {
         closure_ty: StructType<'ctx>,
         closure_fn_ptr: PointerValue<'ctx>,
         actual_fn_type: FunctionType<'ctx>,
+        capture_ptr_rc_mask: u64,
     ) {
         if let Some(var) = self.variables.get_mut(name) {
             var.is_closure = true;
@@ -234,6 +240,7 @@ impl<'ctx> Scope<'ctx> {
             var.closure_fn_ptr = Some(closure_fn_ptr);
             var.actual_fn_type = Some(actual_fn_type);
             var.fn_type = None;
+            var.closure_capture_ptr_rc_mask = capture_ptr_rc_mask;
         }
     }
 
@@ -248,6 +255,7 @@ impl<'ctx> Scope<'ctx> {
             var.closure_ty = None;
             var.closure_fn_ptr = None;
             var.actual_fn_type = None;
+            var.closure_capture_ptr_rc_mask = 0;
         }
     }
 

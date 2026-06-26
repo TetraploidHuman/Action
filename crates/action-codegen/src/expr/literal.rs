@@ -289,7 +289,6 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_or(false, |v| v.enum_data_rc_managed);
                     Ok(TypedValue::Enum(lazy_ptr, et, inner_type, rc_managed))
                 }
-                ValKind::Nullable => Ok(TypedValue::Nullable(lazy_ptr, lazy_ty)),
                 _ => {
                     let val = self
                         .builder
@@ -326,6 +325,7 @@ impl<'ctx> CodeGen<'ctx> {
                                     closure_ptr: p,
                                     closure_ty: ct,
                                     alloca: Some(var.ptr),
+                                    capture_ptr_rc_mask: var.closure_capture_ptr_rc_mask,
                                 });
                             }
                             return Err(format!(
@@ -411,22 +411,6 @@ impl<'ctx> CodeGen<'ctx> {
                     let inner_type = var.enum_inner_type.unwrap_or(InnerType::Int);
                     let rc_managed = var.enum_data_rc_managed;
                     return Ok(TypedValue::Enum(var.ptr, et, inner_type, rc_managed));
-                }
-                ValKind::Nullable => {
-                    if self.nullable_state.not_null_set.contains(name) {
-                        // Smart cast: extract inner value from nullable struct
-                        let val = self
-                            .builder
-                            .build_load(var.ty, var.ptr, name)
-                            .map_err(llvm_err)?;
-                        let loaded_struct = val.into_struct_value();
-                        let inner = self
-                            .builder
-                            .build_extract_value(loaded_struct, 1, "smart_inner")
-                            .map_err(llvm_err)?;
-                        return self.bv_to_typed(inner);
-                    }
-                    return Ok(TypedValue::Nullable(var.ptr, var.ty));
                 }
                 _ => {
                     let val = self

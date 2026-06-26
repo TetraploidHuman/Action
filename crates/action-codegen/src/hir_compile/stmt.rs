@@ -26,47 +26,7 @@ impl<'ctx> CodeGen<'ctx> {
         } else {
             (raw_val.get_type_for_alloca(self), raw_val.val_kind())
         };
-        let val = if let Some(Type::Nullable(inner)) = type_ann {
-            if let TypedValue::Nullable(_null_ptr, null_bt) = raw_val {
-                let declared_bt = self.ast_type_to_basic_type(
-                    type_ann
-                        .as_ref()
-                        .ok_or_else(|| "Missing type annotation".to_string())?,
-                );
-                if null_bt == declared_bt {
-                    raw_val
-                } else {
-                    let inner_bt = self.ast_type_to_basic_type(inner);
-                    let name_hint = format!("Nullable<{}>", inner);
-                    let nty = self.get_nullable_type(inner_bt, &name_hint);
-                    let alloca = self
-                        .builder
-                        .build_alloca(nty, "null_retype")
-                        .map_err(llvm_err)?;
-                    let undef = nty.get_undef();
-                    let with_flag = self
-                        .builder
-                        .build_insert_value(
-                            undef,
-                            self.null_flag_ty().const_int(1, false),
-                            0,
-                            "null_rf",
-                        )
-                        .map_err(llvm_err)?;
-                    self.builder
-                        .build_store(alloca, with_flag)
-                        .map_err(llvm_err)?;
-                    TypedValue::Nullable(alloca, nty.into())
-                }
-            } else {
-                let inner_bt = self.ast_type_to_basic_type(inner);
-                let name_hint = format!("Nullable<{}>", inner);
-                let nty = self.get_nullable_type(inner_bt, &name_hint);
-                self.wrap_in_nullable(&raw_val, nty)?
-            }
-        } else {
-            raw_val
-        };
+        let val = raw_val;
         let alloca = self.builder.build_alloca(ty, name).map_err(llvm_err)?;
         self.store_typed_value(&val, alloca, ty)?;
         self.rc_inc_typed_value(&val)?;
@@ -110,10 +70,16 @@ impl<'ctx> CodeGen<'ctx> {
             closure_ptr: _,
             closure_ty,
             alloca: _,
+            capture_ptr_rc_mask,
         } = &val
         {
-            self.scope
-                .set_closure_info(name, *closure_ty, *fn_ptr, *actual_fn_type);
+            self.scope.set_closure_info(
+                name,
+                *closure_ty,
+                *fn_ptr,
+                *actual_fn_type,
+                *capture_ptr_rc_mask,
+            );
         }
         Ok(())
     }

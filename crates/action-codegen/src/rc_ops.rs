@@ -132,6 +132,17 @@ impl<'ctx> CodeGen<'ctx> {
     pub(super) fn emit_scope_cleanup(&self) -> Result<(), String> {
         let mut vars: Vec<_> = self.scope.local_variables().iter().collect();
         vars.sort_by(|(a, _), (b, _)| a.cmp(b));
+        let mut peer_cap_ptrs: Vec<PointerValue<'ctx>> = Vec::new();
+        for (_, var) in &vars {
+            if var.kind == ValKind::Fn && var.is_closure {
+                let cap_ptr = self
+                    .builder
+                    .build_load(self.ptr_ty(), var.ptr, "peer_cap")
+                    .map_err(llvm_err)?
+                    .into_pointer_value();
+                peer_cap_ptrs.push(cap_ptr);
+            }
+        }
         let mut list_vars: Vec<_> = vars
             .iter()
             .filter(|(_, v)| v.kind == ValKind::List)
@@ -143,7 +154,7 @@ impl<'ctx> CodeGen<'ctx> {
             .copied()
             .filter(|(_, v)| v.kind != ValKind::List)
         {
-            self.emit_scope_cleanup_var(var)?;
+            self.emit_scope_cleanup_var(var, &peer_cap_ptrs)?;
         }
         for (_, var) in list_vars {
             let list_val = self.load_list(var.ptr)?;
@@ -162,7 +173,11 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
-    fn emit_scope_cleanup_var(&self, var: &super::ScopeVar<'ctx>) -> Result<(), String> {
+    fn emit_scope_cleanup_var(
+        &self,
+        var: &super::ScopeVar<'ctx>,
+        peer_cap_ptrs: &[PointerValue<'ctx>],
+    ) -> Result<(), String> {
         match var.kind {
             ValKind::Str => {
                 let str_val = self.load_string(var.ptr)?;
@@ -261,7 +276,12 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?
                     .into_pointer_value();
                 if let Some(closure_ty) = var.closure_ty {
-                    self.rc_dec_closure_captures(cap_ptr, closure_ty)?;
+                    self.rc_dec_closure_captures(
+                        cap_ptr,
+                        closure_ty,
+                        var.closure_capture_ptr_rc_mask,
+                        peer_cap_ptrs,
+                    )?;
                 } else {
                     self.rc_dec(cap_ptr)?;
                 }
@@ -275,9 +295,6 @@ impl<'ctx> CodeGen<'ctx> {
                         .into_struct_value();
                     self.rc_struct_fields(loaded, st, false)?;
                 }
-            }
-            ValKind::Nullable => {
-                self.rc_nullable_inner(var.ptr, var.ty, false)?;
             }
             _ => {}
         }
@@ -359,9 +376,6 @@ impl<'ctx> CodeGen<'ctx> {
                         .into_struct_value();
                     self.rc_struct_fields(loaded, st, false)?;
                 }
-            }
-            ValKind::Nullable => {
-                self.rc_nullable_inner(ptr, ty, false)?;
             }
             _ => {}
         }
@@ -655,21 +669,25 @@ impl<'ctx> CodeGen<'ctx> {
                     .into_struct_value();
                 self.rc_struct_fields(loaded, *st, true)?;
             }
-            TypedValue::Nullable(ptr, ty) => {
-                self.rc_nullable_inner(*ptr, *ty, true)?;
-            }
+
             _ => {}
         }
         Ok(())
     }
 
-    /// Decrement RC for a heap-typed value returned from a block expression.
     /// RC decrement all captured heap values inside a closure's captures struct,
     /// then rc_dec the captures struct itself.
+    ///
+    /// `capture_ptr_rc_mask`: bit i set when capture field i is an RC-managed closure pointer
+    /// (plain fn pointers are stored in pointer fields too but must not be rc_dec'd).
+    /// `peer_cap_ptrs`: closure cap pointers of sibling bindings in the same scope; skip dec
+    /// on those to avoid double-free when two closures capture each other.
     pub(super) fn rc_dec_closure_captures(
         &self,
         closure_ptr: PointerValue<'ctx>,
         closure_ty: StructType<'ctx>,
+        capture_ptr_rc_mask: u64,
+        peer_cap_ptrs: &[PointerValue<'ctx>],
     ) -> Result<(), String> {
         let typed_ptr = self
             .builder
@@ -712,14 +730,68 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(llvm_err)?;
                 }
                 BasicTypeEnum::PointerType(_) => {
-                    // Inner closure's captures struct pointer
+                    if capture_ptr_rc_mask & (1u64 << i) == 0 {
+                        continue;
+                    }
                     let inner_ptr = field.into_pointer_value();
-                    self.rc_dec(inner_ptr)?;
+                    if peer_cap_ptrs.is_empty() {
+                        self.rc_dec(inner_ptr)?;
+                    } else {
+                        let is_peer =
+                            self.emit_closure_capture_is_peer(inner_ptr, peer_cap_ptrs)?;
+                        let cur_bb = self
+                            .builder
+                            .get_insert_block()
+                            .ok_or("rc_dec_closure_captures: no insert block")?;
+                        let fn_val = cur_bb
+                            .get_parent()
+                            .ok_or("rc_dec_closure_captures: no parent fn")?;
+                        let dec_bb = self.context.append_basic_block(fn_val, "cap_dec");
+                        let after_bb = self.context.append_basic_block(fn_val, "cap_after");
+                        self.builder
+                            .build_conditional_branch(is_peer, after_bb, dec_bb)
+                            .map_err(llvm_err)?;
+                        self.builder.position_at_end(dec_bb);
+                        self.rc_dec(inner_ptr)?;
+                        self.builder
+                            .build_unconditional_branch(after_bb)
+                            .map_err(llvm_err)?;
+                        self.builder.position_at_end(after_bb);
+                    }
                 }
                 _ => {}
             }
         }
         self.rc_dec(closure_ptr)
+    }
+
+    /// Runtime branch: true when `inner_ptr` equals any pointer in `peer_cap_ptrs`.
+    fn emit_closure_capture_is_peer(
+        &self,
+        inner_ptr: PointerValue<'ctx>,
+        peer_cap_ptrs: &[PointerValue<'ctx>],
+    ) -> Result<inkwell::values::IntValue<'ctx>, String> {
+        if peer_cap_ptrs.is_empty() {
+            return Ok(self.context.bool_type().const_int(0, false));
+        }
+        use inkwell::IntPredicate;
+        let mut is_peer = self.context.bool_type().const_int(0, false);
+        for peer in peer_cap_ptrs {
+            let diff = self
+                .builder
+                .build_ptr_diff(self.context.i8_type(), inner_ptr, *peer, "cap_peer_diff")
+                .map_err(llvm_err)?;
+            let zero = self.i64_ty().const_int(0, false);
+            let match_peer = self
+                .builder
+                .build_int_compare(IntPredicate::EQ, diff, zero, "cap_peer_eq")
+                .map_err(llvm_err)?;
+            is_peer = self
+                .builder
+                .build_or(is_peer, match_peer, "cap_peer_or")
+                .map_err(llvm_err)?;
+        }
+        Ok(is_peer)
     }
 
     /// Mirrors rc_inc_typed_value, used to balance compile_block's RC inc when
@@ -794,9 +866,15 @@ impl<'ctx> CodeGen<'ctx> {
             TypedValue::Closure {
                 closure_ptr,
                 closure_ty,
+                capture_ptr_rc_mask,
                 ..
             } => {
-                self.rc_dec_closure_captures(*closure_ptr, *closure_ty)?;
+                self.rc_dec_closure_captures(
+                    *closure_ptr,
+                    *closure_ty,
+                    *capture_ptr_rc_mask,
+                    &[],
+                )?;
             }
             TypedValue::Struct(ptr, st) => {
                 let bt: BasicTypeEnum = (*st).into();
@@ -807,9 +885,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .into_struct_value();
                 self.rc_struct_fields(loaded, *st, false)?;
             }
-            TypedValue::Nullable(ptr, ty) => {
-                self.rc_nullable_inner(*ptr, *ty, false)?;
-            }
+
             _ => {}
         }
         Ok(())
@@ -990,7 +1066,6 @@ impl<'ctx> CodeGen<'ctx> {
             | TypedValue::Ptr(p) => Some(*p),
             TypedValue::Struct(p, _) => Some(*p),
             TypedValue::Enum(p, _, _, _) => Some(*p),
-            TypedValue::Nullable(p, _) => Some(*p),
             TypedValue::Fn(p, _) => Some(*p),
             TypedValue::Closure { alloca, .. } => *alloca,
             _ => None,
@@ -1063,7 +1138,6 @@ impl<'ctx> CodeGen<'ctx> {
             | TypedValue::Ptr(p) => Some(*p),
             TypedValue::Struct(p, _) => Some(*p),
             TypedValue::Enum(p, _, _, _) => Some(*p),
-            TypedValue::Nullable(p, _) => Some(*p),
             TypedValue::Fn(p, _) => Some(*p),
             TypedValue::Closure { alloca, .. } => *alloca,
             _ => None,

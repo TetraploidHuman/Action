@@ -24,6 +24,8 @@ pub(crate) enum TypedValue<'ctx> {
         closure_ptr: PointerValue<'ctx>,
         closure_ty: StructType<'ctx>,
         alloca: Option<PointerValue<'ctx>>,
+        /// Bit i set when capture field i is an RC-managed heap closure cap (not plain fn ptr).
+        capture_ptr_rc_mask: u64,
     },
     List(PointerValue<'ctx>),
     Struct(PointerValue<'ctx>, StructType<'ctx>),
@@ -36,10 +38,14 @@ pub(crate) enum TypedValue<'ctx> {
     CString(PointerValue<'ctx>),
     Ptr(PointerValue<'ctx>),
     FileHandle(PointerValue<'ctx>),
-    Nullable(PointerValue<'ctx>, BasicTypeEnum<'ctx>),
     /// Fallible-region intermediate: Int payload + ok flag (i1).
     FallibleInt {
         val: IntValue<'ctx>,
+        ok: IntValue<'ctx>,
+    },
+    /// Fallible-region intermediate: Float payload + ok flag (i1).
+    FallibleFloat {
+        val: inkwell::values::FloatValue<'ctx>,
         ok: IntValue<'ctx>,
     },
     /// Fallible-region intermediate: Ptr payload + ok flag (i1).
@@ -81,8 +87,8 @@ impl<'ctx> TypedValue<'ctx> {
             TypedValue::Ptr(v) => Some(v.as_basic_value_enum()),
             TypedValue::Struct(_, _) => None,
             TypedValue::Enum(..) => None,
-            TypedValue::Nullable(_, _) => None,
             TypedValue::FallibleInt { .. } => None,
+            TypedValue::FallibleFloat { .. } => None,
             TypedValue::FalliblePtr { .. } => None,
             TypedValue::FallibleStr { .. } => None,
             TypedValue::FallibleStruct { .. } => None,

@@ -80,95 +80,6 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
-    pub(super) fn compile_nullable_index_values(
-        &mut self,
-        nullable_ptr: PointerValue<'ctx>,
-        inner_bt: BasicTypeEnum<'ctx>,
-        idx: CallArg<'_>,
-    ) -> Result<TypedValue<'ctx>, String> {
-        let current_fn = self
-            .builder
-            .get_insert_block()
-            .and_then(|b| b.get_parent())
-            .ok_or("Cannot index outside function")?;
-
-        let nullable_st = inner_bt.into_struct_type();
-        let null_bt: BasicTypeEnum = nullable_st.into();
-
-        let loaded = self
-            .builder
-            .build_load(null_bt, nullable_ptr, "nidx_ld")
-            .map_err(llvm_err)?;
-        let nullable_struct = loaded.into_struct_value();
-        let null_flag = self
-            .builder
-            .build_extract_value(nullable_struct, 0, "nidx_flag")
-            .map_err(llvm_err)?
-            .into_int_value();
-
-        let b1 = self.null_flag_ty();
-        let is_null = self
-            .builder
-            .build_int_compare(
-                IntPredicate::EQ,
-                null_flag,
-                b1.const_int(1, false),
-                "nidx_is_null",
-            )
-            .map_err(llvm_err)?;
-
-        let null_block = self.context.append_basic_block(current_fn, "nidx_null");
-        let val_block = self.context.append_basic_block(current_fn, "nidx_val");
-        let merge_block = self.context.append_basic_block(current_fn, "nidx_merge");
-
-        self.builder
-            .build_conditional_branch(is_null, null_block, val_block)
-            .map_err(llvm_err)?;
-
-        self.builder.position_at_end(null_block);
-        let null_loaded = self
-            .builder
-            .build_load(null_bt, nullable_ptr, "nidx_null_ld")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_unconditional_branch(merge_block)
-            .map_err(llvm_err)?;
-
-        self.builder.position_at_end(val_block);
-        let inner = self
-            .builder
-            .build_extract_value(nullable_struct, 1, "nidx_inner")
-            .map_err(llvm_err)?;
-        let inner_typed = self.bv_to_typed(inner)?;
-
-        let idx_val = self.compile_call_arg(idx)?;
-        let val_result: TypedValue = match &inner_typed {
-            TypedValue::Map(map_ptr) => self.compile_map_index_key(*map_ptr, idx_val.clone())?,
-            TypedValue::Set(set_ptr) => self.compile_set_index_key(*set_ptr, idx_val.clone())?,
-            TypedValue::List(_) | TypedValue::LazyList(_) => {
-                self.compile_index_values(inner_typed, idx_val)?
-            }
-            _ => return Err("Indexing not supported on this type".to_string()),
-        };
-
-        let val_bv = val_result
-            .to_bv()
-            .unwrap_or_else(|| self.i64_ty().const_int(0, false).into());
-        self.builder
-            .build_unconditional_branch(merge_block)
-            .map_err(llvm_err)?;
-
-        self.builder.position_at_end(merge_block);
-        let phi_type = val_bv.get_type();
-        let phi = self
-            .builder
-            .build_phi(phi_type, "nidx_merge")
-            .map_err(llvm_err)?;
-        phi.add_incoming(&[(&null_loaded, null_block), (&val_bv, val_block)]);
-
-        self.bv_to_typed(phi.as_basic_value())
-    }
-
     /// Compile index access on already-compiled values (list/lazy list/string).
     pub(super) fn compile_index_values(
         &mut self,
@@ -282,114 +193,28 @@ impl<'ctx> CodeGen<'ctx> {
         key_val: TypedValue<'ctx>,
     ) -> Result<TypedValue<'ctx>, String> {
         let key_fat = self.to_fat_struct(&key_val)?;
-
-        let i64 = self.i64_ty();
-
-        // Create nullable {i1, i64} — extract actual value from fat struct
-        let nullable_ty = self.get_nullable_type(i64.into(), "Nullable<Int>");
-        let null_bt: BasicTypeEnum = nullable_ty.into();
-        let null_alloca = self
-            .builder
-            .build_alloca(nullable_ty, "map_idx_null")
-            .map_err(llvm_err)?;
-
         let map_loaded = self.load_list(map_ptr)?;
-        let contains_fn = self
-            .module
-            .get_function("action_map_contains")
-            .ok_or("action_map_contains not found")?;
-        let cc = self
-            .builder
-            .build_call(
-                contains_fn,
-                &[map_loaded.into(), key_fat.into()],
-                "contains",
-            )
-            .map_err(llvm_err)?;
+        let cc = self.call_rt("action_map_contains", &[map_loaded.into(), key_fat.into()])?;
         let contains = cc
             .try_as_basic_value()
             .basic()
             .ok_or("contains failed")?
             .into_int_value();
-
-        let current_fn = self
-            .builder
-            .get_insert_block()
-            .and_then(|b| b.get_parent())
-            .ok_or("Cannot compile map index outside function")?;
-        let some_bb = self.context.append_basic_block(current_fn, "map_idx_some");
-        let none_bb = self.context.append_basic_block(current_fn, "map_idx_none");
-        let merge_bb = self.context.append_basic_block(current_fn, "map_idx_merge");
-
-        let _ = self
-            .builder
-            .build_conditional_branch(contains, some_bb, none_bb);
-
-        // Some path: get fat struct from map, extract field 0 (the actual value), build {flag=0, val}
-        self.builder.position_at_end(some_bb);
         let map_loaded2 = self.load_list(map_ptr)?;
-        let get_fn = self
-            .module
-            .get_function("action_map_get")
-            .ok_or("action_map_get not found")?;
         let key_fat2 = self.to_fat_struct(&key_val)?;
-        let gc = self
-            .builder
-            .build_call(get_fn, &[map_loaded2.into(), key_fat2.into()], "get")
-            .map_err(llvm_err)?;
+        let gc = self.call_rt("action_map_get", &[map_loaded2.into(), key_fat2.into()])?;
         let val_fat = gc
             .try_as_basic_value()
             .basic()
             .ok_or("map_get failed")?
             .into_struct_value();
-        // Extract the actual value (field 0) from the fat struct {val, ptr}
         let actual_val = self
             .builder
             .build_extract_value(val_fat, 0, "map_val")
             .map_err(llvm_err)?
             .into_int_value();
-        // Build nullable {flag=0, actual_val}
-        let undef = nullable_ty.get_undef();
-        let r1 = self
-            .builder
-            .build_insert_value(
-                undef,
-                self.null_flag_ty().const_int(0, false),
-                0,
-                "some_flag",
-            )
-            .map_err(llvm_err)?;
-        let r2 = self
-            .builder
-            .build_insert_value(r1, actual_val, 1, "some_val")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(null_alloca, r2)
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(merge_bb);
-
-        // None path: build nullable {flag=1, undef}
-        self.builder.position_at_end(none_bb);
-        let undef2 = nullable_ty.get_undef();
-        let rn1 = self
-            .builder
-            .build_insert_value(
-                undef2,
-                self.null_flag_ty().const_int(1, false),
-                0,
-                "none_flag",
-            )
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(null_alloca, rn1)
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(merge_bb);
-
-        self.builder.position_at_end(merge_bb);
-        Ok(TypedValue::Nullable(null_alloca, null_bt))
+        self.build_fallible_int_from_ok(actual_val, contains)
     }
-
-    /// Set indexing: set[elem] -> T? (nullable)
 
     pub(super) fn compile_set_index_key(
         &mut self,
@@ -397,96 +222,20 @@ impl<'ctx> CodeGen<'ctx> {
         elem_val: TypedValue<'ctx>,
     ) -> Result<TypedValue<'ctx>, String> {
         let elem_fat = self.to_fat_struct(&elem_val)?;
-
-        let i64 = self.i64_ty();
-
-        // Create nullable {i1, i64} — extract actual value from fat struct
-        let nullable_ty = self.get_nullable_type(i64.into(), "Nullable<Int>");
-        let null_bt: BasicTypeEnum = nullable_ty.into();
-        let null_alloca = self
-            .builder
-            .build_alloca(nullable_ty, "set_idx_null")
-            .map_err(llvm_err)?;
-
         let set_loaded = self.load_list(set_ptr)?;
-        let contains_fn = self
-            .module
-            .get_function("action_map_contains")
-            .ok_or("action_map_contains not found")?;
-        let cc = self
-            .builder
-            .build_call(
-                contains_fn,
-                &[set_loaded.into(), elem_fat.into()],
-                "contains",
-            )
-            .map_err(llvm_err)?;
+        let cc = self.call_rt("action_map_contains", &[set_loaded.into(), elem_fat.into()])?;
         let contains = cc
             .try_as_basic_value()
             .basic()
             .ok_or("contains failed")?
             .into_int_value();
-
-        let current_fn = self
-            .builder
-            .get_insert_block()
-            .and_then(|b| b.get_parent())
-            .ok_or("Cannot compile set index outside function")?;
-        let some_bb = self.context.append_basic_block(current_fn, "set_idx_some");
-        let none_bb = self.context.append_basic_block(current_fn, "set_idx_none");
-        let merge_bb = self.context.append_basic_block(current_fn, "set_idx_merge");
-
-        let _ = self
-            .builder
-            .build_conditional_branch(contains, some_bb, none_bb);
-
-        // Some path: extract field 0 from fat struct, wrap as nullable {flag=0, val}
-        self.builder.position_at_end(some_bb);
         let elem_fat2 = self.to_fat_struct(&elem_val)?;
-        // Extract actual value (field 0) from fat struct {val, ptr}
         let actual_val = self
             .builder
             .build_extract_value(elem_fat2.into_struct_value(), 0, "set_val")
             .map_err(llvm_err)?
             .into_int_value();
-        let undef = nullable_ty.get_undef();
-        let r1 = self
-            .builder
-            .build_insert_value(
-                undef,
-                self.null_flag_ty().const_int(0, false),
-                0,
-                "some_flag",
-            )
-            .map_err(llvm_err)?;
-        let r2 = self
-            .builder
-            .build_insert_value(r1, actual_val, 1, "some_val")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(null_alloca, r2)
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(merge_bb);
-
-        // None path: nullable {flag=1, undef}
-        self.builder.position_at_end(none_bb);
-        let undef2 = nullable_ty.get_undef();
-        let rn1 = self
-            .builder
-            .build_insert_value(
-                undef2,
-                self.null_flag_ty().const_int(1, false),
-                0,
-                "none_flag",
-            )
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(null_alloca, rn1)
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(merge_bb);
-
-        self.builder.position_at_end(merge_bb);
-        Ok(TypedValue::Nullable(null_alloca, null_bt))
+        self.build_fallible_int_from_ok(actual_val, contains)
     }
 
     /// UFCS mutators used as statements (`m.insert(k, v)` without assignment) must write
@@ -764,52 +513,6 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 Ok(v.clone())
             }
-            TypedValue::Nullable(nullable_ptr, inner_bt) => {
-                let loaded = self
-                    .builder
-                    .build_load(inner_bt, nullable_ptr, "asn_nf_ld")
-                    .map_err(llvm_err)?;
-                let nf_struct = loaded.into_struct_value();
-                let inner = self
-                    .builder
-                    .build_extract_value(nf_struct, 1, "asn_inner")
-                    .map_err(llvm_err)?;
-                let inner_typed = self.bv_to_typed(inner)?;
-                match inner_typed {
-                    TypedValue::Struct(ptr, st) => {
-                        let idx = self.struct_field_index(&st, field)?;
-                        let field_ptr = self
-                            .builder
-                            .build_struct_gep(st, ptr, idx, "field_gep2")
-                            .map_err(llvm_err)?;
-                        let field_types = st.get_field_types();
-                        if (idx as usize) < field_types.len() {
-                            let fk = self.struct_field_val_kind(&st, idx);
-                            self.rc_dec_field_val(field_ptr, field_types[idx as usize], fk)?;
-                        }
-                        if let Some(bv) = v.to_bv() {
-                            self.builder.build_store(field_ptr, bv).map_err(llvm_err)?;
-                        }
-                        let inner_st_bt: BasicTypeEnum = st.into();
-                        let updated_inner = self
-                            .builder
-                            .build_load(inner_st_bt, ptr, "asn_upd")
-                            .map_err(llvm_err)?;
-                        let updated_nf = self
-                            .builder
-                            .build_insert_value(nf_struct, updated_inner, 1, "asn_nf_upd")
-                            .map_err(llvm_err)?;
-                        self.builder
-                            .build_store(nullable_ptr, updated_nf)
-                            .map_err(llvm_err)?;
-                        Ok(v.clone())
-                    }
-                    _ => Err(format!(
-                        "Cannot assign to field '{}' of non-struct inner",
-                        field
-                    )),
-                }
-            }
             _ => Err(format!("Cannot assign to field '{}' of non-struct", field)),
         }
     }
@@ -1031,14 +734,6 @@ impl<'ctx> CodeGen<'ctx> {
             .build_unconditional_branch(after_rc_bb)
             .map_err(llvm_err)?;
         self.builder.position_at_end(after_rc_bb);
-        // Wrap non-nullable value into nullable when target is nullable
-        let v = if var_kind == ValKind::Nullable && !matches!(&v, TypedValue::Nullable(..)) {
-            let inner_bt = v.get_value_type(self);
-            let nty = self.get_nullable_type(inner_bt, "assign_wrap");
-            self.wrap_in_nullable(&v, nty)?
-        } else {
-            v
-        };
         match &v {
             TypedValue::Str(ptr) => {
                 let str_struct = self.load_string(*ptr)?;
@@ -1085,15 +780,6 @@ impl<'ctx> CodeGen<'ctx> {
             | TypedValue::FileHandle(ptr) => {
                 self.builder.build_store(var_ptr, *ptr).map_err(llvm_err)?;
             }
-            TypedValue::Nullable(ptr, ty) => {
-                let loaded = self
-                    .builder
-                    .build_load(*ty, *ptr, "assign_nullable_ld")
-                    .map_err(llvm_err)?;
-                self.builder
-                    .build_store(var_ptr, loaded)
-                    .map_err(llvm_err)?;
-            }
             TypedValue::Fn(fn_ptr, fn_type) => {
                 self.builder
                     .build_store(var_ptr, *fn_ptr)
@@ -1105,13 +791,19 @@ impl<'ctx> CodeGen<'ctx> {
                 actual_fn_type,
                 closure_ptr,
                 closure_ty,
+                capture_ptr_rc_mask,
                 ..
             } => {
                 self.builder
                     .build_store(var_ptr, *closure_ptr)
                     .map_err(llvm_err)?;
-                self.scope
-                    .set_closure_info(name, *closure_ty, *fn_ptr, *actual_fn_type);
+                self.scope.set_closure_info(
+                    name,
+                    *closure_ty,
+                    *fn_ptr,
+                    *actual_fn_type,
+                    *capture_ptr_rc_mask,
+                );
             }
             _ => {
                 if let Some(bv) = v.to_bv() {

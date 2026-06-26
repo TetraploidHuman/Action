@@ -572,6 +572,7 @@ impl<'ctx> CodeGen<'ctx> {
                 closure_ptr,
                 closure_ty,
                 alloca,
+                capture_ptr_rc_mask,
             } => {
                 let mut ca: Vec<BasicMetadataValueEnum> = Vec::new();
                 let mut tracked_args: Vec<TypedValue<'ctx>> = Vec::new();
@@ -593,7 +594,7 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 if alloca.is_none() {
                     self.rc_inc(closure_ptr)?;
-                    self.rc_dec_closure_captures(closure_ptr, closure_ty)?;
+                    self.rc_dec_closure_captures(closure_ptr, closure_ty, capture_ptr_rc_mask, &[])?;
                 }
                 match cc.try_as_basic_value().basic() {
                     Some(bv) => self.unpack_fat_return(bv, actual_fn_type.get_return_type()),
@@ -678,6 +679,7 @@ impl<'ctx> CodeGen<'ctx> {
                 closure_ptr,
                 closure_ty,
                 alloca,
+                capture_ptr_rc_mask,
             } => {
                 let mut ca: Vec<BasicMetadataValueEnum> = Vec::new();
                 ca.push(closure_ptr.into());
@@ -699,7 +701,7 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 if alloca.is_none() {
                     self.rc_inc(closure_ptr)?;
-                    self.rc_dec_closure_captures(closure_ptr, closure_ty)?;
+                    self.rc_dec_closure_captures(closure_ptr, closure_ty, capture_ptr_rc_mask, &[])?;
                 }
                 match cc.try_as_basic_value().basic() {
                     Some(bv) => self.unpack_fat_return(bv, actual_fn_type.get_return_type()),
