@@ -4,7 +4,7 @@ Action 是一门静态类型的多范式编程语言，编译器用 Rust 编写�
 
 ## 特性
 
-- **可空类型** — Kotlin 风格 `T?` 空安全，方法/字段/索引自动短路传播，`or {}` 默认值，智能转换
+- **可失败（fallible）与 `or {}`** — `head`、`get`、`parseInt`、`readLine` 等失败时须 `or { default }` 或 `or { return expr }` 传播；无 `null` / `T?`
 - **泛型** — 泛型函数 `fun <T> id(x: T) -> T`，泛型枚举 `Option[T]`
 - **静态类型系统** — 结构化类型，类型推断，类型别名
 - **模式匹配** — 穷尽性 `when` 表达式，支持枚举/结构体解构，守卫（guard）与或模式
@@ -215,44 +215,23 @@ val y = identity("hello")   // String
 val z = identity(3.14)      // Float
 ```
 
-### 可空类型
+### 可失败（fallible）与 `or {}`
 
 ```action
-// T? 表示可空类型，null 表示空值
-val name: String? = "Alice"
-val empty: String? = null
+val first = head(list) or { 0 }
+val item = get(list, 2) or { -1 }
+val n = parseInt("42") or { 0 }
+val line = readLine() or { "" }
 
-// 对可空接收者的方法调用自动短路（接收者为 null 时直接返回 null）
-val upper = name.toUpper()         // String? = "ALICE"
-val none = empty.toUpper()         // String? = null
-
-// 字段访问自动短路
-val city = user.address.city       // String? — 任一环节为 null 则整体为 null
-
-// 索引操作自动短路
-val item = List[0]                 // 若 list 为 null，返回 null
-
-// or { } 提供默认值
-val display = name or { "Guest" }
-val cityName = user?.address?.city or { "Unknown" }
-
-// or { } 允许 return 提前终止，实现错误传播
-fun process() -> String? {
-    val x = maybe() or { return null }
-    val y = another(x) or { return null }
-    toUpper(x + y)
+fun process() -> String {
+    val x = readLine() or { return "" }
+    val y = parseInt(x) or { return "" }
+    toString(y)
 }
 
-// 智能转换 — 空判断后自动转换为非空类型
-if name != null {
-    println(len(name))         // name 自动提升为 string
-}
-
-// 智能转换也适用于 when
-when name {
-    null -> println("got null")
-    else -> println(len(name)) // name 提升为 string
-}
+fun parseLine(s: String) -> Int {
+    parseInt(s)
+} or { -1 }
 ```
 
 ### 枚举

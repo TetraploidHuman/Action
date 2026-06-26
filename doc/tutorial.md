@@ -1037,108 +1037,36 @@ val name = when c {
 
 ---
 
-# 第十一章：可空类型与空安全
+# 第十一章：可失败（fallible）与 `or {}`
 
-## 11.1 声明可空类型
+Action **不支持** `null`、`T?` 与 `?.`（编译期报错 **E010** / **E011** / **E012**）。可能失败的操作须用 `or { }` 提供默认值或 `or { return expr }` 传播失败。
 
-```action
-val name: String? = "Alice"
-val empty: String? = null
-```
-
-## 11.2 Elvis 运算符（or {}）
-
-Elvis 运算符 `or {}` 提供默认值。可空表达式失败时执行花括号内的表达式；**可失败（fallible）** 内置函数/方法也必须通过 `or {}` 处理失败：
+## 11.1 表达式级 `or {}`
 
 ```action
-val display = name or { "Guest" }
-val length = len(name or { "" })
-
-// fallible 内置：parseInt、head、readLine、httpRequest、json 等
+val first = head(nums) or { -1 }
 val n = parseInt("42") or { 0 }
 val line = readLine() or { "EOF" }
-val resp = httpRequest("GET", url, "", "") or {
-    { status = 0, body = "" }
-}
-
-// or {} 可以 return 提前终止
-fun process() -> Int? {
-    val x = maybe() or { return null }
-    val y = another(x) or { return null }
-    toUpper(x + y)
-}
 ```
 
-### 函数级 `or { }`（失败回退）
-
-函数体执行失败时，用 **`or { }` 写在函数体之后** 提供回退值（与表达式级 `or {}` 不同）：
+## 11.2 函数级 `or { }`
 
 ```action
 fun parseLine(s: String) -> Int {
     parseInt(s)
 } or { -1 }
-
-println(parseLine("42"))   // 42
-println(parseLine("nope")) // -1
 ```
 
-用户自定义函数若体内有未包裹的 fallible 调用且无函数级 `or {}`，则该函数本身也是 fallible，调用处同样需要 `or {}`：
+## 11.3 错误码
 
-```action
-fun mustParse(s: String) -> Int {
-    parseInt(s)
-}
-
-println(mustParse("42") or { -1 })
-```
-
-多层包装同样传播 fallible：内层函数无 `or {}` 时，外层调用它也须 `or {}`：
-
-```action
-fun inner(s: String) -> Int { parseInt(s) }
-fun outer(s: String) -> Int { inner(s) }
-
-println(outer("42") or { -1 })
-```
-
-编译器对裸 fallible 调用报错 **E001**；`or {}` 分支类型不匹配报错 **E002**；函数级 `or {}` 与返回类型不符为 **E003**；可空值赋给非空类型为 **E004**；可空参与算术为 **E005**；裸 `list[i]` / `map[k]` / `set[i]` 索引为 **E006** / **E008** / **E009**；对非 fallible、非可空表达式使用 `or {}` 为 **E007**。
-
-## 11.3 空安全调用（?.）
-
-支持 `?.` 语法进行安全的方法调用、字段访问和索引操作：
-
-```action
-// 安全字段访问
-val result = user?.address?.city  // 任一环节为 null 则整体为 null
-
-// 安全方法调用
-val name = getNullableUser()?.getName()
-
-// 安全索引
-val item = list?.[0]
-```
-
-## 11.4 智能类型转换
-
-经过空值判断后，编译器会自动将可空类型提升为非空类型：
-
-```action
-if name != null {
-    println(len(name))  // name 自动提升为 String
-}
-
-// when 中的智能转换
-when name {
-    null -> println("got null")
-    else -> println(len(name))  // name 提升为 String
-}
-```
-
-## 11.5 索引操作自动短路
-
-```action
-val item = List[0]  // 若 list 为 null，返回 null
-```
+| 码 | 含义 |
+|----|------|
+| **E001** | 裸 fallible 调用 |
+| **E002** | `or {}` 类型不匹配 |
+| **E003** | 函数级 `or {}` 与返回类型不符 |
+| **E010** | 使用 `null` |
+| **E011** | 使用 `T?` |
+| **E012** | 使用 `?.` |
 
 ---
 
