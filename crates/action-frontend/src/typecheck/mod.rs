@@ -14,7 +14,6 @@ use crate::builtin;
 use crate::error::CompilerError;
 use crate::types::{mangle_name, types_compatible};
 use action_span::Span;
-use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
 /// Type checker: walks the AST and verifies type consistency.
@@ -22,7 +21,6 @@ pub struct TypeChecker {
     pub(crate) registry: TypeRegistry,
     pub(crate) type_env: HashMap<String, Type>,
     pub(crate) current_span: Span,
-    pub(crate) not_null_set: RefCell<HashSet<String>>,
     pub(crate) generic_funs: HashMap<String, Stmt>,
     pub(crate) mutable_vars: HashSet<String>,
     pub fallibility: FallibilityContext,
@@ -34,7 +32,6 @@ impl TypeChecker {
             registry,
             type_env: HashMap::new(),
             current_span: Span::default(),
-            not_null_set: RefCell::new(HashSet::new()),
             generic_funs: HashMap::new(),
             mutable_vars: HashSet::new(),
             fallibility: FallibilityContext::new(),
@@ -391,19 +388,11 @@ impl TypeChecker {
                                 .infer_expr_type(body)
                                 .unwrap_or(Type::Named("Int".into()));
                             if !types_compatible(declared_ret, &inferred) {
-                                if let Some(err) = Self::check_termination(
-                                    declared_ret,
-                                    &inferred,
-                                    self.current_span,
-                                ) {
-                                    errors.push(err);
-                                } else {
-                                    errors.push(CompilerError::new(format!(
-                                        "Function '{}' declares return type '{}' but body has type '{}'",
-                                        name, declared_ret, inferred
-                                    ))
-                                    .with_span(self.current_span));
-                                }
+                                errors.push(CompilerError::new(format!(
+                                    "Function '{}' declares return type '{}' but body has type '{}'",
+                                    name, declared_ret, inferred
+                                ))
+                                .with_span(self.current_span));
                             }
                         }
                     }
@@ -471,19 +460,13 @@ impl TypeChecker {
                             .infer_expr_type(value)
                             .unwrap_or(Type::Named("Int".into()));
                         if !types_compatible(ann, &inferred) {
-                            if let Some(err) =
-                                Self::check_termination(ann, &inferred, self.current_span)
-                            {
-                                errors.push(err);
-                            } else {
-                                errors.push(
-                                    CompilerError::new(format!(
-                                        "Variable '{}' declared as '{}' but initialized with '{}'",
-                                        name, ann, inferred
-                                    ))
-                                    .with_span(self.current_span),
-                                );
-                            }
+                            errors.push(
+                                CompilerError::new(format!(
+                                    "Variable '{}' declared as '{}' but initialized with '{}'",
+                                    name, ann, inferred
+                                ))
+                                .with_span(self.current_span),
+                            );
                         }
                     }
                 }
@@ -502,19 +485,13 @@ impl TypeChecker {
                             .infer_expr_type(value)
                             .unwrap_or(Type::Named("Int".into()));
                         if !types_compatible(ann, &inferred) {
-                            if let Some(err) =
-                                Self::check_termination(ann, &inferred, self.current_span)
-                            {
-                                errors.push(err);
-                            } else {
-                                errors.push(
-                                    CompilerError::new(format!(
-                                        "Constant '{}' declared as '{}' but initialized with '{}'",
-                                        name, ann, inferred
-                                    ))
-                                    .with_span(self.current_span),
-                                );
-                            }
+                            errors.push(
+                                CompilerError::new(format!(
+                                    "Constant '{}' declared as '{}' but initialized with '{}'",
+                                    name, ann, inferred
+                                ))
+                                .with_span(self.current_span),
+                            );
                         }
                     }
                 }
@@ -532,15 +509,6 @@ impl TypeChecker {
             WhenKind::ConditionChain { arms } => arms,
             _ => &[], // OneLine has no arms
         }
-    }
-
-    /// Check for nullable termination violation: T? used where T is expected.
-    fn check_termination(
-        declared: &Type,
-        inferred: &Type,
-        span: action_span::Span,
-    ) -> Option<CompilerError> {
-        FallibilityContext::check_r4_nullable_termination(declared, inferred, span)
     }
 }
 

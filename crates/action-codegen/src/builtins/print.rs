@@ -1,7 +1,6 @@
 // Submodule: builtins_print
 
 use inkwell::values::{BasicValue, BasicValueEnum};
-use inkwell::IntPredicate;
 
 use crate::call_arg::CallArg;
 use crate::{llvm_err, CodeGen, InnerType, TypedValue};
@@ -25,7 +24,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let _ = self.call_rt("action_print_int", &[bv.into()]);
                 }
             }
-            TypedValue::Float(_) => {
+            TypedValue::Float(_) | TypedValue::FallibleFloat { .. } => {
                 if let Some(bv) = v.to_bv() {
                     let _ = self.call_rt("action_print_float", &[bv.into()]);
                 }
@@ -108,15 +107,6 @@ impl<'ctx> CodeGen<'ctx> {
                 } else {
                     let _ = self.call_rt("action_print_enum", &[loaded.into()]);
                 }
-            }
-            TypedValue::FallibleInt { val, .. } => {
-                let _ = self.call_rt("action_print_int", &[val.as_basic_value_enum().into()]);
-            }
-            TypedValue::FallibleFloat { val, .. } => {
-                let _ = self.call_rt("action_print_float", &[val.as_basic_value_enum().into()]);
-            }
-            TypedValue::FallibleStr { val, .. } => {
-                let _ = self.call_rt_with_str("action_print_string", *val);
             }
             TypedValue::FalliblePtr { val, .. } => {
                 let _ = self.call_rt("action_print_int", &[val.as_basic_value_enum().into()]);

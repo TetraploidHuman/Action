@@ -299,12 +299,10 @@ impl<'ctx> CodeGen<'ctx> {
             .build_alloca(bt, "struct_lit")
             .map_err(llvm_err)?;
 
-        let field_types = struct_ty.get_field_types();
         let undef = struct_ty.get_undef();
         let mut result = undef;
 
         for (i, val) in field_vals.iter().enumerate() {
-            let expected_ft = field_types.get(i).copied();
             let bv = match val {
                 TypedValue::Struct(ptr, ty) => {
                     let sbt: BasicTypeEnum = (*ty).into();
@@ -315,43 +313,9 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 TypedValue::Str(ptr) => self.load_string(*ptr)?.into(),
                 _ => {
-                    // If the struct field expects a nullable type but we have a scalar,
-                    // wrap the scalar in a nullable struct {i8=0, scalar}
-                    let needs_wrap = expected_ft
-                        .map(|ft| {
-                            if let BasicTypeEnum::StructType(st) = ft {
-                                let fts = st.get_field_types();
-                                fts.len() == 2
-                                    && matches!(fts[0], BasicTypeEnum::IntType(t) if t.get_bit_width() == 8)
-                            } else {
-                                false
-                            }
-                        })
-                        .unwrap_or(false);
-                    if needs_wrap {
-                        let field_st = if let BasicTypeEnum::StructType(st) = expected_ft.unwrap() {
-                            st
-                        } else {
-                            return Err("Expected struct type for nullable field".into());
-                        };
-                        let undef_f = field_st.get_undef();
-                        let flag = self.null_flag_ty().const_int(0, false);
-                        let with_flag = self
-                            .builder
-                            .build_insert_value(undef_f, flag, 0, "slf_flag")
-                            .map_err(llvm_err)?;
-                        let scalar = val
-                            .to_bv()
-                            .unwrap_or_else(|| self.i64_ty().const_int(0, false).into());
-                        self.builder
-                            .build_insert_value(with_flag, scalar, 1, "slf_val")
-                            .map_err(llvm_err)?
-                            .as_basic_value_enum()
-                    } else {
-                        val.to_bv().unwrap_or_else(|| {
-                            self.i64_ty().const_int(0, false).as_basic_value_enum()
-                        })
-                    }
+                    val.to_bv().unwrap_or_else(|| {
+                        self.i64_ty().const_int(0, false).as_basic_value_enum()
+                    })
                 }
             };
             result = self

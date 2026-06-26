@@ -5,7 +5,7 @@ use action_frontend::builtin;
 use action_frontend::hir::{HirExpr, HirExprKind};
 use inkwell::basic_block::BasicBlock;
 use inkwell::types::BasicTypeEnum;
-use inkwell::values::{BasicValueEnum, FloatValue, IntValue, PointerValue, StructValue};
+use inkwell::values::{BasicValueEnum, FloatValue, IntValue, PointerValue};
 use inkwell::IntPredicate;
 
 use super::{llvm_err, CodeGen, TypedValue};
@@ -341,18 +341,6 @@ impl<'ctx> CodeGen<'ctx> {
         let ok_i1 = self.ok_i1(is_ok)?;
         self.branch_to_fail_if(ok_i1)?;
         Ok(TypedValue::FallibleInt { val, ok: ok_i1 })
-    }
-
-    pub(crate) fn build_fallible_str_from_found_flag(
-        &mut self,
-        fat_alloca: PointerValue<'ctx>,
-        found_flag_a: PointerValue<'ctx>,
-    ) -> Result<TypedValue<'ctx>, String> {
-        self.build_fallible_from_fat_found_flag(
-            fat_alloca,
-            found_flag_a,
-            &Type::Named("String".into()),
-        )
     }
 
     /// Build a fallible payload from a list element fat struct + found flag, using AST element type.

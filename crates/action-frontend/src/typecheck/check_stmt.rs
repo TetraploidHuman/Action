@@ -59,51 +59,10 @@ impl TypeChecker {
             .or_else(|| Self::collection_kind_from_ast(obj))
     }
 
-    fn expr_is_nullable_typed(&self, expr: &Expr) -> bool {
-        if matches!(self.try_infer_expr_type(expr), Type::Nullable(_)) {
-            return true;
-        }
-        match &expr.kind {
-            ExprKind::Null => true,
-            ExprKind::Ident(name) => self
-                .type_env
-                .get(name)
-                .is_some_and(|ty| matches!(ty, Type::Nullable(_))),
-            ExprKind::FieldAccess(obj, _) | ExprKind::Index(obj, _) => {
-                self.expr_is_nullable_typed(obj)
-            }
-            ExprKind::Call { func, .. } => self.expr_is_nullable_typed(func),
-            _ => false,
-        }
-    }
-
-    fn expr_uses_nullable_receiver(&self, expr: &Expr) -> bool {
-        match &expr.kind {
-            ExprKind::FieldAccess(obj, _) => self.expr_is_nullable_typed(obj),
-            ExprKind::Call { func, .. } => {
-                if let ExprKind::FieldAccess(obj, _) = &func.kind {
-                    return self.expr_is_nullable_typed(obj);
-                }
-                false
-            }
-            _ => false,
-        }
-    }
-
     fn expr_is_fallible_or_nullable(&self, expr: &Expr) -> bool {
-        if self.expr_uses_nullable_receiver(expr) {
-            return true;
-        }
-        if let Ok(ty) = self.infer_expr_type(expr) {
-            if matches!(ty, Type::Nullable(_)) {
-                return true;
-            }
-        }
         match &expr.kind {
             ExprKind::Call { func, .. } => self.fallibility.call_expr_is_fallible(func),
-            // Index may fail at runtime; `or {}` is the required recovery form (E006).
             ExprKind::Index(_, _) => true,
-            // Struct field access may be nullable; elvis on fields is idiomatic.
             ExprKind::FieldAccess(_, _) => true,
             ExprKind::OrBlock { nullable, .. } => self.expr_is_fallible_or_nullable(nullable),
             _ => false,
@@ -128,25 +87,6 @@ impl TypeChecker {
                     if let Err(msg) = self.registry.check_when_exhaustive(arms) {
                         errors.push(CompilerError::new(msg).with_span(self.current_span));
                     }
-                    // Smart cast: for value-match when x { null -> ...; else -> ... },
-                    // inject x into not_null_set for non-null arms
-                    let smart_var: Option<String> = match &w.kind {
-                        WhenKind::ValueMatch { value, .. } => {
-                            if let ExprKind::Ident(name) = &value.as_ref().kind {
-                                let ty = self
-                                    .infer_expr_type(value)
-                                    .unwrap_or(Type::Named("Int".into()));
-                                if matches!(ty, Type::Nullable(_)) {
-                                    Some(name.clone())
-                                } else {
-                                    None
-                                }
-                            } else {
-                                None
-                            }
-                        }
-                        _ => None,
-                    };
                     for arm in arms {
                         // Add pattern-bound variables to type_env before checking body
                         let mut saved_pattern_vars: Vec<(String, Option<Type>)> = Vec::new();
@@ -183,20 +123,7 @@ impl TypeChecker {
                             saved_pattern_vars.push((pv.clone(), old));
                         }
 
-                        // Inject smart cast variable for non-null patterns
-                        let is_non_null = match &arm.pattern {
-                            Pattern::Null => false,
-                            _ => true,
-                        };
-                        if let Some(ref var) = smart_var {
-                            if is_non_null {
-                                self.not_null_set.borrow_mut().insert(var.clone());
-                            }
-                        }
                         self.collect_expr_errors(&arm.body, errors);
-                        if let Some(ref var) = smart_var {
-                            self.not_null_set.borrow_mut().remove(var);
-                        }
                         // Restore pattern variable bindings
                         for (name, old) in saved_pattern_vars {
                             if let Some(old_val) = old {
@@ -207,72 +134,15 @@ impl TypeChecker {
                         }
                     }
                 }
-                // Smart cast for OneLine when: when x != null { ... } [else { ... }]
                 if let WhenKind::OneLine {
                     condition,
                     then_expr,
                     else_expr,
                 } = &w.kind
                 {
-                    let smart_var = match &condition.as_ref().kind {
-                        ExprKind::Binary(lhs, BinaryOp::Neq, rhs) => match (&lhs.kind, &rhs.kind) {
-                            (ExprKind::Ident(name), ExprKind::Null)
-                            | (ExprKind::Null, ExprKind::Ident(name)) => {
-                                let ty = self
-                                    .infer_expr_type(lhs)
-                                    .unwrap_or(Type::Named("Int".into()));
-                                if matches!(ty, Type::Nullable(_)) {
-                                    Some(name.clone())
-                                } else {
-                                    None
-                                }
-                            }
-                            _ => None,
-                        },
-                        ExprKind::Binary(lhs, BinaryOp::Eq, rhs) => {
-                            // x == null means in the ELSE branch x is NOT null (smart cast)
-                            match (&lhs.kind, &rhs.kind) {
-                                (ExprKind::Ident(name), ExprKind::Null)
-                                | (ExprKind::Null, ExprKind::Ident(name)) => {
-                                    let ty = self
-                                        .infer_expr_type(lhs)
-                                        .unwrap_or(Type::Named("Int".into()));
-                                    if matches!(ty, Type::Nullable(_)) {
-                                        Some(name.clone())
-                                    } else {
-                                        None
-                                    }
-                                }
-                                _ => None,
-                            }
-                        }
-                        _ => None,
-                    };
-                    if let Some(ref var) = smart_var {
-                        // For x != null: then branch has non-null x
-                        // For x == null: else branch has non-null x
-                        let is_neq = matches!(
-                            &condition.as_ref().kind,
-                            ExprKind::Binary(_, BinaryOp::Neq, _)
-                        );
-                        if is_neq {
-                            self.not_null_set.borrow_mut().insert(var.clone());
-                        }
-                        self.collect_expr_errors(then_expr, errors);
-                        if is_neq {
-                            self.not_null_set.borrow_mut().remove(var);
-                        }
-                        if !is_neq {
-                            self.not_null_set.borrow_mut().insert(var.clone());
-                        }
-                        self.collect_expr_errors(else_expr, errors);
-                        if !is_neq {
-                            self.not_null_set.borrow_mut().remove(var);
-                        }
-                    } else {
-                        self.collect_expr_errors(then_expr, errors);
-                        self.collect_expr_errors(else_expr, errors);
-                    }
+                    self.collect_expr_errors(condition, errors);
+                    self.collect_expr_errors(then_expr, errors);
+                    self.collect_expr_errors(else_expr, errors);
                 }
             }
             ExprKind::Call {
@@ -423,9 +293,7 @@ impl TypeChecker {
             ExprKind::OrBlock { nullable, fallback } => {
                 let lhs_ty = self.try_infer_expr_type(nullable);
                 let fb_ty = self.try_infer_expr_type(fallback);
-                if !self.expr_is_fallible_or_nullable(nullable)
-                    && !matches!(fb_ty, Type::Nullable(_))
-                {
+                if !self.expr_is_fallible_or_nullable(nullable) {
                     if let Some(err) = self.fallibility.check_r7_or_unnecessary(self.current_span) {
                         errors.push(err);
                     }
@@ -612,28 +480,6 @@ impl TypeChecker {
         let lt = self.infer_expr_type(lhs)?;
         let rt = self.infer_expr_type(rhs)?;
 
-        // Reject nullable operands in arithmetic/bitwise operations.
-        // String concatenation (Add) with nullable is allowed.
-        let is_nullable_op = matches!(lt, Type::Nullable(_)) || matches!(rt, Type::Nullable(_));
-        if is_nullable_op {
-            let is_add_string = op == BinaryOp::Add
-                && (format!("{}", lt).starts_with("Nullable<String")
-                    || format!("{}", rt).starts_with("Nullable<String")
-                    || format!("{}", lt).starts_with("String")
-                    || format!("{}", rt).starts_with("String"));
-            match op {
-                BinaryOp::Add if is_add_string => {} // allow
-                BinaryOp::Eq | BinaryOp::Neq | BinaryOp::And | BinaryOp::Or => {} // comparison/logical allow
-                BinaryOp::Lt | BinaryOp::Gt | BinaryOp::Lte | BinaryOp::Gte => {} // comparison allow
-                _ => {
-                    return Err(FallibilityContext::check_r5_nullable_arithmetic(
-                        &format!("{}", op),
-                        self.current_span,
-                    ));
-                }
-            }
-        }
-
         match op {
             BinaryOp::Add => {
                 let ls = format!("{}", lt);
@@ -784,13 +630,6 @@ impl TypeChecker {
                             }
                             let arg_ty = self.infer_expr_type(arg)?;
                             if !types_compatible(param_ty, &arg_ty) {
-                                if let Some(err) = FallibilityContext::check_r4_nullable_termination(
-                                    param_ty,
-                                    &arg_ty,
-                                    self.current_span,
-                                ) {
-                                    return Err(err);
-                                }
                                 return Err(CompilerError::new(format!(
                                     "Argument {} to '{}' expects '{}' but got '{}'",
                                     i + 1,

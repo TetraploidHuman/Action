@@ -62,15 +62,6 @@ impl<'ctx> CodeGen<'ctx> {
         trailing.map(|b| CallArg::hir(b.as_ref()))
     }
 
-    pub(super) fn call_arg_ident_name(arg: CallArg<'_>) -> Option<&str> {
-        match arg {
-            CallArg::Hir(h) => match &h.kind {
-                HirExprKind::Ident(name) => Some(name.as_str()),
-                _ => None,
-            },
-        }
-    }
-
     pub(super) fn extract_trailing_block_body(
         trailing: CallArg<'_>,
     ) -> Result<TrailingBody<'_>, String> {

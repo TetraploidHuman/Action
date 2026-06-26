@@ -345,16 +345,8 @@ impl TypeChecker {
                 let fallback_ty = self.hm_infer_expr(fallback, locals, engine)?;
                 let nullable_ty = engine.resolve(&nullable_ty);
                 let fallback_ty = engine.resolve(&fallback_ty);
-                Ok(match nullable_ty {
-                    Type::Nullable(inner) => {
-                        let _ = engine.unify(&inner, &fallback_ty);
-                        engine.resolve(&inner)
-                    }
-                    other => {
-                        let _ = engine.unify(&other, &fallback_ty);
-                        engine.resolve(&other)
-                    }
-                })
+                let _ = engine.unify(&nullable_ty, &fallback_ty);
+                Ok(engine.resolve(&nullable_ty))
             }
             ExprKind::Unsafe(inner) => self.hm_infer_expr(inner, locals, engine),
             ExprKind::Block(stmts) => stmts
@@ -381,11 +373,6 @@ impl TypeChecker {
                         .unwrap_or_default();
                     Ok(Type::Named(enum_name))
                 } else if let Some(ty) = self.type_env.get(name) {
-                    if self.not_null_set.borrow().contains(name) {
-                        if let Type::Nullable(inner) = ty {
-                            return Ok(*inner.clone());
-                        }
-                    }
                     Ok(ty.clone())
                 } else if let Some(def) = builtin::lookup(name) {
                     Ok(def.return_type.clone())
@@ -416,17 +403,9 @@ impl TypeChecker {
                             return Ok(args[0].clone());
                         }
                     }
-                    Type::Map(_, v) => return Ok(Type::Nullable(v.clone())),
-                    Type::Set(e) => return Ok(Type::Nullable(e.clone())),
+                    Type::Map(_, v) => return Ok((*v).clone()),
+                    Type::Set(e) => return Ok((*e).clone()),
                     Type::Named(ref n) if n == "String" => return Ok(Type::Named("Int".into())),
-                    Type::Nullable(inner) => match *inner {
-                        Type::Map(_, v) => return Ok(Type::Nullable(v)),
-                        Type::Set(e) => return Ok(Type::Nullable(e)),
-                        Type::Named(ref n) if n == "String" => {
-                            return Ok(Type::Named("Int".into()))
-                        }
-                        _ => return Ok(Type::Nullable(Box::new(engine.fresh_var()))),
-                    },
                     _ => {}
                 }
                 Ok(engine.fresh_var())
@@ -434,11 +413,7 @@ impl TypeChecker {
             ExprKind::FieldAccess(obj, field) => {
                 let obj_ty = self.hm_infer_expr(obj, locals, engine)?;
                 let obj_type = engine.resolve(&obj_ty);
-                let (inner_obj_type, is_nullable) = match &obj_type {
-                    Type::Nullable(inner) => (inner.as_ref(), true),
-                    other => (other, false),
-                };
-                let field_type: Type = if let Type::Named(type_name) = inner_obj_type {
+                let field_type = if let Type::Named(type_name) = &obj_type {
                     let struct_name = match type_name.as_str() {
                         "Str" => "String",
                         "Double" => "Float",
@@ -456,11 +431,7 @@ impl TypeChecker {
                 } else {
                     engine.fresh_var()
                 };
-                if is_nullable {
-                    Ok(Type::Nullable(Box::new(field_type)))
-                } else {
-                    Ok(field_type)
-                }
+                Ok(field_type)
             }
             ExprKind::StructLiteral(fields) => {
                 let field_names: Vec<String> = fields.iter().map(|(n, _)| n.clone()).collect();

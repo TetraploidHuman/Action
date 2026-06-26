@@ -43,9 +43,6 @@ fn list() -> Type {
 fn unit() -> Type {
     Type::Unit
 }
-fn nullable_int() -> Type {
-    Type::Nullable(Box::new(int()))
-}
 fn fn_int_to_int() -> Type {
     Type::Function(vec![int()], Box::new(int()))
 }
@@ -57,9 +54,6 @@ fn set_ty() -> Type {
 }
 fn cstring() -> Type {
     Type::Named("CString".into())
-}
-fn nullable_string() -> Type {
-    Type::Nullable(Box::new(string()))
 }
 fn task_int() -> Type {
     Type::Task(Box::new(int()))
@@ -390,15 +384,6 @@ fn build_registry() -> Vec<BuiltinDef> {
             return_type: string(),
             ufcs_receiver: UfcsReceiverKind::Global,
             readonly: true,
-            supports_trailing_lambda: false,
-            fallible: false,
-        },
-        BuiltinDef {
-            name: "unwrapOr",
-            param_types: vec![nullable_string(), string()],
-            return_type: string(),
-            ufcs_receiver: UfcsReceiverKind::Global,
-            readonly: false,
             supports_trailing_lambda: false,
             fallible: false,
         },

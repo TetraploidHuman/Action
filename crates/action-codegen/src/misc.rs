@@ -10,7 +10,6 @@ use inkwell::types::{BasicType, BasicTypeEnum};
 use inkwell::values::{GlobalValue, IntValue, PointerValue};
 use inkwell::IntPredicate;
 
-use super::call_arg::CallArg;
 use super::{llvm_err, CodeGen, TypedValue, ValKind};
 
 impl<'ctx> CodeGen<'ctx> {

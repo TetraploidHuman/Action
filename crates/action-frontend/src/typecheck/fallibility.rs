@@ -1,13 +1,13 @@
 //! Fallibility analysis context and type rules R1–R9 (diagnostics E001–E009).
 //!
-//! R1–R6 (E001–E006) and R7–R9 (E007–E009) are implemented in this module.
+//! Collection index (list/map/set) and fallible builtins require `or { }` (E006/E008/E009).
+//! User `T?`, `null`, and `?.` are rejected at parse time (E010–E012).
 
 use crate::ast::{Expr, ExprKind, Stmt, Type};
 use crate::builtin::{self, UfcsReceiverKind};
 use crate::error::{
-    e001_or_required, e002_or_type_mismatch, e004_nullable_termination, e005_nullable_arithmetic,
-    e006_fallible_index_required, e007_or_unnecessary, e008_map_index_required,
-    e009_set_index_required, CompilerError,
+    e001_or_required, e002_or_type_mismatch, e006_fallible_index_required, e007_or_unnecessary,
+    e008_map_index_required, e009_set_index_required, CompilerError,
 };
 use crate::function_symbol::FunctionSymbol;
 use crate::types::types_compatible;
@@ -94,30 +94,6 @@ impl FallibilityContext {
         resolve_fallible_call_display(func, self).is_some()
     }
 
-    /// R4: nullable value used where non-nullable type is expected.
-    pub fn check_r4_nullable_termination(
-        declared: &Type,
-        inferred: &Type,
-        span: action_span::Span,
-    ) -> Option<CompilerError> {
-        match (declared, inferred) {
-            (Type::Nullable(_), _) => None,
-            (_, Type::Nullable(_)) if !matches!(declared, Type::Named(n) if n == "Nothing") => {
-                Some(e004_nullable_termination(
-                    &format!("{}", inferred),
-                    &format!("{}", declared),
-                    span,
-                ))
-            }
-            _ => None,
-        }
-    }
-
-    /// R5: nullable operand in arithmetic/bitwise (except allowed cases handled by caller).
-    pub fn check_r5_nullable_arithmetic(op: &str, span: action_span::Span) -> CompilerError {
-        e005_nullable_arithmetic(op, span)
-    }
-
     /// R6: bare fallible list index outside `or {}` / propagating fn.
     pub fn check_r6_fallible_index_needs_or(
         &self,
@@ -129,7 +105,7 @@ impl FallibilityContext {
         Some(e006_fallible_index_required(span))
     }
 
-    /// R7: `or {}` on expression that is neither fallible nor nullable.
+    /// R7: `or {}` on expression that is not fallible.
     pub fn check_r7_or_unnecessary(&self, span: action_span::Span) -> Option<CompilerError> {
         if self.in_or_block || self.fn_or_fallback {
             return None;
@@ -153,18 +129,14 @@ impl FallibilityContext {
         Some(e009_set_index_required(span))
     }
 
-    /// R2: `or {}` fallback type must match fallible/nullable lhs.
+    /// R2: `or {}` fallback type must match fallible lhs payload type.
     pub fn check_r2_or_block_result_type(
         &self,
-        nullable_ty: &Type,
+        lhs_ty: &Type,
         fallback_ty: &Type,
         span: action_span::Span,
     ) -> Option<CompilerError> {
-        let lhs = match nullable_ty {
-            Type::Nullable(inner) => inner.as_ref(),
-            other => other,
-        };
-        if types_compatible(lhs, fallback_ty) || types_compatible(fallback_ty, lhs) {
+        if types_compatible(lhs_ty, fallback_ty) || types_compatible(fallback_ty, lhs_ty) {
             None
         } else {
             Some(e002_or_type_mismatch(span))
@@ -184,15 +156,8 @@ impl FallibilityContext {
         }
     }
 
-    pub fn effective_return_type(&self, sym: &FunctionSymbol, in_or: bool) -> Type {
-        if sym.is_fallible && in_or {
-            match &sym.return_type {
-                Type::Nullable(inner) => *inner.clone(),
-                other => other.clone(),
-            }
-        } else {
-            sym.return_type.clone()
-        }
+    pub fn effective_return_type(&self, sym: &FunctionSymbol, _in_or: bool) -> Type {
+        sym.return_type.clone()
     }
 
     /// Analyze a function definition for fallibility metadata.

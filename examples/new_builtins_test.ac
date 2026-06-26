@@ -2,10 +2,11 @@
 fun main() {
     val xs = range(1, 5)
 
-    // Test tail (now returns Option<List<Int>>)
-    val t = tail(xs)
-    print("tail isSome: ")
-    println(isSome(t))
+    // Test tail (fallible when empty)
+    val t = tail(xs) or { List[] }
+    print("tail len: ")
+    print(len(t))
+    println("")
 
     // Test zip
     val ys = range(10, 13)
@@ -22,13 +23,11 @@ fun main() {
 
     // Test indexOf (String) - signature is indexOf(needle, haystack)
     print("indexOf: ")
-    val idx = indexOf("world", "hello world")
-    print(unwrapOr(idx, -1))
+    print(indexOf("world", "hello world") or { -1 })
     println("")
 
     print("indexOf not found: ")
-    val idx2 = indexOf("xyz", "hello")
-    print(unwrapOr(idx2, -1))
+    print(indexOf("xyz", "hello") or { -1 })
     println("")
 
     println("done")

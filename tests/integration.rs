@@ -492,7 +492,7 @@ fn test_read_line_multiple() {
 
 #[test]
 fn test_io() {
-    // readLine with EOF -> unwrapOr default "World"
+    // readLine with EOF -> or { } default "World"
     assert_eq!(run_example("io.ac"), "Hello, World\n");
 }
 

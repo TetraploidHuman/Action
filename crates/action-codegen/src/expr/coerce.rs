@@ -147,25 +147,6 @@ impl<'ctx> CodeGen<'ctx> {
                 .build_float_to_signed_int(float_val, self.i64_ty(), "float2int")
                 .map_err(llvm_err)?;
             Ok(int_val.as_basic_value_enum())
-        } else if let BasicMetadataTypeEnum::StructType(expected_struct) = expected_ty {
-            // Wrap non-struct scalar into nullable struct {i1=0, T} when target is nullable.
-            // Only wrap if the value is not already a struct (which would be double-wrapping).
-            let field_types = expected_struct.get_field_types();
-            if field_types.len() == 2 && !matches!(&val, BasicValueEnum::StructValue(_)) {
-                let undef = expected_struct.get_undef();
-                let null_flag = self.null_flag_ty().const_int(0, false);
-                let with_flag = self
-                    .builder
-                    .build_insert_value(undef, null_flag, 0, "wrap_flag")
-                    .map_err(llvm_err)?;
-                let wrapped = self
-                    .builder
-                    .build_insert_value(with_flag, val, 1, "wrap_val")
-                    .map_err(llvm_err)?;
-                Ok(wrapped.as_basic_value_enum())
-            } else {
-                Ok(val)
-            }
         } else {
             Ok(val)
         }

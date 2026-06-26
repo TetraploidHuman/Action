@@ -1,7 +1,0 @@
-fun main() {
-    val opt: Int? = 10
-    when opt {
-        null -> print(0)
-        else -> print(opt)
-    }
-}

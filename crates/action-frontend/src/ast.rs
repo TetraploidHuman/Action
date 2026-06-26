@@ -36,7 +36,7 @@ pub enum Type {
     FileHandle,
     /// Unit type: ()
     Unit,
-    /// Nullable type: T?
+    /// Reserved for HIR round-trip; user `T?` is parser-rejected (E011).
     Nullable(Box<Type>),
 }
 

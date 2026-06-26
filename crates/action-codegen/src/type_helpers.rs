@@ -5,7 +5,7 @@
 
 use action_frontend::ast::*;
 use action_frontend::hir::{HirExpr, HirExprKind};
-use inkwell::types::{BasicTypeEnum, StructType};
+use inkwell::types::{BasicType, BasicTypeEnum, StructType};
 use inkwell::values::{BasicValue, BasicValueEnum};
 
 use super::{llvm_err, CodeGen, TypedValue, ValKind};
@@ -144,24 +144,6 @@ impl<'ctx> CodeGen<'ctx> {
         self.opt_level = level.min(3);
     }
 
-    /// Get or create a nullable LLVM struct type {i1, T} for the given inner type.
-    pub(super) fn get_nullable_type(
-        &mut self,
-        inner_type: BasicTypeEnum<'ctx>,
-        name_hint: &str,
-    ) -> StructType<'ctx> {
-        if let Some(ct) = self.nullable_state.nullable_types.get(name_hint) {
-            return *ct;
-        }
-        let nullable_ty = self
-            .context
-            .struct_type(&[self.null_flag_ty().into(), inner_type], false);
-        self.nullable_state
-            .nullable_types
-            .insert(name_hint.to_string(), nullable_ty);
-        nullable_ty
-    }
-
     /// Convert Int or Float TypedValue to FloatValue (Int gets converted via sitofp).
     pub(super) fn typed_to_float(
         &self,
@@ -188,10 +170,6 @@ impl<'ctx> CodeGen<'ctx> {
     }
     pub(super) fn bool_ty(&self) -> inkwell::types::IntType<'ctx> {
         self.context.bool_type()
-    }
-    /// i8 type for nullable struct flags — avoids LLVM i1-in-struct selection issues
-    pub(super) fn null_flag_ty(&self) -> inkwell::types::IntType<'ctx> {
-        self.context.i8_type()
     }
     pub(super) fn void_ty(&self) -> inkwell::types::VoidType<'ctx> {
         self.context.void_type()
@@ -354,13 +332,7 @@ impl<'ctx> CodeGen<'ctx> {
             HirExprKind::When(w) => self.infer_hir_when_type(w),
             HirExprKind::Continue | HirExprKind::Break => Type::Unit,
             HirExprKind::For(_) => Type::Unit,
-            HirExprKind::OrBlock { nullable, fallback } => {
-                let cond_ty = self.infer_hir_expr_type(nullable);
-                match cond_ty {
-                    Type::Nullable(inner) => *inner,
-                    _ => self.infer_hir_expr_type(fallback),
-                }
-            }
+            HirExprKind::OrBlock { fallback, .. } => self.infer_hir_expr_type(fallback),
             _ => expr.ty.clone(),
         }
     }
@@ -418,11 +390,7 @@ impl<'ctx> CodeGen<'ctx> {
             Some(Type::Ptr(_)) | Some(Type::CString) | Some(Type::FileHandle) => {
                 self.ptr_ty().fn_type(param_tys, false)
             }
-            Some(Type::Nullable(inner)) => {
-                let bt = self.ast_type_to_basic_type(inner);
-                let nullable_st = self.get_nullable_type(bt, &format!("Nullable<{}>", inner));
-                nullable_st.fn_type(param_tys, false)
-            }
+            Some(Type::Nullable(inner)) => self.ast_type_to_basic_type(inner).fn_type(param_tys, false),
             Some(Type::Generic(base, _)) => match base.as_ref() {
                 Type::Named(n) => match n.as_str() {
                     "list" | "List" | "set" | "Set" | "map" | "Map" => {

@@ -610,24 +610,7 @@ impl<'ctx> CodeGen<'ctx> {
                                 let struct_ty = ret_ty_opt
                                     .ok_or_else(|| "Missing return type".to_string())?
                                     .into_struct_type();
-                                let field_types = struct_ty.get_field_types();
-                                // Detect nullable struct: 2 fields, first is i1 (null flag)
-                                let is_nullable = field_types.len() == 2
-                                    && matches!(field_types[0], BasicTypeEnum::IntType(t) if t.get_bit_width() == 8);
-                                if is_nullable {
-                                    // Pack scalar into nullable: field 0 = 0 (not null), field 1 = value
-                                    let undef = struct_ty.get_undef();
-                                    let flag = self.null_flag_ty().const_int(0, false);
-                                    let with_flag = self
-                                        .builder
-                                        .build_insert_value(undef, flag, 0, "nlf")
-                                        .map_err(llvm_err)?;
-                                    let packed = self
-                                        .builder
-                                        .build_insert_value(with_flag, bv, 1, "nlv")
-                                        .map_err(llvm_err)?;
-                                    let _ = self.builder.build_return(Some(&packed));
-                                } else if let Some((fat_alloca, _fat_ty)) = self.last_fat_ret.take()
+                                if let Some((fat_alloca, _fat_ty)) = self.last_fat_ret.take()
                                 {
                                     if struct_ty != self.fat_return_type {
                                         let ptr_ty =

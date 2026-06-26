@@ -1,6 +1,6 @@
 //! Typed LLVM values produced by expression compilation.
 
-use inkwell::types::{BasicTypeEnum, FunctionType, StructType};
+use inkwell::types::{FunctionType, StructType};
 use inkwell::values::{BasicValue, BasicValueEnum, IntValue, PointerValue};
 
 /// The type of value stored inside an enum variant (Some/Ok).

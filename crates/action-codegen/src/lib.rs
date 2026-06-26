@@ -1,6 +1,6 @@
 // Atomic CodeGen — LLVM IR code generation
 //
-// Submodules: scope, typed_value, loop_control, nullable_state, mono_cache, type_layout,
+// Submodules: scope, typed_value, loop_control, mono_cache, type_layout,
 // compile/hir_compile, expr/ stmt/ pattern/ for_loop/, mono/, builtins/* (iter/ tree),
 // runtime_decl/* (list/core/*.inc.rs → body.inc.rs via build.rs + concat_list_body.py).
 
@@ -15,7 +15,6 @@ use std::collections::{HashMap, HashSet};
 
 mod loop_control;
 mod mono_cache;
-mod nullable_state;
 mod type_layout;
 
 mod scope;
@@ -23,7 +22,6 @@ mod typed_value;
 
 pub(crate) use loop_control::LoopControl;
 pub(crate) use mono_cache::MonoCache;
-pub(crate) use nullable_state::NullableState;
 pub(crate) use type_layout::TypeLayoutCache;
 
 pub(crate) use scope::{Scope, ScopeVar, ValKind};
@@ -103,7 +101,6 @@ pub struct CodeGen<'ctx> {
     pub(crate) target_triple: Option<String>,
     /// Counter for unique wrapper function names (lazy_map, lazy_filter, etc.)
     pub(crate) wrapper_counter: u64,
-    pub(crate) nullable_state: NullableState<'ctx>,
     pub(crate) mono_cache: MonoCache,
     /// Tracks whether compile_block did an rc_inc on the last expression.
     /// val stmt uses this to apply a balancing rc_dec.
@@ -265,7 +262,6 @@ impl<'ctx> CodeGen<'ctx> {
             opt_level: 0,
             target_triple,
             wrapper_counter: 0,
-            nullable_state: NullableState::default(),
             mono_cache: MonoCache::default(),
             block_did_rc_inc: false,
         }

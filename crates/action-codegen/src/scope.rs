@@ -271,10 +271,6 @@ impl<'ctx> Scope<'ctx> {
         }
     }
 
-    pub(crate) fn remove_var(&mut self, name: &str) {
-        self.variables.remove(name);
-    }
-
     pub(crate) fn local_variables(&self) -> &HashMap<String, ScopeVar<'ctx>> {
         &self.variables
     }

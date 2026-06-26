@@ -1,7 +1,7 @@
 // Submodule: pattern
 
 use action_frontend::ast::*;
-use action_frontend::hir::{HirExprKind, HirPattern};
+use action_frontend::hir::HirPattern;
 use inkwell::types::BasicTypeEnum;
 use inkwell::values::{IntValue, PointerValue};
 use inkwell::FloatPredicate;
@@ -675,37 +675,7 @@ impl<'ctx> CodeGen<'ctx> {
                     TypedValue::Bool(b) => b,
                     _ => return Err("when condition must be boolean".to_string()),
                 };
-                let smart_var: Option<String> = match &condition.kind {
-                    HirExprKind::Binary(lhs, BinaryOp::Neq, rhs)
-                    | HirExprKind::Binary(lhs, BinaryOp::Eq, rhs) => match (&lhs.kind, &rhs.kind) {
-                        (HirExprKind::Ident(name), HirExprKind::Null)
-                        | (HirExprKind::Null, HirExprKind::Ident(name)) => Some(name.clone()),
-                        _ => None,
-                    },
-                    _ => None,
-                };
-                if let Some(ref var) = smart_var {
-                    let is_eq = matches!(&condition.kind, HirExprKind::Binary(_, BinaryOp::Eq, _));
-                    if is_eq {
-                        let negated = self
-                            .builder
-                            .build_not(c_bool, "neg_cond")
-                            .map_err(llvm_err)?;
-                        self.nullable_state.not_null_set.insert(var.clone());
-                        let result =
-                            self.compile_when_branch_lazy_hir(negated, else_expr, then_expr);
-                        self.nullable_state.not_null_set.remove(var);
-                        result
-                    } else {
-                        self.nullable_state.not_null_set.insert(var.clone());
-                        let result =
-                            self.compile_when_branch_lazy_hir(c_bool, then_expr, else_expr);
-                        self.nullable_state.not_null_set.remove(var);
-                        result
-                    }
-                } else {
-                    self.compile_when_branch_lazy_hir(c_bool, then_expr, else_expr)
-                }
+                self.compile_when_branch_lazy_hir(c_bool, then_expr, else_expr)
             }
             HirWhenKind::ValueMatch { value, arms } => self.compile_hir_value_match(value, arms),
             HirWhenKind::ConditionChain { arms } => self.compile_hir_condition_chain(arms),
@@ -807,14 +777,6 @@ impl<'ctx> CodeGen<'ctx> {
             }
 
             self.builder.position_at_end(body_block);
-            let smart_var: Option<String> = match (&value.kind, &arm.pattern) {
-                (HirExprKind::Ident(_), Pattern::Null) => None,
-                (HirExprKind::Ident(name), _) => Some(name.clone()),
-                _ => None,
-            };
-            if let Some(ref var) = smart_var {
-                self.nullable_state.not_null_set.insert(var.clone());
-            }
             let mut saved_scope = Scope::new();
             std::mem::swap(&mut self.scope, &mut saved_scope);
             self.scope = Scope::with_parent(saved_scope);
@@ -828,9 +790,6 @@ impl<'ctx> CodeGen<'ctx> {
             } else {
                 self.compile_hir_expr(&hir_arm.body)?
             };
-            if let Some(ref var) = smart_var {
-                self.nullable_state.not_null_set.remove(var);
-            }
             if result_enum_info.is_none() {
                 if let TypedValue::Enum(_, _, inner, rc) = &body_val {
                     result_enum_info = Some((*inner, *rc));
