@@ -93,32 +93,10 @@ impl Parser {
                     true
                 }
                 TokenKind::Question => {
-                    self.advance();
-                    // ? is only valid after a type or as part of ?. (safe call sugar)
-                    // Standalone ? after expression is not valid.
-                    // Check for ?. safe call sugar
-                    if self.current_kind() == TokenKind::Dot {
-                        self.advance(); // skip '.'
-                        let field = match &self.current_kind() {
-                            TokenKind::Ident(s) => {
-                                let name = s.clone();
-                                self.advance();
-                                name
-                            }
-                            _ => return Err(self.error("Expected field name after '?.'")),
-                        };
-                        left = ExprKind::FieldAccess(Box::new(left), field).into();
-                    } else if self.current_kind() == TokenKind::LBracket {
-                        self.advance(); // skip '['
-                        let idx = self.parse_expr()?;
-                        self.expect(TokenKind::RBracket)?;
-                        left = ExprKind::Index(Box::new(left), Box::new(idx)).into();
-                    } else if self.current_kind() == TokenKind::LParen {
-                        left = self.parse_call_suffix(left)?;
-                    } else {
-                        return Err(self.error("Unexpected '?'. Use 'or { }' for nullable fallback, or '?.' for safe call"));
-                    }
-                    true
+                    return Err(self.error_coded(
+                        "?. safe call is not supported; use fallible access with or { }",
+                        crate::error::DiagnosticCode::E012,
+                    ));
                 }
                 TokenKind::Or => {
                     // Check for or-block (nullable fallback): expr or { ... }

@@ -1,21 +1,16 @@
-// Test: higher-order list builtins — find, flatMap, sortedBy, partition
 fun main() {
     val nums = List[1, 2, 3, 4, 5]
 
-    // find: first element matching predicate (1 = found, 0 = not found)
-    val found = find(nums) { x -> x == 3 }
-    when found != null { print(1) else print(0) }
+    val hit = findIndex({ x -> x == 3 }, nums) or { -1 }
+    when hit == 2 { print(1) else print(0) }
 
-    // flatMap: one-element sub-lists per item (length unchanged)
     val flat = flatMap(nums) { x -> List[x] }
     print(flat.len())
 
-    // sortedBy: custom sort key (descending)
     val sorted = sortedBy(nums) { x -> -x }
     print(sorted[0])
     print(sorted[4])
 
-    // partition: split by predicate
     val parts = partition(nums) { x -> x % 2 == 0 }
     print(parts[0][0])
     print(parts[0][1])

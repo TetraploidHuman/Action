@@ -1,5 +1,4 @@
-// Error: ?. must be followed by a field name
 fun main() {
-    val x: String? = "hello"
-    val y = x?.    // incomplete safe call
+    val x = "hello"
+    val y = x?.
 }

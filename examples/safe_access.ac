@@ -1,16 +1,7 @@
-// Auto short-circuit field access on nullable types
 fun main() {
-    val x: Int? = 10
-    val y: Int? = null
-
-    // Elvis with non-null: extracts value
-    val r1 = x or { 0 }
+    val r1 = head(List[10]) or { 0 }
     print(r1)
-
-    // Elvis with null: returns default
-    val r2 = y or { 42 }
+    val r2 = head(List[]) or { 42 }
     print(r2)
-
-    // Elvis with non-null: extracts value
-    print(x or { 9 })
+    print(head(List[10]) or { 9 })
 }

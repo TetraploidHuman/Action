@@ -1,5 +1,4 @@
-// Error: standalone '?' is not allowed (use or { } or ?.)
 fun main() {
-    val x: Int? = 42
-    val y = x?   // bare '?' is meaningless
+    val x = 1
+    val y = x?
 }

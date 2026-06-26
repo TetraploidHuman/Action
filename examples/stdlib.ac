@@ -1,21 +1,8 @@
-// Stdlib examples: using nullable types with Elvis operator
+// Stdlib fallible + or { }
 fun main() {
-    // Some(21) doubled -> 42
-    val opt: Int? = 21
-    print((opt or { 0 }) * 2)
-
-    // None -> orElse 99 -> 99
-    val nothing: Int? = null
-    print(nothing or { 99 })
-
-    // Some(21) + 10 -> 31
-    print((opt or { 0 }) + 10)
-
-    // Ok(10) * 5 -> 50
-    val ok_val: Int? = 10
-    print((ok_val or { 0 }) * 5)
-
-    // Err(7) -> orElse 200 -> 200
-    val err_val: Int? = null
-    print(err_val or { 200 })
+    print((head(List[21]) or { 0 }) * 2)
+    print(parseInt("nope") or { 99 })
+    print((head(List[21]) or { 0 }) + 10)
+    print((parseInt("10") or { 0 }) * 5)
+    print(parseInt("bad") or { 200 })
 }

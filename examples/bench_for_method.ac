@@ -4,5 +4,5 @@ fun main() {
     var outer = 0
     for outer < 50 { val result = lst.map { it * 3 }.filter { it > 1000 }; outer = outer + 1 }
     val result = lst.map { it * 3 }.filter { it > 1000 }
-    println(result.len()); println(result.get(0))
+    println(result.len()); println(result.get(0) or { -1 })
 }

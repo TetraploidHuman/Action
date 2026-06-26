@@ -2,15 +2,15 @@ use super::*;
 
 impl Parser {
     pub(crate) fn parse_type(&mut self) -> Result<Type, ParseError> {
-        let mut ty = self.parse_type_primary()?;
+        let ty = self.parse_type_primary()?;
 
         // Function type arrow
         // Check for nullable type: T? (allow chained ? for T?? error)
         while self.skip(TokenKind::Question) {
-            if matches!(ty, Type::Nullable(_)) {
-                return Err(self.error("Nested nullable types (T??) are not allowed"));
-            }
-            ty = Type::Nullable(Box::new(ty));
+            return Err(self.error_coded(
+                "nullable types (T?) are not supported; use fallible return types with or { }",
+                crate::error::DiagnosticCode::E011,
+            ));
         }
 
         if self.skip(TokenKind::Arrow) {

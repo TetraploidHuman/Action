@@ -14,54 +14,54 @@ fun main() {
 
     // Quick spot-check
     print("get[0] (expect 0): ")
-    println(lst.get(0))
+    println(lst.get(0) or { -1 })
     print("get[500] (expect 500): ")
-    println(lst.get(500))
+    println(lst.get(500) or { -1 })
     print("get[999] (expect 999): ")
-    println(lst.get(999))
+    println(lst.get(999) or { -1 })
 
     // Reverse
     var rev = lst.reverse()
     print("reverse len (expect 1000): ")
     println(rev.len())
     print("reverse[0] (expect 999): ")
-    println(rev.get(0))
+    println(rev.get(0) or { -1 })
     print("reverse[999] (expect 0): ")
-    println(rev.get(999))
+    println(rev.get(999) or { -1 })
 
     // Take
     var t = lst.take(50)
     print("take 50 len (expect 50): ")
     println(t.len())
     print("take[0] (expect 0): ")
-    println(t.get(0))
+    println(t.get(0) or { -1 })
     print("take[49] (expect 49): ")
-    println(t.get(49))
+    println(t.get(49) or { -1 })
 
     // Slice (standalone function: slice(collection, start, end))
     var s = slice(lst, 100, 110)
     print("slice 100..110 len (expect 10): ")
     println(s.len())
     print("slice[0] (expect 100): ")
-    println(s.get(0))
+    println(s.get(0) or { -1 })
     print("slice[9] (expect 109): ")
-    println(s.get(9))
+    println(s.get(9) or { -1 })
 
     // Insert at middle
     var ins = lst.insert(500, 9999)
     print("insert len (expect 1001): ")
     println(ins.len())
     print("insert[500] (expect 9999): ")
-    println(ins.get(500))
+    println(ins.get(500) or { -1 })
     print("insert[501] (expect 500): ")
-    println(ins.get(501))
+    println(ins.get(501) or { -1 })
 
     // Remove from middle
     var rem = lst.remove(500)
     print("remove len (expect 999): ")
     println(rem.len())
     print("remove[500] (expect 501): ")
-    println(rem.get(500))
+    println(rem.get(500) or { -1 })
 
     // Contains
     print("contains 500 (expect true): ")
@@ -73,7 +73,7 @@ fun main() {
     print("original len still 1000 (expect 1000): ")
     println(lst.len())
     print("original[500] still 500 (expect 500): ")
-    println(lst.get(500))
+    println(lst.get(500) or { -1 })
 
     println("All stress tests passed")
 }

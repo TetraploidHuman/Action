@@ -14,6 +14,12 @@ pub enum DiagnosticCode {
     E007,
     E008,
     E009,
+    /// `null` literal is not supported.
+    E010,
+    /// Nullable types `T?` are not supported.
+    E011,
+    /// Safe call `?.` is not supported.
+    E012,
 }
 
 impl DiagnosticCode {
@@ -28,6 +34,9 @@ impl DiagnosticCode {
             DiagnosticCode::E007 => "E007",
             DiagnosticCode::E008 => "E008",
             DiagnosticCode::E009 => "E009",
+            DiagnosticCode::E010 => "E010",
+            DiagnosticCode::E011 => "E011",
+            DiagnosticCode::E012 => "E012",
         }
     }
 }
@@ -140,6 +149,19 @@ pub fn explain_help_for(error: &CompilerError) -> Option<String> {
             DiagnosticCode::E009 => {
                 "Set membership lookup can fail when the element is absent. Use \
                  `set[elem] or { default }`."
+                    .to_string()
+            }
+            DiagnosticCode::E010 => {
+                "`null` has been removed. Use fallible calls with `or { default }` or \
+                 `or { return expr }`."
+                    .to_string()
+            }
+            DiagnosticCode::E011 => {
+                "Nullable types (`T?`) are not supported. Use fallible return types with `or { }`."
+                    .to_string()
+            }
+            DiagnosticCode::E012 => {
+                "Safe call (`?.`) is not supported. Use fallible access with `or { }`."
                     .to_string()
             }
         });

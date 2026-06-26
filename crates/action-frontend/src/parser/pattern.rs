@@ -200,8 +200,10 @@ impl Parser {
                 Ok(Pattern::Literal(Literal::Float(f)))
             }
             TokenKind::Null => {
-                self.advance();
-                Ok(Pattern::Null)
+                return Err(self.error_coded(
+                    "null pattern is not supported",
+                    crate::error::DiagnosticCode::E010,
+                ));
             }
             TokenKind::Underscore => {
                 self.advance();

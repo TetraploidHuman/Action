@@ -1,10 +1,4 @@
-// Test nullable types with Elvis operator
 fun main() {
-    // Non-null value + Elvis
-    val x: Int? = 44
-    print(x or { 0 })
-
-    // Null value + Elvis
-    val y: Int? = null
-    print(y or { 9 })
+    print(parseInt("44") or { 0 })
+    print(head(List[]) or { 9 })
 }

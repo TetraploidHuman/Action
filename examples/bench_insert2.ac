@@ -10,6 +10,6 @@ fun main() {
     ins = ins.insert(0, 9999)
     ins = ins.insert(2, 8888)
     println(ins.len())
-    println(ins.get(0))
-    println(ins.get(2))
+    println(ins.get(0) or { -1 })
+    println(ins.get(2) or { -1 })
 }

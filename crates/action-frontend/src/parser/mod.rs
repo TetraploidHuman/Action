@@ -13,11 +13,16 @@ use action_span::Span;
 pub struct ParseError {
     pub message: String,
     pub span: Span,
+    pub code: Option<crate::error::DiagnosticCode>,
 }
 
 impl ParseError {
     pub fn to_compiler_error(&self) -> CompilerError {
-        CompilerError::new(self.message.clone()).with_span(self.span)
+        let mut e = CompilerError::new(self.message.clone()).with_span(self.span);
+        if let Some(code) = self.code {
+            e = e.with_code(code);
+        }
+        e
     }
 }
 
@@ -251,6 +256,19 @@ impl Parser {
         ParseError {
             message: msg.to_string(),
             span: self.current().span,
+            code: None,
+        }
+    }
+
+    pub(crate) fn error_coded(
+        &self,
+        msg: &str,
+        code: crate::error::DiagnosticCode,
+    ) -> ParseError {
+        ParseError {
+            message: msg.to_string(),
+            span: self.current().span,
+            code: Some(code),
         }
     }
 
@@ -669,18 +687,27 @@ mod tests {
     }
 
     #[test]
-    fn test_let_with_nullable_type() {
-        let prog = parse("val x: Int? = null").unwrap();
-        match &prog.stmts[0] {
-            Stmt::Let { name, type_ann, .. } => {
-                assert_eq!(name, "x");
-                assert_eq!(
-                    type_ann,
-                    &Some(Type::Nullable(Box::new(Type::Named("Int".into()))))
-                );
-            }
-            _ => panic!("Expected Let with nullable type"),
-        }
+    fn test_null_literal_rejected_e010() {
+        let result = parse("val x = null");
+        assert!(result.is_err(), "null should be rejected");
+        let err = result.unwrap_err();
+        assert_eq!(err.code, Some(crate::error::DiagnosticCode::E010));
+    }
+
+    #[test]
+    fn test_nullable_type_rejected_e011() {
+        let result = parse("val x: Int? = 1");
+        assert!(result.is_err(), "Int? should be rejected");
+        let err = result.unwrap_err();
+        assert_eq!(err.code, Some(crate::error::DiagnosticCode::E011));
+    }
+
+    #[test]
+    fn test_safe_call_rejected_e012() {
+        let result = parse_expr("x?.y");
+        assert!(result.is_err(), "?. should be rejected");
+        let err = result.unwrap_err();
+        assert_eq!(err.code, Some(crate::error::DiagnosticCode::E012));
     }
 
     #[test]

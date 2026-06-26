@@ -12,9 +12,9 @@ fun main() {
     print("List CoW b len (expect 4): ")
     println(b.len())
     print("List CoW a[0] (expect 1): ")
-    println(a.get(0))
+    println(a.get(0) or { -1 })
     print("List CoW b[2] (expect 3): ")
-    println(b.get(2))
+    println(b.get(2) or { -1 })
 
     // Test 2: Map CoW — inserting into copy doesn't affect original
     val m1 = Map["x": 10, "y": 20]
@@ -36,11 +36,11 @@ fun main() {
     print("Multi-copy orig len (expect 1): ")
     println(orig.len())
     print("Multi-copy c1[1] (expect 11): ")
-    println(c1.get(1))
+    println(c1.get(1) or { -1 })
     print("Multi-copy c2[1] (expect 22): ")
-    println(c2.get(1))
+    println(c2.get(1) or { -1 })
     print("Multi-copy c3[1] (expect 33): ")
-    println(c3.get(1))
+    println(c3.get(1) or { -1 })
 
     // Test 4: Map remove CoW
     val m3 = Map["a": 1, "b": 2, "c": 3]

@@ -33,22 +33,22 @@ fun main() {
 
     // ---- map chain ----
     val mapped = map(lst) { it + 10 }
-    println(mapped.get(0)) // 11
-    println(mapped.get(1)) // 12
+    println(mapped.get(0) or { -1 }) // 11
+    println(mapped.get(1) or { -1 }) // 12
 
     // ---- take chain ----
     val taken = lst.take(2)
     println(taken.len()) // 2
-    println(taken.get(0)) // 1
-    println(taken.get(1)) // 2
+    println(taken.get(0) or { -1 }) // 1
+    println(taken.get(1) or { -1 }) // 2
 
     // ---- len on literal ----
     println(List[10, 20, 30].len()) // 3
 
     // ---- map on literal ----
     val doubled_literal = map(List[1, 2, 3]) { it * 2 }
-    println(doubled_literal.get(0)) // 2
-    println(doubled_literal.get(2)) // 6
+    println(doubled_literal.get(0) or { -1 }) // 2
+    println(doubled_literal.get(2) or { -1 }) // 6
 
     // ---- fold after take ----
     val take_sum = fold(0, lst.take(2)) { acc, x -> acc + x }

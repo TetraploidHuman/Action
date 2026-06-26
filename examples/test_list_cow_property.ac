@@ -8,21 +8,21 @@ fun main() {
     println(a.len())
     println(b.len())
     println(base.len())
-    println(base.get(0))
-    println(b.get(2))
+    println(base.get(0) or { -1 })
+    println(b.get(2) or { -1 })
 
     b = b.remove(1)
     println(b.len())
     println(a.len())
     println(base.len())
-    println(base.get(1))
+    println(base.get(1) or { -1 })
 
     var c = base
     var d = c
     c = c.insert(1, 99)
     println(c.len())
     println(d.len())
-    println(base.get(1))
+    println(base.get(1) or { -1 })
 
     var chain = List[1, 2, 3]
     var s1 = chain
@@ -32,8 +32,8 @@ fun main() {
     s2 = s2.append(22)
     s3 = s3.append(33)
     println(chain.len())
-    println(s1.get(3))
-    println(s2.get(3))
-    println(s3.get(3))
+    println(s1.get(3) or { -1 })
+    println(s2.get(3) or { -1 })
+    println(s3.get(3) or { -1 })
     println("CoW property ok")
 }

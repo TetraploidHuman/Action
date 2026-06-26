@@ -3,7 +3,7 @@ fun main() {
     val lst = List[10, 20, 30, 40, 50]
     print(lst.remove(0).len())
     print(lst.take(2).append(99).len())
-    print(lst.drop(1).remove(0).get(0))
+    print(lst.drop(1).remove(0).get(0) or { -1 })
     val chained = List[1, 2, 3].remove(0).append(4).remove(0).len()
     print(chained)
     println("")

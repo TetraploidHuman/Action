@@ -6,7 +6,7 @@ fun main() {
     lb.append(4)
     println(la.len())
     println(lb.len())
-    println(lb.get(3))
+    println(lb.get(3) or { -1 })
 
     // Map insert statement
     val m1 = Map["x": 10, "y": 20]

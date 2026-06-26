@@ -810,12 +810,14 @@ mod tests {
     }
 
     #[test]
-    fn test_nullable_assignment_to_non_nullable() {
-        let errors = check_source("val x: Int = null");
-        assert!(
-            !errors.is_empty(),
-            "expected type error for nullable to non-nullable"
-        );
+    fn test_null_literal_rejected_at_parse_e010() {
+        let mut lexer = Lexer::new("val x: Int = null");
+        let tokens = lexer.tokenize();
+        let mut parser = Parser::new(tokens);
+        let result = parser.parse_program();
+        assert!(result.is_err(), "null should be rejected at parse time");
+        let err = result.unwrap_err();
+        assert_eq!(err.code, Some(crate::error::DiagnosticCode::E010));
     }
 
     #[test]

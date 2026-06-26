@@ -9,11 +9,11 @@ fun main() {
     print("concat List len (expect 6): ")
     println(c.len())
     print("concat List [0] (expect 1): ")
-    println(c.get(0))
+    println(c.get(0) or { -1 })
     print("concat List [3] (expect 4): ")
-    println(c.get(3))
+    println(c.get(3) or { -1 })
     print("concat List [5] (expect 6): ")
-    println(c.get(5))
+    println(c.get(5) or { -1 })
 
     // Test 2: concat with empty List
     var empty = List[]
@@ -21,14 +21,14 @@ fun main() {
     print("concat empty len (expect 3): ")
     println(d.len())
     print("concat empty [0] (expect 1): ")
-    println(d.get(0))
+    println(d.get(0) or { -1 })
 
     // Test 3: concat empty with non-empty
     var e = concat(empty, a)
     print("concat empty first len (expect 3): ")
     println(e.len())
     print("concat empty first [0] (expect 1): ")
-    println(e.get(0))
+    println(e.get(0) or { -1 })
 
     // Test 4: concat two empty lists
     var f = concat(empty, empty)
@@ -42,7 +42,7 @@ fun main() {
     print("CoW orig a len (expect 2): ")
     println(g.len())
     print("CoW orig a [0] (expect 10): ")
-    println(g.get(0))
+    println(g.get(0) or { -1 })
     print("CoW orig b len (expect 2): ")
     println(h.len())
     print("concat result len (expect 4): ")
@@ -84,11 +84,11 @@ fun main() {
     print("big concat len (expect 200): ")
     println(big3.len())
     print("big concat [0] (expect 0): ")
-    println(big3.get(0))
+    println(big3.get(0) or { -1 })
     print("big concat [100] (expect 100): ")
-    println(big3.get(100))
+    println(big3.get(100) or { -1 })
     print("big concat [199] (expect 199): ")
-    println(big3.get(199))
+    println(big3.get(199) or { -1 })
 
     println("All concat tests passed")
 }

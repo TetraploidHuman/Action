@@ -8,7 +8,7 @@ fun main() {
     }
     lst = lst.insert(32, 999)
     println(lst.len())
-    println(lst.get(32))
-    println(lst.get(0))
-    println(lst.get(63))
+    println(lst.get(32) or { -1 })
+    println(lst.get(0) or { -1 })
+    println(lst.get(63) or { -1 })
 }

@@ -6,8 +6,8 @@ fun main() {
     val original = List[1, 2, 3, 4, 5]
     val c1 = original
     println(original.len()) // 5
-    println(original.get(0)) // 1
-    println(original.get(4)) // 5
+    println(original.get(0) or { -1 }) // 1
+    println(original.get(4) or { -1 }) // 5
 
     // ---- Test 2: Source mutated - copy unchanged ----
     var src = List[10, 20, 30, 40, 50]
@@ -15,7 +15,7 @@ fun main() {
     src = src.append(60)
     println(snap.len()) // 5
     println(src.len()) // 6
-    println(snap.get(4)) // 50
+    println(snap.get(4) or { -1 }) // 50
 
     // ---- Test 3: Copy mutated - source unchanged ----
     val base = List[100, 200, 300]
@@ -23,15 +23,15 @@ fun main() {
     v1 = v1.append(400)
     println(base.len()) // 3
     println(v1.len()) // 4
-    println(base.get(0)) // 100
-    println(v1.get(3)) // 400
+    println(base.get(0) or { -1 }) // 100
+    println(v1.get(3) or { -1 }) // 400
 
     // ---- Test 4: insert on copy ----
     val scores = List[1, 2, 3]
     var sc = scores
     sc = sc.insert(0, 999)
-    println(scores.get(0)) // 1 original unchanged
-    println(sc.get(0)) // 999 copy has new value
+    println(scores.get(0) or { -1 }) // 1 original unchanged
+    println(sc.get(0) or { -1 }) // 999 copy has new value
 
     // ---- Test 5: Multiple sharing references ----
     val shared = List[1, 1, 1]
@@ -46,25 +46,25 @@ fun main() {
     val prefix = full.take(2)
     println(full.len()) // 5
     println(prefix.len()) // 2
-    println(prefix.get(0)) // 5
-    println(prefix.get(1)) // 10
+    println(prefix.get(0) or { -1 }) // 5
+    println(prefix.get(1) or { -1 }) // 10
 
     // ---- Test 7: Remove does not affect original ----
     val orig = List[1, 2, 3, 4]
     val removed = orig.remove(1)
     println(orig.len()) // 4
-    println(orig.get(0)) // 1
-    println(orig.get(1)) // 2
+    println(orig.get(0) or { -1 }) // 1
+    println(orig.get(1) or { -1 }) // 2
     println(removed.len()) // 3
-    println(removed.get(1)) // 3
+    println(removed.get(1) or { -1 }) // 3
 
     // ---- Test 8: Map does not affect original ----
     val src_map = List[1, 2, 3]
     val doubled = map(src_map) { it * 2 }
-    println(src_map.get(0)) // 1
-    println(src_map.get(2)) // 3
-    println(doubled.get(0)) // 2
-    println(doubled.get(2)) // 6
+    println(src_map.get(0) or { -1 }) // 1
+    println(src_map.get(2) or { -1 }) // 3
+    println(doubled.get(0) or { -1 }) // 2
+    println(doubled.get(2) or { -1 }) // 6
 
     // ---- Test 9: Filter preserves original ----
     val src_filt = List[1, 2, 3, 4]
@@ -78,11 +78,11 @@ fun main() {
     val c = a
     val d = b
     val e = d.insert(0, 999)
-    println(a.get(0)) // 0
-    println(b.get(0)) // 0
-    println(c.get(0)) // 0
-    println(d.get(0)) // 0
-    println(e.get(0)) // 999
+    println(a.get(0) or { -1 }) // 0
+    println(b.get(0) or { -1 }) // 0
+    println(c.get(0) or { -1 }) // 0
+    println(d.get(0) or { -1 }) // 0
+    println(e.get(0) or { -1 }) // 999
 
     println(999) // sentinel all passed
 }

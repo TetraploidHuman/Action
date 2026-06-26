@@ -1,8 +1,6 @@
 fun pred(x: Int) -> Bool { x == 2 }
 fun main() {
     var lst = List[1, 2, 3]
-    var hit = find(lst, pred)
-    println(hit != null)
-    var idx = lst.findIndex(pred)
-    println(idx != null)
+    println((findIndex(pred, lst) or { -1 }) == 1)
+    println((findIndex(pred, lst) or { -1 }) >= 0)
 }

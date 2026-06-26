@@ -14,7 +14,7 @@ fun main() {
     print(big.len())
     print(mid.len())
     print(trimmed.len())
-    print(trimmed.get(0))
-    print(mid.get(50))
+    print(trimmed.get(0) or { -1 })
+    print(mid.get(50) or { -1 })
     println("")
 }

@@ -16,8 +16,10 @@ impl Parser {
                 Ok(Expr::bool(b))
             }
             TokenKind::Null => {
-                self.advance();
-                Ok(ExprKind::Null.into())
+                return Err(self.error_coded(
+                    "null is not supported; use fallible operations with or { }",
+                    crate::error::DiagnosticCode::E010,
+                ));
             }
             TokenKind::CharLiteral(c) => {
                 self.advance();
@@ -183,6 +185,7 @@ impl Parser {
                     return Err(ParseError {
                         message: msgs.join("\n"),
                         span: str_span,
+                        code: None,
                     });
                 }
                 let mut sub_parser = Parser::new(sub_tokens);
@@ -192,6 +195,7 @@ impl Parser {
                 let expr = sub_parser.parse_expr().map_err(|e| ParseError {
                     message: format!("In string interpolation: {}", e.message),
                     span: str_span,
+                    code: e.code,
                 })?;
                 parts.push(StringPart::Expr(Box::new(expr)));
             } else {

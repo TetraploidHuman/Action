@@ -4,5 +4,5 @@ fun main() {
     var outer = 0
     for outer < 20 { val doubled = for x in lst { x * 2 }; outer = outer + 1 }
     val result = for x in lst { x * 2 }
-    println(result.len()); println(result.get(0)); println(result.get(1999))
+    println(result.len()); println(result.get(0) or { -1 }); println(result.get(1999) or { -1 })
 }

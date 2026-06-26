@@ -1,40 +1,27 @@
-// Integration test: stdlib (nullable Option/Result), List, String builtins
 fun main() {
-    // === Nullable stdlib (replaces Option/Result enums) ===
-    val opt: Int? = 42
-    print((opt or { 0 }) * 2)           // 84
+    print((head(List[42]) or { 0 }) * 2)
+    print(42 + 10)
+    print(head(List[]) or { 99 })
+    print(31 + 10)
+    print(parseInt("x") or { 100 })
 
-    val chained: Int? = (opt or { 0 }) + 10
-    print(chained)                      // 52
-
-    val nothing: Int? = null
-    print(nothing or { 99 })            // 99
-
-    val ok_val: Int? = 31
-    print((ok_val or { 0 }) + 10)      // 41
-
-    val err_val: Int? = null
-    print(err_val or { 100 })           // 100
-
-    // === List builtins ===
     val xs = List[10, 20, 30]
-    print(len(xs))                      // 3
-    print(isEmpty(xs))                  // 0 (false)
+    print(len(xs))
+    print(isEmpty(xs))
 
     val ys = append(xs, 40)
-    print(len(ys))                      // 4
+    print(len(ys))
 
-    // === String builtins ===
-    print(len("hello"))                 // 5
-    print(len(concat("foo", "bar")))    // 6
+    print(len("hello"))
+    print(len(concat("foo", "bar")))
 
     val upper = toUpper("abc")
-    print(len(upper))                   // 3
+    print(len(upper))
 
     val lower = toLower("XYZ")
-    print(len(lower))                   // 3
+    print(len(lower))
 
     val trimmed = trim("  hi  ")
-    print(len(trimmed))                 // 2
-    print(isEmpty(trim("   ")))         // 1 (true - all whitespace)
+    print(len(trimmed))
+    print(isEmpty(trim("   ")))
 }
