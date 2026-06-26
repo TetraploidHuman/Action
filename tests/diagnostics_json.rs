@@ -85,8 +85,8 @@ fn test_check_format_json_reports_e006_code() {
 
 #[test]
 fn test_check_format_json_reports_e008_code() {
-    let file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("examples/test_error_e008_map_var_key.ac");
+    let file =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/test_error_e008_map_var_key.ac");
     let output = Command::new(action_binary())
         .args(["check", "--format", "json", file.to_str().unwrap()])
         .output()

@@ -125,11 +125,9 @@ pub fn explain_help_for(error: &CompilerError) -> Option<String> {
                  `or { default }` to nullable values first."
                     .to_string()
             }
-            DiagnosticCode::E006 => {
-                "List indexing can fail when the index is out of bounds. Use \
+            DiagnosticCode::E006 => "List indexing can fail when the index is out of bounds. Use \
                  `lst[i] or { default }`."
-                    .to_string()
-            }
+                .to_string(),
             DiagnosticCode::E007 => {
                 "`or { }` is only needed for fallible calls (e.g. `parseInt`) or nullable values. \
                  Remove it from this expression."

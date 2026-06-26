@@ -887,18 +887,12 @@ fn test_fallible_list_var_index_or() {
 
 #[test]
 fn test_fallible_map_var_key_or() {
-    assert_eq!(
-        run_example("test_fallible_map_var_key_or.ac"),
-        "20\n-1\n"
-    );
+    assert_eq!(run_example("test_fallible_map_var_key_or.ac"), "20\n-1\n");
 }
 
 #[test]
 fn test_fallible_set_var_elem_or() {
-    assert_eq!(
-        run_example("test_fallible_set_var_elem_or.ac"),
-        "2\n-1\n"
-    );
+    assert_eq!(run_example("test_fallible_set_var_elem_or.ac"), "2\n-1\n");
 }
 
 #[test]
