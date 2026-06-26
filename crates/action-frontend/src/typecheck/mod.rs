@@ -604,6 +604,20 @@ mod tests {
     }
 
     #[test]
+    fn test_e008_map_var_key_needs_or() {
+        let errors = check_source(
+            "fun main() { val m = Map[\"a\": 1]; val k = \"a\"; println(m[k]) }",
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.code == Some(crate::error::DiagnosticCode::E008)),
+            "expected E008, got: {:?}",
+            errors
+        );
+    }
+
+    #[test]
     fn test_arith_on_string() {
         let errors = check_source("val x = 1 - \"hello\"");
         assert!(

@@ -465,6 +465,84 @@ impl<'ctx> CodeGen<'ctx> {
         self.compile_list_index_fallible(list_arg, idx_iv)
     }
 
+    pub(crate) fn compile_map_index_fallible(
+        &mut self,
+        map_arg: CallArg<'_>,
+        key_arg: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let v = self.compile_call_arg(map_arg)?;
+        let key_val = self.compile_call_arg(key_arg)?;
+        let TypedValue::Map(map_ptr) = v else {
+            return Err("map index: argument must be a map".to_string());
+        };
+        let key_fat = self.to_fat_struct(&key_val)?;
+        let map_loaded = self.load_list(map_ptr)?;
+        let cc = self.call_rt(
+            "action_map_contains",
+            &[map_loaded.into(), key_fat.into()],
+        )?;
+        let contains = cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("map_contains failed")?
+            .into_int_value();
+        self.branch_to_fail_if(contains)?;
+        let map_loaded2 = self.load_list(map_ptr)?;
+        let key_fat2 = self.to_fat_struct(&key_val)?;
+        let gc = self.call_rt(
+            "action_map_get",
+            &[map_loaded2.into(), key_fat2.into()],
+        )?;
+        let val_fat = gc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("map_get failed")?
+            .into_struct_value();
+        let actual_val = self
+            .builder
+            .build_extract_value(val_fat, 0, "map_val")
+            .map_err(llvm_err)?
+            .into_int_value();
+        Ok(TypedValue::FallibleInt {
+            val: actual_val,
+            ok: contains,
+        })
+    }
+
+    pub(crate) fn compile_set_index_fallible(
+        &mut self,
+        set_arg: CallArg<'_>,
+        elem_arg: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let v = self.compile_call_arg(set_arg)?;
+        let elem_val = self.compile_call_arg(elem_arg)?;
+        let TypedValue::Set(set_ptr) = v else {
+            return Err("set index: argument must be a set".to_string());
+        };
+        let elem_fat = self.to_fat_struct(&elem_val)?;
+        let set_loaded = self.load_list(set_ptr)?;
+        let cc = self.call_rt(
+            "action_map_contains",
+            &[set_loaded.into(), elem_fat.into()],
+        )?;
+        let contains = cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("set_contains failed")?
+            .into_int_value();
+        self.branch_to_fail_if(contains)?;
+        let elem_fat2 = self.to_fat_struct(&elem_val)?;
+        let actual_val = self
+            .builder
+            .build_extract_value(elem_fat2.into_struct_value(), 0, "set_val")
+            .map_err(llvm_err)?
+            .into_int_value();
+        Ok(TypedValue::FallibleInt {
+            val: actual_val,
+            ok: contains,
+        })
+    }
+
     pub(crate) fn try_compile_fallible_lhs_for_or(
         &mut self,
         expr: &HirExpr,
@@ -555,16 +633,49 @@ impl<'ctx> CodeGen<'ctx> {
             }
             HirExprKind::Index(obj, idx) => {
                 if let HirExprKind::Literal(Literal::Int(n)) = &idx.kind {
-                    return self
-                        .compile_list_index_literal_fallible(CallArg::hir(obj), *n)
-                        .map(Some);
+                    if let Some(tv) = self
+                        .compile_call_arg(CallArg::hir(obj))
+                        .ok()
+                        .and_then(|v| match v {
+                            TypedValue::Map(_) => self
+                                .compile_map_index_fallible(
+                                    CallArg::hir(obj),
+                                    CallArg::hir(idx),
+                                )
+                                .ok(),
+                            TypedValue::Set(_) => self
+                                .compile_set_index_fallible(
+                                    CallArg::hir(obj),
+                                    CallArg::hir(idx),
+                                )
+                                .ok(),
+                            _ => self
+                                .compile_list_index_literal_fallible(CallArg::hir(obj), *n)
+                                .ok(),
+                        })
+                    {
+                        return Ok(Some(tv));
+                    }
                 }
+                let obj_val = self.compile_call_arg(CallArg::hir(obj))?;
                 let idx_val = self.compile_call_arg(CallArg::hir(idx))?;
-                if let TypedValue::Int(idx_iv) = idx_val {
-                    return self
-                        .compile_list_index_fallible(CallArg::hir(obj), idx_iv)
-                        .map(Some);
-                }
+                return match obj_val {
+                    TypedValue::Map(_) => self
+                        .compile_map_index_fallible(CallArg::hir(obj), CallArg::hir(idx))
+                        .map(Some),
+                    TypedValue::Set(_) => self
+                        .compile_set_index_fallible(CallArg::hir(obj), CallArg::hir(idx))
+                        .map(Some),
+                    TypedValue::List(_) | TypedValue::LazyList(_) => {
+                        if let TypedValue::Int(idx_iv) = idx_val {
+                            self.compile_list_index_fallible(CallArg::hir(obj), idx_iv)
+                                .map(Some)
+                        } else {
+                            Ok(None)
+                        }
+                    }
+                    _ => Ok(None),
+                };
             }
             _ => {}
         }

@@ -886,6 +886,22 @@ fn test_fallible_list_var_index_or() {
 }
 
 #[test]
+fn test_fallible_map_var_key_or() {
+    assert_eq!(
+        run_example("test_fallible_map_var_key_or.ac"),
+        "20\n-1\n"
+    );
+}
+
+#[test]
+fn test_fallible_set_var_elem_or() {
+    assert_eq!(
+        run_example("test_fallible_set_var_elem_or.ac"),
+        "2\n-1\n"
+    );
+}
+
+#[test]
 fn test_fallible_head_parseInt() {
     assert_eq!(
         run_example("test_fallible_head_parseInt.ac"),
@@ -987,6 +1003,11 @@ fn test_error_e007_or_unnecessary() {
 #[test]
 fn test_error_e008_map_index() {
     assert_compile_error_code("test_error_e008_map_index.ac", "E008");
+}
+
+#[test]
+fn test_error_e008_map_var_key() {
+    assert_compile_error_code("test_error_e008_map_var_key.ac", "E008");
 }
 
 #[test]

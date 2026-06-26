@@ -1,0 +1,7 @@
+fun main() {
+    val m = Map["a": 10, "b": 20]
+    val k = "b"
+    println(m[k] or { -1 })
+    val missing = "z"
+    println(m[missing] or { -1 })
+}

@@ -99,6 +99,53 @@ impl From<&str> for CompilerError {
 
 /// Suggest help text for common type-check errors (`action check --explain`).
 pub fn explain_help_for(error: &CompilerError) -> Option<String> {
+    if let Some(code) = error.code {
+        return Some(match code {
+            DiagnosticCode::E001 => {
+                "Fallible operations can fail at runtime. Wrap them in `or { default }` \
+                 or add a function-level `or { default }` fallback."
+                    .to_string()
+            }
+            DiagnosticCode::E002 => {
+                "The fallback inside `or { }` must have the same type as the fallible or \
+                 nullable expression on the left."
+                    .to_string()
+            }
+            DiagnosticCode::E003 => {
+                "A function-level `or { }` fallback must match the function's declared return type."
+                    .to_string()
+            }
+            DiagnosticCode::E004 => {
+                "A nullable value (`T?`) cannot be used where plain `T` is required. Use \
+                 `or { default }` or narrow with a null check."
+                    .to_string()
+            }
+            DiagnosticCode::E005 => {
+                "Arithmetic and bitwise operators require non-nullable operands. Apply \
+                 `or { default }` to nullable values first."
+                    .to_string()
+            }
+            DiagnosticCode::E006 => {
+                "List indexing can fail when the index is out of bounds. Use \
+                 `lst[i] or { default }`."
+                    .to_string()
+            }
+            DiagnosticCode::E007 => {
+                "`or { }` is only needed for fallible calls (e.g. `parseInt`) or nullable values. \
+                 Remove it from this expression."
+                    .to_string()
+            }
+            DiagnosticCode::E008 => {
+                "Map lookup can fail when the key is missing. Use `map[key] or { default }`."
+                    .to_string()
+            }
+            DiagnosticCode::E009 => {
+                "Set membership lookup can fail when the element is absent. Use \
+                 `set[elem] or { default }`."
+                    .to_string()
+            }
+        });
+    }
     let msg = &error.message;
     if msg.contains("Undefined variable") {
         Some(
@@ -170,12 +217,14 @@ pub fn e002_or_type_mismatch(span: Span) -> CompilerError {
     CompilerError::new("or-block fallback type does not match fallible expression type")
         .with_span(span)
         .with_code(DiagnosticCode::E002)
+        .with_help("Ensure the expression inside `or { }` has the same type as the left-hand side")
 }
 
 pub fn e003_fn_or_return(span: Span) -> CompilerError {
     CompilerError::new("function or-block fallback type does not match return type")
         .with_span(span)
         .with_code(DiagnosticCode::E003)
+        .with_help("Change the fallback value or the function's return type so they match")
 }
 
 pub fn e004_nullable_termination(inferred: &str, declared: &str, span: Span) -> CompilerError {
@@ -338,4 +387,33 @@ fn report_one_compiler_error(source: &str, path: &str, error: &CompilerError) {
 pub fn report_error_message(source: &str, path: &str, message: &str) {
     eprintln!("\x1b[1;31merror:\x1b[0m {}", message);
     let _ = (source, path);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn explain_help_covers_all_e00n_codes() {
+        for code in [
+            DiagnosticCode::E001,
+            DiagnosticCode::E002,
+            DiagnosticCode::E003,
+            DiagnosticCode::E004,
+            DiagnosticCode::E005,
+            DiagnosticCode::E006,
+            DiagnosticCode::E007,
+            DiagnosticCode::E008,
+            DiagnosticCode::E009,
+        ] {
+            let err = CompilerError::new("test").with_code(code);
+            let help = explain_help_for(&err).expect("E00N should have explain help");
+            assert!(
+                help.contains("or {") || help.contains("nullable"),
+                "code {:?} help should mention recovery: {}",
+                code,
+                help
+            );
+        }
+    }
 }

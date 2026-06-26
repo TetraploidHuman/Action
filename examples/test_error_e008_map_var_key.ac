@@ -1,0 +1,5 @@
+fun main() {
+    val m = Map["a": 1, "b": 2]
+    val k = "a"
+    println(m[k])
+}
