@@ -95,3 +95,16 @@ nix-shell --run "python3 scripts/perf_report.py"
 **说明**：`bench_map_10k` / `bench_set_10k` 用于 1 万元素级 Map/Set 压力；与 `bench_map` / `bench_set`（小规模 smoke）互补。`bench_concat_depth` 覆盖深度 ConcatNode 与 **fused map+filter**（`filter(map(lst){f}){g}` → 单遍 `action_list_map_filter_walk`）；语义用例见 `examples/map_filter.ac`（输出 `210215`）。对比优化前后请固定 `--mode` 与 `--opt`。
 
 性能改动须保持语言语义（见 `.cursor/rules/preserve-language-semantics.mdc`）。
+
+## 编译期错误码（fallible / nullable 迁移）
+
+与 `doc/tutorial.md` 第十一章一致；基准与示例中不应再出现 `null`、`T?`、`?.`。
+
+| 代码 | 含义 |
+|------|------|
+| **E001** | 裸 fallible 调用（未使用 `or { }`） |
+| **E002** | `or { }` 分支类型与成功路径不匹配 |
+| **E003** | 函数级 `or { return … }` 与声明返回类型不符 |
+| **E010** | 使用 `null` |
+| **E011** | 使用 `T?` 可空类型语法 |
+| **E012** | 使用 `?.` 安全调用 |

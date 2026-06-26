@@ -23,53 +23,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if self.module.get_function("action_read_line").is_none() {
                     self.emit_read_line_runtime()?;
                 }
-                let cc = self.call_rt("action_read_line", &[])?;
-                let result_struct = cc
-                    .try_as_basic_value()
-                    .basic()
-                    .ok_or("readLine failed")?
-                    .into_struct_value();
-                // Extract string {i64, ptr} and success flag i1
-                let str_len = self
-                    .builder
-                    .build_extract_value(result_struct, 0, "slen")
-                    .map_err(llvm_err)?
-                    .into_int_value();
-                let str_ptr = self
-                    .builder
-                    .build_extract_value(result_struct, 1, "sptr")
-                    .map_err(llvm_err)?
-                    .into_pointer_value();
-                let ok = self
-                    .builder
-                    .build_extract_value(result_struct, 2, "ok")
-                    .map_err(llvm_err)?
-                    .into_int_value();
-                // Build the string fat struct and store in alloca
-                let line_undef = self.string_type.get_undef();
-                let line1 = self
-                    .builder
-                    .build_insert_value(line_undef, str_len, 0, "l_len")
-                    .map_err(llvm_err)?;
-                let line_val = self
-                    .builder
-                    .build_insert_value(line1, str_ptr, 1, "l_ptr")
-                    .map_err(llvm_err)?;
-                let fat_alloca = self
-                    .builder
-                    .build_alloca(self.string_type, "line")
-                    .map_err(llvm_err)?;
-                self.builder
-                    .build_store(fat_alloca, line_val)
-                    .map_err(llvm_err)?;
-                let flag_alloca = self
-                    .builder
-                    .build_alloca(self.bool_ty(), "line_ok")
-                    .map_err(llvm_err)?;
-                self.builder
-                    .build_store(flag_alloca, ok)
-                    .map_err(llvm_err)?;
-                self.build_nullable_str(fat_alloca, flag_alloca)
+                self.compile_read_line_fallible()
             }
             "readFile" => {
                 if args.len() != 1 {

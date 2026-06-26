@@ -1,5 +1,6 @@
 // Submodule: builtins_call
 
+use action_frontend::ast::Type;
 use action_frontend::builtin::UfcsReceiverKind;
 use inkwell::values::{BasicValueEnum, PointerValue};
 use inkwell::IntPredicate;
@@ -64,8 +65,13 @@ impl<'ctx> CodeGen<'ctx> {
                     .basic()
                     .ok_or("tail failed")?
                     .into_struct_value();
+                let alloca = self
+                    .builder
+                    .build_alloca(self.list_type, "ufcs_tail")
+                    .map_err(llvm_err)?;
+                self.builder.build_store(alloca, result).map_err(llvm_err)?;
                 self.rc_free_intermediate(recv_val)?;
-                self.build_nullable_list(result, is_empty).map(Some)
+                self.build_fallible_list_from_not_empty(alloca, is_empty).map(Some)
             }
             "get" => {
                 if args.len() != 1 {
@@ -76,83 +82,8 @@ impl<'ctx> CodeGen<'ctx> {
                     TypedValue::Int(v) => v,
                     _ => return Err("list.get: index must be Int".to_string()),
                 };
-                let len = self.list_len_val(lv)?;
-                let neg = self
-                    .builder
-                    .build_int_compare(IntPredicate::SLT, iv, zero, "neg")
-                    .map_err(llvm_err)?;
-                let ge_len = self
-                    .builder
-                    .build_int_compare(IntPredicate::SGE, iv, len, "ge_len")
-                    .map_err(llvm_err)?;
-                let oob = self
-                    .builder
-                    .build_or(neg, ge_len, "oob")
-                    .map_err(llvm_err)?;
-                let current_fn = self
-                    .builder
-                    .get_insert_block()
-                    .and_then(|b| b.get_parent())
-                    .ok_or("no fn")?;
-                let some_bb = self.context.append_basic_block(current_fn, "ufcs_get_some");
-                let none_bb = self.context.append_basic_block(current_fn, "ufcs_get_none");
-                let merge_bb = self
-                    .context
-                    .append_basic_block(current_fn, "ufcs_get_merge");
-                let _ = self.builder.build_conditional_branch(oob, none_bb, some_bb);
-                self.builder.position_at_end(some_bb);
-                let elem_bv = if let Some(cache) = self.loop_control.list_loop_get_cache {
-                    self.list_get_cached_fat(lp, iv, cache)?.into()
-                } else {
-                    let elem = self.call_rt("action_list_get", &[lv.into(), iv.into()])?;
-                    elem.try_as_basic_value().basic().ok_or("get failed")?
-                };
-                let elem_bv = elem_bv.into_struct_value();
-                let nullable_ty = self.get_nullable_type(self.string_type.into(), "Nullable<Str>");
-                let some_struct = {
-                    let undef = nullable_ty.get_undef();
-                    let r1 = self
-                        .builder
-                        .build_insert_value(
-                            undef,
-                            self.null_flag_ty().const_int(0, false),
-                            0,
-                            "s_flag",
-                        )
-                        .map_err(llvm_err)?;
-                    self.builder
-                        .build_insert_value(r1, elem_bv, 1, "s_val")
-                        .map_err(llvm_err)?
-                };
-                let _ = self.builder.build_unconditional_branch(merge_bb);
-                self.builder.position_at_end(none_bb);
-                let none_struct = {
-                    let undef = nullable_ty.get_undef();
-                    self.builder
-                        .build_insert_value(
-                            undef,
-                            self.null_flag_ty().const_int(1, false),
-                            0,
-                            "n_flag",
-                        )
-                        .map_err(llvm_err)?
-                };
-                let _ = self.builder.build_unconditional_branch(merge_bb);
-                self.builder.position_at_end(merge_bb);
-                let phi = self
-                    .builder
-                    .build_phi(nullable_ty, "ufcs_get_result")
-                    .map_err(llvm_err)?;
-                phi.add_incoming(&[(&some_struct, some_bb), (&none_struct, none_bb)]);
-                let alloca = self
-                    .builder
-                    .build_alloca(nullable_ty, "ufcs_get")
-                    .map_err(llvm_err)?;
-                self.builder
-                    .build_store(alloca, phi.as_basic_value())
-                    .map_err(llvm_err)?;
                 self.rc_free_intermediate(recv_val)?;
-                Ok(Some(TypedValue::Nullable(alloca, nullable_ty.into())))
+                self.compile_list_get_fallible_on_ptr(lp, iv).map(Some)
             }
             "contains" => {
                 if args.len() != 1 {
@@ -192,88 +123,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if !args.is_empty() {
                     return Err("list.last expects 0 arguments".to_string());
                 }
-                let len = self.list_len_val(lv)?;
-                let empty = self
-                    .builder
-                    .build_int_compare(IntPredicate::EQ, len, zero, "empty")
-                    .map_err(llvm_err)?;
-                let last_idx = self
-                    .builder
-                    .build_int_sub(len, self.i64_ty().const_int(1, false), "last_idx")
-                    .map_err(llvm_err)?;
-                let nullable_ty = self.get_nullable_type(self.i64_ty().into(), "Nullable<Int>");
-                let current_fn = self
-                    .builder
-                    .get_insert_block()
-                    .and_then(|b| b.get_parent())
-                    .ok_or("no fn")?;
-                let some_bb = self
-                    .context
-                    .append_basic_block(current_fn, "ufcs_last_some");
-                let none_bb = self
-                    .context
-                    .append_basic_block(current_fn, "ufcs_last_none");
-                let merge_bb = self
-                    .context
-                    .append_basic_block(current_fn, "ufcs_last_merge");
-                let _ = self
-                    .builder
-                    .build_conditional_branch(empty, none_bb, some_bb);
-                self.builder.position_at_end(some_bb);
-                let elem = self.call_rt("action_list_get", &[lv.into(), last_idx.into()])?;
-                let elem_tag = elem
-                    .try_as_basic_value()
-                    .basic()
-                    .ok_or("get failed")?
-                    .into_struct_value();
-                let elem_tag = self
-                    .builder
-                    .build_extract_value(elem_tag, 0, "elem_tag")
-                    .map_err(llvm_err)?;
-                let some_struct = {
-                    let undef = nullable_ty.get_undef();
-                    let r1 = self
-                        .builder
-                        .build_insert_value(
-                            undef,
-                            self.null_flag_ty().const_int(0, false),
-                            0,
-                            "s_flag",
-                        )
-                        .map_err(llvm_err)?;
-                    self.builder
-                        .build_insert_value(r1, elem_tag, 1, "s_val")
-                        .map_err(llvm_err)?
-                };
-                let _ = self.builder.build_unconditional_branch(merge_bb);
-                self.builder.position_at_end(none_bb);
-                let none_struct = {
-                    let undef = nullable_ty.get_undef();
-                    self.builder
-                        .build_insert_value(
-                            undef,
-                            self.null_flag_ty().const_int(1, false),
-                            0,
-                            "n_flag",
-                        )
-                        .map_err(llvm_err)?
-                };
-                let _ = self.builder.build_unconditional_branch(merge_bb);
-                self.builder.position_at_end(merge_bb);
-                let phi = self
-                    .builder
-                    .build_phi(nullable_ty, "ufcs_last_result")
-                    .map_err(llvm_err)?;
-                phi.add_incoming(&[(&some_struct, some_bb), (&none_struct, none_bb)]);
-                let alloca = self
-                    .builder
-                    .build_alloca(nullable_ty, "ufcs_last")
-                    .map_err(llvm_err)?;
-                self.builder
-                    .build_store(alloca, phi.as_basic_value())
-                    .map_err(llvm_err)?;
                 self.rc_free_intermediate(recv_val)?;
-                Ok(Some(TypedValue::Nullable(alloca, nullable_ty.into())))
+                self.compile_last_fallible_on_list_ptr(lp).map(Some)
             }
             "reverse" => {
                 if !args.is_empty() {
@@ -353,7 +204,11 @@ impl<'ctx> CodeGen<'ctx> {
                     .into_int_value();
                 Ok(Some(TypedValue::Bool(res)))
             }
-            "find" => Ok(Some(self.find_on_list_ptr(lp, fn_val)?)),
+            "find" => Ok(Some(self.find_on_list_ptr(
+                lp,
+                fn_val,
+                &Type::Named("Int".into()),
+            )?)),
             "findIndex" => Ok(Some(self.find_index_on_list_ptr(lp, fn_val)?)),
             _ => Ok(None),
         }
@@ -409,9 +264,6 @@ impl<'ctx> CodeGen<'ctx> {
             TypedValue::Enum(ptr, et, ..) => {
                 let ld = self.builder.build_load(*et, *ptr, "arg_enum").unwrap();
                 ld.into()
-            }
-            TypedValue::Nullable(ptr, ty) => {
-                self.builder.build_load(*ty, *ptr, "arg_nullable").unwrap()
             }
             TypedValue::CString(p) | TypedValue::Ptr(p) | TypedValue::FileHandle(p) => (*p).into(),
             _ => self.i64_ty().const_int(0, false).into(),

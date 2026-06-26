@@ -352,9 +352,13 @@ impl<'ctx> CodeGen<'ctx> {
                         .into_int_value(),
                 ))
             }
-            (TypedValue::Nullable(l_ptr, l_ty), TypedValue::Nullable(r_ptr, _)) => {
-                return self.compare_nullable_eq(*l_ptr, *r_ptr, *l_ty);
-            }
+            (TypedValue::FallibleInt { val: a, .. }, TypedValue::FallibleInt { val: b, .. })
+            | (TypedValue::Int(a), TypedValue::FallibleInt { val: b, .. })
+            | (TypedValue::FallibleInt { val: a, .. }, TypedValue::Int(b)) => Ok(TypedValue::Bool(
+                self.builder
+                    .build_int_compare(IntPredicate::EQ, *a, *b, "eq")
+                    .map_err(llvm_err)?,
+            )),
             _ => Err("Cannot compare these types".to_string()),
         }
     }
@@ -406,9 +410,13 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(llvm_err)?,
                 ))
             }
-            (TypedValue::Nullable(l_ptr, l_ty), TypedValue::Nullable(r_ptr, _)) => {
-                return self.compare_nullable_neq(*l_ptr, *r_ptr, *l_ty);
-            }
+            (TypedValue::FallibleInt { val: a, .. }, TypedValue::FallibleInt { val: b, .. })
+            | (TypedValue::Int(a), TypedValue::FallibleInt { val: b, .. })
+            | (TypedValue::FallibleInt { val: a, .. }, TypedValue::Int(b)) => Ok(TypedValue::Bool(
+                self.builder
+                    .build_int_compare(IntPredicate::NE, *a, *b, "neq")
+                    .map_err(llvm_err)?,
+            )),
             _ => Err("Cannot compare these types".to_string()),
         }
     }

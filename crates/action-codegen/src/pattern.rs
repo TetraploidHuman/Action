@@ -194,34 +194,7 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
             Pattern::Variable(_) => Ok(b1.const_int(1, false)),
-            Pattern::Null => {
-                // Match against null: check if val is a nullable type with null flag == 1
-                match val {
-                    TypedValue::Nullable(ptr, inner_bt) => {
-                        let nullable_bt: BasicTypeEnum = {
-                            let b1 = self.null_flag_ty();
-                            let fields: &[BasicTypeEnum] = &[b1.into(), *inner_bt];
-                            self.context.struct_type(fields, false).into()
-                        };
-                        let loaded = self
-                            .builder
-                            .build_load(nullable_bt, *ptr, "null_ld")
-                            .map_err(llvm_err)?;
-                        let null_struct = loaded.into_struct_value();
-                        let null_flag = self
-                            .builder
-                            .build_extract_value(null_struct, 0, "null_flag")
-                            .map_err(llvm_err)?
-                            .into_int_value();
-                        let one = self.null_flag_ty().const_int(1, false);
-                        Ok(self
-                            .builder
-                            .build_int_compare(IntPredicate::EQ, null_flag, one, "is_null")
-                            .map_err(llvm_err)?)
-                    }
-                    _ => Ok(b1.const_int(0, false)),
-                }
-            }
+            Pattern::Null => Ok(b1.const_int(0, false)),
             Pattern::Constructor { name, args: _, .. } => {
                 // Check if val is an enum with matching variant tag
                 if let TypedValue::Enum(ptr, enum_st, ..) = val {
@@ -342,34 +315,10 @@ impl<'ctx> CodeGen<'ctx> {
         match pattern {
             Pattern::Variable(name) => {
                 if let Some(val) = matched_val {
-                    match val {
-                        TypedValue::Nullable(nullable_ptr, inner_bt) => {
-                            // Binding a pattern variable from a nullable value:
-                            // extract the inner non-null value (field 1) and bind that.
-                            // inner_bt is the full nullable struct type {i1, T}
-                            let nullable_st = inner_bt.into_struct_type();
-                            let loaded = self
-                                .builder
-                                .build_load(nullable_st, *nullable_ptr, "patnv_ld")
-                                .map_err(llvm_err)?;
-                            let inner_val = self
-                                .builder
-                                .build_extract_value(loaded.into_struct_value(), 1, "patnv_inner")
-                                .map_err(llvm_err)?;
-                            let typed_inner = self.bv_to_typed(inner_val)?;
-                            let ty = typed_inner.get_type_for_alloca(self);
-                            let alloca = self.builder.build_alloca(ty, name).map_err(llvm_err)?;
-                            self.store_value_to_alloca(&typed_inner, alloca)?;
-                            self.scope
-                                .set(name.clone(), alloca, ty, typed_inner.val_kind());
-                        }
-                        _ => {
-                            let ty = val.get_type_for_alloca(self);
-                            let alloca = self.builder.build_alloca(ty, name).map_err(llvm_err)?;
-                            self.store_value_to_alloca(val, alloca)?;
-                            self.scope.set(name.clone(), alloca, ty, val.val_kind());
-                        }
-                    }
+                    let ty = val.get_type_for_alloca(self);
+                    let alloca = self.builder.build_alloca(ty, name).map_err(llvm_err)?;
+                    self.store_value_to_alloca(val, alloca)?;
+                    self.scope.set(name.clone(), alloca, ty, val.val_kind());
                 }
             }
             Pattern::Constructor {
@@ -634,53 +583,9 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         v: &TypedValue<'ctx>,
         alloca: PointerValue<'ctx>,
-        result_type: &Type,
+        _result_type: &Type,
     ) -> Result<(), String> {
-        let target_is_nullable = matches!(result_type, Type::Nullable(_));
-        let value_is_nullable = matches!(v, TypedValue::Nullable(..));
-
-        match (target_is_nullable, value_is_nullable) {
-            (true, true) | (false, false) => {
-                // Same nullability: store directly
-                self.store_value_to_alloca(v, alloca)?;
-            }
-            (true, false) => {
-                // Non-nullable value into nullable target: wrap in {i1=0, value}
-                let inner_bt = self.ast_type_to_basic_type(&result_type);
-                let struct_ty = inner_bt.into_struct_type();
-                let undef = struct_ty.get_undef();
-                let flag = self.null_flag_ty().const_int(0, false);
-                let with_flag = self
-                    .builder
-                    .build_insert_value(undef, flag, 0, "br_flag")
-                    .map_err(llvm_err)?;
-                let bv = v
-                    .to_bv()
-                    .unwrap_or_else(|| self.i64_ty().const_int(0, false).into());
-                let wrapped = self
-                    .builder
-                    .build_insert_value(with_flag, bv, 1, "br_val")
-                    .map_err(llvm_err)?;
-                self.builder
-                    .build_store(alloca, wrapped)
-                    .map_err(llvm_err)?;
-            }
-            (false, true) => {
-                // Nullable value into non-nullable target: extract inner field
-                if let TypedValue::Nullable(ptr, ty) = v {
-                    let loaded = self
-                        .builder
-                        .build_load(*ty, *ptr, "br_ld")
-                        .map_err(llvm_err)?;
-                    let inner = self
-                        .builder
-                        .build_extract_value(loaded.into_struct_value(), 1, "br_inner")
-                        .map_err(llvm_err)?;
-                    self.builder.build_store(alloca, inner).map_err(llvm_err)?;
-                }
-            }
-        }
-        Ok(())
+        self.store_value_to_alloca(v, alloca)
     }
 
     pub(super) fn compile_hir_pattern_match(

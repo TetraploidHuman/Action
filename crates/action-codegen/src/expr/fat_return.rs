@@ -102,14 +102,6 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_alloca(st, "struct_tmp2")
                     .map_err(llvm_err)?;
                 self.builder.build_store(alloca, v).map_err(llvm_err)?;
-                // Detect nullable struct: 2 fields, first is i8 (null flag)
-                let field_types = st.get_field_types();
-                let is_nullable = field_types.len() == 2
-                    && matches!(field_types[0], BasicTypeEnum::IntType(t) if t.get_bit_width() == 8);
-                if is_nullable {
-                    let bt: BasicTypeEnum = st.into();
-                    return Ok(TypedValue::Nullable(alloca, bt));
-                }
                 if st == self.fat_return_type {
                     // Fat return from untyped lambda/function: extract field 0 as Int.
                     // Also save the full alloca for possible enum bitcast later.

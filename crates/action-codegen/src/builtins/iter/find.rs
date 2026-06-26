@@ -1,5 +1,6 @@
 //! Iterator builtins: map, filter, fold, find (R4-1).
 
+use action_frontend::ast::Type;
 use inkwell::values::PointerValue;
 use inkwell::IntPredicate;
 
@@ -12,10 +13,11 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         list_ptr: PointerValue<'ctx>,
         fn_val: TypedValue<'ctx>,
+        elem_ty: &Type,
     ) -> Result<TypedValue<'ctx>, String> {
         let fn_ptr = self.callback_fn_ptr(&fn_val, "find")?;
         if let Some(target) = self.try_direct_lambda(fn_val.clone()) {
-            return self.builtin_find_with_direct_lambda(list_ptr, &target);
+            return self.builtin_find_with_direct_lambda(list_ptr, &target, elem_ty);
         }
         let fn_type = self.predicate_llvm_fn_type(&fn_val)?;
         if self.predicate_returns_fat(fn_type) {
@@ -60,9 +62,9 @@ impl<'ctx> CodeGen<'ctx> {
             self.builder
                 .build_store(found_flag_a, found_i64)
                 .map_err(crate::llvm_err)?;
-            return self.build_fallible_str_from_found_flag(found_a, found_flag_a);
+            return self.build_fallible_from_fat_found_flag(found_a, found_flag_a, elem_ty);
         }
-        self.builtin_find_indexed(list_ptr, fn_ptr, fn_type, &fn_val)
+        self.builtin_find_indexed(list_ptr, fn_ptr, fn_type, &fn_val, elem_ty)
     }
 
     /// find(list, fn) or find(list) { lambda } -> Option<T>
@@ -71,18 +73,32 @@ impl<'ctx> CodeGen<'ctx> {
         args: &[CallArg<'_>],
         trailing: Option<CallArg<'_>>,
     ) -> Result<TypedValue<'ctx>, String> {
+        let list_arg = if trailing.is_some() {
+            args.first().copied()
+        } else if args.len() == 2 {
+            match args[0] {
+                CallArg::Hir(e) if matches!(&e.ty, Type::Generic(base, _) if matches!(base.as_ref(), Type::Named(n) if n == "List" || n == "LazyList")) => Some(args[0]),
+                _ => Some(args[1]),
+            }
+        } else {
+            None
+        };
+        let elem_ty = list_arg
+            .map(|a| self.list_element_ast_type(a))
+            .unwrap_or(Type::Named("Int".into()));
         let (fn_val, list_val) = self.extract_callback_fn_and_list(args, trailing, 1, "find")?;
         let list_ptr = match list_val {
             TypedValue::List(p) => p,
             _ => return Err("find: last argument must be a list".to_string()),
         };
-        self.find_on_list_ptr(list_ptr, fn_val)
+        self.find_on_list_ptr(list_ptr, fn_val, &elem_ty)
     }
 
     pub(crate) fn builtin_find_with_direct_lambda(
         &mut self,
         list_ptr: PointerValue<'ctx>,
         target: &crate::mono::DirectLambdaTarget<'ctx>,
+        elem_ty: &Type,
     ) -> Result<TypedValue<'ctx>, String> {
         let input_len = self.list_len_val(self.load_list(list_ptr)?)?;
         let current_fn = self
@@ -166,7 +182,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(chk);
         let _ = self.builder.build_unconditional_branch(hdr);
         self.builder.position_at_end(ext);
-        self.build_fallible_str_from_found_flag(found_a, found_flag_a)
+        self.build_fallible_from_fat_found_flag(found_a, found_flag_a, elem_ty)
     }
 
     pub(crate) fn builtin_find_indexed(
@@ -175,6 +191,7 @@ impl<'ctx> CodeGen<'ctx> {
         fn_ptr: PointerValue<'ctx>,
         fn_type: inkwell::types::FunctionType<'ctx>,
         fn_val: &TypedValue<'ctx>,
+        elem_ty: &Type,
     ) -> Result<TypedValue<'ctx>, String> {
         let input_len = self.list_len_val(self.load_list(list_ptr)?)?;
         let current_fn = self
@@ -249,7 +266,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(chk);
         let _ = self.builder.build_unconditional_branch(hdr);
         self.builder.position_at_end(ext);
-        self.build_fallible_str_from_found_flag(found_a, found_flag_a)
+        self.build_fallible_from_fat_found_flag(found_a, found_flag_a, elem_ty)
     }
 
     /// findIndex(list, fn) on an already-compiled list alloca (UFCS fast path).

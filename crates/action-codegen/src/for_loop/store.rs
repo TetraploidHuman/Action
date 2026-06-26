@@ -68,11 +68,22 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?;
                 self.builder.build_store(alloca, loaded).map_err(llvm_err)?;
             }
-            TypedValue::Nullable(ptr, ty) => {
-                let loaded = self
-                    .builder
-                    .build_load(*ty, *ptr, "nullable_ld")
-                    .map_err(llvm_err)?;
+            TypedValue::FallibleInt { val, .. } => {
+                self.builder.build_store(alloca, *val).map_err(llvm_err)?;
+            }
+            TypedValue::FallibleFloat { val, .. } => {
+                self.builder.build_store(alloca, *val).map_err(llvm_err)?;
+            }
+            TypedValue::FalliblePtr { val, .. } => {
+                self.builder.build_store(alloca, *val).map_err(llvm_err)?;
+            }
+            TypedValue::FallibleStr { val, .. } => {
+                let loaded = self.load_string(*val)?;
+                self.builder.build_store(alloca, loaded).map_err(llvm_err)?;
+            }
+            TypedValue::FallibleStruct { val, ty, .. } => {
+                let bt: inkwell::types::BasicTypeEnum = (*ty).into();
+                let loaded = self.builder.build_load(bt, *val, "fall_ld").map_err(llvm_err)?;
                 self.builder.build_store(alloca, loaded).map_err(llvm_err)?;
             }
             _ => {

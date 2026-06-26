@@ -5,7 +5,7 @@ use action_frontend::builtin;
 use action_frontend::hir::{HirExpr, HirExprKind};
 use inkwell::basic_block::BasicBlock;
 use inkwell::types::BasicTypeEnum;
-use inkwell::values::{BasicValueEnum, IntValue, PointerValue};
+use inkwell::values::{BasicValueEnum, FloatValue, IntValue, PointerValue, StructValue};
 use inkwell::IntPredicate;
 
 use super::{llvm_err, CodeGen, TypedValue};
@@ -296,7 +296,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.fallible_fail_stack.pop();
     }
 
-    fn ok_i1(&mut self, ok: IntValue<'ctx>) -> Result<IntValue<'ctx>, String> {
+    pub(crate) fn ok_i1(&mut self, ok: IntValue<'ctx>) -> Result<IntValue<'ctx>, String> {
         if ok.get_type().get_bit_width() == 1 {
             Ok(ok)
         } else {
@@ -311,7 +311,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    fn branch_to_fail_if(&mut self, ok: IntValue<'ctx>) -> Result<(), String> {
+    pub(crate) fn branch_to_fail_if(&mut self, ok: IntValue<'ctx>) -> Result<(), String> {
         let Some(fail_bb) = self.current_fail_bb() else {
             return Ok(());
         };
@@ -348,6 +348,20 @@ impl<'ctx> CodeGen<'ctx> {
         fat_alloca: PointerValue<'ctx>,
         found_flag_a: PointerValue<'ctx>,
     ) -> Result<TypedValue<'ctx>, String> {
+        self.build_fallible_from_fat_found_flag(
+            fat_alloca,
+            found_flag_a,
+            &Type::Named("String".into()),
+        )
+    }
+
+    /// Build a fallible payload from a list element fat struct + found flag, using AST element type.
+    pub(crate) fn build_fallible_from_fat_found_flag(
+        &mut self,
+        fat_alloca: PointerValue<'ctx>,
+        found_flag_a: PointerValue<'ctx>,
+        elem_ty: &Type,
+    ) -> Result<TypedValue<'ctx>, String> {
         let is_found = self
             .builder
             .build_load(self.bool_ty(), found_flag_a, "ff")
@@ -355,10 +369,379 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
         let ok_i1 = self.ok_i1(is_found)?;
         self.branch_to_fail_if(ok_i1)?;
-        Ok(TypedValue::FallibleStr {
-            val: fat_alloca,
+        match elem_ty {
+            Type::Named(n) if n == "String" || n == "Str" => Ok(TypedValue::FallibleStr {
+                val: fat_alloca,
+                ok: ok_i1,
+            }),
+            Type::Named(n) if matches!(n.as_str(), "Int" | "Bool" | "Char" | "Float") => {
+                let fat = self
+                    .builder
+                    .build_load(self.string_type, fat_alloca, "fat_elem")
+                    .map_err(llvm_err)?
+                    .into_struct_value();
+                let tag = self
+                    .builder
+                    .build_extract_value(fat, 0, "fat_tag")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                Ok(TypedValue::FallibleInt { val: tag, ok: ok_i1 })
+            }
+            Type::Ptr(_) | Type::CString | Type::FileHandle => {
+                let fat = self
+                    .builder
+                    .build_load(self.string_type, fat_alloca, "fat_elem")
+                    .map_err(llvm_err)?
+                    .into_struct_value();
+                let ptr = self
+                    .builder
+                    .build_extract_value(fat, 1, "fat_data")
+                    .map_err(llvm_err)?
+                    .into_pointer_value();
+                Ok(TypedValue::FalliblePtr { val: ptr, ok: ok_i1 })
+            }
+            Type::Named(name) => {
+                if let Some(st) = self.type_layout.named_structs.get(name) {
+                    let fat = self
+                        .builder
+                        .build_load(self.string_type, fat_alloca, "fat_elem")
+                        .map_err(llvm_err)?
+                        .into_struct_value();
+                    let st_alloca = self
+                        .builder
+                        .build_alloca(*st, "find_struct")
+                        .map_err(llvm_err)?;
+                    self.builder
+                        .build_store(st_alloca, fat)
+                        .map_err(llvm_err)?;
+                    Ok(TypedValue::FallibleStruct {
+                        val: st_alloca,
+                        ty: *st,
+                        ok: ok_i1,
+                    })
+                } else {
+                    Err(format!("find: unknown element struct type {}", name))
+                }
+            }
+            _ => {
+                let fat = self
+                    .builder
+                    .build_load(self.string_type, fat_alloca, "fat_elem")
+                    .map_err(llvm_err)?
+                    .into_struct_value();
+                let tag = self
+                    .builder
+                    .build_extract_value(fat, 0, "fat_tag")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                Ok(TypedValue::FallibleInt { val: tag, ok: ok_i1 })
+            }
+        }
+    }
+
+    pub(crate) fn build_fallible_list_from_not_empty(
+        &mut self,
+        list_alloca: PointerValue<'ctx>,
+        is_empty: IntValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let not_empty = self
+            .builder
+            .build_int_compare(
+                IntPredicate::NE,
+                is_empty,
+                self.bool_ty().const_zero(),
+                "not_empty",
+            )
+            .map_err(llvm_err)?;
+        let ok_i1 = self.ok_i1(not_empty)?;
+        self.branch_to_fail_if(ok_i1)?;
+        Ok(TypedValue::FallibleStruct {
+            val: list_alloca,
+            ty: self.list_type,
             ok: ok_i1,
         })
+    }
+
+    pub(crate) fn build_fallible_float_from_ok(
+        &mut self,
+        val: FloatValue<'ctx>,
+        is_ok: IntValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let ok_i1 = self.ok_i1(is_ok)?;
+        self.branch_to_fail_if(ok_i1)?;
+        Ok(TypedValue::FallibleFloat { val, ok: ok_i1 })
+    }
+
+    pub(crate) fn compile_string_index_of_fallible(
+        &mut self,
+        needle_arg: CallArg<'_>,
+        haystack_arg: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let v1 = self.compile_call_arg(needle_arg)?;
+        let v2 = self.compile_call_arg(haystack_arg)?;
+        match (&v1, &v2) {
+            (elem, TypedValue::List(lp)) => {
+                let lv = self.load_list(*lp)?;
+                let fat = self.to_fat_struct(elem)?;
+                let cc = self.call_rt("action_list_index_of", &[lv.into(), fat.into()])?;
+                let result = cc
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("indexOf failed")?
+                    .into_int_value();
+                let zero = self.i64_ty().const_zero();
+                let found = self
+                    .builder
+                    .build_int_compare(IntPredicate::SGE, result, zero, "found")
+                    .map_err(llvm_err)?;
+                self.build_fallible_int_from_ok(result, found)
+            }
+            (TypedValue::Str(sp1), TypedValue::Str(sp2)) => {
+                let sv1 = self.load_string(*sp1)?;
+                let sv2 = self.load_string(*sp2)?;
+                let cc =
+                    self.call_rt("action_string_index_of", &[sv2.into(), sv1.into()])?;
+                let result = cc
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("indexOf failed")?
+                    .into_int_value();
+                let neg_one = self.i64_ty().const_int((-1i64) as u64, true);
+                let found = self
+                    .builder
+                    .build_int_compare(IntPredicate::NE, result, neg_one, "found")
+                    .map_err(llvm_err)?;
+                self.build_fallible_int_from_ok(result, found)
+            }
+            _ => Err(
+                "indexOf: first arg must be (element, list) or (substring, string)".to_string(),
+            ),
+        }
+    }
+
+    pub(crate) fn compile_tail_fallible_call(
+        &mut self,
+        list_arg: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let v = self.compile_call_arg(list_arg)?;
+        match v {
+            TypedValue::List(lp) => {
+                let lv = self.load_list(lp)?;
+                let len = self
+                    .builder
+                    .build_extract_value(lv, 1, "len")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                let is_empty = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::EQ,
+                        len,
+                        self.i64_ty().const_int(0, false),
+                        "empty",
+                    )
+                    .map_err(llvm_err)?;
+                let cc = self.call_rt("action_list_tail", &[lv.into()])?;
+                let result = cc
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("tail failed")?
+                    .into_struct_value();
+                let alloca = self
+                    .builder
+                    .build_alloca(self.list_type, "tail_result")
+                    .map_err(llvm_err)?;
+                self.builder.build_store(alloca, result).map_err(llvm_err)?;
+                self.build_fallible_list_from_not_empty(alloca, is_empty)
+            }
+            _ => Err("tail: argument must be a list".to_string()),
+        }
+    }
+
+    pub(crate) fn compile_init_fallible_call(
+        &mut self,
+        list_arg: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let v = self.compile_call_arg(list_arg)?;
+        match v {
+            TypedValue::List(lp) => {
+                let lv = self.load_list(lp)?;
+                let len = self
+                    .builder
+                    .build_extract_value(lv, 1, "len")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                let is_empty = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::EQ,
+                        len,
+                        self.i64_ty().const_int(0, false),
+                        "empty",
+                    )
+                    .map_err(llvm_err)?;
+                let cc = self.call_rt("action_list_init", &[lv.into()])?;
+                let result = cc
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("init failed")?
+                    .into_struct_value();
+                let alloca = self
+                    .builder
+                    .build_alloca(self.list_type, "init_result")
+                    .map_err(llvm_err)?;
+                self.builder.build_store(alloca, result).map_err(llvm_err)?;
+                self.build_fallible_list_from_not_empty(alloca, is_empty)
+            }
+            _ => Err("init: argument must be a list".to_string()),
+        }
+    }
+
+    pub(crate) fn compile_to_char_fallible_call(
+        &mut self,
+        arg: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let v = self.compile_call_arg(arg)?;
+        match v {
+            TypedValue::Int(iv) => {
+                let max_cp = self.i64_ty().const_int(0x10FFFF, false);
+                let in_range = self
+                    .builder
+                    .build_int_compare(IntPredicate::ULE, iv, max_cp, "valid_cp")
+                    .map_err(llvm_err)?;
+                self.build_fallible_int_from_ok(iv, in_range)
+            }
+            _ => Err("toChar: argument must be an Int".to_string()),
+        }
+    }
+
+    pub(crate) fn compile_to_float_fallible_call(
+        &mut self,
+        arg: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let always_true = self.bool_ty().const_int(1, false);
+        let v = self.compile_call_arg(arg)?;
+        match v {
+            TypedValue::Float(fv) => self.build_fallible_float_from_ok(fv, always_true),
+            TypedValue::Int(iv) => {
+                let f = self
+                    .builder
+                    .build_signed_int_to_float(iv, self.f64_ty(), "itof")
+                    .map_err(llvm_err)?;
+                self.build_fallible_float_from_ok(f, always_true)
+            }
+            TypedValue::Str(sp) => {
+                let sv = self.load_string(sp)?;
+                let len = self
+                    .builder
+                    .build_extract_value(sv, 0, "len")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                let has_chars = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::UGT,
+                        len,
+                        self.i64_ty().const_int(0, false),
+                        "has_chars",
+                    )
+                    .map_err(llvm_err)?;
+                let data_ptr = self
+                    .builder
+                    .build_extract_value(sv, 1, "dptr")
+                    .map_err(llvm_err)?
+                    .into_pointer_value();
+                let first_char = self
+                    .builder
+                    .build_load(self.context.i8_type(), data_ptr, "first_char")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                let i8 = self.context.i8_type();
+                let is_digit = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::UGE,
+                        first_char,
+                        i8.const_int(b'0' as u64, false),
+                        "isd",
+                    )
+                    .map_err(llvm_err)?;
+                let le9 = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::ULE,
+                        first_char,
+                        i8.const_int(b'9' as u64, false),
+                        "le9",
+                    )
+                    .map_err(llvm_err)?;
+                let is_d = self.builder.build_and(is_digit, le9, "is_digit").map_err(llvm_err)?;
+                let is_minus = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::EQ,
+                        first_char,
+                        i8.const_int(b'-' as u64, false),
+                        "is_minus",
+                    )
+                    .map_err(llvm_err)?;
+                let is_plus = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::EQ,
+                        first_char,
+                        i8.const_int(b'+' as u64, false),
+                        "is_plus",
+                    )
+                    .map_err(llvm_err)?;
+                let is_dot = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::EQ,
+                        first_char,
+                        i8.const_int(b'.' as u64, false),
+                        "is_dot",
+                    )
+                    .map_err(llvm_err)?;
+                let is_sign = self.builder.build_or(is_minus, is_plus, "is_sign").map_err(llvm_err)?;
+                let is_num_start = self.builder.build_or(is_d, is_sign, "is_num1").map_err(llvm_err)?;
+                let is_valid = self.builder.build_or(is_num_start, is_dot, "is_valid").map_err(llvm_err)?;
+                let ok = self.builder.build_and(has_chars, is_valid, "ok").map_err(llvm_err)?;
+                let strtod_fn = self.module.get_function("strtod").unwrap();
+                let null_ptr = self.ptr_ty().const_zero();
+                let result = self
+                    .builder
+                    .build_call(strtod_fn, &[data_ptr.into(), null_ptr.into()], "fval")
+                    .map_err(llvm_err)?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("strtod failed")?
+                    .into_float_value();
+                self.build_fallible_float_from_ok(result, ok)
+            }
+            _ => Err("toFloat: cannot convert to Float".to_string()),
+        }
+    }
+
+    pub(crate) fn list_element_ast_type(&self, list_arg: CallArg<'_>) -> Type {
+        let CallArg::Hir(e) = list_arg;
+        if let Some(elem) = self.element_type_from_list_ast(&e.ty) {
+            return elem;
+        }
+        if let Some(elem) = self.element_type_from_list_ast(&self.infer_hir_expr_type(e)) {
+            return elem;
+        }
+        Type::Named("Int".into())
+    }
+
+    fn element_type_from_list_ast(&self, ty: &Type) -> Option<Type> {
+        match ty {
+            Type::Generic(base, args) if !args.is_empty() => match base.as_ref() {
+                Type::Named(n) if n == "List" || n == "LazyList" => Some(args[0].clone()),
+                _ => None,
+            },
+            _ => None,
+        }
     }
 
     pub(crate) fn compile_head_fallible_on_list_ptr(
@@ -401,13 +784,14 @@ impl<'ctx> CodeGen<'ctx> {
         list_arg: CallArg<'_>,
         fn_arg: CallArg<'_>,
     ) -> Result<TypedValue<'ctx>, String> {
+        let elem_ty = self.list_element_ast_type(list_arg);
         let list_val = self.compile_call_arg(list_arg)?;
         let list_ptr = match list_val {
             TypedValue::List(p) => p,
             _ => return Err("find: argument must be a list".to_string()),
         };
         let fn_val = self.compile_call_arg(fn_arg)?;
-        self.find_on_list_ptr(list_ptr, fn_val)
+        self.find_on_list_ptr(list_ptr, fn_val, &elem_ty)
     }
 
     pub(crate) fn compile_find_index_fallible_call(
@@ -505,6 +889,101 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    pub(crate) fn compile_last_fallible_on_list_ptr(
+        &mut self,
+        lp: PointerValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let list_val = self.load_list(lp)?;
+        let len = self
+            .builder
+            .build_extract_value(list_val, 1, "len")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let zero = self.i64_ty().const_zero();
+        let not_empty = self
+            .builder
+            .build_int_compare(IntPredicate::SGT, len, zero, "not_empty")
+            .map_err(llvm_err)?;
+        self.branch_to_fail_if(not_empty)?;
+        let last_idx = self
+            .builder
+            .build_int_sub(len, self.i64_ty().const_int(1, false), "last_idx")
+            .map_err(llvm_err)?;
+        let elem = self.call_rt(
+            "action_list_get",
+            &[list_val.into(), last_idx.into()],
+        )?;
+        let tag = self
+            .builder
+            .build_extract_value(
+                elem.try_as_basic_value()
+                    .basic()
+                    .ok_or("last get failed")?
+                    .into_struct_value(),
+                0,
+                "tag",
+            )
+            .map_err(llvm_err)?
+            .into_int_value();
+        Ok(TypedValue::FallibleInt {
+            val: tag,
+            ok: not_empty,
+        })
+    }
+
+    pub(crate) fn compile_list_get_fallible_on_ptr(
+        &mut self,
+        lp: PointerValue<'ctx>,
+        idx_iv: inkwell::values::IntValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let list_val = self.load_list(lp)?;
+        let len = self
+            .builder
+            .build_extract_value(list_val, 1, "len")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let zero = self.i64_ty().const_zero();
+        let neg = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, idx_iv, zero, "neg")
+            .map_err(llvm_err)?;
+        let ge_len = self
+            .builder
+            .build_int_compare(IntPredicate::SGE, idx_iv, len, "ge_len")
+            .map_err(llvm_err)?;
+        let oob = self.builder.build_or(neg, ge_len, "oob").map_err(llvm_err)?;
+        let in_range = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, oob, self.bool_ty().const_zero(), "in_range")
+            .map_err(llvm_err)?;
+        let elem_bv = if let Some(cache) = self.loop_control.list_loop_get_cache {
+            self.list_get_cached_fat(lp, idx_iv, cache)?.into_struct_value()
+        } else {
+            let elem = self.call_rt("action_list_get", &[list_val.into(), idx_iv.into()])?;
+            elem.try_as_basic_value()
+                .basic()
+                .ok_or("get failed")?
+                .into_struct_value()
+        };
+        let fat_alloca = self
+            .builder
+            .build_alloca(self.string_type, "get_fat")
+            .map_err(llvm_err)?;
+        self.builder.build_store(fat_alloca, elem_bv).map_err(llvm_err)?;
+        let found_flag_a = self
+            .builder
+            .build_alloca(self.bool_ty(), "get_ok")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(found_flag_a, in_range)
+            .map_err(llvm_err)?;
+        self.build_fallible_from_fat_found_flag(
+            fat_alloca,
+            found_flag_a,
+            &Type::Named("Int".into()),
+        )
+    }
+
     pub(crate) fn compile_last_fallible(
         &mut self,
         arg: CallArg<'_>,
@@ -512,42 +991,7 @@ impl<'ctx> CodeGen<'ctx> {
         let v = self.compile_call_arg(arg)?;
         match v {
             TypedValue::List(lp) | TypedValue::LazyList(lp) => {
-                let list_val = self.load_list(lp)?;
-                let len = self
-                    .builder
-                    .build_extract_value(list_val, 1, "len")
-                    .map_err(llvm_err)?
-                    .into_int_value();
-                let zero = self.i64_ty().const_zero();
-                let not_empty = self
-                    .builder
-                    .build_int_compare(IntPredicate::SGT, len, zero, "not_empty")
-                    .map_err(llvm_err)?;
-                self.branch_to_fail_if(not_empty)?;
-                let last_idx = self
-                    .builder
-                    .build_int_sub(len, self.i64_ty().const_int(1, false), "last_idx")
-                    .map_err(llvm_err)?;
-                let elem = self.call_rt(
-                    "action_list_get",
-                    &[list_val.into(), last_idx.into()],
-                )?;
-                let tag = self
-                    .builder
-                    .build_extract_value(
-                        elem.try_as_basic_value()
-                            .basic()
-                            .ok_or("last get failed")?
-                            .into_struct_value(),
-                        0,
-                        "tag",
-                    )
-                    .map_err(llvm_err)?
-                    .into_int_value();
-                Ok(TypedValue::FallibleInt {
-                    val: tag,
-                    ok: not_empty,
-                })
+                self.compile_last_fallible_on_list_ptr(lp)
             }
             _ => Err("last: argument must be a list".to_string()),
         }
@@ -714,6 +1158,16 @@ impl<'ctx> CodeGen<'ctx> {
                         "last" if args.is_empty() => {
                             return self.compile_last_fallible(CallArg::hir(obj)).map(Some);
                         }
+                        "tail" if args.is_empty() => {
+                            return self
+                                .compile_tail_fallible_call(CallArg::hir(obj))
+                                .map(Some);
+                        }
+                        "init" if args.is_empty() => {
+                            return self
+                                .compile_init_fallible_call(CallArg::hir(obj))
+                                .map(Some);
+                        }
                         "head" if args.is_empty() => {
                             return self.compile_head_fallible(CallArg::hir(obj)).map(Some);
                         }
@@ -767,6 +1221,18 @@ impl<'ctx> CodeGen<'ctx> {
                         "parseInt" if args.len() == 1 => self
                             .compile_to_int_fallible_call(CallArg::hir(&args[0]))
                             .map(Some),
+                        "toFloat" if args.len() == 1 => self
+                            .compile_to_float_fallible_call(CallArg::hir(&args[0]))
+                            .map(Some),
+                        "toChar" if args.len() == 1 => self
+                            .compile_to_char_fallible_call(CallArg::hir(&args[0]))
+                            .map(Some),
+                        "tail" if args.len() == 1 => self
+                            .compile_tail_fallible_call(CallArg::hir(&args[0]))
+                            .map(Some),
+                        "init" if args.len() == 1 => self
+                            .compile_init_fallible_call(CallArg::hir(&args[0]))
+                            .map(Some),
                         "head" if args.len() == 1 => {
                             self.compile_head_fallible(CallArg::hir(&args[0])).map(Some)
                         }
@@ -783,9 +1249,9 @@ impl<'ctx> CodeGen<'ctx> {
                             Ok(None)
                         }
                         "indexOf" if args.len() == 2 => self
-                            .compile_list_index_of_fallible(
-                                CallArg::hir(&args[1]),
+                            .compile_string_index_of_fallible(
                                 CallArg::hir(&args[0]),
+                                CallArg::hir(&args[1]),
                             )
                             .map(Some),
                         "find" if trailing_lambda.is_some() && args.len() == 1 => self
@@ -906,6 +1372,9 @@ impl<'ctx> CodeGen<'ctx> {
 
         let (val, ok) = match lhs {
             TypedValue::FallibleInt { val, ok } => (val, ok),
+            TypedValue::FallibleFloat { val, ok } => {
+                return self.compile_or_block_fallible_float(fallback, val, ok);
+            }
             TypedValue::FallibleStr { val, ok } => {
                 return self.compile_or_block_fallible_str(fallback, val, ok);
             }
@@ -961,6 +1430,55 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::Int(phi.as_basic_value().into_int_value()))
     }
 
+    fn compile_or_block_fallible_float(
+        &mut self,
+        fallback: &HirExpr,
+        val: FloatValue<'ctx>,
+        ok: IntValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("or-block: no function")?;
+        let ok_i1 = self.ok_i1(ok)?;
+        let failed = self
+            .builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                ok_i1,
+                self.bool_ty().const_zero(),
+                "or_fail",
+            )
+            .map_err(llvm_err)?;
+        let fail_bb = self.context.append_basic_block(current_fn, "orblk_fail");
+        let ok_bb = self.context.append_basic_block(current_fn, "orblk_ok");
+        let merge_bb = self.context.append_basic_block(current_fn, "orblk_merge");
+        self.builder
+            .build_conditional_branch(failed, fail_bb, ok_bb)
+            .map_err(llvm_err)?;
+        self.builder.position_at_end(ok_bb);
+        self.builder
+            .build_unconditional_branch(merge_bb)
+            .map_err(llvm_err)?;
+        self.builder.position_at_end(fail_bb);
+        let fb = self.compile_hir_expr(fallback)?;
+        let fb_float = match fb {
+            TypedValue::Float(f) => f,
+            _ => return Err("or-block fallback must be Float".into()),
+        };
+        self.builder
+            .build_unconditional_branch(merge_bb)
+            .map_err(llvm_err)?;
+        self.builder.position_at_end(merge_bb);
+        let phi = self
+            .builder
+            .build_phi(self.f64_ty(), "or_float")
+            .map_err(llvm_err)?;
+        phi.add_incoming(&[(&val, ok_bb), (&fb_float, fail_bb)]);
+        Ok(TypedValue::Float(phi.as_basic_value().into_float_value()))
+    }
+
     fn compile_or_block_fallible_struct(
         &mut self,
         fallback: &HirExpr,
@@ -1002,6 +1520,7 @@ impl<'ctx> CodeGen<'ctx> {
         let fb = self.compile_hir_expr(fallback)?;
         let fb_ptr = match fb {
             TypedValue::Struct(p, fb_ty) if fb_ty == ty => p,
+            TypedValue::List(p) if ty == self.list_type => p,
             _ => return Err("or-block fallback must match struct type".into()),
         };
         let fb_loaded = self
@@ -1021,7 +1540,26 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(merged_alloca, phi.as_basic_value())
             .map_err(llvm_err)?;
-        Ok(TypedValue::Struct(merged_alloca, ty))
+        if ty == self.list_type {
+            Ok(TypedValue::List(merged_alloca))
+        } else {
+            Ok(TypedValue::Struct(merged_alloca, ty))
+        }
+    }
+
+    pub(super) fn compile_or_block_hir(
+        &mut self,
+        nullable: &HirExpr,
+        fallback: &HirExpr,
+    ) -> Result<TypedValue<'ctx>, String> {
+        self.or_block_depth += 1;
+        let result = if let Some(v) = self.try_compile_fallible_lhs_for_or(nullable)? {
+            self.compile_or_block_fallible_from_ok(fallback, v)
+        } else {
+            self.compile_hir_expr(nullable)
+        };
+        self.or_block_depth -= 1;
+        result
     }
 
     fn compile_or_block_fallible_ptr(
@@ -1227,6 +1765,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<TypedValue<'ctx>, String> {
         match v {
             TypedValue::FallibleInt { val, .. } => Ok(TypedValue::Int(val)),
+            TypedValue::FallibleFloat { val, .. } => Ok(TypedValue::Float(val)),
             TypedValue::FallibleStr { val, .. } => Ok(TypedValue::Str(val)),
             TypedValue::FalliblePtr { val, .. } => Ok(TypedValue::Ptr(val)),
             TypedValue::FallibleStruct { val, ty, .. } => Ok(TypedValue::Struct(val, ty)),

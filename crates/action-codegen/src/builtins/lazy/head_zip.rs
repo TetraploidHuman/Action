@@ -1,5 +1,4 @@
 use crate::{llvm_err, CodeGen, TypedValue};
-use inkwell::types::BasicTypeEnum;
 use inkwell::IntPredicate;
 
 impl<'ctx> CodeGen<'ctx> {
@@ -18,7 +17,6 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_extract_value(ll_sv, 0, "head_h")
                     .map_err(llvm_err)?;
-                // Check take_count (field 3): 0 = empty, != 0 = has elements
                 let take_count = self
                     .builder
                     .build_extract_value(ll_sv, 3, "head_tc")
@@ -52,7 +50,6 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_int_compare(IntPredicate::EQ, len, zero, "is_empty")
                     .map_err(llvm_err)?;
-                // Load first element's fat struct
                 let first_ptr = unsafe {
                     self.builder
                         .build_gep(self.fat_return_type, data, &[zero], "head_gep")
@@ -72,74 +69,17 @@ impl<'ctx> CodeGen<'ctx> {
             _ => return Err("lazyHead: argument must be a LazyList or List".to_string()),
         };
 
-        let i64 = self.i64_ty();
-
-        // Create nullable {i1, i64} for nullable Int
-        let nullable_ty = self.get_nullable_type(i64.into(), "Nullable<Int>");
-        let null_bt: BasicTypeEnum = nullable_ty.into();
-
-        let current_fn = self
-            .builder
-            .get_insert_block()
-            .and_then(|b| b.get_parent())
-            .ok_or("no fn")?;
-
-        let result_alloca = self
-            .builder
-            .build_alloca(nullable_ty, "lh_result")
-            .map_err(llvm_err)?;
-
-        let merge_block = self.context.append_basic_block(current_fn, "lh_merge");
-        let some_block = self.context.append_basic_block(current_fn, "lh_some");
-        let none_block = self.context.append_basic_block(current_fn, "lh_none");
-
-        let _ = self
-            .builder
-            .build_conditional_branch(is_empty, none_block, some_block);
-
-        // Some branch: head_val contains the i64 value
-        self.builder.position_at_end(some_block);
         let head_i64 = head_val.into_int_value();
-
-        // Build nullable {flag=0, value} — inline, no heap allocation
-        let undef = nullable_ty.get_undef();
-        let r1 = self
+        let not_empty = self
             .builder
-            .build_insert_value(
-                undef,
-                self.null_flag_ty().const_int(0, false),
-                0,
-                "lh_some_flag",
+            .build_int_compare(
+                IntPredicate::EQ,
+                is_empty,
+                self.bool_ty().const_zero(),
+                "not_empty",
             )
             .map_err(llvm_err)?;
-        let r2 = self
-            .builder
-            .build_insert_value(r1, head_i64, 1, "lh_some_val")
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(result_alloca, r2)
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(merge_block);
-
-        // None branch: nullable {flag=1, undef}
-        self.builder.position_at_end(none_block);
-        let undef2 = nullable_ty.get_undef();
-        let n1 = self
-            .builder
-            .build_insert_value(
-                undef2,
-                self.null_flag_ty().const_int(1, false),
-                0,
-                "lh_none_flag",
-            )
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(result_alloca, n1)
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(merge_block);
-
-        self.builder.position_at_end(merge_block);
-        Ok(TypedValue::Nullable(result_alloca, null_bt))
+        self.build_fallible_int_from_ok(head_i64, not_empty)
     }
 
     pub(crate) fn builtin_lazy_zip_values(
@@ -196,7 +136,6 @@ impl<'ctx> CodeGen<'ctx> {
             .build_store(result_alloca, new_list)
             .map_err(llvm_err)?;
 
-        // Zip elements as tuple-like: store (tag1, tag2) as two sequential entries
         let current_fn = self
             .builder
             .get_insert_block()
@@ -247,7 +186,6 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(self.string_type, sp2, "lz_e2")
             .map_err(llvm_err)?;
 
-        // Push both as separate elements (pair is two sequential entries)
         let cur = self.load_list(result_alloca)?;
         let cc = self.call_rt("action_list_push", &[cur.into(), e1.into()])?;
         let nl = cc

@@ -70,13 +70,6 @@ impl<'ctx> CodeGen<'ctx> {
         use action_frontend::hir::HirExprKind;
 
         let obj_val = self.compile_hir_expr(obj)?;
-        if let TypedValue::Nullable(nullable_ptr, inner_bt) = obj_val {
-            return self.compile_nullable_index_values(
-                nullable_ptr,
-                inner_bt,
-                crate::call_arg::CallArg::hir(idx),
-            );
-        }
         match obj_val {
             TypedValue::Map(map_ptr) => {
                 let key_val = self.compile_hir_expr(idx)?;

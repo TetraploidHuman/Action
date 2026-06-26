@@ -144,7 +144,15 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         // InnerType defaults to Int — accumulator is a fat struct whose type
         // is only known at runtime. See comment at builtin_find for details.
-        self.build_nullable_str(acc_alloca, found_flag_a)
+        let list_arg = if trailing.is_some() {
+            args[0]
+        } else if args.len() == 2 {
+            args[1]
+        } else {
+            args[0]
+        };
+        let elem_ty = self.list_element_ast_type(list_arg);
+        self.build_fallible_from_fat_found_flag(acc_alloca, found_flag_a, &elem_ty)
     }
 
     /// foldRight(list, init, fn) or foldRight(list, init) { lambda } -> T

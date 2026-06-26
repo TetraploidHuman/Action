@@ -13,6 +13,6 @@ fun main() {
     print(len("abc"))
 
     // Index of substring
-    print(indexOf("e", "hello"))
-    print(indexOf("ll", "hello"))
+    print(indexOf("e", "hello") or { -1 })
+    print(indexOf("ll", "hello") or { -1 })
 }

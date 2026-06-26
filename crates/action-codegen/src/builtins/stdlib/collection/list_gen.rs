@@ -102,34 +102,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("tail expects 1 argument (list)".to_string());
                 }
-                let v = self.compile_call_arg(args[0])?;
-                match v {
-                    TypedValue::List(lp) => {
-                        let lv = self.load_list(lp)?;
-                        let len = self
-                            .builder
-                            .build_extract_value(lv, 1, "len")
-                            .map_err(llvm_err)?
-                            .into_int_value();
-                        let is_empty = self
-                            .builder
-                            .build_int_compare(
-                                IntPredicate::EQ,
-                                len,
-                                self.i64_ty().const_int(0, false),
-                                "empty",
-                            )
-                            .map_err(llvm_err)?;
-                        let cc = self.call_rt("action_list_tail", &[lv.into()])?;
-                        let result = cc
-                            .try_as_basic_value()
-                            .basic()
-                            .ok_or("tail failed")?
-                            .into_struct_value();
-                        Ok(Some(self.build_nullable_list(result, is_empty)?))
-                    }
-                    _ => Err("tail: argument must be a list".to_string()),
-                }
+                Ok(Some(self.compile_tail_fallible_call(args[0])?))
             }
             "zip" => {
                 if args.len() != 2 {
@@ -183,34 +156,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("init expects 1 argument (list)".to_string());
                 }
-                let v = self.compile_call_arg(args[0])?;
-                match v {
-                    TypedValue::List(lp) => {
-                        let lv = self.load_list(lp)?;
-                        let len = self
-                            .builder
-                            .build_extract_value(lv, 1, "len")
-                            .map_err(llvm_err)?
-                            .into_int_value();
-                        let is_empty = self
-                            .builder
-                            .build_int_compare(
-                                IntPredicate::EQ,
-                                len,
-                                self.i64_ty().const_int(0, false),
-                                "empty",
-                            )
-                            .map_err(llvm_err)?;
-                        let cc = self.call_rt("action_list_init", &[lv.into()])?;
-                        let result = cc
-                            .try_as_basic_value()
-                            .basic()
-                            .ok_or("init failed")?
-                            .into_struct_value();
-                        Ok(Some(self.build_nullable_list(result, is_empty)?))
-                    }
-                    _ => Err("init: argument must be a list".to_string()),
-                }
+                Ok(Some(self.compile_init_fallible_call(args[0])?))
             }
             _ => Ok(None),
         }

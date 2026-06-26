@@ -427,9 +427,6 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_pointer_value();
                         self.rc_inc(pdata)?;
                     }
-                    ValKind::Nullable => {
-                        self.rc_nullable_inner(alloca, pv.get_type(), true)?;
-                    }
                     _ => {}
                 }
             }
@@ -603,14 +600,6 @@ impl<'ctx> CodeGen<'ctx> {
                             .map_err(llvm_err)?;
                         let _ = self.builder.build_return(Some(&ll_val));
                     }
-                    TypedValue::Nullable(ptr, ty) => {
-                        let bt: BasicTypeEnum = (*ty).into();
-                        let loaded = self
-                            .builder
-                            .build_load(bt, *ptr, "ret_nullable2")
-                            .map_err(llvm_err)?;
-                        let _ = self.builder.build_return(Some(&loaded));
-                    }
                     _ => {
                         if let Some(bv) = result.to_bv() {
                             // If the function returns a struct (nullable, enum, fat) but
@@ -781,12 +770,7 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             },
             Some(Type::Function(_, _)) => self.ptr_ty().into(),
-            Some(Type::Nullable(inner)) => {
-                let inner_bt: BasicTypeEnum = self.ast_type_to_basic_type(inner);
-                let name_hint = format!("Nullable<{}>", inner);
-                let nullable_st = self.get_nullable_type(inner_bt, &name_hint);
-                nullable_st.into()
-            }
+            Some(Type::Nullable(inner)) => self.ast_type_to_basic_type(inner).into(),
             Some(Type::Generic(base, _)) => match base.as_ref() {
                 Type::Named(n) => match n.as_str() {
                     "list" | "set" | "map" => self.list_type.into(),
@@ -839,12 +823,7 @@ impl<'ctx> CodeGen<'ctx> {
             Type::Stream(_) => self.ptr_ty().into(),
             Type::LazyList(_) => self.lazylist_type.into(),
             Type::CString | Type::Ptr(_) | Type::FileHandle => self.ptr_ty().into(),
-            Type::Nullable(inner) => {
-                let inner_bt = self.ast_type_to_basic_type(inner);
-                let name_hint = format!("Nullable<{}>", inner);
-                let nullable_st = self.get_nullable_type(inner_bt, &name_hint);
-                nullable_st.into()
-            }
+            Type::Nullable(inner) => self.ast_type_to_basic_type(inner),
             Type::Generic(base, _) => match base.as_ref() {
                 Type::Named(n) => match n.as_str() {
                     "list" => return self.list_type.into(),
@@ -884,7 +863,7 @@ impl<'ctx> CodeGen<'ctx> {
             Some(Type::Task(_)) => ValKind::Task,
             Some(Type::Stream(_)) => ValKind::Stream,
             Some(Type::LazyList(_)) => ValKind::LazyList,
-            Some(Type::Nullable(_)) => ValKind::Nullable,
+            Some(Type::Nullable(inner)) => self.param_val_kind(Some(inner.as_ref())),
             Some(Type::Generic(base, _)) => match base.as_ref() {
                 Type::Named(n) => match n.as_str() {
                     "Float" => ValKind::Float,

@@ -472,14 +472,14 @@ impl<'ctx> CodeGen<'ctx> {
                 let v = self.compile_call_arg(args[0])?;
                 match v {
                     TypedValue::Int(iv) => {
-                        self.build_nullable_int(iv, self.bool_ty().const_int(1, false))
+                        self.build_fallible_int_from_ok(iv, self.bool_ty().const_int(1, false))
                     }
                     TypedValue::Float(fv) => {
                         let i = self
                             .builder
                             .build_float_to_signed_int(fv, self.i64_ty(), "ftoi")
                             .map_err(llvm_err)?;
-                        self.build_nullable_int(i, self.bool_ty().const_int(1, false))
+                        self.build_fallible_int_from_ok(i, self.bool_ty().const_int(1, false))
                     }
                     TypedValue::Str(sp) => {
                         let sv = self.load_string(sp)?;
@@ -499,7 +499,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .build_extract_value(result_struct, 1, "ok")
                             .map_err(llvm_err)?
                             .into_int_value();
-                        self.build_nullable_int(val, ok)
+                        self.build_fallible_int_from_ok(val, ok)
                     }
                     _ => Err("toInt: cannot convert to Int".to_string()),
                 }
@@ -511,13 +511,13 @@ impl<'ctx> CodeGen<'ctx> {
                 let v = self.compile_call_arg(args[0])?;
                 let always_true = self.bool_ty().const_int(1, false);
                 match v {
-                    TypedValue::Float(fv) => self.build_nullable_float(fv, always_true),
+                    TypedValue::Float(fv) => self.build_fallible_float_from_ok(fv, always_true),
                     TypedValue::Int(iv) => {
                         let f = self
                             .builder
                             .build_signed_int_to_float(iv, self.f64_ty(), "itof")
                             .map_err(llvm_err)?;
-                        self.build_nullable_float(f, always_true)
+                        self.build_fallible_float_from_ok(f, always_true)
                     }
                     TypedValue::Str(sp) => {
                         let sv = self.load_string(sp)?;
@@ -621,7 +621,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .basic()
                             .ok_or("strtod failed")?
                             .into_float_value();
-                        self.build_nullable_float(result, ok)
+                        self.build_fallible_float_from_ok(result, ok)
                     }
                     _ => Err("toFloat: cannot convert to Float".to_string()),
                 }

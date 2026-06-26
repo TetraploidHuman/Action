@@ -446,7 +446,9 @@ impl<'ctx> CodeGen<'ctx> {
         match &expr.kind {
             HirExprKind::Literal(lit) => self.compile_literal(lit),
             HirExprKind::Ident(name) => self.compile_ident(name),
-            HirExprKind::Null => self.compile_null(),
+            HirExprKind::Null => {
+                Err("E010: null is not supported; use `or { }` for fallible expressions".to_string())
+            }
             HirExprKind::Continue => self.compile_hir_continue(),
             HirExprKind::Break => self.compile_hir_break(),
             HirExprKind::FunctionRef(name) => self.compile_function_ref(name),

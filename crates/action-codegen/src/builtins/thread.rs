@@ -864,10 +864,13 @@ impl<'ctx> CodeGen<'ctx> {
             .context
             .append_basic_block(current_fn, "wt_poll_timeout");
         let wt_return = self.context.append_basic_block(current_fn, "wt_return");
-        let wt_nullable_ty = self.get_nullable_type(self.string_type.into(), "Nullable");
-        let wt_result_alloca = self
+        let wt_fat_alloca = self
             .builder
-            .build_alloca(wt_nullable_ty, "wt_res")
+            .build_alloca(self.string_type, "wt_fat")
+            .map_err(llvm_err)?;
+        let wt_ok_alloca = self
+            .builder
+            .build_alloca(self.bool_ty(), "wt_ok")
             .map_err(llvm_err)?;
 
         let _ = self.builder.build_unconditional_branch(poll_hdr);
@@ -927,7 +930,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_conditional_branch(is_done, poll_done, poll_hdr);
 
-        // Timeout: cancel thread, join, return null (nullable {i1=1, undef})
+        // Timeout: cancel thread, join, return failure
         self.builder.position_at_end(poll_timeout);
         let pthread_cancel_fn = self
             .module
@@ -954,20 +957,11 @@ impl<'ctx> CodeGen<'ctx> {
                 "",
             )
             .map_err(llvm_err)?;
-        // Build nullable {i8=1, undef} for timeout (null)
-        let null_undef = wt_nullable_ty.get_undef();
-        let null_flag = self.null_flag_ty().const_int(1, false);
-        let with_flag = self
-            .builder
-            .build_insert_value(null_undef, null_flag, 0, "nul_f")
-            .map_err(llvm_err)?;
-        let inner_undef = self.string_type.get_undef();
-        let null_full = self
-            .builder
-            .build_insert_value(with_flag, inner_undef, 1, "nul_v")
+        self.builder
+            .build_store(wt_fat_alloca, self.string_type.get_undef())
             .map_err(llvm_err)?;
         self.builder
-            .build_store(wt_result_alloca, null_full)
+            .build_store(wt_ok_alloca, self.bool_ty().const_zero())
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(wt_return);
 
@@ -1040,27 +1034,23 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(free_fn, &[task_heap.into()], "")
             .map_err(llvm_err)?;
 
-        // Wrap result in nullable {i8=0, fat} (non-null)
-        let ok_undef = wt_nullable_ty.get_undef();
-        let ok_flag = self.null_flag_ty().const_int(0, false);
-        let ok_with_flag = self
-            .builder
-            .build_insert_value(ok_undef, ok_flag, 0, "ok_f")
-            .map_err(llvm_err)?;
-        let ok_full = self
-            .builder
-            .build_insert_value(ok_with_flag, fat, 1, "ok_v")
-            .map_err(llvm_err)?;
+        self.builder.build_store(wt_fat_alloca, fat).map_err(llvm_err)?;
         self.builder
-            .build_store(wt_result_alloca, ok_full)
+            .build_store(wt_ok_alloca, self.bool_ty().const_int(1, false))
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(wt_return);
 
-        // Return: load nullable from alloca
         self.builder.position_at_end(wt_return);
-        Ok(TypedValue::Nullable(
-            wt_result_alloca,
-            wt_nullable_ty.into(),
-        ))
+        let ok = self
+            .builder
+            .build_load(self.bool_ty(), wt_ok_alloca, "wt_ok_ld")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let ok_i1 = self.ok_i1(ok)?;
+        self.branch_to_fail_if(ok_i1)?;
+        Ok(TypedValue::FallibleStr {
+            val: wt_fat_alloca,
+            ok: ok_i1,
+        })
     }
 }

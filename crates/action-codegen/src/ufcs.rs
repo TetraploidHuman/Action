@@ -18,19 +18,6 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<TypedValue<'ctx>, String> {
         let recv_val = self.compile_call_arg(receiver)?;
 
-        // Auto short-circuit: nullable receiver — branch on null,
-        // extract inner, and dispatch method on the non-null inner value.
-        if let TypedValue::Nullable(nullable_ptr, inner_bt) = recv_val {
-            return self.compile_nullable_method_call_call_args(
-                nullable_ptr,
-                inner_bt,
-                receiver,
-                method,
-                args,
-                trailing,
-            );
-        }
-
         let type_name = self.type_name_from_typed_value(&recv_val);
 
         // Handle Map builtin methods inline

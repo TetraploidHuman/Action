@@ -32,7 +32,7 @@ impl<'ctx> CodeGen<'ctx> {
             TypedValue::CString(_) => "CString".to_string(),
             TypedValue::Ptr(_) => "Ptr".to_string(),
             TypedValue::FileHandle(_) => "FileHandle".to_string(),
-            TypedValue::Nullable(_, _) => "Nullable".to_string(),
+            TypedValue::FallibleFloat { .. } => "Float".to_string(),
             TypedValue::FallibleInt { .. } => "Int".to_string(),
             TypedValue::FalliblePtr { .. } => "Ptr".to_string(),
             TypedValue::FallibleStr { .. } => "String".to_string(),
@@ -75,11 +75,8 @@ impl<'ctx> CodeGen<'ctx> {
             TypedValue::CString(p) | TypedValue::Ptr(p) | TypedValue::FileHandle(p) => {
                 Ok((*p).into())
             }
-            TypedValue::Nullable(ptr, ty) => Ok(self
-                .builder
-                .build_load(*ty, *ptr, "arg_nullable")
-                .map_err(llvm_err)?),
             TypedValue::FallibleInt { val, .. } => Ok(val.as_basic_value_enum()),
+            TypedValue::FallibleFloat { val, .. } => Ok(val.as_basic_value_enum()),
             TypedValue::FalliblePtr { val, .. } => Ok(val.as_basic_value_enum()),
             TypedValue::FallibleStr { val, .. } => Ok(self.load_string(*val)?.into()),
             TypedValue::FallibleStruct { val, ty, .. } => {

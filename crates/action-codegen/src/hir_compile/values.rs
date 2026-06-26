@@ -1,6 +1,7 @@
 use crate::{llvm_err, CodeGen, TypedValue};
 use action_frontend::ast::*;
 use inkwell::types::BasicTypeEnum;
+use inkwell::values::BasicValue;
 
 impl<'ctx> CodeGen<'ctx> {
     pub(crate) fn compile_binary_values(
@@ -281,11 +282,24 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?;
                 let _ = self.builder.build_return(Some(&ll_val));
             }
-            TypedValue::Nullable(ptr, ty) => {
+            TypedValue::FallibleInt { val, .. } => {
+                let _ = self.builder.build_return(Some(&val.as_basic_value_enum()));
+            }
+            TypedValue::FallibleFloat { val, .. } => {
+                let _ = self.builder.build_return(Some(&val.as_basic_value_enum()));
+            }
+            TypedValue::FallibleStr { val, .. } => {
+                let sv = self.load_string(*val)?;
+                let _ = self.builder.build_return(Some(&sv));
+            }
+            TypedValue::FalliblePtr { val, .. } => {
+                let _ = self.builder.build_return(Some(&val.as_basic_value_enum()));
+            }
+            TypedValue::FallibleStruct { val, ty, .. } => {
                 let bt: BasicTypeEnum = (*ty).into();
                 let loaded = self
                     .builder
-                    .build_load(bt, *ptr, "ret_nullable")
+                    .build_load(bt, *val, "ret_fs")
                     .map_err(llvm_err)?;
                 let _ = self.builder.build_return(Some(&loaded));
             }
@@ -370,9 +384,23 @@ impl<'ctx> CodeGen<'ctx> {
             return self.bv_to_typed(field_val);
         }
 
-        // Delegate to compile_field_access_on_typed_value for other types
-        let val_bt = obj_val.get_type_for_alloca(self);
-        self.compile_field_access_on_typed_value(&obj_val, field, val_bt)
+        // String.length field access
+        if let TypedValue::Str(ptr) = &obj_val {
+            if field == "length" {
+                let gep = self
+                    .builder
+                    .build_struct_gep(self.string_type, *ptr, 0, "lenp")
+                    .map_err(llvm_err)?;
+                let len = self
+                    .builder
+                    .build_load(self.i64_ty(), gep, "len")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                return Ok(TypedValue::Int(len));
+            }
+        }
+
+        Err(format!("Field '{}' not supported on this type", field))
     }
 
     /// Compile range creation from already-compiled start/end values.

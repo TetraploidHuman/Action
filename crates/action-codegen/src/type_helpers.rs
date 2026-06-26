@@ -341,7 +341,7 @@ impl<'ctx> CodeGen<'ctx> {
                     Type::Named("Int".into())
                 }
             }
-            HirExprKind::Null => Type::Nullable(Box::new(Type::Named("Nothing".into()))),
+            HirExprKind::Null => Type::Named("Nothing".into()),
             HirExprKind::Block(stmts) => stmts
                 .last()
                 .and_then(|s| match s {
@@ -488,9 +488,9 @@ impl<'ctx> CodeGen<'ctx> {
             TypedValue::CString(_) => "CString".to_string(),
             TypedValue::Ptr(_) => "Ptr".to_string(),
             TypedValue::FileHandle(_) => "FileHandle".to_string(),
-            TypedValue::Nullable(_, _) => "Nullable".to_string(),
             TypedValue::Unit => "Unit".to_string(),
             TypedValue::FallibleInt { .. } => "Int".to_string(),
+            TypedValue::FallibleFloat { .. } => "Float".to_string(),
             TypedValue::FalliblePtr { .. } => "Ptr".to_string(),
             TypedValue::FallibleStr { .. } => "String".to_string(),
             TypedValue::FallibleStruct { .. } => "Struct".to_string(),
@@ -509,7 +509,6 @@ impl<'ctx> TypedValue<'ctx> {
             }
             TypedValue::Struct(_, ty) => (*ty).into(),
             TypedValue::Enum(_, ty, ..) => (*ty).into(),
-            TypedValue::Nullable(_, ty) => *ty,
             TypedValue::Unit => cg.i64_ty().into(),
             TypedValue::Int(_) => cg.i64_ty().into(),
             TypedValue::Float(_) => cg.f64_ty().into(),
@@ -520,6 +519,7 @@ impl<'ctx> TypedValue<'ctx> {
             TypedValue::Task(_) | TypedValue::Stream(_) => cg.ptr_ty().into(),
             TypedValue::LazyList(_) => cg.lazylist_type.into(),
             TypedValue::FallibleInt { .. } => cg.i64_ty().into(),
+            TypedValue::FallibleFloat { .. } => cg.f64_ty().into(),
             TypedValue::FalliblePtr { .. } => cg.ptr_ty().into(),
             TypedValue::FallibleStr { .. } => cg.string_type.into(),
             TypedValue::FallibleStruct { ty, .. } => (*ty).into(),
@@ -537,7 +537,6 @@ impl<'ctx> TypedValue<'ctx> {
             TypedValue::LazyList(_) => cg.lazylist_type.into(),
             TypedValue::Struct(_, ty) => (*ty).into(),
             TypedValue::Enum(_, ty, ..) => (*ty).into(),
-            TypedValue::Nullable(_, ty) => *ty,
             TypedValue::Bool(_) => cg.i64_ty().into(),
             TypedValue::Int(_) => cg.i64_ty().into(),
             TypedValue::Float(_) => cg.f64_ty().into(),
@@ -548,6 +547,7 @@ impl<'ctx> TypedValue<'ctx> {
                 cg.ptr_ty().into()
             }
             TypedValue::FallibleInt { .. } => cg.i64_ty().into(),
+            TypedValue::FallibleFloat { .. } => cg.f64_ty().into(),
             TypedValue::FalliblePtr { .. } => cg.ptr_ty().into(),
             TypedValue::FallibleStr { .. } => cg.string_type.into(),
             TypedValue::FallibleStruct { ty, .. } => (*ty).into(),
@@ -572,9 +572,9 @@ impl<'ctx> TypedValue<'ctx> {
             TypedValue::FileHandle(_) => ValKind::FileHandle,
             TypedValue::Struct(_, _) => ValKind::Struct,
             TypedValue::Enum(..) => ValKind::Enum,
-            TypedValue::Nullable(_, _) => ValKind::Nullable,
             TypedValue::Unit => ValKind::Unit,
             TypedValue::FallibleInt { .. } => ValKind::Int,
+            TypedValue::FallibleFloat { .. } => ValKind::Float,
             TypedValue::FalliblePtr { .. } => ValKind::Ptr,
             TypedValue::FallibleStr { .. } => ValKind::Str,
             TypedValue::FallibleStruct { .. } => ValKind::Struct,

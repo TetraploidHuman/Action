@@ -171,7 +171,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .build_extract_value(result_struct, 1, "ok")
                             .map_err(llvm_err)?
                             .into_int_value();
-                        self.build_nullable_int(val, ok)
+                        self.build_fallible_int_from_ok(val, ok)
                     }
                     _ => Err("parseInt: argument must be a string".to_string()),
                 }
@@ -379,7 +379,7 @@ impl<'ctx> CodeGen<'ctx> {
                                 "found",
                             )
                             .map_err(llvm_err)?;
-                        self.build_nullable_int(result, found)
+                        self.build_fallible_int_from_ok(result, found)
                     }
                     // indexOf(substring, string) -> Option<Int>
                     (TypedValue::Str(sp1), TypedValue::Str(sp2)) => {
@@ -398,7 +398,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .builder
                             .build_int_compare(IntPredicate::NE, result, neg_one, "found")
                             .map_err(llvm_err)?;
-                        self.build_nullable_int(result, found)
+                        self.build_fallible_int_from_ok(result, found)
                     }
                     _ => Err(
                         "indexOf: first arg must be (element, list) or (substring, string)"
@@ -439,8 +439,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .builder
                             .build_int_compare(IntPredicate::ULE, iv, max_cp, "valid_cp")
                             .map_err(llvm_err)?;
-                        let valid = self.build_nullable_int(iv, in_range);
-                        valid
+                        self.build_fallible_int_from_ok(iv, in_range)
                     }
                     _ => Err("toChar: argument must be an Int".to_string()),
                 }
