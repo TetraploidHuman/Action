@@ -1094,6 +1094,25 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_store(var_ptr, loaded)
                     .map_err(llvm_err)?;
             }
+            TypedValue::Fn(fn_ptr, fn_type) => {
+                self.builder
+                    .build_store(var_ptr, *fn_ptr)
+                    .map_err(llvm_err)?;
+                self.scope.set_fn_type(name, Some(*fn_type));
+            }
+            TypedValue::Closure {
+                fn_ptr,
+                actual_fn_type,
+                closure_ptr,
+                closure_ty,
+                ..
+            } => {
+                self.builder
+                    .build_store(var_ptr, *closure_ptr)
+                    .map_err(llvm_err)?;
+                self.scope
+                    .set_closure_info(name, *closure_ty, *fn_ptr, *actual_fn_type);
+            }
             _ => {
                 if let Some(bv) = v.to_bv() {
                     self.builder.build_store(var_ptr, bv).map_err(llvm_err)?;

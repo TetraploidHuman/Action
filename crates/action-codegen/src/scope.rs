@@ -233,6 +233,21 @@ impl<'ctx> Scope<'ctx> {
             var.closure_ty = Some(closure_ty);
             var.closure_fn_ptr = Some(closure_fn_ptr);
             var.actual_fn_type = Some(actual_fn_type);
+            var.fn_type = None;
+        }
+    }
+
+    pub(crate) fn set_fn_type(
+        &mut self,
+        name: &str,
+        fn_type: Option<FunctionType<'ctx>>,
+    ) {
+        if let Some(var) = self.variables.get_mut(name) {
+            var.fn_type = fn_type;
+            var.is_closure = false;
+            var.closure_ty = None;
+            var.closure_fn_ptr = None;
+            var.actual_fn_type = None;
         }
     }
 

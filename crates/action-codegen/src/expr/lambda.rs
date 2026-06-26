@@ -117,8 +117,25 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_alloca(loaded.get_type(), name)
                         .map_err(llvm_err)?;
                     self.builder.build_store(alloca, loaded).map_err(llvm_err)?;
-                    self.scope
-                        .set(name.clone(), alloca, loaded.get_type(), cap_kind);
+                    if let Some(sv) = saved_scope.get(name) {
+                        self.scope.set_with_fn_type(
+                            name.clone(),
+                            alloca,
+                            loaded.get_type(),
+                            cap_kind,
+                            sv.fn_type,
+                        );
+                        if sv.is_closure {
+                            if let (Some(ct), Some(cfp), Some(aft)) =
+                                (sv.closure_ty, sv.closure_fn_ptr, sv.actual_fn_type)
+                            {
+                                self.scope.set_closure_info(name, ct, cfp, aft);
+                            }
+                        }
+                    } else {
+                        self.scope
+                            .set(name.clone(), alloca, loaded.get_type(), cap_kind);
+                    }
                 }
             }
         }

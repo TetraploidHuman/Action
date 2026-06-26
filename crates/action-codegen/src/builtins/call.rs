@@ -46,84 +46,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if !args.is_empty() {
                     return Err("list.head expects 0 arguments".to_string());
                 }
-                let len = self.list_len_val(lv)?;
-                let empty = self
-                    .builder
-                    .build_int_compare(IntPredicate::EQ, len, zero, "empty")
-                    .map_err(llvm_err)?;
-                let nullable_ty = self.get_nullable_type(self.i64_ty().into(), "Nullable<Int>");
-                let current_fn = self
-                    .builder
-                    .get_insert_block()
-                    .and_then(|b| b.get_parent())
-                    .ok_or("no fn")?;
-                let some_bb = self
-                    .context
-                    .append_basic_block(current_fn, "ufcs_head_some");
-                let none_bb = self
-                    .context
-                    .append_basic_block(current_fn, "ufcs_head_none");
-                let merge_bb = self
-                    .context
-                    .append_basic_block(current_fn, "ufcs_head_merge");
-                let _ = self
-                    .builder
-                    .build_conditional_branch(empty, none_bb, some_bb);
-                self.builder.position_at_end(some_bb);
-                let elem = self.call_rt("action_list_get", &[lv.into(), zero.into()])?;
-                let elem_tag = elem
-                    .try_as_basic_value()
-                    .basic()
-                    .ok_or("get failed")?
-                    .into_struct_value();
-                let elem_tag = self
-                    .builder
-                    .build_extract_value(elem_tag, 0, "elem_tag")
-                    .map_err(llvm_err)?;
-                let some_struct = {
-                    let undef = nullable_ty.get_undef();
-                    let r1 = self
-                        .builder
-                        .build_insert_value(
-                            undef,
-                            self.null_flag_ty().const_int(0, false),
-                            0,
-                            "s_flag",
-                        )
-                        .map_err(llvm_err)?;
-                    self.builder
-                        .build_insert_value(r1, elem_tag, 1, "s_val")
-                        .map_err(llvm_err)?
-                };
-                let _ = self.builder.build_unconditional_branch(merge_bb);
-                self.builder.position_at_end(none_bb);
-                let none_struct = {
-                    let undef = nullable_ty.get_undef();
-                    self.builder
-                        .build_insert_value(
-                            undef,
-                            self.null_flag_ty().const_int(1, false),
-                            0,
-                            "n_flag",
-                        )
-                        .map_err(llvm_err)?
-                };
-                let _ = self.builder.build_unconditional_branch(merge_bb);
-                self.builder.position_at_end(merge_bb);
-                let phi = self
-                    .builder
-                    .build_phi(nullable_ty, "ufcs_head_result")
-                    .map_err(llvm_err)?;
-                phi.add_incoming(&[(&some_struct, some_bb), (&none_struct, none_bb)]);
-                let alloca = self
-                    .builder
-                    .build_alloca(nullable_ty, "ufcs_head")
-                    .map_err(llvm_err)?;
-                self.builder
-                    .build_store(alloca, phi.as_basic_value())
-                    .map_err(llvm_err)?;
                 self.rc_free_intermediate(recv_val)?;
-                Ok(Some(TypedValue::Nullable(alloca, nullable_ty.into())))
+                self.compile_head_fallible_on_list_ptr(lp).map(Some)
             }
             "tail" => {
                 if !args.is_empty() {
@@ -262,7 +186,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_int_compare(IntPredicate::SGE, result, zero, "found")
                     .map_err(llvm_err)?;
                 self.rc_free_intermediate(recv_val)?;
-                self.build_nullable_int(result, found).map(Some)
+                self.build_fallible_int_from_ok(result, found).map(Some)
             }
             "last" => {
                 if !args.is_empty() {

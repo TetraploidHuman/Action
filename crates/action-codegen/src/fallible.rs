@@ -333,6 +333,124 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
+    pub(crate) fn build_fallible_int_from_ok(
+        &mut self,
+        val: IntValue<'ctx>,
+        is_ok: IntValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let ok_i1 = self.ok_i1(is_ok)?;
+        self.branch_to_fail_if(ok_i1)?;
+        Ok(TypedValue::FallibleInt { val, ok: ok_i1 })
+    }
+
+    pub(crate) fn build_fallible_str_from_found_flag(
+        &mut self,
+        fat_alloca: PointerValue<'ctx>,
+        found_flag_a: PointerValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let is_found = self
+            .builder
+            .build_load(self.bool_ty(), found_flag_a, "ff")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let ok_i1 = self.ok_i1(is_found)?;
+        self.branch_to_fail_if(ok_i1)?;
+        Ok(TypedValue::FallibleStr {
+            val: fat_alloca,
+            ok: ok_i1,
+        })
+    }
+
+    pub(crate) fn compile_head_fallible_on_list_ptr(
+        &mut self,
+        lp: PointerValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let list_val = self.load_list(lp)?;
+        let len = self
+            .builder
+            .build_extract_value(list_val, 1, "len")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let zero = self.i64_ty().const_int(0, false);
+        let not_empty = self
+            .builder
+            .build_int_compare(IntPredicate::NE, len, zero, "not_empty")
+            .map_err(llvm_err)?;
+        self.branch_to_fail_if(not_empty)?;
+        let elem = self.call_rt("action_list_get", &[list_val.into(), zero.into()])?;
+        let tag = self
+            .builder
+            .build_extract_value(
+                elem.try_as_basic_value()
+                    .basic()
+                    .ok_or("get failed")?
+                    .into_struct_value(),
+                0,
+                "tag",
+            )
+            .map_err(llvm_err)?
+            .into_int_value();
+        Ok(TypedValue::FallibleInt {
+            val: tag,
+            ok: not_empty,
+        })
+    }
+
+    pub(crate) fn compile_find_fallible_call(
+        &mut self,
+        list_arg: CallArg<'_>,
+        fn_arg: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let list_val = self.compile_call_arg(list_arg)?;
+        let list_ptr = match list_val {
+            TypedValue::List(p) => p,
+            _ => return Err("find: argument must be a list".to_string()),
+        };
+        let fn_val = self.compile_call_arg(fn_arg)?;
+        self.find_on_list_ptr(list_ptr, fn_val)
+    }
+
+    pub(crate) fn compile_find_index_fallible_call(
+        &mut self,
+        list_arg: CallArg<'_>,
+        fn_arg: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let list_val = self.compile_call_arg(list_arg)?;
+        let list_ptr = match list_val {
+            TypedValue::List(p) => p,
+            _ => return Err("findIndex: argument must be a list".to_string()),
+        };
+        let fn_val = self.compile_call_arg(fn_arg)?;
+        self.find_index_on_list_ptr(list_ptr, fn_val)
+    }
+
+    pub(crate) fn compile_list_index_of_fallible(
+        &mut self,
+        list_arg: CallArg<'_>,
+        elem_arg: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let list_val = self.compile_call_arg(list_arg)?;
+        let list_ptr = match list_val {
+            TypedValue::List(p) => p,
+            _ => return Err("indexOf: argument must be a list".to_string()),
+        };
+        let elem_val = self.compile_call_arg(elem_arg)?;
+        let fat = self.to_fat_struct(&elem_val)?;
+        let lv = self.load_list(list_ptr)?;
+        let cc = self.call_rt("action_list_index_of", &[lv.into(), fat.into()])?;
+        let result = cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("indexOf failed")?
+            .into_int_value();
+        let zero = self.i64_ty().const_zero();
+        let found = self
+            .builder
+            .build_int_compare(IntPredicate::SGE, result, zero, "found")
+            .map_err(llvm_err)?;
+        self.build_fallible_int_from_ok(result, found)
+    }
+
     pub(crate) fn compile_to_int_fallible_call(
         &mut self,
         arg: CallArg<'_>,
@@ -381,25 +499,45 @@ impl<'ctx> CodeGen<'ctx> {
         let v = self.compile_call_arg(arg)?;
         match v {
             TypedValue::List(lp) | TypedValue::LazyList(lp) => {
+                self.compile_head_fallible_on_list_ptr(lp)
+            }
+            _ => Err("head: argument must be a list".to_string()),
+        }
+    }
+
+    pub(crate) fn compile_last_fallible(
+        &mut self,
+        arg: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let v = self.compile_call_arg(arg)?;
+        match v {
+            TypedValue::List(lp) | TypedValue::LazyList(lp) => {
                 let list_val = self.load_list(lp)?;
                 let len = self
                     .builder
                     .build_extract_value(list_val, 1, "len")
                     .map_err(llvm_err)?
                     .into_int_value();
-                let zero = self.i64_ty().const_int(0, false);
+                let zero = self.i64_ty().const_zero();
                 let not_empty = self
                     .builder
-                    .build_int_compare(IntPredicate::NE, len, zero, "not_empty")
+                    .build_int_compare(IntPredicate::SGT, len, zero, "not_empty")
                     .map_err(llvm_err)?;
                 self.branch_to_fail_if(not_empty)?;
-                let elem = self.call_rt("action_list_get", &[list_val.into(), zero.into()])?;
+                let last_idx = self
+                    .builder
+                    .build_int_sub(len, self.i64_ty().const_int(1, false), "last_idx")
+                    .map_err(llvm_err)?;
+                let elem = self.call_rt(
+                    "action_list_get",
+                    &[list_val.into(), last_idx.into()],
+                )?;
                 let tag = self
                     .builder
                     .build_extract_value(
                         elem.try_as_basic_value()
                             .basic()
-                            .ok_or("get failed")?
+                            .ok_or("last get failed")?
                             .into_struct_value(),
                         0,
                         "tag",
@@ -411,7 +549,7 @@ impl<'ctx> CodeGen<'ctx> {
                     ok: not_empty,
                 })
             }
-            _ => Err("head: argument must be a list".to_string()),
+            _ => Err("last: argument must be a list".to_string()),
         }
     }
 
@@ -559,9 +697,49 @@ impl<'ctx> CodeGen<'ctx> {
             HirExprKind::Call {
                 func,
                 args,
-                trailing_lambda: None,
+                trailing_lambda,
                 ..
             } => {
+                let trailing_ca = trailing_lambda.as_ref().map(|l| CallArg::hir(l.as_ref()));
+                if let HirExprKind::FieldAccess(obj, method) = &func.kind {
+                    match method.as_str() {
+                        "get" if args.len() == 1 => {
+                            let idx_val = self.compile_call_arg(CallArg::hir(&args[0]))?;
+                            if let TypedValue::Int(iv) = idx_val {
+                                return self
+                                    .compile_list_index_fallible(CallArg::hir(obj), iv)
+                                    .map(Some);
+                            }
+                        }
+                        "last" if args.is_empty() => {
+                            return self.compile_last_fallible(CallArg::hir(obj)).map(Some);
+                        }
+                        "head" if args.is_empty() => {
+                            return self.compile_head_fallible(CallArg::hir(obj)).map(Some);
+                        }
+                        "indexOf" if args.len() == 1 => {
+                            return self
+                                .compile_list_index_of_fallible(
+                                    CallArg::hir(obj),
+                                    CallArg::hir(&args[0]),
+                                )
+                                .map(Some);
+                        }
+                        "find" if trailing_lambda.is_some() || args.len() == 1 => {
+                            let fn_arg = trailing_ca.unwrap_or(CallArg::hir(&args[0]));
+                            return self
+                                .compile_find_fallible_call(CallArg::hir(obj), fn_arg)
+                                .map(Some);
+                        }
+                        "findIndex" if trailing_lambda.is_some() || args.len() == 1 => {
+                            let fn_arg = trailing_ca.unwrap_or(CallArg::hir(&args[0]));
+                            return self
+                                .compile_find_index_fallible_call(CallArg::hir(obj), fn_arg)
+                                .map(Some);
+                        }
+                        _ => {}
+                    }
+                }
                 if let HirExprKind::Ident(name) = &func.kind {
                     if self
                         .fallibility
@@ -592,6 +770,48 @@ impl<'ctx> CodeGen<'ctx> {
                         "head" if args.len() == 1 => {
                             self.compile_head_fallible(CallArg::hir(&args[0])).map(Some)
                         }
+                        "last" if args.len() == 1 => {
+                            self.compile_last_fallible(CallArg::hir(&args[0])).map(Some)
+                        }
+                        "get" if args.len() == 2 => {
+                            let idx_val = self.compile_call_arg(CallArg::hir(&args[1]))?;
+                            if let TypedValue::Int(iv) = idx_val {
+                                return self
+                                    .compile_list_index_fallible(CallArg::hir(&args[0]), iv)
+                                    .map(Some);
+                            }
+                            Ok(None)
+                        }
+                        "indexOf" if args.len() == 2 => self
+                            .compile_list_index_of_fallible(
+                                CallArg::hir(&args[1]),
+                                CallArg::hir(&args[0]),
+                            )
+                            .map(Some),
+                        "find" if trailing_lambda.is_some() && args.len() == 1 => self
+                            .compile_find_fallible_call(
+                                CallArg::hir(&args[0]),
+                                trailing_ca.expect("find trailing lambda"),
+                            )
+                            .map(Some),
+                        "find" if args.len() == 2 => self
+                            .compile_find_fallible_call(
+                                CallArg::hir(&args[1]),
+                                CallArg::hir(&args[0]),
+                            )
+                            .map(Some),
+                        "findIndex" if trailing_lambda.is_some() && args.len() == 1 => self
+                            .compile_find_index_fallible_call(
+                                CallArg::hir(&args[0]),
+                                trailing_ca.expect("findIndex trailing lambda"),
+                            )
+                            .map(Some),
+                        "findIndex" if args.len() == 2 => self
+                            .compile_find_index_fallible_call(
+                                CallArg::hir(&args[1]),
+                                CallArg::hir(&args[0]),
+                            )
+                            .map(Some),
                         "readLine" if args.is_empty() => {
                             self.compile_read_line_fallible().map(Some)
                         }

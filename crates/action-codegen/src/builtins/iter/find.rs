@@ -60,7 +60,7 @@ impl<'ctx> CodeGen<'ctx> {
             self.builder
                 .build_store(found_flag_a, found_i64)
                 .map_err(crate::llvm_err)?;
-            return self.build_nullable_str(found_a, found_flag_a);
+            return self.build_fallible_str_from_found_flag(found_a, found_flag_a);
         }
         self.builtin_find_indexed(list_ptr, fn_ptr, fn_type, &fn_val)
     }
@@ -166,7 +166,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(chk);
         let _ = self.builder.build_unconditional_branch(hdr);
         self.builder.position_at_end(ext);
-        self.build_nullable_str(found_a, found_flag_a)
+        self.build_fallible_str_from_found_flag(found_a, found_flag_a)
     }
 
     pub(crate) fn builtin_find_indexed(
@@ -249,7 +249,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(chk);
         let _ = self.builder.build_unconditional_branch(hdr);
         self.builder.position_at_end(ext);
-        self.build_nullable_str(found_a, found_flag_a)
+        self.build_fallible_str_from_found_flag(found_a, found_flag_a)
     }
 
     /// findIndex(list, fn) on an already-compiled list alloca (UFCS fast path).
@@ -341,7 +341,7 @@ impl<'ctx> CodeGen<'ctx> {
                 "is_found",
             )
             .map_err(llvm_err)?;
-        self.build_nullable_int(found_idx, is_found)
+        self.build_fallible_int_from_ok(found_idx, is_found)
     }
 
     /// findIndex(list, fn) or findIndex(list) { lambda } -> Option<Int>
