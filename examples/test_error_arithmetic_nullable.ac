@@ -1,7 +1,0 @@
-// Error: arithmetic/bitwise operations on nullable operands
-fun maybe() -> Int? { null }
-
-fun main() {
-    val a = maybe()
-    val b = a + 1   // can't add nullable to Int
-}

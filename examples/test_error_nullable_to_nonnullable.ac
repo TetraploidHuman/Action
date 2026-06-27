@@ -1,3 +1,0 @@
-// Error: nullable used where non-nullable is expected (top-level check)
-val x: String = null
-fun main() { println(x) }

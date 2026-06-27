@@ -1,11 +1,12 @@
-// Nullable flow: or {}, when, safe chaining
+// Fallible flow: or {}, when, findIndex
+fun pred(x: Int) -> Bool { x == 2 }
+
 fun main() {
     val maybe = 42
     val n = maybe
     print(n)
 
-    val empty: Int? = null
-    val fallback = empty or { 7 }
+    val fallback = parseInt("nope") or { 7 }
     print(fallback)
 
     val tag = when {
@@ -16,8 +17,7 @@ fun main() {
     print(tag)
 
     val lst = List[1, 2, 3]
-    val idx = lst.findIndex { x -> x == 2 }
-    val found = idx or { -1 }
+    val found = lst.findIndex(pred) or { -1 }
     print(found)
     println("")
 }

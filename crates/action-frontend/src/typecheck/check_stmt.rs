@@ -59,12 +59,12 @@ impl TypeChecker {
             .or_else(|| Self::collection_kind_from_ast(obj))
     }
 
-    fn expr_is_fallible_or_nullable(&self, expr: &Expr) -> bool {
+    fn expr_is_fallible(&self, expr: &Expr) -> bool {
         match &expr.kind {
             ExprKind::Call { func, .. } => self.fallibility.call_expr_is_fallible(func),
             ExprKind::Index(_, _) => true,
             ExprKind::FieldAccess(_, _) => true,
-            ExprKind::OrBlock { nullable, .. } => self.expr_is_fallible_or_nullable(nullable),
+            ExprKind::OrBlock { fallible, .. } => self.expr_is_fallible(fallible),
             _ => false,
         }
     }
@@ -289,11 +289,10 @@ impl TypeChecker {
             ExprKind::Unsafe(inner) => {
                 self.collect_expr_errors(inner, errors);
             }
-            ExprKind::Null => {}
-            ExprKind::OrBlock { nullable, fallback } => {
-                let lhs_ty = self.try_infer_expr_type(nullable);
+            ExprKind::OrBlock { fallible, fallback } => {
+                let lhs_ty = self.try_infer_expr_type(fallible);
                 let fb_ty = self.try_infer_expr_type(fallback);
-                if !self.expr_is_fallible_or_nullable(nullable) {
+                if !self.expr_is_fallible(fallible) {
                     if let Some(err) = self.fallibility.check_r7_or_unnecessary(self.current_span) {
                         errors.push(err);
                     }
@@ -307,7 +306,7 @@ impl TypeChecker {
                 }
                 let saved = self.fallibility.in_or_block;
                 self.fallibility.in_or_block = true;
-                self.collect_expr_errors(nullable, errors);
+                self.collect_expr_errors(fallible, errors);
                 self.fallibility.in_or_block = saved;
                 self.collect_expr_errors(fallback, errors);
             }

@@ -1,4 +1,4 @@
-// Test readLine with multiple piped inputs using nullable types
+// Test readLine with multiple piped inputs (fallible; use or { } on EOF)
 fun main() {
     var running = true
     for running {

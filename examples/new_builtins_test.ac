@@ -21,14 +21,9 @@ fun main() {
     print(len(lines))
     println("")
 
-    // Test indexOf (String) - signature is indexOf(needle, haystack)
-    print("indexOf: ")
-    print(indexOf("world", "hello world") or { -1 })
-    println("")
-
-    print("indexOf not found: ")
-    print(indexOf("xyz", "hello") or { -1 })
-    println("")
+    // Test indexOf (fallible when not found)
+    print("indexOf(3, xs): ")
+    println(indexOf(xs, 3) or { -1 })
 
     println("done")
 }

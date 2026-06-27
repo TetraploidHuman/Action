@@ -1,0 +1,4 @@
+fun main() {
+    val c = toChar(65)
+    println(c)
+}

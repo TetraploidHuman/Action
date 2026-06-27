@@ -295,7 +295,6 @@ impl<'ctx> CodeGen<'ctx> {
         match &expr.kind {
             HirExprKind::Literal(lit) => self.compile_literal(lit),
             HirExprKind::Ident(name) => self.compile_ident(name),
-            HirExprKind::Null => self.compile_null(),
             HirExprKind::Continue => {
                 if let Some(target) = self.continue_target {
                     self.builder
@@ -337,7 +336,7 @@ impl<'ctx> CodeGen<'ctx> {
             HirExprKind::Index(obj, idx) => self.compile_index_hir(obj, idx),
             HirExprKind::Range(start, end) => self.compile_range_hir(start, end),
             HirExprKind::Tuple(items) => self.compile_tuple_hir(items),
-            HirExprKind::OrBlock { nullable, fallback } => self.compile_or_block_hir(nullable, fallback),
+            HirExprKind::OrBlock { fallible, fallback } => self.compile_or_block_hir(fallible, fallback),
             HirExprKind::Copy(inner) => {
                 let val = self.compile_hir_expr(inner)?;
                 self.compile_copy_value(val)

@@ -446,9 +446,6 @@ impl<'ctx> CodeGen<'ctx> {
         match &expr.kind {
             HirExprKind::Literal(lit) => self.compile_literal(lit),
             HirExprKind::Ident(name) => self.compile_ident(name),
-            HirExprKind::Null => {
-                Err("E010: null is not supported; use `or { }` for fallible expressions".to_string())
-            }
             HirExprKind::Continue => self.compile_hir_continue(),
             HirExprKind::Break => self.compile_hir_break(),
             HirExprKind::FunctionRef(name) => self.compile_function_ref(name),
@@ -479,8 +476,8 @@ impl<'ctx> CodeGen<'ctx> {
             HirExprKind::Index(obj, idx) => self.compile_hir_index(obj, idx),
             HirExprKind::Range(start, end) => self.compile_hir_range(start, end),
             HirExprKind::Tuple(items) => self.compile_hir_tuple(items),
-            HirExprKind::OrBlock { nullable, fallback } => {
-                self.compile_hir_or_block(nullable, fallback)
+            HirExprKind::OrBlock { fallible, fallback } => {
+                self.compile_hir_or_block(fallible, fallback)
             }
             HirExprKind::Copy(inner) => {
                 let val = self.compile_hir_expr(inner)?;

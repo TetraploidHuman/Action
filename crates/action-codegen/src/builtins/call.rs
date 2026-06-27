@@ -73,6 +73,29 @@ impl<'ctx> CodeGen<'ctx> {
                 self.rc_free_intermediate(recv_val)?;
                 self.build_fallible_list_from_not_empty(alloca, is_empty).map(Some)
             }
+            "init" => {
+                if !args.is_empty() {
+                    return Err("list.init expects 0 arguments".to_string());
+                }
+                let len = self.list_len_val(lv)?;
+                let is_empty = self
+                    .builder
+                    .build_int_compare(IntPredicate::EQ, len, zero, "empty")
+                    .map_err(llvm_err)?;
+                let cc = self.call_rt("action_list_init", &[lv.into()])?;
+                let result = cc
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("init failed")?
+                    .into_struct_value();
+                let alloca = self
+                    .builder
+                    .build_alloca(self.list_type, "ufcs_init")
+                    .map_err(llvm_err)?;
+                self.builder.build_store(alloca, result).map_err(llvm_err)?;
+                self.rc_free_intermediate(recv_val)?;
+                self.build_fallible_list_from_not_empty(alloca, is_empty).map(Some)
+            }
             "get" => {
                 if args.len() != 1 {
                     return Err("list.get expects 1 argument".to_string());

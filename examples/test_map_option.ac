@@ -1,6 +1,6 @@
-// Test Map with nullable types — get "a" value, default 0 for missing
+// Test Map get via UFCS and index fallible access
 fun main() {
-    val m = Map["a": 42]
-    val a = m["a"] or { 0 }
-    print(a)
+    val scores = Map["alice": 100, "bob": 90]
+    println(scores.get("alice") or { 0 })
+    println(scores.get("eve") or { -1 })
 }

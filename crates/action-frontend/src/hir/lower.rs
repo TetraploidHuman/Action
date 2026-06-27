@@ -270,9 +270,8 @@ impl<'a> Lowerer<'a> {
                     .map(|(n, e)| (n.clone(), self.lower_expr(e)))
                     .collect(),
             ),
-            ExprKind::Null => HirExprKind::Null,
-            ExprKind::OrBlock { nullable, fallback } => HirExprKind::OrBlock {
-                nullable: Box::new(self.lower_expr(nullable)),
+            ExprKind::OrBlock { fallible, fallback } => HirExprKind::OrBlock {
+                fallible: Box::new(self.lower_expr(fallible)),
                 fallback: Box::new(self.lower_expr(fallback)),
             },
             ExprKind::Assign { target, value } => HirExprKind::Assign {
@@ -356,7 +355,6 @@ impl<'a> Lowerer<'a> {
             Pattern::IsType(n) => HirPattern::IsType(n.clone()),
             Pattern::Or(ps) => HirPattern::Or(ps.iter().map(|p| self.lower_pattern(p)).collect()),
             Pattern::Expr(e) => HirPattern::Expr(Box::new(self.lower_expr(e))),
-            Pattern::Null => HirPattern::Null,
             Pattern::Tuple(ps) => {
                 HirPattern::Tuple(ps.iter().map(|p| self.lower_pattern(p)).collect())
             }

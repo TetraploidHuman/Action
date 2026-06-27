@@ -452,7 +452,6 @@ fn type_to_detail(ty: &Type) -> String {
         Type::CString => "CString".to_string(),
         Type::Ptr(t) => format!("Ptr<{}>", type_to_detail(t)),
         Type::FileHandle => "FileHandle".to_string(),
-        Type::Nullable(t) => format!("{}?", type_to_detail(t)),
         Type::TypeVar(name) => name.clone(),
         Type::InferVar(id) => format!("?{}", id),
         Type::Unit => "()".to_string(),
@@ -583,12 +582,6 @@ mod tests {
             vec![Type::Named("Int".into())],
         );
         assert_eq!(type_to_detail(&ty), "List[Int]");
-    }
-
-    #[test]
-    fn test_type_to_detail_nullable() {
-        let ty = Type::Nullable(Box::new(Type::Named("String".into())));
-        assert_eq!(type_to_detail(&ty), "String?");
     }
 
     #[test]

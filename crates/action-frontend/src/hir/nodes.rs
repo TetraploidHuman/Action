@@ -164,9 +164,9 @@ pub enum HirExprKind {
     Index(Box<HirExpr>, Box<HirExpr>),
     Range(Box<HirExpr>, Box<HirExpr>),
     Tuple(Vec<(Option<String>, HirExpr)>),
-    Null,
     OrBlock {
-        nullable: Box<HirExpr>,
+        #[serde(alias = "nullable")]
+        fallible: Box<HirExpr>,
         fallback: Box<HirExpr>,
     },
     Assign {
@@ -229,7 +229,6 @@ pub enum HirPattern {
     IsType(String),
     Or(Vec<HirPattern>),
     Expr(Box<HirExpr>),
-    Null,
     Tuple(Vec<HirPattern>),
 }
 

@@ -84,26 +84,6 @@ pub(crate) fn dot_member_items(
     let mut items = Vec::new();
     let mut seen = std::collections::HashSet::new();
 
-    if let Type::Nullable(inner) = receiver_type {
-        if "or".starts_with(prefix) {
-            items.push(CompletionItem {
-                label: "or".to_string(),
-                detail: Some("or { fallback } -> T".to_string()),
-                kind: Some(CompletionItemKind::METHOD),
-                ..Default::default()
-            });
-        }
-        items.extend(dot_member_items(
-            inner,
-            prefix,
-            type_env,
-            stdlib_type_env,
-            file_registry,
-            stdlib_registry,
-        ));
-        return items;
-    }
-
     if let Some(kind) = receiver_kind_from_type(receiver_type) {
         for def in ufcs_methods_for_kind(kind) {
             if def.name.starts_with(prefix) && seen.insert(def.name.to_string()) {

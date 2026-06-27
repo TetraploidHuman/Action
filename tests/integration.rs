@@ -431,7 +431,7 @@ fn test_lambda_capture() {
 
 #[test]
 fn test_map_option() {
-    assert_eq!(run_example("test_map_option.ac"), "42");
+    assert_eq!(run_example("test_map_option.ac"), "100\n-1\n");
 }
 
 #[test]
@@ -699,7 +699,7 @@ fn test_higher_order() {
 
 
 
-// ---- Comprehensive nullable type system tests ----
+// ---- Fallible (or {}) tests ----
 
 
 
@@ -713,6 +713,45 @@ fn test_higher_order() {
 fn test_fallible_or_default() {
     // R7 fallible or-block: toInt succeeds or falls back
     assert_eq!(run_example("test_fallible_or_default.ac"), "42\n-1\n");
+}
+
+#[test]
+fn test_fallible_builtin_returns() {
+    assert_eq!(
+        run_example("test_fallible_builtin_returns.ac"),
+        "tail([1,2,3]) len: 2\n\
+         init([1,2,3]) len: 2\n\
+         tail([]) fallback len: 0\n\
+         toInt('42'): 42\n\
+         toInt('abc') fallback: -999\n\
+         parseInt('123'): 123\n\
+         parseInt('not_a_number') fallback: -999\n\
+         done\n"
+    );
+}
+
+#[test]
+fn test_tutorial() {
+    let out = run_example("tutorial.ac");
+    assert!(out.contains("=== Tutorial Complete ==="));
+}
+
+#[test]
+fn test_find_index_pred() {
+    assert_eq!(run_example("find_index_pred.ac"), "1\n1\n");
+}
+
+#[test]
+fn test_complex_fallible_when() {
+    assert_eq!(run_example("complex_fallible_when.ac"), "427high1\n");
+}
+
+#[test]
+fn test_new_builtins_test() {
+    assert_eq!(
+        run_example("new_builtins_test.ac"),
+        "tail len: 3\nzip len: 3\nlines count: 3\nindexOf(3, xs): 2\ndone\n"
+    );
 }
 
 #[test]
@@ -856,6 +895,36 @@ fn test_error_e001_fallible_needs_or() {
 }
 
 #[test]
+fn test_error_e001_toFloat() {
+    assert_compile_error_code("test_error_e001_toFloat.ac", "E001");
+}
+
+#[test]
+fn test_error_e001_toChar() {
+    assert_compile_error_code("test_error_e001_toChar.ac", "E001");
+}
+
+#[test]
+fn test_error_e001_lazyHead() {
+    assert_compile_error_code("test_error_e001_lazyHead.ac", "E001");
+}
+
+#[test]
+fn test_error_e001_withTimeout() {
+    assert_compile_error_code("test_error_e001_withTimeout.ac", "E001");
+}
+
+#[test]
+fn test_fallible_reduce_or() {
+    assert_eq!(run_example("test_fallible_reduce_or.ac"), "6\n-1\n");
+}
+
+#[test]
+fn test_error_e001_reduce() {
+    assert_compile_error_code("test_error_e001_reduce.ac", "E001");
+}
+
+#[test]
 fn test_error_e002_or_type_mismatch() {
     assert_compile_error_code("test_error_e002_or_type.ac", "E002");
 }
@@ -908,7 +977,7 @@ fn test_error_arg_count() {
 }
 
 // ============================================================
-// Compile-error tests — nullable type system rejects bad code
+// Compile-error tests — fallible / removed nullable syntax
 // ============================================================
 
 
@@ -1371,7 +1440,7 @@ fn test_assert() {
     );
 }
 
-// ---- Complex regression (CoW, Map cascade, UFCS chains, fused iter, nullable, concat) ----
+// ---- Complex regression (CoW, Map cascade, UFCS chains, fused iter, concat) ----
 
 #[test]
 fn test_complex_cow_persist() {

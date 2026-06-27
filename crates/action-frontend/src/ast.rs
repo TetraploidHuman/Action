@@ -36,8 +36,6 @@ pub enum Type {
     FileHandle,
     /// Unit type: ()
     Unit,
-    /// Reserved for HIR round-trip; user `T?` is parser-rejected (E011).
-    Nullable(Box<Type>),
 }
 
 impl fmt::Display for Type {
@@ -85,7 +83,6 @@ impl fmt::Display for Type {
             Type::Ptr(t) => write!(f, "Ptr<{}>", t),
             Type::FileHandle => write!(f, "FileHandle"),
             Type::Unit => write!(f, "()"),
-            Type::Nullable(inner) => write!(f, "{}?", inner),
         }
     }
 }
@@ -125,7 +122,6 @@ pub fn resolve_type_vars(ty: &Type, type_map: &HashMap<String, Type>) -> Type {
         Type::Task(t) => Type::Task(Box::new(resolve_type_vars(t, type_map))),
         Type::Stream(s) => Type::Stream(Box::new(resolve_type_vars(s, type_map))),
         Type::LazyList(l) => Type::LazyList(Box::new(resolve_type_vars(l, type_map))),
-        Type::Nullable(inner) => Type::Nullable(Box::new(resolve_type_vars(inner, type_map))),
         Type::Unit | Type::CString | Type::FileHandle | Type::Ptr(_) => ty.clone(),
     }
 }
@@ -265,8 +261,6 @@ pub enum Pattern {
     Or(Vec<Pattern>),
     /// Expression as condition (for when-condition chains): x < 0
     Expr(Box<Expr>),
-    /// Null literal pattern: null
-    Null,
     /// Tuple pattern: (x, _), (a, b, c)
     Tuple(Vec<Pattern>),
 }
@@ -316,7 +310,6 @@ impl fmt::Display for Pattern {
                 Ok(())
             }
             Pattern::Expr(e) => write!(f, "{}", e),
-            Pattern::Null => write!(f, "null"),
             Pattern::Tuple(patterns) => {
                 write!(f, "(")?;
                 for (i, p) in patterns.iter().enumerate() {
@@ -377,11 +370,9 @@ pub enum ExprKind {
     Range(Box<Expr>, Box<Expr>),
     /// Tuple: (expr, expr, ...) or named: (name: expr, ...)
     Tuple(Vec<(Option<String>, Expr)>),
-    /// Null literal: null
-    Null,
-    /// Nullable fallback: expr or { block }
+    /// Fallible fallback: expr or { block }
     OrBlock {
-        nullable: Box<Expr>,
+        fallible: Box<Expr>,
         fallback: Box<Expr>,
     },
     /// Assignment: x = value
@@ -423,7 +414,7 @@ impl Expr {
 impl Default for Expr {
     fn default() -> Self {
         Expr {
-            kind: ExprKind::Null,
+            kind: ExprKind::Literal(Literal::Int(0)),
             span: Span::default(),
         }
     }
@@ -618,9 +609,8 @@ impl fmt::Display for Expr {
                 }
                 write!(f, ")")
             }
-            ExprKind::Null => write!(f, "null"),
-            ExprKind::OrBlock { nullable, fallback } => {
-                write!(f, "({} or {{ {} }})", nullable, fallback)
+            ExprKind::OrBlock { fallible, fallback } => {
+                write!(f, "({} or {{ {} }})", fallible, fallback)
             }
             ExprKind::Assign { target, value } => write!(f, "{} = {}", target, value),
             ExprKind::StringInterpolate(parts) => {

@@ -1,0 +1,26 @@
+// Fallible builtins: tail, init, toInt, parseInt
+fun main() {
+    val lst = List[1, 2, 3]
+    val empty = List[]
+
+    print("tail([1,2,3]) len: ")
+    println(len(tail(lst) or { List[] }))
+
+    print("init([1,2,3]) len: ")
+    println(len(init(lst) or { List[] }))
+
+    print("tail([]) fallback len: ")
+    println(len(tail(empty) or { List[] }))
+
+    print("toInt('42'): ")
+    println(toInt("42") or { -1 })
+    print("toInt('abc') fallback: ")
+    println(toInt("abc") or { -999 })
+
+    print("parseInt('123'): ")
+    println(parseInt("123") or { -1 })
+    print("parseInt('not_a_number') fallback: ")
+    println(parseInt("not_a_number") or { -999 })
+
+    println("done")
+}

@@ -192,7 +192,7 @@ impl<'ctx> CodeGen<'ctx> {
                 ("String", "contains") => "action_string_contains",
                 ("String", "toInt") | ("String", "toFloat") => {
                     return Err(format!(
-                        "::{}::{} cannot be used as a function reference (nullable parse result)",
+                        "::{}::{} cannot be used as a function reference (fallible parse result)",
                         type_name, method
                     ));
                 }

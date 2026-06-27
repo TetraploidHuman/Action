@@ -251,7 +251,11 @@ impl<'ctx> CodeGen<'ctx> {
         if args.len() != 4 {
             return Err("httpRequest expects 4 arguments".to_string());
         }
-        let v = self.builtin_http_request_call_args(args[0], args[1], args[2], args[3])?;
+        let method_val = self.compile_call_arg(args[0])?;
+        let url_val = self.compile_call_arg(args[1])?;
+        let headers_val = self.compile_call_arg(args[2])?;
+        let body_val = self.compile_call_arg(args[3])?;
+        let v = self.builtin_http_request_values(method_val, url_val, headers_val, body_val)?;
         let TypedValue::Struct(ptr, ty) = v else {
             return Err("httpRequest: expected HttpResponse struct".to_string());
         };
@@ -435,7 +439,7 @@ impl<'ctx> CodeGen<'ctx> {
         let not_empty = self
             .builder
             .build_int_compare(
-                IntPredicate::NE,
+                IntPredicate::EQ,
                 is_empty,
                 self.bool_ty().const_zero(),
                 "not_empty",
@@ -468,7 +472,7 @@ impl<'ctx> CodeGen<'ctx> {
         let v1 = self.compile_call_arg(needle_arg)?;
         let v2 = self.compile_call_arg(haystack_arg)?;
         match (&v1, &v2) {
-            (elem, TypedValue::List(lp)) => {
+            (TypedValue::List(lp), elem) | (elem, TypedValue::List(lp)) => {
                 let lv = self.load_list(*lp)?;
                 let fat = self.to_fat_struct(elem)?;
                 let cc = self.call_rt("action_list_index_of", &[lv.into(), fat.into()])?;
@@ -1136,6 +1140,16 @@ impl<'ctx> CodeGen<'ctx> {
                 if let HirExprKind::FieldAccess(obj, method) = &func.kind {
                     match method.as_str() {
                         "get" if args.len() == 1 => {
+                            if let Ok(recv) = self.compile_call_arg(CallArg::hir(obj)) {
+                                if matches!(recv, TypedValue::Map(_)) {
+                                    return self
+                                        .compile_map_index_fallible(
+                                            CallArg::hir(obj),
+                                            CallArg::hir(&args[0]),
+                                        )
+                                        .map(Some);
+                                }
+                            }
                             let idx_val = self.compile_call_arg(CallArg::hir(&args[0]))?;
                             if let TypedValue::Int(iv) = idx_val {
                                 return self
@@ -1167,16 +1181,46 @@ impl<'ctx> CodeGen<'ctx> {
                                 )
                                 .map(Some);
                         }
-                        "find" if trailing_lambda.is_some() || args.len() == 1 => {
-                            let fn_arg = trailing_ca.unwrap_or(CallArg::hir(&args[0]));
+                        "find" if trailing_lambda.is_some() => {
+                            let fn_arg = trailing_ca.expect("find trailing lambda");
                             return self
                                 .compile_find_fallible_call(CallArg::hir(obj), fn_arg)
                                 .map(Some);
                         }
-                        "findIndex" if trailing_lambda.is_some() || args.len() == 1 => {
-                            let fn_arg = trailing_ca.unwrap_or(CallArg::hir(&args[0]));
+                        "find" if args.len() == 1 => {
+                            return self
+                                .compile_find_fallible_call(
+                                    CallArg::hir(obj),
+                                    CallArg::hir(&args[0]),
+                                )
+                                .map(Some);
+                        }
+                        "findIndex" if trailing_lambda.is_some() => {
+                            let fn_arg = trailing_ca.expect("findIndex trailing lambda");
                             return self
                                 .compile_find_index_fallible_call(CallArg::hir(obj), fn_arg)
+                                .map(Some);
+                        }
+                        "findIndex" if args.len() == 1 => {
+                            return self
+                                .compile_find_index_fallible_call(
+                                    CallArg::hir(obj),
+                                    CallArg::hir(&args[0]),
+                                )
+                                .map(Some);
+                        }
+                        "reduce" if trailing_lambda.is_some() => {
+                            let fn_arg = trailing_ca.expect("reduce trailing lambda");
+                            return self
+                                .builtin_reduce(&[CallArg::hir(obj)], Some(fn_arg))
+                                .map(Some);
+                        }
+                        "reduce" if args.len() == 1 => {
+                            return self
+                                .builtin_reduce(
+                                    &[CallArg::hir(obj), CallArg::hir(&args[0])],
+                                    None,
+                                )
                                 .map(Some);
                         }
                         _ => {}
@@ -1288,6 +1332,24 @@ impl<'ctx> CodeGen<'ctx> {
                             let call_args: Vec<CallArg<'_>> =
                                 args.iter().map(CallArg::hir).collect();
                             self.compile_http_request_fallible(&call_args).map(Some)
+                        }
+                        "lazyHead" if args.len() == 1 => self
+                            .builtin_lazy_head_call_arg(CallArg::hir(&args[0]))
+                            .map(Some),
+                        "reduce" if trailing_lambda.is_some() && args.len() == 1 => {
+                            let call_args: Vec<CallArg<'_>> =
+                                args.iter().map(CallArg::hir).collect();
+                            self.builtin_reduce(&call_args, trailing_ca).map(Some)
+                        }
+                        "reduce" if args.len() == 2 => {
+                            let call_args: Vec<CallArg<'_>> =
+                                args.iter().map(CallArg::hir).collect();
+                            self.builtin_reduce(&call_args, None).map(Some)
+                        }
+                        "withTimeout" if args.len() == 1 => {
+                            let call_args: Vec<CallArg<'_>> =
+                                args.iter().map(CallArg::hir).collect();
+                            self.builtin_with_timeout(&call_args, trailing_ca).map(Some)
                         }
                         _ => Ok(None),
                     };
@@ -1537,14 +1599,22 @@ impl<'ctx> CodeGen<'ctx> {
 
     pub(super) fn compile_or_block_hir(
         &mut self,
-        nullable: &HirExpr,
+        fallible: &HirExpr,
         fallback: &HirExpr,
     ) -> Result<TypedValue<'ctx>, String> {
         self.or_block_depth += 1;
-        let result = if let Some(v) = self.try_compile_fallible_lhs_for_or(nullable)? {
+        let result = if let Some(v) = self.try_compile_fallible_lhs_for_or(fallible)? {
             self.compile_or_block_fallible_from_ok(fallback, v)
         } else {
-            self.compile_hir_expr(nullable)
+            let v = self.compile_hir_expr(fallible)?;
+            match v {
+                TypedValue::FallibleInt { .. }
+                | TypedValue::FallibleFloat { .. }
+                | TypedValue::FallibleStr { .. }
+                | TypedValue::FalliblePtr { .. }
+                | TypedValue::FallibleStruct { .. } => self.compile_or_block_fallible_from_ok(fallback, v),
+                other => Ok(other),
+            }
         };
         self.or_block_depth -= 1;
         result

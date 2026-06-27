@@ -499,7 +499,7 @@ impl<'ctx> CodeGen<'ctx> {
                 BasicTypeEnum::StructType(ft_st)
                     if *ft_st != self.string_type && *ft_st != self.list_type =>
                 {
-                    // Recursively handle nested user struct or nullable/enum types
+                    // Recursively handle nested user struct or enum types
                     self.rc_struct_fields(field.into_struct_value(), *ft_st, inc)?;
                 }
                 BasicTypeEnum::PointerType(_) => {

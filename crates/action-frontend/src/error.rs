@@ -8,8 +8,6 @@ pub enum DiagnosticCode {
     E001,
     E002,
     E003,
-    E004,
-    E005,
     E006,
     E007,
     E008,
@@ -28,8 +26,6 @@ impl DiagnosticCode {
             DiagnosticCode::E001 => "E001",
             DiagnosticCode::E002 => "E002",
             DiagnosticCode::E003 => "E003",
-            DiagnosticCode::E004 => "E004",
-            DiagnosticCode::E005 => "E005",
             DiagnosticCode::E006 => "E006",
             DiagnosticCode::E007 => "E007",
             DiagnosticCode::E008 => "E008",
@@ -116,29 +112,18 @@ pub fn explain_help_for(error: &CompilerError) -> Option<String> {
                     .to_string()
             }
             DiagnosticCode::E002 => {
-                "The fallback inside `or { }` must have the same type as the fallible or \
-                 nullable expression on the left."
+                "The fallback inside `or { }` must have the same type as the fallible expression on the left."
                     .to_string()
             }
             DiagnosticCode::E003 => {
                 "A function-level `or { }` fallback must match the function's declared return type."
                     .to_string()
             }
-            DiagnosticCode::E004 => {
-                "A nullable value (`T?`) cannot be used where plain `T` is required. Use \
-                 `or { default }` or narrow with a null check."
-                    .to_string()
-            }
-            DiagnosticCode::E005 => {
-                "Arithmetic and bitwise operators require non-nullable operands. Apply \
-                 `or { default }` to nullable values first."
-                    .to_string()
-            }
             DiagnosticCode::E006 => "List indexing can fail when the index is out of bounds. Use \
                  `lst[i] or { default }`."
                 .to_string(),
             DiagnosticCode::E007 => {
-                "`or { }` is only needed for fallible calls (e.g. `parseInt`) or nullable values. \
+                "`or { }` is only needed for fallible calls (e.g. `parseInt`, `head`, `get`). \
                  Remove it from this expression."
                     .to_string()
             }
@@ -247,25 +232,6 @@ pub fn e003_fn_or_return(span: Span) -> CompilerError {
         .with_help("Change the fallback value or the function's return type so they match")
 }
 
-pub fn e004_nullable_termination(inferred: &str, declared: &str, span: Span) -> CompilerError {
-    CompilerError::new(format!(
-        "cannot use nullable '{}' where non-nullable '{}' is expected. Use 'or {{ }}' to provide a default, or check for null first",
-        inferred, declared
-    ))
-    .with_span(span)
-    .with_code(DiagnosticCode::E004)
-    .with_help("Wrap the nullable expression in `or { default }` or narrow with a null check")
-}
-
-pub fn e005_nullable_arithmetic(op: &str, span: Span) -> CompilerError {
-    CompilerError::new(format!(
-        "Arithmetic/bitwise operation '{}' does not accept nullable operands. Use 'or {{ }}' to provide a default",
-        op
-    ))
-    .with_span(span)
-    .with_code(DiagnosticCode::E005)
-}
-
 pub fn e006_fallible_index_required(span: Span) -> CompilerError {
     CompilerError::new("fallible list index access must be used with 'or { }' to provide a default")
         .with_span(span)
@@ -276,10 +242,10 @@ pub fn e006_fallible_index_required(span: Span) -> CompilerError {
 }
 
 pub fn e007_or_unnecessary(span: Span) -> CompilerError {
-    CompilerError::new("'or { }' is not required: expression is neither fallible nor nullable")
+    CompilerError::new("'or { }' is not required: expression is not fallible")
         .with_span(span)
         .with_code(DiagnosticCode::E007)
-        .with_help("Remove `or { }` or use it only on fallible calls or nullable values")
+        .with_help("Remove `or { }` or use it only on fallible calls")
 }
 
 pub fn e008_map_index_required(span: Span) -> CompilerError {
@@ -419,8 +385,6 @@ mod tests {
             DiagnosticCode::E001,
             DiagnosticCode::E002,
             DiagnosticCode::E003,
-            DiagnosticCode::E004,
-            DiagnosticCode::E005,
             DiagnosticCode::E006,
             DiagnosticCode::E007,
             DiagnosticCode::E008,
@@ -429,7 +393,7 @@ mod tests {
             let err = CompilerError::new("test").with_code(code);
             let help = explain_help_for(&err).expect("E00N should have explain help");
             assert!(
-                help.contains("or {") || help.contains("nullable"),
+                help.contains("or {"),
                 "code {:?} help should mention recovery: {}",
                 code,
                 help

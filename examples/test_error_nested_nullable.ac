@@ -1,4 +1,0 @@
-// Error: nested nullable types (T??) are not allowed
-fun main() {
-    val x: Int?? = null
-}

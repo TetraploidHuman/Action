@@ -9,7 +9,7 @@
 
 ## 一、执行摘要
 
-Action 是一门**功能已相当完整**的静态类型语言：可空类型、泛型、模式匹配、持久化集合、协程/流、LSP、JIT/AOT 等均已落地。Rust 编译器约 **66,376 行**，其中 **~78% 集中在 LLVM codegen 与 runtime IR**，前端（词法/语法/类型）仅 **~9,700 行**。
+Action 是一门**功能已相当完整**的静态类型语言：可失败（fallible）与 `or {}`、泛型、模式匹配、持久化集合、协程/流、LSP、JIT/AOT 等均已落地。Rust 编译器约 **66,376 行**，其中 **~78% 集中在 LLVM codegen 与 runtime IR**，前端（词法/语法/类型）仅 **~9,700 行**。
 
 **核心结论：**
 
@@ -182,7 +182,7 @@ AST + TypeRegistry ──直接──► inkwell Builder ──► LLVM Module
 
 #### （2）Monolithic `CodeGen` 状态
 
-`CodeGen` 结构体 **~90 个字段**（scope、TCO、nullable smart-cast、generics…），35+ 文件 `impl CodeGen` 扩展。任何子模块都可读写全局状态 — **难以测试、难以拆分 crate**。
+`CodeGen` 结构体 **~90 个字段**（scope、TCO、fallible/or-block、generics…），35+ 文件 `impl CodeGen` 扩展。任何子模块都可读写全局状态 — **难以测试、难以拆分 crate**。
 
 #### （3）Runtime IR 占 42% 后端
 

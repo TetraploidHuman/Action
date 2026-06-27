@@ -31,6 +31,15 @@ pub struct BuiltinDef {
 fn int() -> Type {
     Type::Named("Int".into())
 }
+fn lazy_list() -> Type {
+    Type::LazyList(Box::new(int()))
+}
+fn float() -> Type {
+    Type::Named("Float".into())
+}
+fn char_ty() -> Type {
+    Type::Named("Char".into())
+}
 fn bool() -> Type {
     Type::Named("Bool".into())
 }
@@ -279,7 +288,25 @@ fn build_registry() -> Vec<BuiltinDef> {
             fallible: true,
         },
         BuiltinDef {
+            name: "indexOf",
+            param_types: vec![string(), string()],
+            return_type: int(),
+            ufcs_receiver: UfcsReceiverKind::String,
+            readonly: true,
+            supports_trailing_lambda: false,
+            fallible: true,
+        },
+        BuiltinDef {
             name: "tail",
+            param_types: vec![list()],
+            return_type: list(),
+            ufcs_receiver: UfcsReceiverKind::List,
+            readonly: true,
+            supports_trailing_lambda: false,
+            fallible: true,
+        },
+        BuiltinDef {
+            name: "init",
             param_types: vec![list()],
             return_type: list(),
             ufcs_receiver: UfcsReceiverKind::List,
@@ -461,11 +488,11 @@ fn build_registry() -> Vec<BuiltinDef> {
         },
         BuiltinDef {
             name: "withTimeout",
-            param_types: vec![task_int(), int()],
+            param_types: vec![int()],
             return_type: int(),
             ufcs_receiver: UfcsReceiverKind::Global,
             readonly: false,
-            supports_trailing_lambda: false,
+            supports_trailing_lambda: true,
             fallible: true,
         },
         BuiltinDef {
@@ -562,7 +589,7 @@ fn build_registry() -> Vec<BuiltinDef> {
         BuiltinDef {
             name: "insert",
             param_types: vec![map_ty(), int(), int()],
-            return_type: unit(),
+            return_type: map_ty(),
             ufcs_receiver: UfcsReceiverKind::Map,
             readonly: false,
             supports_trailing_lambda: false,
@@ -571,11 +598,11 @@ fn build_registry() -> Vec<BuiltinDef> {
         BuiltinDef {
             name: "remove",
             param_types: vec![map_ty(), int()],
-            return_type: int(),
+            return_type: map_ty(),
             ufcs_receiver: UfcsReceiverKind::Map,
-            readonly: true,
+            readonly: false,
             supports_trailing_lambda: false,
-            fallible: true,
+            fallible: false,
         },
         BuiltinDef {
             name: "get",
@@ -599,7 +626,7 @@ fn build_registry() -> Vec<BuiltinDef> {
         BuiltinDef {
             name: "insert",
             param_types: vec![set_ty(), int()],
-            return_type: unit(),
+            return_type: set_ty(),
             ufcs_receiver: UfcsReceiverKind::Set,
             readonly: false,
             supports_trailing_lambda: false,
@@ -608,11 +635,11 @@ fn build_registry() -> Vec<BuiltinDef> {
         BuiltinDef {
             name: "remove",
             param_types: vec![set_ty(), int()],
-            return_type: int(),
+            return_type: set_ty(),
             ufcs_receiver: UfcsReceiverKind::Set,
-            readonly: true,
+            readonly: false,
             supports_trailing_lambda: false,
-            fallible: true,
+            fallible: false,
         },
         // --- Stream UFCS (ufcs-only) ---
         BuiltinDef {
@@ -685,6 +712,33 @@ fn build_registry() -> Vec<BuiltinDef> {
             param_types: vec![string()],
             return_type: int(),
             ufcs_receiver: UfcsReceiverKind::String,
+            readonly: true,
+            supports_trailing_lambda: false,
+            fallible: true,
+        },
+        BuiltinDef {
+            name: "toFloat",
+            param_types: vec![string()],
+            return_type: float(),
+            ufcs_receiver: UfcsReceiverKind::String,
+            readonly: true,
+            supports_trailing_lambda: false,
+            fallible: true,
+        },
+        BuiltinDef {
+            name: "toChar",
+            param_types: vec![int()],
+            return_type: char_ty(),
+            ufcs_receiver: UfcsReceiverKind::Global,
+            readonly: true,
+            supports_trailing_lambda: false,
+            fallible: true,
+        },
+        BuiltinDef {
+            name: "lazyHead",
+            param_types: vec![lazy_list()],
+            return_type: int(),
+            ufcs_receiver: UfcsReceiverKind::Global,
             readonly: true,
             supports_trailing_lambda: false,
             fallible: true,
@@ -770,7 +824,6 @@ pub fn receiver_kind_from_type(ty: &Type) -> Option<UfcsReceiverKind> {
         Type::Set(_) => Some(UfcsReceiverKind::Set),
         Type::Stream(_) => Some(UfcsReceiverKind::Stream),
         Type::Task(_) => Some(UfcsReceiverKind::Task),
-        Type::Nullable(inner) => receiver_kind_from_type(inner),
         Type::Named(_) => Some(UfcsReceiverKind::Collection),
         _ => None,
     }
@@ -853,5 +906,11 @@ mod tests {
         assert!(lookup_ufcs(UfcsReceiverKind::Collection, "len").is_some());
         assert!(lookup_ufcs(UfcsReceiverKind::List, "map").is_some());
         assert!(lookup_ufcs(UfcsReceiverKind::List, "indexOf").is_some());
+        assert!(lookup("toFloat").is_some_and(|d| d.fallible));
+        assert!(lookup("toChar").is_some_and(|d| d.fallible));
+        assert!(lookup("lazyHead").is_some_and(|d| d.fallible));
+        assert!(lookup_ufcs(UfcsReceiverKind::String, "toFloat").is_some_and(|d| d.fallible));
+        assert!(lookup_ufcs(UfcsReceiverKind::String, "indexOf").is_some_and(|d| d.fallible));
+        assert!(lookup_ufcs(UfcsReceiverKind::Map, "remove").is_some_and(|d| !d.fallible));
     }
 }

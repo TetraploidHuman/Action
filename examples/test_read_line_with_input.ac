@@ -1,4 +1,4 @@
-// Test readLine with piped input using nullable types
+// Test readLine with piped input (fallible; use or { } on EOF)
 fun main() {
     val input = readLine() or { "EOF" }
     print(input)

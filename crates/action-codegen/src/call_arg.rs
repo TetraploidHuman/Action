@@ -5,7 +5,7 @@ use action_frontend::hir::{HirExpr, HirExprKind};
 
 use super::{CodeGen, TypedValue};
 
-/// Synthetic HIR ident for lambda bodies (curry / nullable UFCS).
+/// Synthetic HIR ident for lambda bodies (curry / fallible UFCS).
 pub(super) fn synthetic_hir_ident(name: impl Into<String>) -> HirExpr {
     HirExpr {
         ty: Type::Named("Int".into()),

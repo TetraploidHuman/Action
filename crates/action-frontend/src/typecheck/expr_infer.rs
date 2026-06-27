@@ -65,7 +65,6 @@ impl TypeChecker {
                 }
             }
             Pattern::Range(_, _)
-            | Pattern::Null
             | Pattern::Literal(_)
             | Pattern::IsType(_)
             | Pattern::Wildcard
@@ -339,14 +338,13 @@ impl TypeChecker {
                 }
             }
             ExprKind::Copy(inner) => self.hm_infer_expr(inner, locals, engine),
-            ExprKind::Null => Ok(Type::Nullable(Box::new(Type::Named("Nothing".into())))),
-            ExprKind::OrBlock { nullable, fallback } => {
-                let nullable_ty = self.hm_infer_expr(nullable, locals, engine)?;
+            ExprKind::OrBlock { fallible, fallback } => {
+                let fallible_ty = self.hm_infer_expr(fallible, locals, engine)?;
                 let fallback_ty = self.hm_infer_expr(fallback, locals, engine)?;
-                let nullable_ty = engine.resolve(&nullable_ty);
+                let fallible_ty = engine.resolve(&fallible_ty);
                 let fallback_ty = engine.resolve(&fallback_ty);
-                let _ = engine.unify(&nullable_ty, &fallback_ty);
-                Ok(engine.resolve(&nullable_ty))
+                let _ = engine.unify(&fallible_ty, &fallback_ty);
+                Ok(engine.resolve(&fallible_ty))
             }
             ExprKind::Unsafe(inner) => self.hm_infer_expr(inner, locals, engine),
             ExprKind::Block(stmts) => stmts

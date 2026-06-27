@@ -1,7 +1,7 @@
 // Submodule: pattern
 
 use action_frontend::ast::*;
-use action_frontend::hir::HirPattern;
+use action_frontend::hir::{HirExprKind, HirPattern};
 use inkwell::types::BasicTypeEnum;
 use inkwell::values::{IntValue, PointerValue};
 use inkwell::FloatPredicate;
@@ -76,7 +76,6 @@ impl<'ctx> CodeGen<'ctx> {
             }
             Pattern::Constructor { .. } => Ok(b1.const_int(1, false)),
             Pattern::Tuple(_) => Ok(b1.const_int(1, false)),
-            Pattern::Null => Ok(b1.const_int(0, false)),
             Pattern::Expr(_) => Err(
                 "Pattern::Expr in production requires compile_hir_pattern_condition".to_string(),
             ),
@@ -194,7 +193,6 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
             Pattern::Variable(_) => Ok(b1.const_int(1, false)),
-            Pattern::Null => Ok(b1.const_int(0, false)),
             Pattern::Constructor { name, args: _, .. } => {
                 // Check if val is an enum with matching variant tag
                 if let TypedValue::Enum(ptr, enum_st, ..) = val {
@@ -578,7 +576,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    /// Store a branch result to the alloca, coercing between nullable and non-nullable.
+    /// Store a branch result to the alloca, coercing branch types when needed.
     fn store_branch_result(
         &mut self,
         v: &TypedValue<'ctx>,
@@ -982,26 +980,7 @@ impl<'ctx> CodeGen<'ctx> {
         } else {
             Type::Named("Int".into())
         };
-        let else_inferred = if !else_diverges {
-            self.infer_hir_expr_type(else_expr)
-        } else {
-            then_inferred.clone()
-        };
-        let result_type = match (&then_inferred, &else_inferred) {
-            (a, b) if !matches!(a, Type::Nullable(_)) && !matches!(b, Type::Nullable(_)) => {
-                then_inferred.clone()
-            }
-            (Type::Nullable(inner), other) | (other, Type::Nullable(inner)) if matches!(inner.as_ref(), Type::Named(n) if n == "Nothing") => {
-                match other {
-                    Type::Nullable(oi) => Type::Nullable(oi.clone()),
-                    _ => Type::Nullable(Box::new(other.clone())),
-                }
-            }
-            (Type::Nullable(inner), _) | (_, Type::Nullable(inner)) => {
-                Type::Nullable(inner.clone())
-            }
-            _ => then_inferred.clone(),
-        };
+        let result_type = then_inferred.clone();
         let result_ty: BasicTypeEnum = self.ast_type_to_basic_type(&result_type);
 
         let current_fn = self

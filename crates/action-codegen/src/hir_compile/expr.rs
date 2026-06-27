@@ -162,10 +162,10 @@ impl<'ctx> CodeGen<'ctx> {
 
     pub(crate) fn compile_hir_or_block(
         &mut self,
-        nullable: &HirExpr,
+        fallible: &HirExpr,
         fallback: &HirExpr,
     ) -> Result<TypedValue<'ctx>, String> {
-        self.compile_or_block_hir(nullable, fallback)
+        self.compile_or_block_hir(fallible, fallback)
     }
 
     pub(crate) fn compile_hir_string_interp(

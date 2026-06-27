@@ -8,17 +8,17 @@ fun main() {
 
     // Test head
     print("head: ")
-    print(head(nums))
+    print(head(nums) or { 0 })
     println("")
 
     // Test last
     print("last: ")
-    print(last(nums))
+    print(last(nums) or { 0 })
     println("")
 
     // Test get
     print("get(nums,2): ")
-    print(get(nums, 2))
+    print(get(nums, 2) or { 0 })
     println("")
 
     // Test reverse

@@ -602,7 +602,7 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     _ => {
                         if let Some(bv) = result.to_bv() {
-                            // If the function returns a struct (nullable, enum, fat) but
+                            // If the function returns a struct (enum, fat, etc.) but
                             // the body produced a scalar, pack it into the struct.
                             let ret_ty_opt = function.get_type().get_return_type();
                             let need_pack = ret_ty_opt.map_or(false, |rt| rt.is_struct_type());
@@ -753,7 +753,6 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             },
             Some(Type::Function(_, _)) => self.ptr_ty().into(),
-            Some(Type::Nullable(inner)) => self.ast_type_to_basic_type(inner).into(),
             Some(Type::Generic(base, _)) => match base.as_ref() {
                 Type::Named(n) => match n.as_str() {
                     "list" | "set" | "map" => self.list_type.into(),
@@ -806,7 +805,6 @@ impl<'ctx> CodeGen<'ctx> {
             Type::Stream(_) => self.ptr_ty().into(),
             Type::LazyList(_) => self.lazylist_type.into(),
             Type::CString | Type::Ptr(_) | Type::FileHandle => self.ptr_ty().into(),
-            Type::Nullable(inner) => self.ast_type_to_basic_type(inner),
             Type::Generic(base, _) => match base.as_ref() {
                 Type::Named(n) => match n.as_str() {
                     "list" => return self.list_type.into(),
@@ -846,7 +844,6 @@ impl<'ctx> CodeGen<'ctx> {
             Some(Type::Task(_)) => ValKind::Task,
             Some(Type::Stream(_)) => ValKind::Stream,
             Some(Type::LazyList(_)) => ValKind::LazyList,
-            Some(Type::Nullable(inner)) => self.param_val_kind(Some(inner.as_ref())),
             Some(Type::Generic(base, _)) => match base.as_ref() {
                 Type::Named(n) => match n.as_str() {
                     "Float" => ValKind::Float,

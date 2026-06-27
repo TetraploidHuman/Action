@@ -115,14 +115,14 @@ contains(s, "ell")          // true
 charAt(s, 1)                // char 'e'
 charCode(s, 0)              // int 104
 chars(s)                    // List['h', 'e', 'l', 'l', 'o']
-indexOf(s, "el")            // Int? = 1（可空）
+indexOf(s, "el")            // fallible: indexOf(s, "el") or { -1 }
 replace(s, "foo", "bar")    // 替换
 repeat(s, 3)                // 重复
 trimStart(s)                // 去除左端空白
 trimEnd(s)                  // 去除右端空白
 join(List["x", "y"], "-")   // "x-y"
-"42".toInt()                // Int? = 42（可空）
-"3.14".toFloat()            // float? = 3.14（可空）
+"42".toInt()                // fallible: "42".toInt() or { 0 }
+"3.14".toFloat()            // fallible: "3.14".toFloat() or { 0.0 }
 
 // 字符串插值
 val name = "World"
@@ -142,11 +142,11 @@ val desc = when x {
     else -> "other"
 }
 
-// 值匹配 when（可对可空值进行）
-val result = when maybe(x) {
-    null -> "none"
-    42   -> "answer"
-    else -> "other"
+// 值匹配 when（枚举/结构体解构）
+val result = when opt {
+    Option.Some(v) -> v
+    Option.None -> -1
+}
 }
 
 // 带守卫的模式匹配
@@ -351,9 +351,9 @@ val squares = for x in list { x*x } // for 表达式创建列表
 len(list)               // 5
 // 也支持方法调用: list.len()
 List[0]                 // 1（索引访问）
-head(list)              // Int? = 1（可空，空列表返回 null）
-last(list)              // Int? = 5
-tail(list)              // List[2, 3, 4, 5]
+head(list) or { 0 }     // 1（空列表须 or { }）
+last(list) or { 0 }     // 5
+tail(list) or { List[] } // List[2, 3, 4, 5]
 reverse(list)           // List[5, 4, 3, 2, 1]
 take(list, 2)           // List[1, 2]
 drop(list, 2)           // List[3, 4, 5]
@@ -366,14 +366,14 @@ filter(list) { it % 2 == 0 }// List[2, 4]
 fold(list, 0) { acc, x -> acc + x }  // 15
 any(list) { it > 3 }        // true
 all(list) { it > 0 }        // true
-find(list) { it == 3 }      // Int? = 3
+find(list) { it == 3 } or { -1 }  // 3
 flatMap(list) { List[it, it*2] }
 sortedBy(list) { -it }      // 降序排序
 partition(list) { it % 2 == 0 } // ({2, 4}, {1, 3, 5})
 
 // 列表函数也支持方法调用: list.contains(3), list.indexOf(3), list.isEmpty()
 contains(list, 3)       // true
-indexOf(list, 3)        // Int? = 2
+indexOf(list, 3) or { -1 }  // 2
 isEmpty(list)           // false
 sum(list)               // 15
 product(list)           // 120
@@ -388,7 +388,7 @@ s.contains(2)            // true
 
 // map
 val m = Map["a": 1, "b": 2]
-get(m, "a")              // Int? = 1
+get(m, "a") or { -1 }       // 1
 containsKey(m, "a")      // true
 insert(m, "c", 3)        // Map["a": 1, "b": 2, "c": 3]
 remove(m, "a")           // Map["b": 2]
@@ -449,10 +449,10 @@ jsonFree(root)
 ### 类型转换
 
 ```action
-val f = toFloat(42)              // int → float: 42.0
-val i = toInt(3.14)              // float → int: 3
-"42".toInt()                     // 须用 or {}：toInt/parseInt 为 fallible
-"3.14".toFloat()                 // float? = 3.14
+val f = toFloat(42) or { 0.0 }   // int → float: 42.0
+val i = toInt(3.14) or { 0 }     // float → int: 3
+"42".toInt() or { 0 }            // String → Int (fallible)
+"3.14".toFloat() or { 0.0 }      // String → Float (fallible)
 ```
 
 ### 数学函数
@@ -567,11 +567,11 @@ action_test_ping()      // 返回 Int
 | `charAt(s, idx)` | Char | 取字符 |
 | `charCode(s, idx)` | Int | 取字符编码 |
 | `chars(s)` | List[Char] | 转字符列表 |
-| `indexOf(s, sub)` | Int? | 查找子串位置 |
+| `indexOf(s, sub)` | Int (fallible) | 查找子串位置 |
 | `splitLines(s)` | List[String] | 按换行分割 |
 | `concat(a, b)` | String | 字符串拼接 |
-| `toInt(s)` | Int? | 解析为整数 |
-| `toFloat(s)` | Float? | 解析为浮点数 |
+| `toInt(s)` | Int (fallible) | 解析为整数 |
+| `toFloat(s)` | Float (fallible) | 解析为浮点数 |
 | `toString(v)` | String | 任意值转字符串 |
 | `isAlpha(c)` | Bool | 字符是否字母 |
 | `toChar(code)` | Char | 编码转字符 |
@@ -584,13 +584,13 @@ action_test_ping()      // 返回 Int
 | 方法 | 返回 | 说明 |
 |------|------|------|
 | `.len()` | Int | 长度 |
-| `.head()` | T? | 首元素 |
-| `.last()` | T? | 尾元素 |
-| `.tail()` | List[T] | 除首元素外的子列表 |
-| `.init()` | List[T] | 除尾元素外的子列表 |
-| `.get(idx)` | T? | 索引访问 |
+| `.head()` | T (fallible) | 首元素 |
+| `.last()` | T (fallible) | 尾元素 |
+| `.tail()` | List[T] (fallible) | 除首元素外的子列表 |
+| `.init()` | List[T] (fallible) | 除尾元素外的子列表 |
+| `.get(idx)` | T (fallible) | 索引访问 |
 | `.contains(elem)` | Bool | 包含检查 |
-| `.indexOf(elem)` | Int? | 查找索引 |
+| `.indexOf(elem)` | Int (fallible) | 查找索引 |
 | `.append(elem)` | List[T] | 追加（末尾） |
 | `.prepend(elem)` | List[T] | 前置（开头） |
 | `.reverse()` | List[T] | 反转 |
@@ -619,8 +619,8 @@ action_test_ping()      // 返回 Int
 | `fold(list, init) { fn }` | U | 折叠 |
 | `any(list) { fn }` | Bool | 任一满足 |
 | `all(list) { fn }` | Bool | 全部满足 |
-| `find(list) { fn }` | T? | 查找 |
-| `reduce(list) { fn }` | T? | 归约 |
+| `find(list) { fn }` | T (fallible) | 查找 |
+| `reduce(list) { fn }` | T (fallible) | 归约 |
 | `flatMap(list) { fn }` | List[U] | 扁平映射 |
 | `sortedBy(list) { fn }` | List[T] | 自定义排序 |
 | `partition(list) { fn }` | {List[T], List[T]} | 分区 |
@@ -632,7 +632,7 @@ action_test_ping()      // 返回 Int
 | 方法 | 返回 | 说明 |
 |------|------|------|
 | `.len()` | Int | 大小 |
-| `.get(key)` | V? | 取值 |
+| `.get(key)` | V (fallible) | 取值 |
 | `.contains(key)` | Bool | 键存在 |
 | `.insert(key, val)` | Map | 插入/更新（可变） |
 | `.remove(key)` | Map | 删除键（可变） |
@@ -647,7 +647,7 @@ action_test_ping()      // 返回 Int
 
 | 顶层函数 | 返回 | 说明 |
 |------|------|------|
-| `get(map, key)` | V? | 取值 |
+| `get(map, key)` | V (fallible) | 取值 |
 | `containsKey(map, key)` | Bool | 键存在 |
 | `insert(map, key, val)` | Map | 插入/更新 |
 | `remove(map, key)` | Map | 删除键 |

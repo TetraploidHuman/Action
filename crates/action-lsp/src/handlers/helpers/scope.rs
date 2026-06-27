@@ -290,8 +290,8 @@ impl<'a> ScopeWalker<'a> {
                 self.walk_expr(&target);
                 self.walk_expr(&value);
             }
-            ExprKind::OrBlock { nullable, fallback } => {
-                self.walk_expr(&nullable);
+            ExprKind::OrBlock { fallible, fallback } => {
+                self.walk_expr(&fallible);
                 self.walk_expr(&fallback);
             }
             ExprKind::Tuple(items) => {
@@ -336,7 +336,6 @@ impl<'a> ScopeWalker<'a> {
                 }
             }
             ExprKind::Literal(_)
-            | ExprKind::Null
             | ExprKind::Continue
             | ExprKind::Break
             | ExprKind::FunctionRef(_) => {}

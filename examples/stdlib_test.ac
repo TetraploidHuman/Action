@@ -24,9 +24,9 @@ fun main() {
 
     // Test parseInt
     print("parseInt: ")
-    print(parseInt("42"))
+    print(parseInt("42") or { 0 })
     print(" ")
-    print(parseInt("-123"))
+    print(parseInt("-123") or { 0 })
     println("")
 
     // Test randInt and randFloat

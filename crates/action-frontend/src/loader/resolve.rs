@@ -492,9 +492,8 @@ pub fn transform_module_access(program: &mut Program) {
             ExprKind::Copy(inner) => {
                 transform_expr(inner, prefixes);
             }
-            ExprKind::Null => {}
-            ExprKind::OrBlock { nullable, fallback } => {
-                transform_expr(nullable, prefixes);
+            ExprKind::OrBlock { fallible, fallback } => {
+                transform_expr(fallible, prefixes);
                 transform_expr(fallback, prefixes);
             }
             ExprKind::StringInterpolate(parts) => {

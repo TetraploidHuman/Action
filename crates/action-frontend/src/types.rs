@@ -34,8 +34,40 @@ fn ptr_pointee(ty: &Type) -> Option<&Type> {
     }
 }
 
+/// Normalize list/map/set surface types for compatibility checks.
+fn normalize_collection_kind(ty: &Type) -> Option<&'static str> {
+    match ty {
+        Type::Named(n) => match normalize_type_name(n) {
+            "list" | "List" => Some("list"),
+            "map" | "Map" => Some("map"),
+            "set" | "Set" => Some("set"),
+            _ => None,
+        },
+        Type::Generic(base, _) => match base.as_ref() {
+            Type::Named(n) => match normalize_type_name(n) {
+                "list" | "List" => Some("list"),
+                "map" | "Map" => Some("map"),
+                "set" | "Set" => Some("set"),
+                _ => None,
+            },
+            _ => None,
+        },
+        Type::Map(_, _) => Some("map"),
+        Type::Set(_) => Some("set"),
+        _ => None,
+    }
+}
+
 /// Check if two types are structurally compatible (no type-var binding).
 pub fn types_compatible(declared: &Type, inferred: &Type) -> bool {
+    if let (Some(a), Some(b)) = (
+        normalize_collection_kind(declared),
+        normalize_collection_kind(inferred),
+    ) {
+        if a == b {
+            return true;
+        }
+    }
     match (declared, inferred) {
         (Type::Unit, Type::Unit) => true,
         (Type::Named(a), Type::Named(b)) => normalize_type_name(a) == normalize_type_name(b),
@@ -77,22 +109,8 @@ pub fn types_compatible(declared: &Type, inferred: &Type) -> bool {
                     .all(|(a, b)| types_compatible(a, b))
                 && types_compatible(ra, rb)
         }
-        (Type::Nullable(a), Type::Nullable(b)) => {
-            if matches!(b.as_ref(), Type::Named(n) if n == "Nothing") {
-                true
-            } else {
-                types_compatible(a, b)
-            }
-        }
         (Type::TypeVar(_), _) | (_, Type::TypeVar(_)) => true,
         (Type::InferVar(_), _) | (_, Type::InferVar(_)) => true,
-        (_, Type::Nullable(inner)) if matches!(inner.as_ref(), Type::Named(n) if n == "Nothing") => {
-            matches!(declared, Type::Nullable(_))
-        }
-        (Type::Nullable(inner), inferred) if !matches!(inferred, Type::Nullable(_)) => {
-            types_compatible(inner, inferred)
-        }
-        (_, Type::Nullable(_)) => false,
         _ => match (ptr_pointee(declared), ptr_pointee(inferred)) {
             (Some(a), Some(b)) => types_compatible(a, b),
             _ => false,
@@ -143,7 +161,6 @@ pub fn unify(
             }
             Ok(())
         }
-        (Type::Nullable(a), Type::Nullable(b)) => unify(a, b, type_map),
         (Type::Function(pa, ra), Type::Function(pb, rb)) => {
             if pa.len() != pb.len() {
                 return Err("Function arity mismatch".to_string());
@@ -175,12 +192,6 @@ pub fn unify(
         (Type::LazyList(la), Type::LazyList(lb)) => unify(la, lb, type_map),
         (Type::Ptr(pa), Type::Ptr(pb)) => unify(pa, pb, type_map),
         (Type::Unit, Type::Unit) => Ok(()),
-        (Type::Nullable(inner), _) if !matches!(actual, Type::Nullable(_)) => {
-            unify(inner, actual, type_map)
-        }
-        (_, Type::Nullable(inner)) if matches!(inner.as_ref(), Type::Named(n) if n == "Nothing") => {
-            Ok(())
-        }
         _ => Err(format!("Type mismatch: {} vs {}", expected, actual)),
     }
 }
@@ -219,10 +230,13 @@ mod tests {
     }
 
     #[test]
-    fn types_compatible_null_literal() {
-        let int_null = Type::Nullable(Box::new(Type::Named("Int".into())));
-        let nothing_null = Type::Nullable(Box::new(Type::Named("Nothing".into())));
-        assert!(types_compatible(&int_null, &nothing_null));
+    fn types_compatible_list_generic() {
+        let plain = Type::Named("list".into());
+        let generic = Type::Generic(
+            Box::new(Type::Named("List".into())),
+            vec![Type::Named("Int".into())],
+        );
+        assert!(types_compatible(&plain, &generic));
     }
 
     #[test]

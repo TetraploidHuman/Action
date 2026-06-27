@@ -99,13 +99,13 @@ impl Parser {
                     ));
                 }
                 TokenKind::Or => {
-                    // Check for or-block (nullable fallback): expr or { ... }
+                    // Check for or-block (fallible fallback): expr or { ... }
                     // Only when followed by { — otherwise it's logical OR
                     if self.peek2() == TokenKind::LBrace {
                         self.advance(); // skip 'or'
                         let fallback = self.parse_block_expr()?;
                         left = ExprKind::OrBlock {
-                            nullable: Box::new(left),
+                            fallible: Box::new(left),
                             fallback: Box::new(fallback),
                         }
                         .into();

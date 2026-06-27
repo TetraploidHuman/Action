@@ -35,6 +35,13 @@ impl<'ctx> CodeGen<'ctx> {
             if method == "contains" {
                 return self.builtin_map_contains(map_ptr, args);
             }
+            if method == "get" {
+                if args.len() != 1 {
+                    return Err("map.get expects 1 argument (key)".to_string());
+                }
+                let key_val = self.compile_call_arg(args[0])?;
+                return self.compile_map_index_key(map_ptr, key_val);
+            }
             if method == "len" || method == "isEmpty" {
                 let map_loaded = self.load_list(map_ptr)?;
                 let len = self.map_len_val(map_loaded)?;
@@ -168,7 +175,7 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
         }
-        // Option/Result enum builtins have been removed — nullable types replace them
+        // Option/Result enum builtins have been removed — use fallible + or { } instead
         // Enum dispatch for user-defined enums only
         // Handle LazyList builtin methods inline
         if matches!(recv_val, TypedValue::LazyList(_)) {

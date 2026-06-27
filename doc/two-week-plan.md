@@ -24,7 +24,7 @@
 | [x] | `complex_map_cascade.ac` — Map insert/union/keys | integration |
 | [x] | `complex_list_ufcs_chain.ac` — UFCS 方法链 | integration |
 | [x] | `complex_filter_map_fold.ac` — filter+map+fold | integration |
-| [x] | `complex_nullable_when.ac` — nullable / when | integration |
+| [x] | `complex_fallible_when.ac` — fallible / when | integration |
 | [x] | `complex_concat_mutate.ac` — Concat 树 insert/remove | integration |
 
 ### W1-3 工具链与脚本

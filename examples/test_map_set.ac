@@ -1,4 +1,4 @@
-// Test Map<K,V> and Set<T> - index access with nullable types
+// Test Map<K,V> and Set<T> - fallible index access with or { }
 
 fun main() {
     val scores = Map["alice": 100, "bob": 90]

@@ -1,0 +1,4 @@
+fun main() {
+    val r = withTimeout(100) { 42 }
+    println(r)
+}

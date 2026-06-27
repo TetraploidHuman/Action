@@ -78,9 +78,8 @@ pub(crate) fn collect_free_vars_hir(
                 collect_free_vars_hir(v, params, bound, free);
             }
         }
-        HirExprKind::Null => {}
-        HirExprKind::OrBlock { nullable, fallback } => {
-            collect_free_vars_hir(nullable, params, bound, free);
+        HirExprKind::OrBlock { fallible, fallback } => {
+            collect_free_vars_hir(fallible, params, bound, free);
             collect_free_vars_hir(fallback, params, bound, free);
         }
         HirExprKind::Range(start, end) => {
@@ -277,7 +276,6 @@ fn collect_hir_pattern_vars(pat: &action_frontend::hir::HirPattern) -> Vec<Strin
         HirPattern::Or(pats) => pats.iter().flat_map(collect_hir_pattern_vars).collect(),
         HirPattern::Tuple(pats) => pats.iter().flat_map(collect_hir_pattern_vars).collect(),
         HirPattern::Expr(_)
-        | HirPattern::Null
         | HirPattern::Wildcard
         | HirPattern::Literal(_)
         | HirPattern::Range(_, _)

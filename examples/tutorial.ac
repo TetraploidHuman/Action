@@ -1,229 +1,172 @@
 // ============================================================
 // Action Language Tutorial
-// Run: action run examples/tutorial.at
+// Run: action run examples/tutorial.ac
 // ============================================================
 
-// ---- 1. Hello World ----
-println("=== Action Language Tutorial ===")
+fun main() {
+    // ---- 1. Hello World ----
+    println("=== Action Language Tutorial ===")
 
-// ---- 2. Variables ----
-val name = "World"
-val greeting = "Hello, ${name}!"
-println(greeting)
+    // ---- 2. Variables ----
+    val name = "World"
+    val greeting = "Hello, ${name}!"
+    println(greeting)
 
-// Mutable variables (use var, not val)
-var count = 0
-count += 1
-count += 2
-println("Count: ${count}")
+    var count = 0
+    count = count + 1
+    count = count + 2
+    println("Count: ${count}")
 
-// Type annotations
-val typed: Int = 42
-val message: String = "typed string"
-println("Typed: ${typed}, ${message}")
+    val typed: Int = 42
+    val message: String = "typed string"
+    println("Typed: ${typed}, ${message}")
 
-// ---- 3. Basic Types ----
-val i: Int = 42
-val f: Float = 3.14
-val b: Bool = true
-val c: Char = 'A'
-val s: String = "hello"
-println("Int: ${i}, Float: ${f}, Bool: ${b}, Char: ${c}, String: ${s}")
+    // ---- 3. Basic Types ----
+    val i: Int = 42
+    val f: Float = 3.14
+    val b: Bool = true
+    val c: Char = 'A'
+    val s: String = "hello"
+    println("Int: ${i}, Float: ${toString(f)}, Bool: ${b}, String: ${s}")
 
-// Nullable types
-val maybe: Int? = null
-val notNull: Int? = 42
-println("null: ${maybe == null}, not null: ${notNull != null}")
+    val parsed = parseInt("42") or { -1 }
+    val bad = parseInt("nope") or { -1 }
+    println("parsed: ${parsed}, bad parse fallback: ${bad}")
 
-// Elvis operator (or { })
-val result = maybe or { -1 }
-println("Elvis: ${result}")
+    // ---- 4. Functions ----
+    println("add(3, 4) = ${add(3, 4)}")
 
-// ---- 4. Functions ----
+    println("factorial(5) = ${factorial(5)}")
+
+    println("identity(42) = ${identity(42)}")
+    println("identity(\"hi\") = ${identity(\"hi\")}")
+
+    // ---- 5. Strings ----
+    val str = "Hello, Action!"
+    println("len: ${len(str)}")
+    println("upper: ${toUpper(str)}")
+    println("lower: ${toLower(str)}")
+    println("substring(7, 13): ${substring(str, 7, 13)}")
+
+    val parts = split(str, ", ")
+    println("split count: ${len(parts)}")
+    println("joined: ${join(parts, \" | \")}")
+
+    // ---- 6. Lists ----
+    val nums = List[1, 2, 3, 4, 5]
+    val h = head(nums) or { 0 }
+    println("nums len: ${len(nums)}")
+    println("len: ${len(nums)}")
+    println("head: ${h}")
+
+    val doubled = map(nums) { it * 2 }
+    println("doubled len: ${len(doubled)}")
+
+    val evens = filter(nums) { it % 2 == 0 }
+    println("evens len: ${len(evens)}")
+
+    val sum = fold(0, nums) { acc, x -> acc + x }
+    println("sum: ${sum}")
+
+    val squares = for x in nums { x * x }
+    println("squares len: ${len(squares)}")
+
+    // ---- 7. Maps ----
+    val emptyMap = Map[]
+    println("empty map: ${isEmpty(emptyMap)}")
+
+    val m = Map["a": 1, "b": 2, "c": 3]
+    println("map len: ${len(m)}")
+    println("contains 'a': ${containsKey(m, \"a\")}")
+    println("get 'a': ${m[\"a\"] or { -1 }}")
+
+    // ---- 8. Sets ----
+    val mySet = Set[1, 2, 3, 4, 5]
+    println("set contains 3: ${contains(mySet, 3)}")
+    println("set size: ${len(mySet)}")
+
+    // ---- 9. Pattern Matching ----
+    val x = 3
+    val desc = when x {
+        1 -> "one"
+        2 -> "two"
+        3 -> "three"
+        else -> "many"
+    }
+    println("when value: ${desc}")
+
+    val score = 85
+    val grade = when {
+        score >= 90 -> "A"
+        score >= 80 -> "B"
+        score >= 70 -> "C"
+        else -> "D"
+    }
+    println("grade: ${grade}")
+
+    val maxVal = when x > 5 { x else 5 }
+    println("max: ${maxVal}")
+
+    // ---- 10. Enums ----
+    val color = Red
+    println("Color: ${describe(color)}")
+
+    val opt = Some(42)
+    val valOr = when opt {
+        Some(v) -> v
+        None -> -1
+    }
+    println("unwrap: ${valOr}")
+
+    // ---- 11. Closures and Lambdas ----
+    val lambda = { x, y -> x + y }
+    println("lambda(10, 20) = ${lambda(10, 20)}")
+
+    val mapped = map(nums) { it * it }
+    println("mapped len: ${len(mapped)}")
+
+    var base = 10
+    val addBase = { x -> x + base }
+    println("addBase(5): ${addBase(5)}")
+
+    // ---- 12. Fallible access ----
+    val firstElem = head(nums) or { -1 }
+    val missing = head(List[]) or { -1 }
+    println("first: ${firstElem}, empty list head fallback: ${missing}")
+
+    // ---- 13. For Loops ----
+    for item in nums {
+        print("${item} ")
+    }
+    println()
+
+    val cubes = for x in nums { x * x * x }
+    println("cubes len: ${len(cubes)}")
+
+    // ---- 14. Everything together ----
+    val text = "the quick brown fox jumps over the lazy dog the quick brown fox"
+    val words = split(text, " ")
+    println("word count: ${len(words)}")
+    println("=== Tutorial Complete ===")
+}
+
 fun add(x: Int, y: Int) -> Int = x + y
-fun greet(name: String) = println("Hello, ${name}!")
-println("add(3, 4) = ${add(3, 4)}")
 
-// Function with block body
 fun factorial(n: Int) -> Int {
     when n {
         0 -> 1
         else -> n * factorial(n - 1)
     }
 }
-println("factorial(5) = ${factorial(5)}")
 
-// Generic function
 fun <T> identity(x: T) -> T = x
-println("identity(42) = ${identity(42)}")
-println("identity(\"hi\") = ${identity("hi")}")
 
-// ---- 5. Strings ----
-val str = "Hello, Action!"
-println("len: ${len(str)}")
-println("upper: ${toUpper(str)}")
-println("lower: ${toLower(str)}")
-println("substring(7, 13): ${substring(str, 7, 13)}")
-
-val parts = split(str, ", ")
-println("split count: ${len(parts)}")
-println("joined: ${join(parts, " | ")}")
-
-// ---- 6. Lists ----
-val nums = List[1, 2, 3, 4, 5]
-println("nums: ${nums}")
-println("len: ${len(nums)}")
-println("head: ${head(nums)}")
-println("tail: ${tail(nums)}")
-
-val doubled = map(nums) { it * 2 }
-println("doubled: ${doubled}")
-
-val evens = filter(nums) { it % 2 == 0 }
-println("evens: ${evens}")
-
-val sum = fold(nums, 0) { acc, x -> acc + x }
-println("sum: ${sum}")
-
-// List comprehensions (for-expression)
-val squares = for x in nums { x * x }
-println("squares: ${squares}")
-
-// ---- 7. Maps ----
-val map = {:}
-println("empty map: ${isEmpty(map)}")
-
-val m = {"a": 1, "b": 2, "c": 3}
-println("map: ${m}")
-println("contains 'a': ${containsKey(m, "a")}")
-println("get 'a': ${get(m, "a") or { -1 }}")
-
-// ---- 8. Sets ----
-val set = {1, 2, 3, 4, 5}
-println("set contains 3: ${contains(set, 3)}")
-println("set size: ${len(set)}")
-
-// ---- 9. Pattern Matching ----
-// Value matching
-val x = 3
-val desc = when x {
-    1 -> "one"
-    2 -> "two"
-    3 -> "three"
-    else -> "many"
-}
-println("when value: ${desc}")
-
-// Condition chains
-val score = 85
-val grade = when {
-    score >= 90 -> "A"
-    score >= 80 -> "B"
-    score >= 70 -> "C"
-    else -> "D"
-}
-println("grade: ${grade}")
-
-// One-line when
-val maxVal = when x > 5 { x else 5 }
-println("max: ${maxVal}")
-
-// ---- 10. Enums ----
-enum Color {
-    Red,
-    Green,
-    Blue
-}
+enum Color { Red, Green, Blue }
 
 fun describe(c: Color) -> String = when c {
-    Color.Red -> "red"
-    Color.Green -> "green"
-    Color.Blue -> "blue"
+    Red -> "red"
+    Green -> "green"
+    Blue -> "blue"
 }
 
-val c = Color.Red
-println("Color: ${describe(c)}")
-
-// Enum with data
-enum Option[T] {
-    Some(T),
-    None
-}
-
-val opt = Option.Some(42)
-val valOr = when opt {
-    Option.Some(v) -> v
-    Option.None -> -1
-}
-println("unwrap: ${valOr}")
-
-// ---- 11. Closures and Lambdas ----
-// Lambda with explicit params
-val lambda = { x: Int, y: Int -> x + y }
-println("lambda(10, 20) = ${lambda(10, 20)}")
-
-// Implicit 'it' parameter
-val mapped = map(nums) { it * it }
-println("mapped: ${mapped}")
-
-// Capturing scope variables
-var captured = 0
-val increment = { captured += 1 }
-increment()
-increment()
-println("captured count: ${captured}")
-
-// ---- 12. Null Safety ----
-val nullable: Int? = 42
-val nonNull = nullable or { -1 }
-println("or block: ${nonNull}")
-
-// Smart cast with when
-when nullable != null {
-    println("not null: ${nullable}")
-}
-
-// ---- 13. For Loops ----
-// Iterate with side effects
-for item in nums {
-    print("${item} ")
-}
-println()
-
-// For-expression (collects results)
-val cubes = for x in nums { x * x * x }
-println("cubes: ${cubes}")
-
-// Nested for (cartesian product)
-val pairs = for x in List[1, 2], y in List["a", "b"] { x to y }
-println("pairs: ${pairs}")
-
-// ---- 14. Streams and Coroutines ----
-val stream = Stream()
-launch {
-    send(stream, 1)
-    send(stream, 2)
-    close(stream)
-}
-val first = receive(stream)
-val second = receive(stream)
-println("stream: ${first} ${second}")
-
-// ---- 15. Everything together ----
-// Count word frequencies in a string
-val text = "the quick brown fox jumps over the lazy dog the quick brown fox"
-val words = split(text, " ")
-val freq = fold(words, {:}) { acc, word ->
-    val current = get(acc, word) or { 0 }
-    insert(acc, word, current + 1)
-    acc
-}
-println("freq: ${freq}")
-
-// Top-N frequent words
-val sorted = sortedBy(freq) { -get(freq, it) or { 0 } }
-val top3 = take(sorted, 3)
-println("top 3: ${top3}")
-
-// Done
-println("=== Tutorial Complete ===")
+enum Option { Some(Int), None }

@@ -904,8 +904,8 @@ impl<'ctx> CodeGen<'ctx> {
                 Self::hir_expr_refs_var(start, var) || Self::hir_expr_refs_var(end, var)
             }
             HirExprKind::Tuple(items) => items.iter().any(|(_, v)| Self::hir_expr_refs_var(v, var)),
-            HirExprKind::OrBlock { nullable, fallback } => {
-                Self::hir_expr_refs_var(nullable, var) || Self::hir_expr_refs_var(fallback, var)
+            HirExprKind::OrBlock { fallible, fallback } => {
+                Self::hir_expr_refs_var(fallible, var) || Self::hir_expr_refs_var(fallback, var)
             }
             HirExprKind::Assign { target, value } => {
                 Self::hir_expr_refs_var(target, var) || Self::hir_expr_refs_var(value, var)

@@ -12,14 +12,14 @@
 | 泛型 | 类型参数、推断失败 | `test_error_generic_mismatch` |
 | 函数类型 | 高阶、`::` 函数引用 | `test_fn_type`, `test_fn_ref`, `test_lambda` |
 
-## 2. 可空与智能转换
+## 2. 可失败（fallible）与 `or {}`
 
 | 主题 | 说明 | 集成测试 |
 |------|------|----------|
-| `T?` 传播 | 算术、比较、链式 `?.` | `test_nullable_propagation`, `test_nullable_nested` |
-| `or {}` / Elvis | 默认值、嵌套 | `test_nullable_elvis_chain` |
-| 智能转换 | `when` / `if` 分支内收窄 | `test_smart_cast`, `test_smart_cast_if` |
-| 模式 | nullable 模式边 | `test_nullable_pattern_edges` |
+| 表达式级 `or {}` | `head(lst) or { -1 }`、`parseInt(s) or { 0 }` | `test_fallible_or_default`, `test_fallible_head_parseInt` |
+| 集合索引 | `lst[i] or { }`、`map[k] or { }` | `test_fallible_list_var_index_or`, `test_fallible_map_var_key_or` |
+| 函数级 `or {}` | 函数体末尾传播失败 | `test_fallible_fn_or`, `test_fallible_user_fn_propagate` |
+| 已移除语法 | `null` / `T?` / `?.` → E010–E012 | `test_error_e010_null`, `test_error_e011_nullable_type` |
 
 ## 3. 持久化集合与 CoW
 

@@ -309,8 +309,8 @@ fn expr_has_bare_propagating_inner(
                 .iter()
                 .any(|a| expr_has_bare_propagating_inner(a, ctx, in_or, in_fn_or))
         }
-        ExprKind::OrBlock { nullable, fallback } => {
-            expr_has_bare_propagating_inner(nullable, ctx, true, in_fn_or)
+        ExprKind::OrBlock { fallible, fallback } => {
+            expr_has_bare_propagating_inner(fallible, ctx, true, in_fn_or)
                 || expr_has_bare_propagating_inner(fallback, ctx, true, in_fn_or)
         }
         ExprKind::FieldAccess(obj, method) => {
@@ -471,8 +471,8 @@ fn walk_expr(expr: &Expr, ctx: &mut FallibilityContext) {
                 walk_expr(a, ctx);
             }
         }
-        ExprKind::OrBlock { nullable, fallback } => {
-            walk_expr(nullable, ctx);
+        ExprKind::OrBlock { fallible, fallback } => {
+            walk_expr(fallible, ctx);
             let saved = ctx.in_or_block;
             ctx.in_or_block = true;
             walk_expr(fallback, ctx);

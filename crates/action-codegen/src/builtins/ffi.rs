@@ -248,6 +248,9 @@ impl<'ctx> CodeGen<'ctx> {
         c: CallArg<'_>,
         d: CallArg<'_>,
     ) -> Result<TypedValue<'ctx>, String> {
+        if self.in_fallible_region() {
+            return self.compile_http_request_fallible(&[a, b, c, d]);
+        }
         let method_val = self.compile_call_arg(a)?;
         let url_val = self.compile_call_arg(b)?;
         let headers_val = self.compile_call_arg(c)?;

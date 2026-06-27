@@ -335,15 +335,7 @@ val desc = when x {
 }
 ```
 
-支持可空值匹配：
-
-```action
-val result = when maybe_null {
-    null -> "got null"
-    42   -> "answer"
-    else -> "other"
-}
-```
+支持枚举/结构体等值匹配（`null` 模式已移除，见第十一章 fallible）。
 
 ### 带守卫的模式匹配
 
@@ -364,8 +356,8 @@ val c = when color {
 }
 
 val desc = when value {
-    0, null -> "zero or null"
-    else    -> "non-zero"
+    0 -> "zero"
+    else -> "non-zero"
 }
 ```
 
@@ -669,23 +661,23 @@ val squares = for x in 1..5 { x * x }  // for 表达式创建
 ### 基本操作
 
 ```action
-// 索引访问
-nums[0]              // 1
-get(nums, 0)         // Int? = 1（越界返回 null）
+// 索引访问（越界须 or { }）
+nums[0] or { -1 }              // 1
+get(nums, 0) or { -1 }         // 1
 
 // 大小与判空
 len(nums)            // 5
 isEmpty(nums)        // false
 
-// 元素访问
-head(nums)           // Int? = 1（空列表返回 null）
-last(nums)           // Int? = 5
-tail(nums)           // List[2, 3, 4, 5]
-init(nums)           // List[1, 2, 3, 4]
+// 元素访问（空列表/越界须 or { }）
+head(nums) or { -1 }           // 1
+last(nums) or { -1 }           // 5
+tail(nums) or { List[] }       // List[2, 3, 4, 5]（fallback 类型须与列表元素一致）
+init(nums) or { List[] }       // List[1, 2, 3, 4]
 
 // 查询
 contains(nums, 3)    // true
-indexOf(nums, 3)     // Int? = 2
+indexOf(nums, 3) or { -1 }     // 2
 ```
 
 ### 转换操作
@@ -763,7 +755,7 @@ val empty = Map[]          // 空映射
 ### 基本操作（顶层函数）
 
 ```action
-get(m, "a")              // Int? = 1
+get(m, "a") or { -1 }              // 1
 containsKey(m, "a")      // true
 insert(m, "c", 3)        // 插入/更新
 remove(m, "a")           // 删除键
@@ -858,7 +850,7 @@ startsWith(s, "Hello")  // true
 endsWith(s, "Action!")  // true
 contains(s, "Action")   // true
 stringContains(s, "Action") // true（别名）
-indexOf(s, "Action")    // Int? = 7
+indexOf(s, "Action") or { -1 }     // 7
 charAt(s, 1)            // Char 'e'
 charCode(s, 0)          // Int = 72 ('H' 的 ASCII)
 chars(s)                // List['H', 'e', 'l', ...]
@@ -875,11 +867,11 @@ replace(s, "Hello", "Hi") // "Hi, Action!"
 repeat(s, 3)            // 重复 3 次拼接
 concat(s, "!!")         // 字符串拼接
 
-toInt("42")             // Int? = 42
-toFloat("3.14")         // Float? = 3.14
+toInt("42") or { -1 }              // 42
+toFloat("3.14") or { 0.0 }         // 3.14
 toString(42)            // "42"
 isAlpha('A')            // true
-toChar(65)              // Char 'A'
+toChar(65) or { 0 }                // Char 'A'
 codeToChar(65)          // Char 'A'
 ```
 
@@ -1340,7 +1332,7 @@ closeFile(f)                               // 关闭文件
 ## 18.3 标准输入
 
 ```action
-val name = readLine()  // String? = ...（EOF 时返回 null）
+val name = readLine() or { "EOF" }
 ```
 
 ## 18.4 目录操作
@@ -1487,10 +1479,10 @@ val formatted = format(dt, "yyyy-MM-dd")
 ## 22.1 数值转换
 
 ```action
-toInt(3.14)       // Float → Int: 3
-toFloat(42)       // Int → Float: 42.0
-toInt("42")       // String → Int?: 42（可空）
-toFloat("3.14")   // String → Float?: 3.14（可空）
+toInt(3.14) or { 0 }               // Float → Int: 3
+toFloat(42) or { 0.0 }             // Int → Float: 42.0
+toInt("42") or { 0 }               // String → Int: 42
+toFloat("3.14") or { 0.0 }         // String → Float: 3.14
 ```
 
 ## 22.2 通用转换
@@ -1499,8 +1491,8 @@ toFloat("3.14")   // String → Float?: 3.14（可空）
 toString(42)      // "42"
 toString(true)    // "true"
 
-"42".toInt()      // Int? = 42（字符串方法形式）
-"3.14".toFloat()  // Float? = 3.14
+"42".toInt() or { -1 }             // 42
+"3.14".toFloat() or { 0.0 }        // 3.14
 ```
 
 ## 22.3 列表集合转换
@@ -1524,7 +1516,7 @@ assert(x > 0)         // 断言（失败时 panic）
 
 ```action
 val ll = toLazyList(List[1, 2, 3])
-lazyHead(ll)          // Int? = 1
+lazyHead(ll) or { -1 }            // 1
 lazyTake(2, ll)       // 取前 2 个
 lazyDrop(1, ll)       // 跳过 1 个
 lazyMap(ll) { it * 2 }
@@ -1611,10 +1603,10 @@ toList(ll)            // 转回普通 List
 | `charAt(s, idx)` | Char | 取字符 |
 | `charCode(s, idx)` | Int | 取编码 |
 | `chars(s)` | List[Char] | 转字符列表 |
-| `indexOf(s, sub)` | Int? | 查找子串 |
+| `indexOf(s, sub)` | Int (fallible) | 查找子串 |
 | `concat(a, b)` | String | 拼接 |
-| `toInt(s)` | Int? | 解析整数 |
-| `toFloat(s)` | Float? | 解析浮点数 |
+| `toInt(s)` | Int (fallible) | 解析整数 |
+| `toFloat(s)` | Float (fallible) | 解析浮点数 |
 | `toString(v)` | String | 任意值转字符串 |
 | `isAlpha(c)` | Bool | 是否字母 |
 | `toChar(code)` | Char | 编码转字符 |
@@ -1627,13 +1619,13 @@ toList(ll)            // 转回普通 List
 |-----------|------|------|
 | `.len()` / `len(list)` | Int | 长度 |
 | `.isEmpty()` / `isEmpty(list)` | Bool | 判空 |
-| `.head()` / `head(list)` | T? | 首元素 |
-| `.last()` / `last(list)` | T? | 尾元素 |
+| `.head()` / `head(list)` | T (fallible) | 首元素 |
+| `.last()` / `last(list)` | T (fallible) | 尾元素 |
 | `.tail()` / `tail(list)` | List[T] | 除首元素外 |
 | `.init()` / `init(list)` | List[T] | 除尾元素外 |
-| `.get(idx)` / `get(list, idx)` | T? | 索引访问 |
+| `.get(idx)` / `get(list, idx)` | T (fallible) | 索引访问 |
 | `.contains(e)` / `contains(list, e)` | Bool | 包含检查 |
-| `.indexOf(e)` / `indexOf(list, e)` | Int? | 查找索引 |
+| `.indexOf(e)` / `indexOf(list, e)` | Int (fallible) | 查找索引 |
 | `.append(e)` / `append(list, e)` | List[T] | 追加 |
 | `.prepend(e)` / `prepend(list, e)` | List[T] | 前置 |
 | `.reverse()` / `reverse(list)` | List[T] | 反转 |
@@ -1663,15 +1655,15 @@ toList(ll)            // 转回普通 List
 | `fold(list, init) { fn }` | U | 折叠 |
 | `any(list) { fn }` | Bool | 任一满足 |
 | `all(list) { fn }` | Bool | 全部满足 |
-| `find(list) { fn }` | T? | 查找 |
-| `reduce(list) { fn }` | T? | 归约 |
+| `find(list) { fn }` | T (fallible) | 查找 |
+| `reduce(list) { fn }` | T (fallible) | 归约 |
 | `flatMap(list) { fn }` | List[U] | 扁平映射 |
 | `sortedBy(list) { fn }` | List[T] | 自定义排序 |
 | `partition(list) { fn }` | {List[T], List[T]} | 分区 |
 | `count(list) { fn }` | Int | 计数 |
 | `takeWhile(list) { fn }` | List[T] | 条件取 |
 | `dropWhile(list) { fn }` | List[T] | 条件丢 |
-| `findIndex(list) { fn }` | Int? | 查找索引 |
+| `findIndex(list) { fn }` | Int (fallible) | 查找索引 |
 
 ## Map 方法
 
@@ -1679,7 +1671,7 @@ toList(ll)            // 转回普通 List
 |------|------|------|
 | `.len()` | Int | 大小 |
 | `.isEmpty()` | Bool | 判空 |
-| `.get(key)` | V? | 取值 |
+| `.get(key)` | V (fallible) | 取值 |
 | `.contains(key)` | Bool | 键存在 |
 | `.insert(key, val)` | Map | 插入/更新 |
 | `.remove(key)` | Map | 删除键 |

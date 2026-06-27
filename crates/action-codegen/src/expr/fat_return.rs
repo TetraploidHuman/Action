@@ -79,7 +79,6 @@ impl<'ctx> CodeGen<'ctx> {
                 "list" | "List" => Some(ValKind::List),
                 _ => None,
             },
-            Type::Nullable(inner) => Self::heap_collection_kind(inner),
             _ => None,
         }
     }

@@ -55,7 +55,6 @@ impl InferenceEngine {
             Type::Task(t) => Type::Task(Box::new(self.resolve(t))),
             Type::Stream(s) => Type::Stream(Box::new(self.resolve(s))),
             Type::LazyList(l) => Type::LazyList(Box::new(self.resolve(l))),
-            Type::Nullable(inner) => Type::Nullable(Box::new(self.resolve(inner))),
             Type::Ptr(inner) => Type::Ptr(Box::new(self.resolve(inner))),
             other => other.clone(),
         }
@@ -76,7 +75,6 @@ impl InferenceEngine {
             | Type::Task(t)
             | Type::Stream(t)
             | Type::LazyList(t)
-            | Type::Nullable(t)
             | Type::Ptr(t) => self.occurs(id, &t),
             _ => false,
         }
@@ -148,13 +146,6 @@ impl InferenceEngine {
             (Type::Stream(sa), Type::Stream(sb)) => self.unify(sa, sb),
             (Type::LazyList(la), Type::LazyList(lb)) => self.unify(la, lb),
             (Type::Ptr(pa), Type::Ptr(pb)) => self.unify(pa, pb),
-            (Type::Nullable(a), Type::Nullable(b)) => self.unify(a, b),
-            (Type::Nullable(inner), other) if !matches!(other, Type::Nullable(_)) => {
-                self.unify(inner, other)
-            }
-            (other, Type::Nullable(inner)) if !matches!(other, Type::Nullable(_)) => {
-                self.unify(other, inner)
-            }
             (Type::TypeVar(name), other) | (other, Type::TypeVar(name)) => {
                 // Source-level generic vars: compatible if same name or first bind
                 if let Type::TypeVar(n2) = other {

@@ -31,6 +31,14 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_alloca(self.string_type, "reduce_acc")
             .map_err(llvm_err)?;
+        let found_flag_a = self
+            .builder
+            .build_alloca(self.bool_ty(), "red_found")
+            .map_err(llvm_err)?;
+        let acc_result_a = self
+            .builder
+            .build_alloca(self.string_type, "red_acc_s")
+            .map_err(llvm_err)?;
         let i_a = self.builder.build_alloca(i64, "i").map_err(llvm_err)?;
         self.builder.build_store(i_a, one).map_err(llvm_err)?;
         let get_cache = self.alloc_list_get_cache()?;
@@ -41,6 +49,7 @@ impl<'ctx> CodeGen<'ctx> {
         let loop_ext = self.context.append_basic_block(current_fn, "reduce_ext");
         let empty_bb = self.context.append_basic_block(current_fn, "reduce_empty");
         let merge_bb = self.context.append_basic_block(current_fn, "reduce_merge");
+        let done_bb = self.context.append_basic_block(current_fn, "reduce_done");
         let _ = self
             .builder
             .build_conditional_branch(is_empty, empty_bb, init_bb);
@@ -109,7 +118,7 @@ impl<'ctx> CodeGen<'ctx> {
         // Empty: build None
         self.builder.position_at_end(empty_bb);
         let _ = self.builder.build_unconditional_branch(merge_bb);
-        // Merge: build Option from fat struct or None
+        // Merge: PHIs only (LLVM requires all PHIs at block top)
         self.builder.position_at_end(merge_bb);
         let phi = self
             .builder
@@ -119,11 +128,6 @@ impl<'ctx> CodeGen<'ctx> {
             (&final_acc, loop_ext),
             (&self.string_type.get_undef(), empty_bb),
         ]);
-        let phi_val = phi.as_basic_value();
-        let found_flag_a = self
-            .builder
-            .build_alloca(self.bool_ty(), "red_found")
-            .map_err(llvm_err)?;
         let phi_flag = self
             .builder
             .build_phi(self.bool_ty(), "red_flag")
@@ -132,15 +136,14 @@ impl<'ctx> CodeGen<'ctx> {
             (&self.bool_ty().const_int(1, false), loop_ext),
             (&self.bool_ty().const_zero(), empty_bb),
         ]);
+        let _ = self.builder.build_unconditional_branch(done_bb);
+        self.builder.position_at_end(done_bb);
+        let phi_val = phi.as_basic_value();
         self.builder
             .build_store(found_flag_a, phi_flag.as_basic_value())
             .map_err(llvm_err)?;
-        let acc_alloca = self
-            .builder
-            .build_alloca(self.string_type, "red_acc_s")
-            .map_err(llvm_err)?;
         self.builder
-            .build_store(acc_alloca, phi_val)
+            .build_store(acc_result_a, phi_val)
             .map_err(llvm_err)?;
         // InnerType defaults to Int — accumulator is a fat struct whose type
         // is only known at runtime. See comment at builtin_find for details.
@@ -152,7 +155,7 @@ impl<'ctx> CodeGen<'ctx> {
             args[0]
         };
         let elem_ty = self.list_element_ast_type(list_arg);
-        self.build_fallible_from_fat_found_flag(acc_alloca, found_flag_a, &elem_ty)
+        self.build_fallible_from_fat_found_flag(acc_result_a, found_flag_a, &elem_ty)
     }
 
     /// foldRight(list, init, fn) or foldRight(list, init) { lambda } -> T

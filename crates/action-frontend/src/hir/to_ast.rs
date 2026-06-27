@@ -242,9 +242,8 @@ impl HirExpr {
                     .collect(),
             )
             .into(),
-            HirExprKind::Null => ExprKind::Null.into(),
-            HirExprKind::OrBlock { nullable, fallback } => ExprKind::OrBlock {
-                nullable: Box::new(nullable.to_expr()),
+            HirExprKind::OrBlock { fallible, fallback } => ExprKind::OrBlock {
+                fallible: Box::new(fallible.to_expr()),
                 fallback: Box::new(fallback.to_expr()),
             }
             .into(),
@@ -331,7 +330,6 @@ impl HirPattern {
             HirPattern::IsType(n) => Pattern::IsType(n.clone()),
             HirPattern::Or(ps) => Pattern::Or(ps.iter().map(HirPattern::to_pattern).collect()),
             HirPattern::Expr(e) => Pattern::Expr(Box::new(e.to_expr())),
-            HirPattern::Null => Pattern::Null,
             HirPattern::Tuple(ps) => {
                 Pattern::Tuple(ps.iter().map(HirPattern::to_pattern).collect())
             }

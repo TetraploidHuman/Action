@@ -319,7 +319,6 @@ impl<'ctx> CodeGen<'ctx> {
                     Type::Named("Int".into())
                 }
             }
-            HirExprKind::Null => Type::Named("Nothing".into()),
             HirExprKind::Block(stmts) => stmts
                 .last()
                 .and_then(|s| match s {
@@ -390,7 +389,6 @@ impl<'ctx> CodeGen<'ctx> {
             Some(Type::Ptr(_)) | Some(Type::CString) | Some(Type::FileHandle) => {
                 self.ptr_ty().fn_type(param_tys, false)
             }
-            Some(Type::Nullable(inner)) => self.ast_type_to_basic_type(inner).fn_type(param_tys, false),
             Some(Type::Generic(base, _)) => match base.as_ref() {
                 Type::Named(n) => match n.as_str() {
                     "list" | "List" | "set" | "Set" | "map" | "Map" => {
