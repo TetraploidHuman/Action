@@ -24,13 +24,15 @@ Action 是一门静态类型的多范式编程语言，编译器用 Rust 编写�
 
 ### 从源码构建
 
-需要 Rust 工具链和 LLVM 21+：
+需要 Rust 工具链和 LLVM 21+。推荐在 Nix 开发 shell 中构建（与 CI 一致）：
 
 ```bash
 git clone https://github.com/TetraploidHuman/Action.git
 cd Action
-cargo build --release
+nix-shell --run "cargo build --release"
 ```
+
+无 Nix 时可直接 `cargo build --release`，但需自行安装 LLVM 21 并设置 `LLVM_SYS_211_PREFIX`。详见 [CONTRIBUTING.md](CONTRIBUTING.md) 与 [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md)。
 
 ### Hello World
 
@@ -59,9 +61,6 @@ y = y + 1               // 普通赋值
 const MAX: Int = 1024    // 编译期常量
 
 y += 1                  // 复合赋值: += -= *= /= %=
-
-// 复合赋值: += -= *= /= %=
-y = y + 1               // 普通赋值
 ```
 
 ### 基本类型
@@ -103,7 +102,7 @@ a & b    a | b    a ^ b    a << b    a >> b    ~a
 ```action
 val s = "hello"
 
-trim(s)                     // "hi"（去除两端空白）
+trim(s)                     // "hello"（去除两端空白）
 toUpper(s)                  // "HELLO"
 toLower(s)                  // "hello"
 len(s)                      // 5
@@ -146,7 +145,6 @@ val desc = when x {
 val result = when opt {
     Option.Some(v) -> v
     Option.None -> -1
-}
 }
 
 // 带守卫的模式匹配
@@ -482,21 +480,19 @@ cbrt(27.0)       // 3.0（立方根）
 ### 协程与流
 
 ```action
-// 创建流
-// 启动异步任务
-val task = launch {
-    send(tx, 42)
-    println("sent 42")
+// coroutineScope 收集 launch 结果
+val results = coroutineScope {
+    launch { 10 }
+    launch { 20 }
 }
 
 // Stream 用于 task 间通信
-val s = Stream()                // 创建流（Channel）
+val s = Stream()
 launch {
     send(s, 42)
-    send(s, 100)
-    close(s)                    // 关闭流
+    close(s)
 }
-val msg = receive(s)            // 接收消息
+val msg = receive(s)
 ```
 
 ### 函数引用与函数类型
@@ -728,18 +724,22 @@ action lsp
 | `obj` / `o` | 目标文件 |
 | `exe` | 可执行文件 |
 
-## 项目结构
+## 编译器仓库结构
 
 ```
-my_project/
-├── src/
-│   └── main.ac
-├── lib/              # 标准库模块
-├── examples/         # 示例文件
-└── atom.toml         # 项目配置（可选）
+Action/                       # 本仓库（Action 编译器）
+├── bootstrap/                # 自举子集 pilot（M4 lexer 等，见 bootstrap/README.md）
+├── crates/                   # workspace：frontend、codegen、driver、lsp、host-rt …
+├── examples/                 # 集成测试与 benchmark 用 .ac 示例（见 examples/README.md）
+├── lib/                      # Action 标准库模块（math.ac、json.ac …）
+├── tests/                    # Rust 集成测试（204 项语义 oracle，见 CONTRIBUTING.md）
+├── doc/                      # 架构、教程、语言规范（见 doc/README.md）
+├── vscode/                   # VS Code 扩展（语法高亮 + LSP 客户端）
+├── shell.nix                 # 推荐开发环境（LLVM 21 + Rust）
+└── benchmark.sh              # 性能基准（见 BENCHMARK.md）
 ```
 
-`.ac` 为 Action 源文件扩展名。
+用户 Action 项目通常含 `src/main.ac`、`lib/` 与可选 `atom.toml`；`.ac` 为源文件扩展名。
 
 ### 项目配置（atom.toml）
 
@@ -768,15 +768,6 @@ lto = true
   → Codegen    LLVM IR 生成（基于 inkwell）
   → JIT / AOT  即时执行或编译为目标代码
   → LSP        Language Server Protocol 支持
-```
-
-## 从源码构建
-
-```bash
-# 依赖: Rust 1.70+, LLVM 21+, cmake, pkg-config
-git clone https://github.com/TetraploidHuman/Action.git
-cd Action
-cargo build --release
 ```
 
 ## 许可证

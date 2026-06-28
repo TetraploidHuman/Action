@@ -1,8 +1,0 @@
-fun main() {
-    val a = List[1, 2]
-    val b = List[3, 4]
-    var c = concat(a, b)
-    print("len: ")
-    println(c.len())
-    println("done")
-}

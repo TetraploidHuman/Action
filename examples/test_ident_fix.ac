@@ -1,7 +1,0 @@
-fun main() {
-    val x = {
-        val s = "hello"
-        s
-    }
-    print(x)
-}

@@ -71,7 +71,8 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?;
                 self.builder.build_store(alloca, result).map_err(llvm_err)?;
                 self.rc_free_intermediate(recv_val)?;
-                self.build_fallible_list_from_not_empty(alloca, is_empty).map(Some)
+                self.build_fallible_list_from_not_empty(alloca, is_empty)
+                    .map(Some)
             }
             "init" => {
                 if !args.is_empty() {
@@ -94,7 +95,8 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?;
                 self.builder.build_store(alloca, result).map_err(llvm_err)?;
                 self.rc_free_intermediate(recv_val)?;
-                self.build_fallible_list_from_not_empty(alloca, is_empty).map(Some)
+                self.build_fallible_list_from_not_empty(alloca, is_empty)
+                    .map(Some)
             }
             "get" => {
                 if args.len() != 1 {

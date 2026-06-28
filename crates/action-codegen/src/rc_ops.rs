@@ -760,12 +760,7 @@ impl<'ctx> CodeGen<'ctx> {
                 capture_ptr_rc_mask,
                 ..
             } => {
-                self.rc_dec_closure_captures(
-                    *closure_ptr,
-                    *closure_ty,
-                    *capture_ptr_rc_mask,
-                    &[],
-                )?;
+                self.rc_dec_closure_captures(*closure_ptr, *closure_ty, *capture_ptr_rc_mask, &[])?;
             }
             TypedValue::Struct(ptr, st) => {
                 let bt: BasicTypeEnum = (*st).into();

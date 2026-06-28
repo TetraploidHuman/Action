@@ -377,7 +377,10 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_extract_value(fat, 0, "fat_tag")
                     .map_err(llvm_err)?
                     .into_int_value();
-                Ok(TypedValue::FallibleInt { val: tag, ok: ok_i1 })
+                Ok(TypedValue::FallibleInt {
+                    val: tag,
+                    ok: ok_i1,
+                })
             }
             Type::Ptr(_) | Type::CString | Type::FileHandle => {
                 let fat = self
@@ -390,7 +393,10 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_extract_value(fat, 1, "fat_data")
                     .map_err(llvm_err)?
                     .into_pointer_value();
-                Ok(TypedValue::FalliblePtr { val: ptr, ok: ok_i1 })
+                Ok(TypedValue::FalliblePtr {
+                    val: ptr,
+                    ok: ok_i1,
+                })
             }
             Type::Named(name) => {
                 if let Some(st) = self.type_layout.named_structs.get(name) {
@@ -403,9 +409,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_alloca(*st, "find_struct")
                         .map_err(llvm_err)?;
-                    self.builder
-                        .build_store(st_alloca, fat)
-                        .map_err(llvm_err)?;
+                    self.builder.build_store(st_alloca, fat).map_err(llvm_err)?;
                     Ok(TypedValue::FallibleStruct {
                         val: st_alloca,
                         ty: *st,
@@ -426,7 +430,10 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_extract_value(fat, 0, "fat_tag")
                     .map_err(llvm_err)?
                     .into_int_value();
-                Ok(TypedValue::FallibleInt { val: tag, ok: ok_i1 })
+                Ok(TypedValue::FallibleInt {
+                    val: tag,
+                    ok: ok_i1,
+                })
             }
         }
     }
@@ -491,8 +498,7 @@ impl<'ctx> CodeGen<'ctx> {
             (TypedValue::Str(sp1), TypedValue::Str(sp2)) => {
                 let sv1 = self.load_string(*sp1)?;
                 let sv2 = self.load_string(*sp2)?;
-                let cc =
-                    self.call_rt("action_string_index_of", &[sv2.into(), sv1.into()])?;
+                let cc = self.call_rt("action_string_index_of", &[sv2.into(), sv1.into()])?;
                 let result = cc
                     .try_as_basic_value()
                     .basic()
@@ -505,9 +511,9 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?;
                 self.build_fallible_int_from_ok(result, found)
             }
-            _ => Err(
-                "indexOf: first arg must be (element, list) or (substring, string)".to_string(),
-            ),
+            _ => {
+                Err("indexOf: first arg must be (element, list) or (substring, string)".to_string())
+            }
         }
     }
 
@@ -667,7 +673,10 @@ impl<'ctx> CodeGen<'ctx> {
                         "le9",
                     )
                     .map_err(llvm_err)?;
-                let is_d = self.builder.build_and(is_digit, le9, "is_digit").map_err(llvm_err)?;
+                let is_d = self
+                    .builder
+                    .build_and(is_digit, le9, "is_digit")
+                    .map_err(llvm_err)?;
                 let is_minus = self
                     .builder
                     .build_int_compare(
@@ -695,10 +704,22 @@ impl<'ctx> CodeGen<'ctx> {
                         "is_dot",
                     )
                     .map_err(llvm_err)?;
-                let is_sign = self.builder.build_or(is_minus, is_plus, "is_sign").map_err(llvm_err)?;
-                let is_num_start = self.builder.build_or(is_d, is_sign, "is_num1").map_err(llvm_err)?;
-                let is_valid = self.builder.build_or(is_num_start, is_dot, "is_valid").map_err(llvm_err)?;
-                let ok = self.builder.build_and(has_chars, is_valid, "ok").map_err(llvm_err)?;
+                let is_sign = self
+                    .builder
+                    .build_or(is_minus, is_plus, "is_sign")
+                    .map_err(llvm_err)?;
+                let is_num_start = self
+                    .builder
+                    .build_or(is_d, is_sign, "is_num1")
+                    .map_err(llvm_err)?;
+                let is_valid = self
+                    .builder
+                    .build_or(is_num_start, is_dot, "is_valid")
+                    .map_err(llvm_err)?;
+                let ok = self
+                    .builder
+                    .build_and(has_chars, is_valid, "ok")
+                    .map_err(llvm_err)?;
                 let strtod_fn = self.module.get_function("strtod").unwrap();
                 let null_ptr = self.ptr_ty().const_zero();
                 let result = self
@@ -901,10 +922,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_sub(len, self.i64_ty().const_int(1, false), "last_idx")
             .map_err(llvm_err)?;
-        let elem = self.call_rt(
-            "action_list_get",
-            &[list_val.into(), last_idx.into()],
-        )?;
+        let elem = self.call_rt("action_list_get", &[list_val.into(), last_idx.into()])?;
         let tag = self
             .builder
             .build_extract_value(
@@ -943,13 +961,22 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(IntPredicate::SGE, idx_iv, len, "ge_len")
             .map_err(llvm_err)?;
-        let oob = self.builder.build_or(neg, ge_len, "oob").map_err(llvm_err)?;
+        let oob = self
+            .builder
+            .build_or(neg, ge_len, "oob")
+            .map_err(llvm_err)?;
         let in_range = self
             .builder
-            .build_int_compare(IntPredicate::EQ, oob, self.bool_ty().const_zero(), "in_range")
+            .build_int_compare(
+                IntPredicate::EQ,
+                oob,
+                self.bool_ty().const_zero(),
+                "in_range",
+            )
             .map_err(llvm_err)?;
         let elem_bv = if let Some(cache) = self.loop_control.list_loop_get_cache {
-            self.list_get_cached_fat(lp, idx_iv, cache)?.into_struct_value()
+            self.list_get_cached_fat(lp, idx_iv, cache)?
+                .into_struct_value()
         } else {
             let elem = self.call_rt("action_list_get", &[list_val.into(), idx_iv.into()])?;
             elem.try_as_basic_value()
@@ -961,7 +988,9 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_alloca(self.string_type, "get_fat")
             .map_err(llvm_err)?;
-        self.builder.build_store(fat_alloca, elem_bv).map_err(llvm_err)?;
+        self.builder
+            .build_store(fat_alloca, elem_bv)
+            .map_err(llvm_err)?;
         let found_flag_a = self
             .builder
             .build_alloca(self.bool_ty(), "get_ok")
@@ -1161,14 +1190,10 @@ impl<'ctx> CodeGen<'ctx> {
                             return self.compile_last_fallible(CallArg::hir(obj)).map(Some);
                         }
                         "tail" if args.is_empty() => {
-                            return self
-                                .compile_tail_fallible_call(CallArg::hir(obj))
-                                .map(Some);
+                            return self.compile_tail_fallible_call(CallArg::hir(obj)).map(Some);
                         }
                         "init" if args.is_empty() => {
-                            return self
-                                .compile_init_fallible_call(CallArg::hir(obj))
-                                .map(Some);
+                            return self.compile_init_fallible_call(CallArg::hir(obj)).map(Some);
                         }
                         "head" if args.is_empty() => {
                             return self.compile_head_fallible(CallArg::hir(obj)).map(Some);
@@ -1217,10 +1242,7 @@ impl<'ctx> CodeGen<'ctx> {
                         }
                         "reduce" if args.len() == 1 => {
                             return self
-                                .builtin_reduce(
-                                    &[CallArg::hir(obj), CallArg::hir(&args[0])],
-                                    None,
-                                )
+                                .builtin_reduce(&[CallArg::hir(obj), CallArg::hir(&args[0])], None)
                                 .map(Some);
                         }
                         _ => {}
@@ -1612,7 +1634,9 @@ impl<'ctx> CodeGen<'ctx> {
                 | TypedValue::FallibleFloat { .. }
                 | TypedValue::FallibleStr { .. }
                 | TypedValue::FalliblePtr { .. }
-                | TypedValue::FallibleStruct { .. } => self.compile_or_block_fallible_from_ok(fallback, v),
+                | TypedValue::FallibleStruct { .. } => {
+                    self.compile_or_block_fallible_from_ok(fallback, v)
+                }
                 other => Ok(other),
             }
         };

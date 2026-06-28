@@ -187,11 +187,24 @@ impl<'ctx> CodeGen<'ctx> {
         self.block_did_rc_inc = false;
 
         let mut last = TypedValue::Unit;
-        for s in stmts {
+        let mut i = 0;
+        while i < stmts.len() {
+            if let Some(n) = self.try_compile_filter_map_fold_stmt_chain(&stmts[i..])? {
+                i += n;
+                last = TypedValue::Unit;
+                continue;
+            }
+            if let Some(n) = self.try_compile_map_filter_let_fusion(&stmts[i..])? {
+                i += n;
+                last = TypedValue::Unit;
+                continue;
+            }
+            let s = &stmts[i];
             match s {
                 HirStmt::Expr { expr, .. } => {
                     if self.try_compile_mutating_ufcs_stmt_writeback(expr)? {
                         last = TypedValue::Unit;
+                        i += 1;
                         continue;
                     }
                     self.rc_discard_value(&last)?;
@@ -199,6 +212,7 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 _ => self.compile_hir_stmt(s)?,
             }
+            i += 1;
         }
 
         let current_block = self

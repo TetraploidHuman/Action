@@ -254,6 +254,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .and_then(|b| b.get_parent())
                             .ok_or("no fn")?;
                         let entry_block = current_fn.get_last_basic_block().unwrap();
+                        let pp_cache = self.alloc_list_get_cache()?;
                         let loop_bb = self.context.append_basic_block(current_fn, "prepend_loop");
                         let done_bb = self.context.append_basic_block(current_fn, "prepend_done");
                         let _ = self.builder.build_unconditional_branch(loop_bb);
@@ -262,13 +263,13 @@ impl<'ctx> CodeGen<'ctx> {
                             .builder
                             .build_phi(self.i64_ty(), "pp_i")
                             .map_err(llvm_err)?;
-                        let lv_orig = self.load_list(lp)?;
                         let lv_cur = self.load_list(alloca)?;
-                        let elem = self.call_rt(
-                            "action_list_get",
-                            &[lv_orig.into(), i.as_basic_value().into_int_value().into()],
+                        let elem = self.list_get_cached_fat(
+                            lp,
+                            i.as_basic_value().into_int_value(),
+                            pp_cache,
                         )?;
-                        let elem_bv = elem.try_as_basic_value().basic().ok_or("get failed")?;
+                        let elem_bv = elem;
                         let pushed =
                             self.call_rt("action_list_push", &[lv_cur.into(), elem_bv.into()])?;
                         let pb = pushed.try_as_basic_value().basic().ok_or("push2 failed")?;

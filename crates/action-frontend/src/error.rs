@@ -3,6 +3,7 @@ use ariadne::{Color, Label, Report, ReportKind, Source};
 use serde::{Deserialize, Serialize};
 
 /// Structured diagnostic codes (R7 fallibility).
+/// E004 and E005 are reserved (not yet assigned).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DiagnosticCode {
     E001,

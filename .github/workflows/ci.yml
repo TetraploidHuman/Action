@@ -144,6 +144,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ env.TARGET }}
+          components: rustfmt
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -192,8 +193,14 @@ jobs:
           & $libExe.FullName /DEF:C:\llvm\lib\libxml2s.def /OUT:C:\llvm\lib\libxml2s.lib /MACHINE:X64
           Remove-Item C:\llvm\lib\libxml2s.def -Force
 
+      - name: Format check
+        run: cargo fmt -- --check
+
       - name: Build
         run: cargo build --target ${{ env.TARGET }}
+
+      - name: Clippy
+        run: cargo clippy --target ${{ env.TARGET }} -- -W clippy::all
 
       - name: Smoke & tests
         shell: pwsh
@@ -205,10 +212,16 @@ jobs:
           & $Action check examples/hello.ac
           $out = & $Action run examples/hello.ac 2>&1 | Out-String
           Write-Host $out
-          if ($out -notmatch 'hello') { Write-Warning "hello.ac output unexpected" }
-          try { '{}' | & $Action lsp 2>&1 | Out-Null } catch { Write-Host "lsp smoke: $_" }
-          cargo test --lib --target $env:TARGET -- --test-threads=1 --skip proptest
+          if ($out -notmatch 'hello') { throw "hello.ac output unexpected: $out" }
+          $lspOut = '{}' | & $Action lsp 2>&1 | Out-String
+          if ($lspOut -notmatch '"result"') { throw "LSP initialize failed" }
+          cargo test -p action-codegen --lib --target $env:TARGET -- --test-threads=1
+          cargo test -p action-lsp --lib --target $env:TARGET -- --test-threads=1
           cargo test --test integration --target $env:TARGET -- --test-threads=1
+          cargo test --test hir_golden --target $env:TARGET -- --test-threads=1
+          cargo test --test lexer_golden --target $env:TARGET -- --test-threads=1
+          cargo test --test bootstrap_subset --target $env:TARGET -- --test-threads=1
+          cargo test --test diagnostics_json --target $env:TARGET -- --test-threads=1
           cargo build --release --target $env:TARGET
           $Release = Join-Path $PWD "target/$env:TARGET/release/action.exe"
           if (-not (Test-Path $Release)) { throw "missing release binary: $Release" }
@@ -216,7 +229,23 @@ jobs:
           if ($cow.Trim().Split("`n")[-1] -ne '11') { throw "bench_cow (release): expected 11" }
           & $Release run examples/test_insert_exit.ac | Out-Null
           & $Release run examples/bench_all.ac | Out-Null
+          & $Release run examples/bench_concat_depth.ac | Out-Null
+          & $Release run examples/test_cow_insert_isolation.ac | Out-Null
           & $Release run examples/test_list_alias_insert.ac | Out-Null
+          & $Release run examples/bench_insert2.ac | Out-Null
+          & $Release run examples/bench_insert10.ac | Out-Null
+          & $Release run examples/bench_for_nested.ac | Out-Null
+          $mf = & $Release run examples/map_filter.ac 2>&1 | Out-String
+          if ($mf.Trim().Split("`n")[-1] -ne '210215') { throw "map_filter: expected 210215" }
+          $exe = Join-Path $PWD "examples/bench_cow"
+          Remove-Item $exe -ErrorAction SilentlyContinue
+          Remove-Item (Join-Path $PWD "examples/bench_cow.o") -ErrorAction SilentlyContinue
+          & $Release run -O2 --emit exe examples/bench_cow.ac | Out-Null
+          if (-not (Test-Path $exe)) { throw "AOT bench_cow exe missing" }
+          $aot = & $exe 2>&1 | Out-String
+          if ($aot.Trim().Split("`n")[-1] -ne '11') { throw "AOT bench_cow: expected 11" }
+          Remove-Item $exe -ErrorAction SilentlyContinue
+          Remove-Item (Join-Path $PWD "examples/bench_cow.o") -ErrorAction SilentlyContinue
 
       - name: Debug run output
         if: failure()

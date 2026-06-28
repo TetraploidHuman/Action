@@ -71,11 +71,9 @@ impl InferenceEngine {
             }
             Type::Struct(fields) => fields.iter().any(|(_, t)| self.occurs(id, t)),
             Type::Map(k, v) => self.occurs(id, &k) || self.occurs(id, &v),
-            Type::Set(t)
-            | Type::Task(t)
-            | Type::Stream(t)
-            | Type::LazyList(t)
-            | Type::Ptr(t) => self.occurs(id, &t),
+            Type::Set(t) | Type::Task(t) | Type::Stream(t) | Type::LazyList(t) | Type::Ptr(t) => {
+                self.occurs(id, &t)
+            }
             _ => false,
         }
     }

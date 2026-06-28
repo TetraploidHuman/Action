@@ -1,4 +1,4 @@
-//! List core runtime fragments (R3-4 include! split).
+//! List core runtime fragments; `body.inc.rs` is assembled from `*.inc.rs` by `scripts/concat_list_body.py` at build time.
 
 use crate::{llvm_err, CodeGen};
 use inkwell::values::BasicValue;

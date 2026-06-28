@@ -244,11 +244,7 @@ impl<'ctx> Scope<'ctx> {
         }
     }
 
-    pub(crate) fn set_fn_type(
-        &mut self,
-        name: &str,
-        fn_type: Option<FunctionType<'ctx>>,
-    ) {
+    pub(crate) fn set_fn_type(&mut self, name: &str, fn_type: Option<FunctionType<'ctx>>) {
         if let Some(var) = self.variables.get_mut(name) {
             var.fn_type = fn_type;
             var.is_closure = false;

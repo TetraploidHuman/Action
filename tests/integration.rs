@@ -656,8 +656,6 @@ fn test_import_wildcard() {
 
 // ---- Comprehensive builtin tests ----
 
-
-
 #[test]
 fn test_network_ping() {
     // Verify action_test_ping() FFI returns 42
@@ -696,18 +694,7 @@ fn test_higher_order() {
     assert_eq!(run_example("test_higher_order.ac"), "15512413");
 }
 
-
-
-
 // ---- Fallible (or {}) tests ----
-
-
-
-
-
-
-
-
 
 #[test]
 fn test_fallible_or_default() {
@@ -732,8 +719,51 @@ fn test_fallible_builtin_returns() {
 
 #[test]
 fn test_tutorial() {
-    let out = run_example("tutorial.ac");
-    assert!(out.contains("=== Tutorial Complete ==="));
+    assert_eq!(
+        run_example("tutorial.ac"),
+        "=== Action Language Tutorial ===\n\
+Hello, World!\n\
+Count: 3\n\
+Typed: 42, typed string\n\
+Int: 42, Float: 3.14, Bool: true, String: hello\n\
+parsed: 42, bad parse fallback: -1\n\
+add(3, 4) = 7\n\
+factorial(5) = 120\n\
+identity(42) = 42\n\
+identity(\"hi\") = hi\n\
+len: 14\n\
+upper: HELLO, ACTION!\n\
+lower: hello, action!\n\
+substring(7, 13): Action!\n\
+split count: 2\n\
+joined: Hello | Action!\n\
+nums len: 5\n\
+len: 5\n\
+head: 1\n\
+doubled len: 5\n\
+evens len: 2\n\
+sum: 15\n\
+squares len: 5\n\
+empty map: true\n\
+map len: 3\n\
+contains 'a': true\n\
+get 'a': 1\n\
+set contains 3: true\n\
+set size: 5\n\
+when value: three\n\
+grade: B\n\
+max: 5\n\
+Color: red\n\
+unwrap: 42\n\
+lambda(10, 20) = 30\n\
+mapped len: 5\n\
+addBase(5): 15\n\
+first: 1, empty list head fallback: -1\n\
+1 2 3 4 5 \n\
+cubes len: 5\n\
+word count: 13\n\
+=== Tutorial Complete ===\n"
+    );
 }
 
 #[test]
@@ -857,8 +887,6 @@ fn test_error_e011_nullable_type() {
 // Compile-error tests — imports, generics, arity
 // ============================================================
 
-
-
 #[test]
 fn test_error_e006_list_index() {
     assert_compile_error_code("test_error_e006_list_index.ac", "E006");
@@ -980,15 +1008,10 @@ fn test_error_arg_count() {
 // Compile-error tests — fallible / removed nullable syntax
 // ============================================================
 
-
-
-
 #[test]
 fn test_error_standalone_question() {
     assert_compile_error_code("test_error_standalone_question.ac", "E012");
 }
-
-
 
 #[test]
 fn test_error_safe_call_no_field() {
@@ -1111,6 +1134,40 @@ fn test_bench_all() {
     assert_eq!(
         run_example("bench_all.ac"),
         "2000\n2000\n1000\n2100\n2000\n1000\ntrue\nfalse\n"
+    );
+}
+
+#[test]
+fn test_ffi_cstring_roundtrip() {
+    assert_eq!(
+        run_example("test_ffi.ac"),
+        "Hello from Atomic FFI!\ndone\n"
+    );
+}
+
+#[test]
+fn test_bench_set() {
+    assert_eq!(run_example("bench_set.ac"), "500\n500\n600\n0\n");
+}
+
+#[test]
+fn test_bench_map() {
+    assert_eq!(run_example("bench_map.ac"), "500\n500\n500\n500\n");
+}
+
+#[test]
+fn test_bench_math() {
+    assert_eq!(
+        run_example("bench_math.ac"),
+        "31259995\n295725\n7442.17\n200\n0.363123\n"
+    );
+}
+
+#[test]
+fn test_bench_string() {
+    assert_eq!(
+        run_example("bench_string.ac"),
+        "2500\n2500\n2500\n2500\n2500\n100\n0\n"
     );
 }
 
@@ -1334,6 +1391,116 @@ fn test_bench_for_chain() {
 }
 
 #[test]
+fn test_bench_funcall() {
+    assert_eq!(
+        run_example("bench_funcall.ac"),
+        "832040\n2432902008176640000\n999000\n5\n"
+    );
+}
+
+#[test]
+fn test_lazyhead_empty() {
+    assert_eq!(run_example("test_lazyhead_empty.ac"), "true\nfalse\n");
+}
+
+#[test]
+fn test_bench_for_nested() {
+    assert_eq!(run_example("bench_for_nested.ac"), "1500625\n");
+}
+
+#[test]
+fn test_list_builtins() {
+    assert_eq!(
+        run_example("list_test.ac"),
+        "range(1,5) len: 4\n\
+head: 1\n\
+last: 4\n\
+get(nums,2): 3\n\
+reverse len: 4\n\
+take(2) len: 2\n\
+drop(2) len: 2\n\
+contains 3: true\n\
+repeat(42,3) len: 3\n\
+prepend len: 5\n\
+done\n"
+    );
+}
+
+#[test]
+fn test_exhaustive_runtime() {
+    assert_eq!(run_example("exhaustive.ac"), "1420-1");
+}
+
+#[test]
+fn test_overloading2() {
+    assert_eq!(
+        run_example("overloading2.ac"),
+        "Hello, World\n10\n30\n25\n30\n"
+    );
+}
+
+#[test]
+fn test_overloading() {
+    assert_eq!(run_example("overloading.ac"), "3\n4\n");
+}
+
+#[test]
+fn test_print_types() {
+    assert_eq!(
+        run_example("test_print_types.ac"),
+        "Task print: Task(done=0, cancelled=0)\n\
+Stream print: [1, 2]\n\
+LazyList print: []\n\
+Struct print: <struct>\n\
+done\n"
+    );
+}
+
+#[test]
+fn test_lazylist_test() {
+    assert_eq!(
+        run_example("lazylist_test.ac"),
+        "lazy_list created, len: 1\nsecond lazy_list len: 1\ndone\n"
+    );
+}
+
+#[test]
+fn test_math_test() {
+    assert_eq!(
+        run_example("math_test.ac"),
+        "pi: 3.14159\n\
+e: 2.71828\n\
+sqrt(16): 4\n\
+sin(0): 0\n\
+cos(0): 1\n\
+floor(3.7): 3\n\
+ceil(3.2): 4\n\
+round(3.5): 4\n\
+abs(-5): 5\n\
+min(3, 7): 3\n\
+max(3.0, 7.0): 7\n\
+exp(1): 2.71828\n\
+log(e): 1\n\
+clamp(5, 0, 10): 5\n\
+clamp(-3, 0, 10): 0\n\
+done\n"
+    );
+}
+
+#[test]
+fn test_stream_test() {
+    assert_eq!(run_example("stream_test.ac"), "42\n100\n999\n");
+}
+
+#[test]
+fn test_contains_set_test() {
+    assert_eq!(
+        run_example("contains_set_test.ac"),
+        "contains a: true\ncontains d: false\ndone\n"
+    );
+}
+
+#[test]
 fn test_bench_for_method() {
     assert_eq!(run_example("bench_for_method.ac"), "1666\n1002\n");
 }
@@ -1461,7 +1628,6 @@ fn test_complex_list_ufcs_chain() {
 fn test_complex_filter_map_fold() {
     assert_eq!(run_example("complex_filter_map_fold.ac"), "270270\n");
 }
-
 
 #[test]
 fn test_complex_concat_mutate() {

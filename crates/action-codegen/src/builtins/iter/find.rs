@@ -77,7 +77,9 @@ impl<'ctx> CodeGen<'ctx> {
             args.first().copied()
         } else if args.len() == 2 {
             match args[0] {
-                CallArg::Hir(e) if matches!(&e.ty, Type::Generic(base, _) if matches!(base.as_ref(), Type::Named(n) if n == "List" || n == "LazyList")) => Some(args[0]),
+                CallArg::Hir(e) if matches!(&e.ty, Type::Generic(base, _) if matches!(base.as_ref(), Type::Named(n) if n == "List" || n == "LazyList")) => {
+                    Some(args[0])
+                }
                 _ => Some(args[1]),
             }
         } else {

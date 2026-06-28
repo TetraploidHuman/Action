@@ -1,5 +1,7 @@
 # Action 编译器：改进方向与自举可行性分析报告
 
+> **Historical note (2026-06):** LOC counts and test numbers in §2–§3 reflect the pre-crate-split layout (~140 tests). For current layout see [ARCHITECTURE.md](ARCHITECTURE.md) (**203** integration / **228** total harness as of 2026-06).
+
 > **文档性质**：只读调研报告，不含代码改动。  
 > **调研日期**：2026-06-18  
 > **代码基线**：`main` @ `bf6929e` 附近（P2/P4/P5 系列提交后）  

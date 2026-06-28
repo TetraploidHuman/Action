@@ -13,12 +13,8 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<TypedValue<'ctx>, String> {
         if self.in_fallible_region() {
             return match name {
-                "__jsonParse" if args.len() == 1 => {
-                    self.compile_json_parse_fallible(args[0])
-                }
-                "__jsonGet" if args.len() == 2 => {
-                    self.compile_json_get_fallible(args[0], args[1])
-                }
+                "__jsonParse" if args.len() == 1 => self.compile_json_parse_fallible(args[0]),
+                "__jsonGet" if args.len() == 2 => self.compile_json_get_fallible(args[0], args[1]),
                 "__jsonGetIdx" if args.len() == 2 => {
                     self.compile_json_get_idx_fallible(args[0], args[1])
                 }

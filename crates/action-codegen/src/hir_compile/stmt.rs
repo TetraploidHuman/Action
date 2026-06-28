@@ -84,6 +84,52 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
+    pub(crate) fn bind_hir_immutable_int(
+        &mut self,
+        name: &str,
+        val: TypedValue<'ctx>,
+    ) -> Result<(), String> {
+        let TypedValue::Int(v) = val else {
+            return Err("bind_hir_immutable_int expects Int".to_string());
+        };
+        let ty = self.i64_ty();
+        let alloca = self.builder.build_alloca(ty, name).map_err(llvm_err)?;
+        self.builder.build_store(alloca, v).map_err(llvm_err)?;
+        self.scope.set_with_fn_type(
+            name.to_string(),
+            alloca,
+            ty.into(),
+            crate::ValKind::Int,
+            None,
+        );
+        Ok(())
+    }
+
+    pub(crate) fn bind_hir_list(
+        &mut self,
+        name: &str,
+        val: TypedValue<'ctx>,
+    ) -> Result<(), String> {
+        let TypedValue::List(_) = &val else {
+            return Err("bind_hir_list expects List".to_string());
+        };
+        let ty = self.list_type;
+        let alloca = self.builder.build_alloca(ty, name).map_err(llvm_err)?;
+        self.store_typed_value(&val, alloca, ty.into())?;
+        self.rc_inc_typed_value(&val)?;
+        if self.block_did_rc_inc {
+            self.rc_dec_typed_value(&val)?;
+        }
+        self.scope.set_with_fn_type(
+            name.to_string(),
+            alloca,
+            ty.into(),
+            crate::ValKind::List,
+            None,
+        );
+        Ok(())
+    }
+
     pub(crate) fn compile_hir_external(&mut self, stmt: &HirStmt) -> Result<(), String> {
         let HirStmt::External {
             name,

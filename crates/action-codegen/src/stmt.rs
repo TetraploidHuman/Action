@@ -610,8 +610,7 @@ impl<'ctx> CodeGen<'ctx> {
                                 let struct_ty = ret_ty_opt
                                     .ok_or_else(|| "Missing return type".to_string())?
                                     .into_struct_type();
-                                if let Some((fat_alloca, _fat_ty)) = self.last_fat_ret.take()
-                                {
+                                if let Some((fat_alloca, _fat_ty)) = self.last_fat_ret.take() {
                                     if struct_ty != self.fat_return_type {
                                         let ptr_ty =
                                             self.context.ptr_type(inkwell::AddressSpace::default());

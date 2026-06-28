@@ -1,10 +1,12 @@
 // Submodule: runtime_decl/str_adv (R6)
 
 mod contains;
+mod index_of;
 mod join;
 mod repeat;
 mod replace;
 mod split;
+mod split_lines;
 mod trim_end;
 mod trim_start;
 
@@ -19,6 +21,8 @@ impl<'ctx> CodeGen<'ctx> {
         self.define_str_repeat()?;
         self.define_str_trim_start()?;
         self.define_str_trim_end()?;
+        self.define_str_split_lines()?;
+        self.define_str_index_of()?;
         Ok(())
     }
 }

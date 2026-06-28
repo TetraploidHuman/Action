@@ -72,7 +72,9 @@ cd ~/Action && nix-shell --run "python3 scripts/perf_report.py"
 ## 优化后验证清单
 
 ```bash
-nix-shell --run "cargo test -- --test-threads=1"
+nix-shell --run "cargo test --test integration -- --test-threads=1"
+nix-shell --run "cargo test --test diagnostics_json -- --test-threads=1"
+nix-shell --run "cargo test -p action-codegen --lib -- --test-threads=1"
 nix-shell --run "./target/release/action run examples/bench_cow.ac"   # 预期输出 11
 nix-shell --run "./benchmark.sh -n 3"
 nix-shell --run "python3 scripts/perf_report.py"
@@ -81,7 +83,7 @@ nix-shell --run "python3 scripts/perf_report.py"
 
 ## Post-optimization（2026-06）
 
-在 Remote-SSH 远端 NixOS、`target/release/action`、**AOT 纯执行**（`./benchmark.sh --mode aot --opt 2 -n 3`，预热 1 次 + 计时 3 次，emit/link 不计入）下的快照。完整 32 项见 `benchmark_results_aot_o2.txt`。
+在 Remote-SSH 远端 NixOS、`target/release/action`、**AOT 纯执行**（`./benchmark.sh --mode aot --opt 2 -n 3`，预热 1 次 + 计时 3 次，emit/link 不计入）下的快照。完整 **30** 项见 `benchmark_results_aot_o2.txt`。
 
 | 用例 | Min (ms) | Avg (ms) | Max (ms) |
 |------|----------|----------|----------|
@@ -92,7 +94,7 @@ nix-shell --run "python3 scripts/perf_report.py"
 | bench_insert100 | 17 | 18 | 19 |
 | bench_concat_depth | 15 | 16 | 16 |
 
-**说明**：`bench_map_10k` / `bench_set_10k` 用于 1 万元素级 Map/Set 压力；与 `bench_map` / `bench_set`（小规模 smoke）互补。`bench_concat_depth` 覆盖深度 ConcatNode 与 **fused map+filter**（`filter(map(lst){f}){g}` → 单遍 `action_list_map_filter_walk`）；语义用例见 `examples/map_filter.ac`（输出 `210215`）。对比优化前后请固定 `--mode` 与 `--opt`。
+**说明**：`bench_map_10k` / `bench_set_10k` 用于 1 万元素级 Map/Set 压力；与 `bench_map` / `bench_set`（小规模 smoke）互补。`bench_concat_depth` 覆盖深度 ConcatNode 与 **fused map+filter**（`filter(map(lst){f}){g}` → 单遍 `action_list_map_filter_walk`）；语义用例见 `examples/map_filter.ac`（输出 `210215`）。`bench_all.ac` 中重复 `list.contains` 循环在 `for i < N`（N≥16 编译期常量）且 list 不变时，codegen 会融合为一次 `action_ht_from_list` + 循环内 `action_ht_contains`（见 `doc/ARCHITECTURE.md`）。对比优化前后请固定 `--mode` 与 `--opt`。
 
 性能改动须保持语言语义（见 `.cursor/rules/preserve-language-semantics.mdc`）。
 

@@ -1,8 +1,0 @@
-fun main() {
-    val m1 = Map["a": 1, "b": 2]
-    val m2 = Map["b": 99, "c": 3]
-    var m3 = concat(m1, m2)
-    print("concat Map len (expect 3): ")
-    println(m3.len())
-    println("done")
-}

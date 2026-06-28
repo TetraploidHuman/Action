@@ -83,7 +83,10 @@ impl<'ctx> CodeGen<'ctx> {
             }
             TypedValue::FallibleStruct { val, ty, .. } => {
                 let bt: inkwell::types::BasicTypeEnum = (*ty).into();
-                let loaded = self.builder.build_load(bt, *val, "fall_ld").map_err(llvm_err)?;
+                let loaded = self
+                    .builder
+                    .build_load(bt, *val, "fall_ld")
+                    .map_err(llvm_err)?;
                 self.builder.build_store(alloca, loaded).map_err(llvm_err)?;
             }
             _ => {

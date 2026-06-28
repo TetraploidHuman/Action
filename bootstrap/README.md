@@ -22,6 +22,8 @@ nix-shell --run 'cargo test --test bootstrap_subset -- --test-threads=1'
 nix-shell --run 'cargo test --test hir_golden -- --test-threads=1'
 ```
 
+`bootstrap_subset::test_bootstrap_m4_lexer_matches_keywords_golden` compares `lexer.ac` stdout token text to `tests/fixtures/lexer/keywords.tokens.json` kinds (M4 acceptance).
+
 ## 对接
 
 Rust codegen 消费 HIR JSON（`action check --emit hir`）。详见 `doc/ARCHITECTURE.md`。

@@ -2,7 +2,7 @@
 # CI helpers executed inside nix-shell (LLVM + nix Rust on PATH).
 # Usage: nix-shell --run "bash scripts/ci-linux.sh <command>"
 #
-# Semantic authority: 198 integration tests (tests/integration.rs) — must stay green.
+# Semantic authority: 204 integration tests (tests/integration.rs) — must stay green.
 #
 # Optional: CARGO_TARGET_DIR (persistent self-hosted cache) overrides ./target.
 set -euo pipefail
@@ -28,16 +28,37 @@ nix_clippy_path() {
     PATH="$(echo "$PATH" | tr ':' '\n' | grep -v '.cargo/bin' | tr '\n' ':' | sed 's/:$//')"
 }
 
+ALL_INTEGRATION_TESTS="integration hir_golden lexer_golden bootstrap_subset diagnostics_json"
+
+run_all_integration_tests() {
+    cargo test --test integration --target "$TARGET" -- --test-threads=1
+    cargo test --test hir_golden --target "$TARGET" -- --test-threads=1
+    cargo test --test lexer_golden --target "$TARGET" -- --test-threads=1
+    cargo test --test bootstrap_subset --target "$TARGET" -- --test-threads=1
+    cargo test --test diagnostics_json --target "$TARGET" -- --test-threads=1
+}
+
+run_lsp_smoke() {
+    echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"capabilities":{}}}' \
+        | timeout 5 "$ACTION" lsp 2>&1 | grep -q '"result"' \
+        || { echo "LSP initialize failed" >&2; return 1; }
+}
+
+run_crate_unit_tests() {
+    cargo test -p action-frontend --lib --target "$TARGET" -- --test-threads=1 --skip proptest
+    cargo test -p action-driver --lib --target "$TARGET" -- --test-threads=1
+    cargo test -p action-codegen --lib --target "$TARGET" -- --test-threads=1
+    cargo test -p action-lsp --lib --target "$TARGET" -- --test-threads=1
+}
+
 run_test() {
     verify_env
     cargo build --target "$TARGET"
     "$ACTION" check examples/hello.ac
     "$ACTION" run examples/hello.ac
-    echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"capabilities":{}}}' \
-        | timeout 5 "$ACTION" lsp 2>&1 || true
-    PROPTEST_CASES="${PROPTEST_CASES:-50}" \
-        cargo test --lib --target "$TARGET" -- --test-threads=1 --skip proptest
-    cargo test --test integration --target "$TARGET" -- --test-threads=1
+    run_lsp_smoke
+    run_crate_unit_tests
+    run_all_integration_tests
 }
 
 run_clippy() {
@@ -57,6 +78,9 @@ run_benchmark() {
     cargo build --release --target "$TARGET"
     test -x "$RELEASE_ACTION"
     ./benchmark.sh --iterations 3
+    python3 scripts/benchmark_regression.py \
+        benchmark_results_jit_ci_baseline.txt benchmark_results.txt \
+        --threshold 0.35 --min-delta-ms 20
     ./benchmark.sh --mode aot --opt 2 --iterations 3 --results benchmark_results_aot_o2_ci.txt
 }
 
@@ -89,13 +113,42 @@ run_perf_smoke_release() {
         echo "bench_cow (release): expected 11, got: $out" >&2
         return 1
     }
-    for b in bench_insert2 bench_insert10 bench_insert100 test_insert_exit test_list_alias_insert test_cow_insert_isolation; do
+    for b in bench_insert2 bench_insert10 bench_insert100 bench_for_nested test_insert_exit test_list_alias_insert test_cow_insert_isolation; do
         "$RELEASE_ACTION" run "examples/${b}.ac" >/dev/null || {
             echo "release smoke failed: ${b}" >&2
             return 1
         }
     done
+    local mf
+    mf=$("$RELEASE_ACTION" run examples/map_filter.ac 2>&1) || return 1
+    echo "$mf" | tail -1 | grep -qx '210215' || {
+        echo "map_filter: expected 210215, got: $mf" >&2
+        return 1
+    }
     bash scripts/ci_insert_stress.sh "$RELEASE_ACTION"
+}
+
+run_aot_smoke_release() {
+    echo "=== AOT smoke (release -O2) ==="
+    test -x "$RELEASE_ACTION"
+    local bench="examples/bench_cow.ac"
+    local exe="examples/bench_cow"
+    rm -f "$exe"
+    "$RELEASE_ACTION" run -O2 --emit exe "$bench" >/dev/null || {
+        echo "AOT compile bench_cow failed" >&2
+        return 1
+    }
+    test -x "$exe" || {
+        echo "AOT exe missing: $exe" >&2
+        return 1
+    }
+    local out
+    out=$("$exe" 2>&1) || return 1
+    echo "$out" | tail -1 | grep -qx '11' || {
+        echo "AOT bench_cow: expected 11, got: $out" >&2
+        return 1
+    }
+    rm -f "$exe" "${bench%.ac}.o"
 }
 
 run_perf_quick() {
@@ -131,13 +184,13 @@ run_core() {
     cargo build --target "$TARGET"
     "$ACTION" check examples/hello.ac
     "$ACTION" run examples/hello.ac
-    echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"capabilities":{}}}' \
-        | timeout 5 "$ACTION" lsp 2>&1 || true
-    PROPTEST_CASES="${PROPTEST_CASES:-50}" \
-        cargo test --lib --target "$TARGET" -- --test-threads=1 --skip proptest
-    cargo test --test integration --target "$TARGET" -- --test-threads=1
+    run_lsp_smoke
+    run_crate_unit_tests
+    run_all_integration_tests
     run_perf_smoke_debug
     run_perf_smoke_release
+    run_aot_smoke_release
+    run_perf_quick
     cargo build -p action-frontend --target "$TARGET"
     cargo test -p action-frontend --target "$TARGET" -- --skip proptest
 }

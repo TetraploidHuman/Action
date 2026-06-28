@@ -1,2 +1,0 @@
-val t = launch { 123 }
-println(t)

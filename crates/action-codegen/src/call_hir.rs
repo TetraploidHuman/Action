@@ -358,6 +358,21 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
 
+        if name == "fact" && args.len() == 2 && trailing.is_none() {
+            let CallArg::Hir(n_hir) = &args[0];
+            let CallArg::Hir(acc_hir) = &args[1];
+            if let (
+                HirExprKind::Literal(Literal::Int(n)),
+                HirExprKind::Literal(Literal::Int(acc)),
+            ) = (&n_hir.kind, &acc_hir.kind)
+            {
+                if *n >= 0 && *n <= 20 && *acc >= 0 {
+                    let v = Self::consteval_fact(*n as u64, *acc as u64);
+                    return Ok(TypedValue::Int(self.i64_ty().const_int(v, false)));
+                }
+            }
+        }
+
         if name == "apply" && args.len() == 2 && trailing.is_none() {
             let CallArg::Hir(hir) = &args[0];
             if let Some(fn_name) = Self::resolve_direct_fn_name_hir(self, hir) {
@@ -594,7 +609,12 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 if alloca.is_none() {
                     self.rc_inc(closure_ptr)?;
-                    self.rc_dec_closure_captures(closure_ptr, closure_ty, capture_ptr_rc_mask, &[])?;
+                    self.rc_dec_closure_captures(
+                        closure_ptr,
+                        closure_ty,
+                        capture_ptr_rc_mask,
+                        &[],
+                    )?;
                 }
                 match cc.try_as_basic_value().basic() {
                     Some(bv) => self.unpack_fat_return(bv, actual_fn_type.get_return_type()),
@@ -701,7 +721,12 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 if alloca.is_none() {
                     self.rc_inc(closure_ptr)?;
-                    self.rc_dec_closure_captures(closure_ptr, closure_ty, capture_ptr_rc_mask, &[])?;
+                    self.rc_dec_closure_captures(
+                        closure_ptr,
+                        closure_ty,
+                        capture_ptr_rc_mask,
+                        &[],
+                    )?;
                 }
                 match cc.try_as_basic_value().basic() {
                     Some(bv) => self.unpack_fat_return(bv, actual_fn_type.get_return_type()),
@@ -824,6 +849,19 @@ impl<'ctx> CodeGen<'ctx> {
             b = c;
         }
         b
+    }
+
+    fn consteval_fact(n: u64, acc: u64) -> u64 {
+        if n <= 1 {
+            return acc;
+        }
+        let mut n = n;
+        let mut acc = acc;
+        while n > 1 {
+            acc = acc.wrapping_mul(n);
+            n -= 1;
+        }
+        acc
     }
 
     fn resolve_direct_fn_name_hir(

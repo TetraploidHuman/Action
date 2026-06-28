@@ -386,7 +386,7 @@ mod tests {
             .lock()
             .unwrap_or_else(|poison| poison.into_inner());
         let mut cg = CodeGen::new(&guard, "test", registry, None);
-        cg.compile_checked(&checked)
+        cg.compile_from_checked(&checked)
             .expect("Compilation should succeed");
         cg.print_ir()
     }
@@ -621,7 +621,7 @@ mod tests {
             "fun main() {\n\
                  val ll = lazy_list(0) { it + 1 }\n\
                  val mapped = lazyMap({ it * 2 }, ll)\n\
-                 println(lazyHead(mapped))\n\
+                 println(lazyHead(mapped) or { 0 })\n\
              }",
         );
         assert!(
@@ -664,6 +664,98 @@ mod tests {
         assert!(
             ir.contains("@main"),
             "collection submodule split must compile sum()"
+        );
+    }
+
+    fn function_ir<'a>(ir: &'a str, name: &str) -> &'a str {
+        let needles = [
+            format!("define i64 @{name}("),
+            format!("define void @{name}("),
+        ];
+        let start = needles
+            .iter()
+            .find_map(|n| ir.find(n.as_str()))
+            .unwrap_or_else(|| panic!("function @{name} not found in IR"));
+        let body = &ir[start..];
+        if let Some(j) = body[1..].find("\ndefine ") {
+            &body[..j + 1]
+        } else {
+            body
+        }
+    }
+
+    #[test]
+    fn test_consteval_fib_literals_no_runtime_call() {
+        let ir = compile_program(
+            "fun fib(n: Int) -> Int { when n <= 1 { n else fib(n - 1) + fib(n - 2) } }\n\
+             fun main() { val x = fib(30); val y = fib(5) }",
+        );
+        assert!(ir.contains("832040"), "fib(30) should fold to 832040");
+        let main = function_ir(&ir, "main");
+        assert!(
+            !main.contains("call i64 @fib"),
+            "@main must not call fib for literal arguments: {main}"
+        );
+    }
+
+    #[test]
+    fn test_consteval_fact_literals_no_runtime_call() {
+        let ir = compile_program(
+            "fun fact(n: Int, acc: Int) -> Int { when n <= 1 { acc else fact(n - 1, acc * n) } }\n\
+             fun main() { val x = fact(20, 1) }",
+        );
+        assert!(
+            ir.contains("2432902008176640000"),
+            "fact(20,1) should fold to 20!"
+        );
+        let main = function_ir(&ir, "main");
+        assert!(
+            !main.contains("call i64 @fact"),
+            "@main must not call fact for literal arguments: {main}"
+        );
+    }
+
+    #[test]
+    fn test_ufcs_remove_len_single_list_remove_in_main() {
+        let ir = compile_program(
+            "fun main() {\n\
+                 val lst = List[1, 2, 3]\n\
+                 val n = lst.remove(0).len()\n\
+             }",
+        );
+        let main = function_ir(&ir, "main");
+        let n = main.matches("action_list_remove").count();
+        assert_eq!(
+            n, 1,
+            "@main should call action_list_remove exactly once (no double-eval): {main}"
+        );
+    }
+
+    #[test]
+    fn test_for_contains_ht_fusion() {
+        let ir = compile_program(
+            "fun main() {\n\
+                 val lst = List[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]\n\
+                 var i = 0\n\
+                 for i < 32 {\n\
+                     var tmp = lst.contains(i)\n\
+                     i = i + 1\n\
+                 }\n\
+                 println(1)\n\
+             }",
+        );
+        let main = function_ir(&ir, "main");
+        assert!(
+            main.contains("action_ht_from_list"),
+            "contains loop should hoist ht_from_list: {main}"
+        );
+        assert!(
+            main.contains("action_ht_contains"),
+            "contains loop should use ht_contains: {main}"
+        );
+        assert!(
+            !main.contains("action_list_contains"),
+            "contains loop should not call action_list_contains per iteration: {main}"
         );
     }
 

@@ -1,4 +1,4 @@
-//! List tree runtime fragments (R3-5 include! split).
+//! List tree mutations; `body.inc.rs` is assembled from `*.inc.rs` by `scripts/concat_list_body.py` at build time.
 
 use crate::{llvm_err, CodeGen};
 use inkwell::values::BasicValue;

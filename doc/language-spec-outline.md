@@ -19,7 +19,7 @@
 | 表达式级 `or {}` | `head(lst) or { -1 }`、`parseInt(s) or { 0 }` | `test_fallible_or_default`, `test_fallible_head_parseInt` |
 | 集合索引 | `lst[i] or { }`、`map[k] or { }` | `test_fallible_list_var_index_or`, `test_fallible_map_var_key_or` |
 | 函数级 `or {}` | 函数体末尾传播失败 | `test_fallible_fn_or`, `test_fallible_user_fn_propagate` |
-| 已移除语法 | `null` / `T?` / `?.` → E010–E012 | `test_error_e010_null`, `test_error_e011_nullable_type` |
+| 已移除语法 | `null` / `T?` / `?.` → E010–E012 | `test_error_e010_null`, `test_error_e011_nullable_type`, `test_error_standalone_question` |
 
 ## 3. 持久化集合与 CoW
 
@@ -47,13 +47,13 @@
 | `when` / 模式 | 元组、结构体、字符串 | `test_when_match`, `test_str_match`, `test_is_match` |
 | `for` / `while` | 迭代、索引 | `test_for_loop`, `test_for_with_index`, `test_nested_for` |
 | 解构 | 列表 / 结构体 | `test_destructure` |
-| TCO | 尾递归 | `test_tco`（若存在）或 `examples/tco.ac` 覆盖 |
+| TCO | 尾递归 | `test_tco_deep` |
 
 ## 6. 模块与错误
 
 | 主题 | 说明 | 集成测试 |
 |------|------|----------|
-| import | 路径依赖、循环检测 | `test_import_cycle`, `test_import_invalid_name` |
+| import | 路径依赖、循环检测 | `test_error_import_cycle`, `test_error_import_invalid_module_name` |
 | compile-error oracle | 重载、参数、泛型 | `test_error_*` 系列 |
 
 ## 7. HIR 与自举子集
@@ -62,8 +62,9 @@
 |------|------|------|
 | HIR JSON | `--emit hir`、round-trip | `tests/hir_golden.rs` |
 | Bootstrap 允许子集 | 单文件、无 import | `tests/bootstrap_subset.rs` + `tests/fixtures/bootstrap/` |
+| Bootstrap M4 | `bootstrap/lexer.ac` token 文本 vs Rust lexer golden | `test_bootstrap_m4_lexer_matches_keywords_golden` |
 | Lexer golden | token JSON 稳定 | `tests/lexer_golden.rs` |
 
 ---
 
-参见 `doc/ARCHITECTURE.md`、`doc/bootstrap-subset.md`、`preserve-language-semantics.mdc`。
+参见 `doc/ARCHITECTURE.md`、`doc/bootstrap-subset.md`、`../bootstrap/README.md`、`.cursor/rules/preserve-language-semantics.mdc`。

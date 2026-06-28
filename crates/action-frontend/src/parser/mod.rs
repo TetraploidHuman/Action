@@ -260,11 +260,7 @@ impl Parser {
         }
     }
 
-    pub(crate) fn error_coded(
-        &self,
-        msg: &str,
-        code: crate::error::DiagnosticCode,
-    ) -> ParseError {
+    pub(crate) fn error_coded(&self, msg: &str, code: crate::error::DiagnosticCode) -> ParseError {
         ParseError {
             message: msg.to_string(),
             span: self.current().span,

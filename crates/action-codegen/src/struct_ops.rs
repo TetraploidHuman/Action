@@ -312,11 +312,9 @@ impl<'ctx> CodeGen<'ctx> {
                         .as_basic_value_enum()
                 }
                 TypedValue::Str(ptr) => self.load_string(*ptr)?.into(),
-                _ => {
-                    val.to_bv().unwrap_or_else(|| {
-                        self.i64_ty().const_int(0, false).as_basic_value_enum()
-                    })
-                }
+                _ => val
+                    .to_bv()
+                    .unwrap_or_else(|| self.i64_ty().const_int(0, false).as_basic_value_enum()),
             };
             result = self
                 .builder

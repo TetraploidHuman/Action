@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-BIN = ROOT / "target/release/action"
+BIN = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")) / "release" / "action"
 EXAMPLES = ROOT / "examples"
 CWD = str(ROOT)
 RESULTS = ROOT / "benchmark_results.txt"
@@ -82,7 +82,7 @@ def phase_split() -> None:
         "bench_step3.ac",
         "bench_step6.ac",
         "bench_all.ac",
-        "_dev/bench_insert_bisect.ac",
+        "bench_insert100.ac",
         "bench_for_method.ac",
         "bench_cow.ac",
     ]
@@ -112,7 +112,7 @@ def aot_runtime() -> None:
         "bench_step3.ac",
         "bench_step6.ac",
         "bench_all.ac",
-        "_dev/bench_insert_bisect.ac",
+        "bench_insert100.ac",
         "bench_cow.ac",
     ):
         f = EXAMPLES / name

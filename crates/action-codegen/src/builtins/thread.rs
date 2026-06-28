@@ -1034,7 +1034,9 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(free_fn, &[task_heap.into()], "")
             .map_err(llvm_err)?;
 
-        self.builder.build_store(wt_fat_alloca, fat).map_err(llvm_err)?;
+        self.builder
+            .build_store(wt_fat_alloca, fat)
+            .map_err(llvm_err)?;
         self.builder
             .build_store(wt_ok_alloca, self.bool_ty().const_int(1, false))
             .map_err(llvm_err)?;

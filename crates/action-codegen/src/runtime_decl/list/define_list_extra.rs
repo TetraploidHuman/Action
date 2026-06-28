@@ -644,6 +644,19 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(unq_new_alloc, unq_new_init)
             .map_err(llvm_err)?;
+        // Ephemeral hash set for O(1) membership (vs O(n) list contains per element).
+        let cc_seen = self.call_rt("action_ht_create", &[unq_len.into()])?;
+        let unq_seen_init = cc_seen
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_struct_value();
+        let unq_seen_alloc = self
+            .builder
+            .build_alloca(self.list_type, "seen")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(unq_seen_alloc, unq_seen_init)
+            .map_err(llvm_err)?;
         let unq_i_alloc = self.builder.build_alloca(i64, "i").map_err(llvm_err)?;
         self.builder
             .build_store(unq_i_alloc, i64.const_int(0, false))
@@ -695,10 +708,14 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(self.list_type, unq_new_alloc, "cur")
             .map_err(llvm_err)?
             .into_struct_value();
-        // Check if already in result: call action_list_contains
+        let unq_seen = self
+            .builder
+            .build_load(self.list_type, unq_seen_alloc, "seen")
+            .map_err(llvm_err)?
+            .into_struct_value();
         let cc4 = self.call_rt(
-            "action_list_contains",
-            &[unq_cur.into(), unq_ev.as_basic_value_enum().into()],
+            "action_ht_contains",
+            &[unq_seen.into(), unq_ev.as_basic_value_enum().into()],
         )?;
         let unq_found = cc4.try_as_basic_value().unwrap_basic().into_int_value();
         let unq_push_bb = self.context.append_basic_block(unq_fn, "push");
@@ -715,6 +732,26 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(unq_new_alloc, unq_nv)
             .map_err(llvm_err)?;
+        let unq_seen2 = self
+            .builder
+            .build_load(self.list_type, unq_seen_alloc, "seen2")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let cc_ins = self.call_rt(
+            "action_ht_insert",
+            &[
+                unq_seen2.into(),
+                unq_ev.as_basic_value_enum().into(),
+                unq_ev.as_basic_value_enum().into(),
+            ],
+        )?;
+        let unq_seen3 = cc_ins
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_struct_value();
+        self.builder
+            .build_store(unq_seen_alloc, unq_seen3)
+            .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(unq_skip_bb);
         self.builder.position_at_end(unq_skip_bb);
         let unq_ni = self
@@ -726,6 +763,34 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(unq_loop);
         self.builder.position_at_end(unq_done);
+        let unq_seen_final = self
+            .builder
+            .build_load(self.list_type, unq_seen_alloc, "seen_f")
+            .map_err(llvm_err)?
+            .into_struct_value();
+        let unq_sd = self
+            .builder
+            .build_extract_value(unq_seen_final, 0, "sd")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let unq_sl = self
+            .builder
+            .build_extract_value(unq_seen_final, 1, "sl")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let unq_sc = self
+            .builder
+            .build_extract_value(unq_seen_final, 2, "sc")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let rc_dec_ht = self.module.get_function("action_rc_dec_ht").unwrap();
+        self.builder
+            .build_call(
+                rc_dec_ht,
+                &[unq_sd.into(), unq_sc.into(), unq_sl.into()],
+                "",
+            )
+            .map_err(llvm_err)?;
         let unq_rv = self
             .builder
             .build_load(self.list_type, unq_new_alloc, "rv")
