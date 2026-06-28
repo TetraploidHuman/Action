@@ -14,6 +14,7 @@ impl<'ctx> CodeGen<'ctx> {
         let nounwind_fns = [
             "action_list_get",
             "action_list_get_cached",
+            "action_list_find_leaf",
             "action_list_len",
             "action_list_contains_walk",
             "action_list_any_walk",
