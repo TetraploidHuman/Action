@@ -331,3 +331,61 @@ fn find_hir_expr_at(expr: &HirExpr, offset: usize) -> Option<&HirExpr> {
 fn span_contains(span: &Span, offset: usize) -> bool {
     offset >= span.start && offset <= span.end
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use action_frontend::lexer::Lexer;
+    use action_frontend::loader::build_type_registry;
+    use action_frontend::parser::Parser;
+    use action_frontend::typecheck::TypeChecker;
+    use action_frontend::type_registry::TypeRegistry;
+    use action_frontend::hir::lower_program;
+
+    fn lower_source(source: &str) -> HirModule {
+        let mut lexer = Lexer::new(source);
+        let tokens = lexer.tokenize();
+        let program = Parser::new(tokens)
+            .parse_program()
+            .expect("parse should succeed");
+        let mut registry = TypeRegistry::new();
+        for stmt in &program.stmts {
+            let _ = registry.register(stmt);
+        }
+        registry = build_type_registry(&program).expect("register types");
+        let mut checker = TypeChecker::new(registry);
+        let errors = checker.check(&program);
+        assert!(errors.is_empty(), "type errors: {:?}", errors);
+        lower_program(&program, &checker)
+    }
+
+    #[test]
+    fn find_fun_param_names_top_level() {
+        let hir = lower_source("fun foo(a: Int, b: Int) { println(a) }");
+        assert_eq!(
+            find_fun_param_names(&hir, "foo"),
+            Some(vec!["a".to_string(), "b".to_string()])
+        );
+        assert_eq!(find_fun_param_names(&hir, "missing"), None);
+    }
+
+    #[test]
+    fn find_call_param_names_top_level_fun() {
+        let hir = lower_source("fun greet(name: String) { println(name) }");
+        assert_eq!(
+            find_call_param_names(&hir, "greet"),
+            Some(vec!["name".to_string()])
+        );
+    }
+
+    #[test]
+    fn find_call_param_names_extension_method() {
+        let hir = lower_source(
+            "extension List { fun map(f: Int -> Int) -> List[Int] { this } }\nfun main() { println(0) }",
+        );
+        assert_eq!(
+            find_call_param_names(&hir, "List.map"),
+            Some(vec!["f".to_string()])
+        );
+    }
+}

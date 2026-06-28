@@ -12,7 +12,7 @@ mod tests {
     use super::*;
     use crate::ast::Program;
     use crate::lexer::Lexer;
-    use crate::loader::register_types;
+    use crate::loader::build_type_registry;
     use crate::parser::Parser;
     use crate::registry::TypeRegistry;
     use crate::typecheck::TypeChecker;
@@ -27,7 +27,7 @@ mod tests {
         for stmt in &program.stmts {
             let _ = registry.register(stmt);
         }
-        registry = register_types(&program);
+        registry = build_type_registry(&program).expect("register types");
         let mut checker = TypeChecker::new(registry);
         let errors = checker.check(&program);
         assert!(errors.is_empty(), "type errors: {:?}", errors);
@@ -72,7 +72,7 @@ mod tests {
             "examples/hello.ac",
         ] {
             let path = workspace.join(rel);
-            let checked = crate::loader::load_checked(&path, false)
+            let checked = crate::loader::check_file(&path, false)
                 .unwrap_or_else(|e| panic!("load {} failed: {:?}", rel, e));
             assert!(
                 checked.verify_hir_round_trip(),

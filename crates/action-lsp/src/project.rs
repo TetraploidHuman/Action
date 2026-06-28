@@ -125,7 +125,7 @@ impl Project {
         });
     }
 
-    /// Rebuild symbol index entries for one document
+    /// Rebuild symbol index entries for one document (AST-based).
     fn update_symbol_index(&mut self, uri: &Url, doc: &Document) {
         // Remove old entries for this uri
         self.symbol_index.retain(|_, locs| {
@@ -133,36 +133,17 @@ impl Project {
             !locs.is_empty()
         });
 
-        // Scan tokens for identifiers in declaration context
-        let tokens = &doc.tokens;
-        for i in 0..tokens.len() {
-            let token = &tokens[i];
-            if let TokenKind::Ident(name) = &token.kind {
-                let prev_kind = if i > 0 {
-                    Some(&tokens[i - 1].kind)
-                } else {
-                    None
-                };
-                let kind = match prev_kind {
-                    Some(TokenKind::Fun) => SymbolKind::Function,
-                    Some(TokenKind::Val) | Some(TokenKind::Var) => SymbolKind::Variable,
-                    Some(TokenKind::Const) => SymbolKind::Constant,
-                    Some(TokenKind::Type) => SymbolKind::Type,
-                    Some(TokenKind::Enum) => SymbolKind::EnumVariant,
-                    Some(TokenKind::Module) => SymbolKind::Module,
-                    _ => continue,
-                };
-                let loc = SymbolLocation {
-                    file: uri.clone(),
-                    name: name.clone(),
-                    span: token.span.clone(),
-                    kind,
-                };
-                self.symbol_index
-                    .entry(name.clone())
-                    .or_insert_with(Vec::new)
-                    .push(loc);
-            }
+        for entry in super::symbols::collect_ast_symbol_entries(&doc.ast) {
+            let loc = SymbolLocation {
+                file: uri.clone(),
+                name: entry.name.clone(),
+                span: entry.span,
+                kind: entry.kind,
+            };
+            self.symbol_index
+                .entry(entry.name)
+                .or_insert_with(Vec::new)
+                .push(loc);
         }
     }
 
@@ -211,12 +192,17 @@ impl Project {
         for (name, locs) in &self.symbol_index {
             if name.to_lowercase().contains(&lower_query) {
                 for loc in locs {
+                    let source = self
+                        .documents
+                        .get(&loc.file)
+                        .map(|d| d.source.as_str())
+                        .unwrap_or("");
                     results.push(lsp_types::SymbolInformation {
                         name: loc.name.clone(),
                         kind: loc.kind.to_lsp_kind(),
                         location: lsp_types::Location {
                             uri: loc.file.clone(),
-                            range: position::span_to_lsp_range(&loc.span, ""),
+                            range: position::span_to_lsp_range(&loc.span, source),
                         },
 
                         container_name: None,
@@ -351,6 +337,19 @@ mod tests {
         let proj = empty_project();
         let results = proj.workspace_symbols("zzzzzz");
         assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_ast_symbol_index_finds_type_alias() {
+        let mut proj = empty_project();
+        let uri = Url::parse("file:///types.ac").unwrap();
+        proj.update_document(
+            &uri,
+            "type Point = Int\nfun main() {}".to_string(),
+            1,
+        );
+        assert!(proj.symbol_index.contains_key("Point"));
+        assert!(proj.symbol_index.contains_key("main"));
     }
 
     #[test]

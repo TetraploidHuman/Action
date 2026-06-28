@@ -9,6 +9,27 @@ use std::path::{Path, PathBuf};
 mod repl;
 mod test_runner;
 
+/// CLI run/build failure: structured type-check vs plain message (codegen / IO).
+pub(crate) enum RunFailure {
+    Check(Vec<action_frontend::error::CompilerError>),
+    Message(String),
+}
+
+impl RunFailure {
+    pub(crate) fn report(&self, path: &Path) {
+        match self {
+            RunFailure::Check(errors) => driver::report_check_errors(path, errors),
+            RunFailure::Message(msg) => {
+                if let Ok(source) = fs::read_to_string(path) {
+                    error::report_error_message(&source, &path.to_string_lossy(), msg);
+                } else {
+                    eprintln!("Error: {}", msg);
+                }
+            }
+        }
+    }
+}
+
 #[derive(ClapParser)]
 #[command(name = "action", about = "Action Language Compiler", version = env!("CARGO_PKG_VERSION"))]
 struct Cli {
@@ -140,11 +161,7 @@ fn main() {
             target,
         } => {
             if let Err(e) = run_file(&file, opt, check, emit, explain, profile, &target) {
-                if let Ok(source) = fs::read_to_string(&file) {
-                    error::report_error_message(&source, &file.to_string_lossy(), &e);
-                } else {
-                    eprintln!("Error: {}", e);
-                }
+                e.report(&file);
                 std::process::exit(1);
             }
         }
@@ -156,11 +173,7 @@ fn main() {
             target,
         } => {
             if let Err(e) = build_file(&file, output, opt, emit, &target) {
-                if let Ok(source) = fs::read_to_string(&file) {
-                    error::report_error_message(&source, &file.to_string_lossy(), &e);
-                } else {
-                    eprintln!("Error: {}", e);
-                }
+                e.report(&file);
                 std::process::exit(1);
             }
         }
@@ -169,7 +182,7 @@ fn main() {
             explain,
             format,
             emit,
-        } => match loader::load_checked(&file, explain) {
+        } => match driver::check_file(&file, explain) {
             Ok(checked) => {
                 if let Some(ref fmt) = emit {
                     if fmt == "hir" {
@@ -259,11 +272,7 @@ fn main() {
             target,
         } => {
             if let Err(e) = test_runner::run_test_file(&file, opt, profile, &target) {
-                if let Ok(source) = fs::read_to_string(&file) {
-                    error::report_error_message(&source, &file.to_string_lossy(), &e);
-                } else {
-                    eprintln!("Error: {}", e);
-                }
+                e.report(&file);
                 std::process::exit(1);
             }
         }
@@ -278,13 +287,13 @@ fn run_file(
     explain: bool,
     profile: bool,
     target: &str,
-) -> Result<(), String> {
+) -> Result<(), RunFailure> {
     let opt = driver::effective_opt_level(path, opt);
 
-    let checked = driver::load_checked(path, explain)?;
+    let checked = driver::check_file(path, explain).map_err(RunFailure::Check)?;
 
     if emit.as_deref() == Some("hir") {
-        driver::emit_hir(&checked, path, false)?;
+        driver::emit_hir(&checked, path, false).map_err(RunFailure::Message)?;
         if check {
             println!(
                 "Type checking passed for '{}'. No errors found.",
@@ -303,17 +312,18 @@ fn run_file(
     }
 
     let context = Context::create();
-    let cg = driver::compile_checked(&context, "main", &checked, opt, target)?;
+    let cg = driver::codegen_checked(&context, "main", &checked, opt, target)
+        .map_err(RunFailure::Message)?;
 
     let is_cross = target != "native";
     let is_exe = emit.as_deref() == Some("exe");
     if let Some(ref fmt) = emit {
-        emit_output(&cg, path, fmt, target)?;
+        emit_output(&cg, path, fmt, target).map_err(RunFailure::Message)?;
     }
 
     if is_cross {
         if !is_exe && emit.is_none() {
-            emit_output(&cg, path, "obj", target)?;
+            emit_output(&cg, path, "obj", target).map_err(RunFailure::Message)?;
         }
     } else if !is_exe {
         if profile {
@@ -329,7 +339,7 @@ fn run_file(
                 );
             }
         }
-        let exit_code = cg.run_jit()?;
+        let exit_code = cg.run_jit().map_err(RunFailure::Message)?;
         if exit_code != 0 {
             std::process::exit(exit_code as i32);
         }
@@ -337,9 +347,12 @@ fn run_file(
         let exe_path = path.with_extension("");
         let status = std::process::Command::new(&exe_path)
             .status()
-            .map_err(|e| format!("Failed to run {}: {}", exe_path.display(), e))?;
+            .map_err(|e| RunFailure::Message(format!("Failed to run {}: {}", exe_path.display(), e)))?;
         if !status.success() {
-            return Err(format!("Process exited with status: {}", status));
+            return Err(RunFailure::Message(format!(
+                "Process exited with status: {}",
+                status
+            )));
         }
     }
     Ok(())
@@ -351,25 +364,27 @@ fn build_file(
     opt: u8,
     emit: Option<String>,
     target: &str,
-) -> Result<(), String> {
+) -> Result<(), RunFailure> {
     let opt = driver::effective_opt_level(path, opt);
 
-    let checked = driver::load_checked(path, false)?;
+    let checked = driver::check_file(path, false).map_err(RunFailure::Check)?;
 
     if emit.as_deref() == Some("hir") {
-        return driver::emit_hir(&checked, path, false);
+        return driver::emit_hir(&checked, path, false).map_err(RunFailure::Message);
     }
 
     let context = Context::create();
-    let cg = driver::compile_checked(&context, "main", &checked, opt, target)?;
+    let cg = driver::codegen_checked(&context, "main", &checked, opt, target)
+        .map_err(RunFailure::Message)?;
 
     if let Some(ref fmt) = emit {
-        emit_output(&cg, path, fmt, target)?;
+        emit_output(&cg, path, fmt, target).map_err(RunFailure::Message)?;
     } else {
         let ir = cg.print_ir();
         let out_path = output.unwrap_or_else(|| path.with_extension("ll"));
-        fs::write(&out_path, ir)
-            .map_err(|e| format!("Cannot write to '{}': {}", out_path.display(), e))?;
+        fs::write(&out_path, ir).map_err(|e| {
+            RunFailure::Message(format!("Cannot write to '{}': {}", out_path.display(), e))
+        })?;
         println!("Compiled to: {}", out_path.display());
     }
     Ok(())

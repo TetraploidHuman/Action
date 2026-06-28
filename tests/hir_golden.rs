@@ -13,8 +13,12 @@ fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/bootstrap")
 }
 
+fn checked_from_path(path: &Path) -> CheckedProgram {
+    loader::check_file(&path.to_path_buf(), false).expect("typecheck should pass")
+}
+
 fn load_checked(path: &Path) -> CheckedProgram {
-    loader::load_checked(&path.to_path_buf(), false).expect("typecheck should pass")
+    checked_from_path(path)
 }
 
 fn hir_json(path: &Path) -> String {
@@ -67,7 +71,14 @@ fn test_hir_golden_map_filter() {
 
 #[test]
 fn test_hir_round_trip_integration_examples() {
-    for name in ["hello.ac", "bench_cow.ac", "map_filter.ac", "tuple.ac"] {
+    for name in [
+        "hello.ac",
+        "bench_cow.ac",
+        "map_filter.ac",
+        "tuple.ac",
+        "bench_all.ac",
+        "bench_funcall.ac",
+    ] {
         let path = examples_dir().join(name);
         let checked = load_checked(&path);
         assert!(

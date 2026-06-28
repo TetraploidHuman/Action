@@ -25,7 +25,7 @@ impl<'a> Lowerer<'a> {
     fn expr_type(&self, expr: &Expr) -> Type {
         self.checker
             .infer_expr_type_with_locals(expr, &self.locals)
-            .unwrap_or(Type::Named("Int".into()))
+            .unwrap_or(Type::Unit)
     }
 
     fn lower_stmts(&mut self, stmts: &[Stmt]) -> Vec<HirStmt> {

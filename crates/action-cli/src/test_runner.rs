@@ -5,10 +5,15 @@ use inkwell::targets::{InitializationConfig, Target};
 use std::path::PathBuf;
 
 /// Run test functions from a source file
-pub fn run_test_file(path: &PathBuf, opt: u8, profile: bool, target: &str) -> Result<(), String> {
+pub fn run_test_file(
+    path: &PathBuf,
+    opt: u8,
+    profile: bool,
+    target: &str,
+) -> Result<(), super::RunFailure> {
     let opt = driver::effective_opt_level(path, opt);
 
-    let checked = driver::load_checked(path, false)?;
+    let checked = driver::check_file(path, false).map_err(super::RunFailure::Check)?;
 
     let test_names: Vec<String> = checked
         .program
@@ -35,14 +40,17 @@ pub fn run_test_file(path: &PathBuf, opt: u8, profile: bool, target: &str) -> Re
         .collect();
 
     if test_names.is_empty() {
-        return Err("No @test functions found in the source file".to_string());
+        return Err(super::RunFailure::Message(
+            "No @test functions found in the source file".to_string(),
+        ));
     }
 
     Target::initialize_x86(&InitializationConfig::default());
     Target::initialize_aarch64(&InitializationConfig::default());
 
     let context = Context::create();
-    let cg = driver::compile_checked(&context, "test_runner", &checked, opt, target)?;
+    let cg = driver::codegen_checked(&context, "test_runner", &checked, opt, target)
+        .map_err(super::RunFailure::Message)?;
 
     if profile {
         let ir = cg.print_ir();
@@ -58,7 +66,7 @@ pub fn run_test_file(path: &PathBuf, opt: u8, profile: bool, target: &str) -> Re
         }
     }
 
-    let results = cg.run_tests(&test_names)?;
+    let results = cg.run_tests(&test_names).map_err(super::RunFailure::Message)?;
 
     let total = results.len();
     let passed = results.iter().filter(|(_, p, _)| *p).count();
@@ -77,7 +85,7 @@ pub fn run_test_file(path: &PathBuf, opt: u8, profile: bool, target: &str) -> Re
     println!("{} passed, {} failed, {} total", passed, failed, total);
 
     if failed > 0 {
-        Err(format!("{} test(s) failed", failed))
+        Err(super::RunFailure::Message(format!("{} test(s) failed", failed)))
     } else {
         Ok(())
     }

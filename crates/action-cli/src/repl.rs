@@ -134,7 +134,7 @@ pub fn eval_repl_line(
     let repl_path = Path::new("<repl>");
     let session = repl_session()?;
 
-    let checked = match session.compile_checked_from_stmts(program.stmts, repl_path, false) {
+    let checked = match session.check_from_stmts(program.stmts, repl_path, false) {
         Ok(c) => c,
         Err(errors) => {
             error::report_compiler_errors(input, "<repl>", &errors);
@@ -150,7 +150,7 @@ pub fn eval_repl_line(
     let mut cg =
         action::codegen::CodeGen::new(context, "repl", checked.registry.clone(), target_opt);
     cg.set_opt_level(opt);
-    if let Err(e) = cg.compile_checked(&checked) {
+    if let Err(e) = cg.compile_from_checked(&checked) {
         eprintln!("Compile error: {}", e);
         return Ok(());
     }

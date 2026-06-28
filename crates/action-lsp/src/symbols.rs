@@ -248,6 +248,138 @@ pub fn extract_document_symbols(stmts: &[Stmt], source: &str) -> Vec<DocumentSym
         .collect()
 }
 
+/// Flat AST symbol entries for workspace / cross-file indexing.
+#[derive(Debug, Clone)]
+pub struct AstSymbolEntry {
+    pub name: String,
+    pub span: Span,
+    pub kind: super::project::SymbolKind,
+}
+
+/// Collect all definable symbols from an AST (recursive through modules / function bodies).
+pub fn collect_ast_symbol_entries(stmts: &[Stmt]) -> Vec<AstSymbolEntry> {
+    let mut out = Vec::new();
+    collect_ast_symbol_entries_impl(stmts, &mut out);
+    out
+}
+
+fn collect_ast_symbol_entries_impl(stmts: &[Stmt], out: &mut Vec<AstSymbolEntry>) {
+    for stmt in stmts {
+        collect_stmt_symbol_entry(stmt, out);
+    }
+}
+
+fn collect_stmt_symbol_entry(stmt: &Stmt, out: &mut Vec<AstSymbolEntry>) {
+    use super::project::SymbolKind;
+    match stmt {
+        Stmt::Fun {
+            name, body, span, ..
+        } => {
+            out.push(AstSymbolEntry {
+                name: name.clone(),
+                span: span.clone(),
+                kind: SymbolKind::Function,
+            });
+            if let ExprKind::Block(stmts) = &body.kind {
+                collect_ast_symbol_entries_impl(stmts, out);
+            }
+        }
+        Stmt::Let {
+            name, span, mutable, ..
+        } => {
+            out.push(AstSymbolEntry {
+                name: name.clone(),
+                span: span.clone(),
+                kind: if *mutable {
+                    SymbolKind::Variable
+                } else {
+                    SymbolKind::Variable
+                },
+            });
+        }
+        Stmt::Const { name, span, .. } => {
+            out.push(AstSymbolEntry {
+                name: name.clone(),
+                span: span.clone(),
+                kind: SymbolKind::Constant,
+            });
+        }
+        Stmt::TypeAlias { name, span, .. } => {
+            out.push(AstSymbolEntry {
+                name: name.clone(),
+                span: span.clone(),
+                kind: SymbolKind::Type,
+            });
+        }
+        Stmt::Enum {
+            name,
+            variants,
+            span,
+            ..
+        } => {
+            out.push(AstSymbolEntry {
+                name: name.clone(),
+                span: span.clone(),
+                kind: SymbolKind::Type,
+            });
+            for v in variants {
+                out.push(AstSymbolEntry {
+                    name: v.name.clone(),
+                    span: span.clone(),
+                    kind: SymbolKind::EnumVariant,
+                });
+            }
+        }
+        Stmt::Module { name, body, span, .. } => {
+            out.push(AstSymbolEntry {
+                name: name.clone(),
+                span: span.clone(),
+                kind: SymbolKind::Module,
+            });
+            collect_ast_symbol_entries_impl(body, out);
+        }
+        Stmt::Export { stmt, .. } => collect_stmt_symbol_entry(stmt, out),
+        Stmt::Extension { methods, .. } => {
+            for m in methods {
+                collect_stmt_symbol_entry(m, out);
+            }
+        }
+        Stmt::Destructure { names, span, .. } => {
+            for name in names {
+                out.push(AstSymbolEntry {
+                    name: name.clone(),
+                    span: span.clone(),
+                    kind: SymbolKind::Variable,
+                });
+            }
+        }
+        Stmt::External { name, span, .. } => {
+            out.push(AstSymbolEntry {
+                name: name.clone(),
+                span: span.clone(),
+                kind: SymbolKind::Function,
+            });
+        }
+        Stmt::ExternalType { name, span, .. } => {
+            out.push(AstSymbolEntry {
+                name: name.clone(),
+                span: span.clone(),
+                kind: SymbolKind::Type,
+            });
+        }
+        _ => {}
+    }
+}
+
+/// Flat name → definition span map (document goto-def / semantic tokens).
+pub fn build_definition_map(stmts: &[Stmt]) -> HashMap<String, Span> {
+    let mut map = HashMap::new();
+    for entry in collect_ast_symbol_entries(stmts) {
+        map.entry(entry.name).or_insert(entry.span);
+    }
+    map
+}
+
 fn stmt_to_document_symbol(stmt: &Stmt, source: &str) -> Option<DocumentSymbol> {
     match stmt {
         Stmt::Fun {
@@ -615,6 +747,31 @@ mod tests {
     fn test_extract_document_symbols_empty() {
         let result = extract_document_symbols(&[], "");
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn build_definition_map_destructure() {
+        use action_frontend::ast::{Expr, ExprKind, Literal, Program, Stmt};
+        use action_frontend::lexer::Span;
+        let span = Span::default();
+        let program = Program {
+            stmts: vec![Stmt::Destructure {
+                mutable: false,
+                names: vec!["a".into(), "b".into()],
+                renames: vec![],
+                rest: None,
+                is_list: true,
+                is_struct: false,
+                value: Expr {
+                    kind: ExprKind::Literal(Literal::Unit),
+                    span,
+                },
+                span,
+            }],
+        };
+        let map = build_definition_map(&program.stmts);
+        assert!(map.contains_key("a"));
+        assert!(map.contains_key("b"));
     }
 
     #[test]

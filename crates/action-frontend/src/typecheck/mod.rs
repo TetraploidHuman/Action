@@ -58,7 +58,7 @@ impl TypeChecker {
     /// Inferred type of an expression (for HIR lowering after `check`).
     pub fn inferred_type(&self, expr: &Expr) -> Type {
         self.infer_expr_type(expr)
-            .unwrap_or(Type::Named("Int".into()))
+            .unwrap_or(Type::Unit)
     }
 
     /// Build the type environment from top-level statements
@@ -512,7 +512,6 @@ impl TypeChecker {
     }
 }
 
-#[cfg(test)]
 #[cfg(test)]
 mod tests {
     use super::*;

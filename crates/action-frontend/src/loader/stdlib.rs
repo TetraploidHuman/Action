@@ -94,6 +94,11 @@ fn parse_source_file(path: &Path) -> Result<Vec<Stmt>, String> {
     Ok(program.stmts)
 }
 
+/// Strict parse for LSP/REPL stdlib loading (re-export of [`parse_source_file`]).
+pub fn parse_ac_file(path: &Path) -> Result<Vec<Stmt>, String> {
+    parse_source_file(path)
+}
+
 /// Load all `.ac` files from a dependency path (file, directory, or `name.ac` sibling).
 fn load_ac_sources(dep_path: &Path) -> Result<Vec<Stmt>, String> {
     if dep_path.is_file() {

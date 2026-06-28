@@ -13,7 +13,7 @@
                             │
 ┌───────────────────────────▼──────────────────────────────────────┐
 │  action-driver crate（编排层）                                    │
-│  compile_checked · load_checked · emit_hir · emit_diagnostics_json │
+│  check_file · codegen_checked · report_check_errors · emit_*      │
 │  依赖 frontend + codegen，无二进制耦合                             │
 └──────────┬─────────────────────────────────────┬─────────────────┘
            │                                     │
@@ -53,7 +53,7 @@ crates/
       builtins/               # call / iter / list / stdlib / …
       runtime_decl/           # define_* runtime IR
         list/                 # List B-tree 领域聚合
-  action-driver/            # load_checked · compile_checked · emit_*
+  action-driver/            # check_file · codegen_checked · emit_*
   action-lsp/               # LSP 语言服务
   host-rt/                  # AOT + JIT host runtime（libaction_host_rt.a）
     lib.rs runtime_json.rs http_runtime.rs runtime_threading.rs
@@ -69,7 +69,8 @@ include/
   action_rt.h               # Runtime C ABI（scripts/generate_action_rt_header.py）
 
 tests/
-  integration.rs            # 语义 oracle（198 项）
+  bootstrap/                  # 自举 pilot（M4 lexer.ac 等）
+  integration.rs            # 语义 oracle（204 项）
   hir_golden.rs
   lexer_golden.rs
   bootstrap_subset.rs
@@ -104,17 +105,19 @@ pub use action_lsp as lsp;
 
 新代码应优先使用：
 
-- `action_frontend::session::FrontendSession`
-- `action_frontend::loader::load_program`
-- `action_codegen::CodeGen`
-- `action_driver::{compile_checked, emit_hir, emit_diagnostics_json}`
+- `action_frontend::session::FrontendSession::{check_file, check_source, compile_source_recover}`
+- `action_frontend::loader::{check_file, build_type_registry}`
+- `action_codegen::CodeGen::compile_from_checked`
+- `action_driver::{check_file, codegen_checked, report_check_errors, emit_hir, emit_diagnostics_json}`
+
+旧名（`load_checked` / `compile_checked` / `register_types` / `load_program`）保留为 `#[deprecated]` 别名。
 
 ## 编译流水线
 
-1. **`loader::load_checked(path)`** / **`load_program`**  
+1. **`loader::check_file(path)`** / **`FrontendSession::check_file`**  
    读文件 → lex → parse → 注入 stdlib/builtins → resolve imports → typecheck → **`lower_program` → HIR**
 
-2. **`CodeGen::compile_checked(checked)`** → **`compile_hir(&checked.hir)`**  
+2. **`CodeGen::compile_from_checked(checked)`** → **`compile_hir(&checked.hir)`**  
    生产路径**仅 HIR**（AST codegen 已删除）；表达式携带 `ty`；链接 runtime → LLVM Module
 
 3. **执行 / 发射**  
@@ -160,10 +163,11 @@ pub use action_lsp as lsp;
 |----|------|------|
 | `insert_rec` 路径拷贝 | 中间索引 insert（`li_split_bb` 优先 `action_list_insert_rec`，null 回退 concat） | ✅ |
 | `remove(0)` 快速路径 | h>0 树 `remove(0)` → `drop(list,1)` | ✅ |
-| `list_get_cached` | for / reduce / iter 序贯 get 缓存 | ✅ |
+| `list_get_cached` | for / reduce / iter 序贯 get 缓存；ConcatNode 递归子树 `get_cached`（非 bare `list_get`） | ✅ |
 | ConcatNode balance | depth > 32 flatten | ✅ |
 | Map Robin-Hood | 40B entry + probe | ✅ |
 | Lambda mono / fused iter | map+filter / flatMap+filter 单遍 | ✅ |
+| **Contains HT fusion** | 不变 `list` + `for i < N { contains }`；编译期 N&lt;16 跳过，否则（含变量上界）一次 `ht_from_list` + `ht_contains` | ✅ |
 | AOT LTO | `atom.toml` `lto = true` → `-flto` | ✅ |
 
 ## 语义测试覆盖（P0/P3）
@@ -173,8 +177,8 @@ pub use action_lsp as lsp;
 | List/Map CoW | 写时复制、共享引用隔离、语句形式 mutating UFCS | ✅ + `test_map_cow_properties` / `test_collection_stmt_mut` / `test_list_cow_property` / `test_insert_exit` / `test_list_alias_*` |
 | compile-error oracle | import 循环/非法名、泛型、重载 | ✅ |
 | Fallible / `or {}` | E001–E009 诊断码与 `--explain` 帮助；List/Map/Set 变量下标 fallible codegen | ✅ |
-| diagnostics JSON | `tests/diagnostics_json.rs`（含 E001/E006 `code` 字段） | ✅ |
-| Lexer / bootstrap 子集 | golden token、允许/禁止夹具 | ✅ `lexer_golden.rs` / `bootstrap_subset.rs` |
+| diagnostics JSON | `tests/diagnostics_json.rs`（E001–E012 `code` 字段 + `--explain`） | ✅ |
+| Lexer / bootstrap 子集 | golden token、M4 lexer.ac vs keywords、允许/禁止夹具 | ✅ `lexer_golden.rs` / `bootstrap_subset.rs` |
 | Nullable / UFCS / TCO / 泛型 | 见 integration.rs | ✅ |
 
 ## 测试纪律
@@ -196,11 +200,11 @@ Linux 侧**全部**在 **自托管 NixOS runner** 上执行，开发/CI 环境�
 | Linux Benchmark | `[self-hosted, linux, benchmark]` | `nix-shell --run "bash scripts/ci-linux.sh benchmark"` |
 | Windows CI | `windows-2025`（GitHub hosted） | 下载 LLVM 21 预编译包 + `cargo test` |
 
-`scripts/ci-linux.sh` 在 **nix-shell 内**运行：`fmt`/clippy、198 项 integration、debug/release 冒烟（`bench_cow` / insert 系列 / `test_insert_exit` / `test_cow_insert_isolation` 等）。Benchmark job 另跑全量 JIT/AOT + `benchmark_regression.py`。
+`scripts/ci-linux.sh` 在 **nix-shell 内**运行：`fmt`/clippy、**229** 项语义 harness（204 integration + 其余 golden/diagnostics/bootstrap/lexer）、`action-frontend`/`action-codegen`/`action-lsp`/`action-driver` 单元测试、debug/release 冒烟、quick JIT 子集回归。Benchmark job 另跑全量 JIT/AOT + `benchmark_regression.py`。
 
 持久化编译缓存：`CARGO_TARGET_DIR` 指向 runner 本地目录（如 `~/桌面/Runner/ci-target`），与开发者本机 `nix-shell` 行为一致。
 
-集成测试 **198 项**为语义权威；重构不得降低通过数。类型标注使用 **colon 语法**（`val x: Int = 1`），与 bootstrap 子集及 `doc/language-spec-outline.md` 一致。
+集成测试 **204 项**为语义权威；重构不得降低通过数。类型标注使用 **colon 语法**（`val x: Int = 1`），与 bootstrap 子集及 `doc/language-spec-outline.md` 一致。
 
 ## 与自举的关系
 

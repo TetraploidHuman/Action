@@ -12,6 +12,7 @@ use action_frontend::registry::TypeRegistry;
 use action_frontend::session::FrontendSession;
 
 use super::position;
+use super::symbols;
 
 /// Per-file document state with cached parse and type-check results
 pub struct Document {
@@ -56,7 +57,7 @@ impl Document {
         let result = session.compile_recover_for_path(&self.source, self.path.as_deref());
         self.ast = result.stmts;
         self.parse_errors = result.parse_errors;
-        self.definition_map = build_definition_map(&self.ast);
+        self.definition_map = symbols::build_definition_map(&self.ast);
         self.type_errors = result.type_errors;
         self.type_env = result.type_env;
         self.registry = result.registry;
@@ -131,51 +132,6 @@ fn compiler_error_to_lsp_diagnostic(
         diag.data = Some(serde_json::json!({ "help": help }));
     }
     diag
-}
-
-/// Build a map from definition name to its span
-fn build_definition_map(stmts: &[Stmt]) -> HashMap<String, Span> {
-    let mut map = HashMap::new();
-    for stmt in stmts {
-        match stmt {
-            Stmt::Fun { name, span, .. } => {
-                map.insert(name.clone(), *span);
-            }
-            Stmt::Let { name, span, .. } => {
-                map.insert(name.clone(), *span);
-            }
-            Stmt::Const { name, span, .. } => {
-                map.insert(name.clone(), *span);
-            }
-            Stmt::Enum {
-                name,
-                variants,
-                span,
-                ..
-            } => {
-                map.insert(name.clone(), *span);
-                for v in variants {
-                    map.insert(v.name.clone(), *span);
-                }
-            }
-            Stmt::TypeAlias { name, span, .. } => {
-                map.insert(name.clone(), *span);
-            }
-            Stmt::Module {
-                name, body, span, ..
-            } => {
-                map.insert(name.clone(), *span);
-                map.extend(build_definition_map(body));
-            }
-            Stmt::Destructure { names, span, .. } => {
-                for name in names {
-                    map.insert(name.clone(), *span);
-                }
-            }
-            _ => {}
-        }
-    }
-    map
 }
 
 #[cfg(test)]

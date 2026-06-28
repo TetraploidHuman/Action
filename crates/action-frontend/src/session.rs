@@ -13,7 +13,7 @@ use crate::ast::*;
 use crate::checked::CheckedProgram;
 use crate::error::CompilerError;
 use crate::loader::{
-    builtin_types, load_path_dependencies, load_stdlib, register_types, resolve_imports,
+    build_type_registry, builtin_types, load_path_dependencies, load_stdlib, resolve_imports,
     transform_module_access,
 };
 use crate::parser::{ParseError, Parser};
@@ -32,7 +32,7 @@ pub struct FrontendSession {
 }
 
 impl FrontendSession {
-    /// Build search directories for a source file (same strategy as `load_program`).
+    /// Build search directories for a source file (same strategy as deprecated `load_program`).
     pub fn search_dirs_for_file(path: &Path) -> Result<Vec<PathBuf>, String> {
         let mod_dir = path.parent().unwrap_or(Path::new(".")).to_path_buf();
         let cwd_lib = std::env::current_dir()
@@ -124,7 +124,7 @@ impl FrontendSession {
         program: &Program,
         explain: bool,
     ) -> Result<(TypeRegistry, TypeChecker), Vec<CompilerError>> {
-        let registry = register_types(program);
+        let registry = build_type_registry(program)?;
 
         let mut checker = TypeChecker::new(registry.clone());
         checker.seed_type_env(&self.base_type_env);
@@ -164,7 +164,7 @@ impl FrontendSession {
         path: &Path,
         explain: bool,
     ) -> Result<CheckedProgram, Vec<CompilerError>> {
-        self.compile_checked_source(source, path, explain)
+        self.check_source(source, path, explain)
     }
 
     /// Unified recovering compile for editor / REPL buffers.
@@ -172,8 +172,8 @@ impl FrontendSession {
         self.compile_recover_for_path(source, path)
     }
 
-    /// Strict compile with HIR lowering.
-    pub fn compile_checked(
+    /// Strict compile with HIR lowering (read source from `path`).
+    pub fn check_file(
         &self,
         path: &Path,
         explain: bool,
@@ -185,10 +185,20 @@ impl FrontendSession {
                 e
             ))]
         })?;
-        self.compile_checked_source(&source, path, explain)
+        self.check_source(&source, path, explain)
     }
 
-    pub fn compile_checked_source(
+    /// Strict compile with HIR lowering.
+    #[deprecated(since = "0.5.5", note = "use `check_file`")]
+    pub fn compile_checked(
+        &self,
+        path: &Path,
+        explain: bool,
+    ) -> Result<CheckedProgram, Vec<CompilerError>> {
+        self.check_file(path, explain)
+    }
+
+    pub fn check_source(
         &self,
         source: &str,
         path: &Path,
@@ -296,7 +306,20 @@ impl FrontendSession {
             }
         };
 
-        let registry = register_types(&program);
+        let registry = match build_type_registry(&program) {
+            Ok(r) => r,
+            Err(mut reg_errors) => {
+                reg_errors.extend(lexer_errors);
+                return RecoverResult {
+                    stmts: user_stmts,
+                    registry: self.base_registry.clone(),
+                    type_env: self.base_type_env.clone(),
+                    type_errors: reg_errors,
+                    parse_errors,
+                    hir: None,
+                };
+            }
+        };
         let mut checker = TypeChecker::new(registry.clone());
         checker.seed_type_env(&self.base_type_env);
         let mut type_errors = lexer_errors;
@@ -319,7 +342,7 @@ impl FrontendSession {
     }
 
     /// Type-check assembled user statements (REPL / programmatic compile).
-    pub fn compile_checked_from_stmts(
+    pub fn check_from_stmts(
         &self,
         user_stmts: Vec<Stmt>,
         path: &Path,
@@ -332,6 +355,28 @@ impl FrontendSession {
         Ok(CheckedProgram::new(program, registry, &checker))
     }
 
+    /// Type-check assembled user statements (REPL / programmatic compile).
+    #[deprecated(since = "0.5.5", note = "use `check_from_stmts`")]
+    pub fn compile_checked_from_stmts(
+        &self,
+        user_stmts: Vec<Stmt>,
+        path: &Path,
+        explain: bool,
+    ) -> Result<CheckedProgram, Vec<CompilerError>> {
+        self.check_from_stmts(user_stmts, path, explain)
+    }
+
+    /// Strict compile with HIR lowering from source text.
+    #[deprecated(since = "0.5.5", note = "use `check_source`")]
+    pub fn compile_checked_source(
+        &self,
+        source: &str,
+        path: &Path,
+        explain: bool,
+    ) -> Result<CheckedProgram, Vec<CompilerError>> {
+        self.check_source(source, path, explain)
+    }
+
     /// Recovering parse + typecheck for a single buffer (LSP legacy).
     ///
     /// Prefer [`compile_recover_for_path`] with the document path for import/path_deps parity.
@@ -339,39 +384,59 @@ impl FrontendSession {
         self.compile_recover_for_path(source, None)
     }
 
-    /// Load stdlib `.ac` files into registry + type_env (for LSP startup).
+    /// Load stdlib `.ac` files into registry + type_env (for LSP / REPL startup).
     pub fn load_stdlib_context(search_dirs: &[PathBuf]) -> (TypeRegistry, HashMap<String, Type>) {
+        match Self::try_load_stdlib_context(search_dirs) {
+            Ok(ctx) => ctx,
+            Err(e) => {
+                eprintln!("warning: stdlib context load failed: {e}");
+                (TypeRegistry::new(), HashMap::new())
+            }
+        }
+    }
+
+    fn try_load_stdlib_context(
+        search_dirs: &[PathBuf],
+    ) -> Result<(TypeRegistry, HashMap<String, Type>), String> {
         let mut registry = TypeRegistry::new();
         let mut type_env: HashMap<String, Type> = HashMap::new();
 
         for filename in &["math.ac", "json.ac"] {
-            let source = search_dirs
+            let path = search_dirs
                 .iter()
-                .map(|d| d.join(filename))
-                .find(|p| p.exists())
-                .and_then(|p| std::fs::read_to_string(&p).ok());
-            if let Some(source) = source {
-                let mut lexer = crate::lexer::Lexer::new(&source);
-                let tokens = lexer.tokenize();
-                let mut parser = Parser::new(tokens);
-                let (stmts, _errors) = parser.parse_program_recover();
+                .flat_map(|d| [d.join("lib").join(filename), d.join(filename)])
+                .find(|p| p.is_file());
+            let Some(path) = path else {
+                continue;
+            };
+            let stmts = crate::loader::parse_ac_file(&path)
+                .map_err(|e| format!("{}: {e}", path.display()))?;
 
-                for stmt in &stmts {
-                    let _ = registry.register(stmt);
-                }
-
-                let program = Program { stmts };
-                let mut checker = TypeChecker::new(registry.clone());
-                checker.seed_type_env(&type_env);
-                let _ = checker.check(&program);
-                for (k, v) in checker.type_env() {
-                    type_env.entry(k.clone()).or_insert_with(|| v.clone());
-                }
-                registry = checker.registry_ref().clone();
+            for stmt in &stmts {
+                registry
+                    .register(stmt)
+                    .map_err(|e| format!("register {}: {e}", path.display()))?;
             }
+
+            let program = Program { stmts };
+            let mut checker = TypeChecker::new(registry.clone());
+            checker.seed_type_env(&type_env);
+            let errors = checker.check(&program);
+            if !errors.is_empty() {
+                let msg = errors
+                    .iter()
+                    .map(|e| e.to_string())
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                return Err(format!("typecheck {}: {msg}", path.display()));
+            }
+            for (k, v) in checker.type_env() {
+                type_env.entry(k.clone()).or_insert_with(|| v.clone());
+            }
+            registry = checker.registry_ref().clone();
         }
 
-        (registry, type_env)
+        Ok((registry, type_env))
     }
 }
 
@@ -384,4 +449,24 @@ pub struct RecoverResult {
     pub parse_errors: Vec<ParseError>,
     /// Lowered HIR when type-check succeeded (LSP hover / codegen alignment).
     pub hir: Option<crate::hir::HirModule>,
+}
+
+#[cfg(test)]
+mod session_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn load_stdlib_context_loads_math_and_json() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let (_registry, type_env) = FrontendSession::load_stdlib_context(&[root]);
+        assert!(
+            type_env.contains_key("add"),
+            "math.ac should register add in type_env"
+        );
+        assert!(
+            type_env.contains_key("jsonParse"),
+            "json.ac should register jsonParse in type_env"
+        );
+    }
 }

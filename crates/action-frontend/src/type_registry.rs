@@ -46,6 +46,12 @@ impl TypeRegistry {
             Stmt::TypeAlias {
                 name, definition, ..
             } => {
+                if self.type_aliases.contains_key(name)
+                    || self.structs.contains_key(name)
+                    || self.enums.contains_key(name)
+                {
+                    return Err(format!("duplicate type definition '{}'", name));
+                }
                 if let Type::Struct(fields) = definition {
                     let mut field_index = HashMap::new();
                     for (i, (fname, _)) in fields.iter().enumerate() {
@@ -68,6 +74,9 @@ impl TypeRegistry {
                 variants,
                 ..
             } => {
+                if self.enums.contains_key(name) {
+                    return Err(format!("duplicate enum '{}'", name));
+                }
                 let mut enum_variants = Vec::new();
                 for (i, v) in variants.iter().enumerate() {
                     self.variant_to_enum.insert(v.name.clone(), name.clone());
@@ -87,6 +96,9 @@ impl TypeRegistry {
                 );
             }
             Stmt::ExternalType { name, .. } => {
+                if self.structs.contains_key(name) {
+                    return Err(format!("duplicate external type '{}'", name));
+                }
                 // Register as opaque struct (no fields)
                 self.structs.insert(
                     name.clone(),
