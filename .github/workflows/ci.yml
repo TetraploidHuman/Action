@@ -215,23 +215,13 @@ jobs:
           if ($out -notmatch 'hello') { throw "hello.ac output unexpected: $out" }
           $msg = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"capabilities":{}}}'
           $frame = "Content-Length: $($msg.Length)`r`n`r`n$msg"
-          $psi = New-Object System.Diagnostics.ProcessStartInfo
-          $psi.FileName = $Action
-          $psi.Arguments = "lsp"
-          $psi.RedirectStandardInput = $true
-          $psi.RedirectStandardOutput = $true
-          $psi.RedirectStandardError = $true
-          $psi.UseShellExecute = $false
-          $psi.CreateNoWindow = $true
-          $p = New-Object System.Diagnostics.Process
-          $p.StartInfo = $psi
-          [void]$p.Start()
-          $p.StandardInput.Write($frame)
-          $p.StandardInput.Close()
-          $stdout = $p.StandardOutput.ReadToEnd()
-          $stderr = $p.StandardError.ReadToEnd()
-          if (-not $p.WaitForExit(5000)) { $p.Kill() }
-          $lspOut = "$stdout$stderr"
+          $lspIn = Join-Path $env:RUNNER_TEMP "lsp-init.txt"
+          $lspOutFile = Join-Path $env:RUNNER_TEMP "lsp-out.txt"
+          $lspErrFile = Join-Path $env:RUNNER_TEMP "lsp-err.txt"
+          Remove-Item $lspIn, $lspOutFile, $lspErrFile -ErrorAction SilentlyContinue
+          [System.IO.File]::WriteAllText($lspIn, $frame, [System.Text.UTF8Encoding]::new($false))
+          $null = Start-Process -FilePath $Action -ArgumentList @("lsp") -RedirectStandardInput $lspIn -RedirectStandardOutput $lspOutFile -RedirectStandardError $lspErrFile -NoNewWindow -Wait -TimeoutSec 10
+          $lspOut = (Get-Content -Raw $lspOutFile -ErrorAction SilentlyContinue) + (Get-Content -Raw $lspErrFile -ErrorAction SilentlyContinue)
           if ($lspOut -notmatch '"result"') { throw "LSP initialize failed: $lspOut" }
           cargo test -p action-codegen --lib --target $env:TARGET -- --test-threads=1
           cargo test -p action-lsp --lib --target $env:TARGET -- --test-threads=1
