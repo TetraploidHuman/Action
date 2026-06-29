@@ -344,7 +344,7 @@ fn run_file(
             std::process::exit(exit_code as i32);
         }
     } else {
-        let exe_path = path.with_extension("");
+        let exe_path = aot_exe_path(path, target);
         let status = std::process::Command::new(&exe_path)
             .status()
             .map_err(|e| {
@@ -419,6 +419,7 @@ fn link_aot_executable(
     if cfg!(windows) && (target == "native" || target == "x86_64-pc-windows-msvc") {
         let mut cmd = std::process::Command::new("link");
         cmd.arg("/NOLOGO")
+            .arg("/SUBSYSTEM:CONSOLE")
             .arg(format!("/OUT:{}", exe_path.display()))
             .arg(obj_path);
         if let Some(host_lib) = find_aot_host_staticlib() {
