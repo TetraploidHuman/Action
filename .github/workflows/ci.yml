@@ -213,8 +213,10 @@ jobs:
           $out = & $Action run examples/hello.ac 2>&1 | Out-String
           Write-Host $out
           if ($out -notmatch 'hello') { throw "hello.ac output unexpected: $out" }
-          $lspOut = '{}' | & $Action lsp 2>&1 | Out-String
-          if ($lspOut -notmatch '"result"') { throw "LSP initialize failed" }
+          $msg = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"capabilities":{}}}'
+          $frame = "Content-Length: $($msg.Length)`r`n`r`n$msg"
+          $lspOut = $frame | & $Action lsp 2>&1 | Out-String
+          if ($lspOut -notmatch '"result"') { throw "LSP initialize failed: $lspOut" }
           cargo test -p action-codegen --lib --target $env:TARGET -- --test-threads=1
           cargo test -p action-lsp --lib --target $env:TARGET -- --test-threads=1
           cargo test --test integration --target $env:TARGET -- --test-threads=1

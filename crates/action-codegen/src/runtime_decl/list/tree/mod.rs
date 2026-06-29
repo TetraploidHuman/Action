@@ -16,8 +16,6 @@ impl<'ctx> CodeGen<'ctx> {
         let i8 = self.context.i8_type();
         let zero = self.i64_ty().const_int(0, false);
         let malloc_rc_fn = self.module.get_function("action_malloc_rc").unwrap();
-        let memcmp_fn = self.module.get_function("memcmp").unwrap();
-        let memcpy_fn = self.module.get_function("memcpy").unwrap();
         let _list_create_fn = self.module.get_function("action_list_create").unwrap();
         let _list_push_fn = self.module.get_function("action_list_push").unwrap();
         let _list_get_fn = self.module.get_function("action_list_get").unwrap();

@@ -39,9 +39,13 @@ run_all_integration_tests() {
 }
 
 run_lsp_smoke() {
-    echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"capabilities":{}}}' \
-        | timeout 5 "$ACTION" lsp 2>&1 | grep -q '"result"' \
-        || { echo "LSP initialize failed" >&2; return 1; }
+    local msg='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"capabilities":{}}}'
+    local len=${#msg}
+    local out
+    # Capture output: grep -q closes the pipe early and LSP exits non-zero under pipefail.
+    out=$(printf 'Content-Length: %d\r\n\r\n%s' "$len" "$msg" | timeout 5 "$ACTION" lsp 2>&1 || true)
+    echo "$out" | grep -q '"result"' \
+        || { echo "LSP initialize failed" >&2; echo "$out" >&2; return 1; }
 }
 
 run_crate_unit_tests() {

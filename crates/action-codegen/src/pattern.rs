@@ -661,7 +661,7 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         w: &action_frontend::hir::HirWhen,
     ) -> Result<TypedValue<'ctx>, String> {
-        use action_frontend::hir::{HirExprKind, HirWhenKind};
+        use action_frontend::hir::HirWhenKind;
         match &w.kind {
             HirWhenKind::OneLine {
                 condition,

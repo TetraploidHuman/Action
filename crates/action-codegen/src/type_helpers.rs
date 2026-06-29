@@ -5,7 +5,7 @@
 
 use action_frontend::ast::*;
 use action_frontend::hir::{HirExpr, HirExprKind};
-use inkwell::types::{BasicType, BasicTypeEnum, StructType};
+use inkwell::types::{BasicTypeEnum, StructType};
 use inkwell::values::{BasicValue, BasicValueEnum};
 
 use super::{llvm_err, CodeGen, TypedValue, ValKind};
