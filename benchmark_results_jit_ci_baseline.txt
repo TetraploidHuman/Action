@@ -1,0 +1,34 @@
+# CI full JIT benchmark baseline (self-hosted Linux, release action, mode: run, -O0)
+# Used by scripts/ci-linux.sh benchmark + benchmark_regression.py (threshold 35%).
+# Updated from GitHub Actions run 28376175900 (2026-06-29).
+# benchmark          min(ms)  avg(ms)  max(ms)  status
+bench_all                                   167      169      171  PASS
+bench_cmp                                   141      150      158  PASS
+bench_concat_depth                          160      175      191  PASS
+bench_cow                                   130      135      138  PASS
+bench_enum                                  136      141      145  PASS
+bench_for_chain                             133      135      138  PASS
+bench_for_collect                           135      137      139  PASS
+bench_for_list                              138      140      144  PASS
+bench_for_method                            132      135      137  PASS
+bench_for_nested                            130      134      141  PASS
+bench_for_range                             132      139      144  PASS
+bench_funcall                               134      136      137  PASS
+bench_insert100                             133      135      137  PASS
+bench_insert10                              136      149      162  PASS
+bench_insert2                               134      137      139  PASS
+bench_insert50                              134      141      146  PASS
+bench_lambda                                133      137      141  PASS
+bench_map_10k                               131      133      135  PASS
+bench_map                                   134      137      142  PASS
+bench_math                                  131      133      137  PASS
+bench_set_10k                               131      136      144  PASS
+bench_set                                   132      134      136  PASS
+bench_step1                                 129      131      132  PASS
+bench_step2                                 126      134      142  PASS
+bench_step3                                 131      135      138  PASS
+bench_step4                                 141      151      166  PASS
+bench_step5                                 134      136      139  PASS
+bench_step6                                 140      143      145  PASS
+bench_string                                137      142      147  PASS
+bench_when                                  130      135      141  PASS

@@ -25,6 +25,10 @@ rust_out
 # Benchmark results
 benchmark_results.txt
 benchmark_results_*.txt
+!benchmark_results_ci_baseline.txt
+!benchmark_results_jit_ci_baseline.txt
+!benchmark_results_aot_o2.txt
+!benchmark_results_*_baseline*.txt
 
 # Dev bisect scratch (keep out of commits)
 examples/_dev/
@@ -36,6 +40,8 @@ lib/**/*.hir.json
 # Python cache
 scripts/__pycache__/
 
-# AOT object files
+# AOT object files and executables
 examples/*.o
-examples/_dev/
+examples/*.obj
+examples/bench_cow
+examples/*.exe

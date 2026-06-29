@@ -410,6 +410,55 @@ fn aot_exe_path(src_path: &Path, target: &str) -> PathBuf {
     }
 }
 
+fn aot_object_path(src_path: &Path, target: &str) -> PathBuf {
+    if cfg!(windows) && (target == "native" || target == "x86_64-pc-windows-msvc") {
+        src_path.with_extension("obj")
+    } else {
+        src_path.with_extension("o")
+    }
+}
+
+#[cfg(windows)]
+fn find_msvc_link_exe() -> Option<PathBuf> {
+    if let Ok(path_var) = std::env::var("PATH") {
+        for dir in std::env::split_paths(&path_var) {
+            let link = dir.join("link.exe");
+            if link.is_file() {
+                return Some(link);
+            }
+        }
+    }
+
+    let mut search_roots: Vec<PathBuf> = Vec::new();
+    if let Ok(pf) = std::env::var("ProgramFiles") {
+        search_roots.push(PathBuf::from(pf).join("Microsoft Visual Studio"));
+    }
+    if let Ok(pf86) = std::env::var("ProgramFiles(x86)") {
+        search_roots.push(PathBuf::from(pf86).join("Microsoft Visual Studio"));
+    }
+
+    for root in search_roots {
+        if !root.is_dir() {
+            continue;
+        }
+        let pattern = root.join("VC/Tools/MSVC");
+        if let Ok(entries) = std::fs::read_dir(&pattern) {
+            for ver in entries.flatten() {
+                let link = ver.path().join("bin/Hostx64/x64/link.exe");
+                if link.is_file() {
+                    return Some(link);
+                }
+            }
+        }
+    }
+    None
+}
+
+#[cfg(not(windows))]
+fn find_msvc_link_exe() -> Option<PathBuf> {
+    None
+}
+
 fn link_aot_executable(
     obj_path: &Path,
     exe_path: &Path,
@@ -417,20 +466,47 @@ fn link_aot_executable(
     target: &str,
 ) -> Result<(), String> {
     if cfg!(windows) && (target == "native" || target == "x86_64-pc-windows-msvc") {
-        let mut cmd = std::process::Command::new("link");
+        let link_exe = find_msvc_link_exe().ok_or_else(|| {
+            "Failed to locate link.exe (install Visual Studio Build Tools or add it to PATH)"
+                .to_string()
+        })?;
+        let mut cmd = std::process::Command::new(link_exe);
         cmd.arg("/NOLOGO")
             .arg("/SUBSYSTEM:CONSOLE")
             .arg(format!("/OUT:{}", exe_path.display()))
             .arg(obj_path);
         if let Some(host_lib) = find_aot_host_staticlib() {
             cmd.arg(host_lib);
+        } else {
+            eprintln!(
+                "warning: action_host_rt static library not found; AOT link may fail if program uses JSON/HTTP"
+            );
         }
-        cmd.args(["kernel32.lib", "msvcrt.lib", "legacy_stdio_definitions.lib"]);
-        let status = cmd
-            .status()
+        cmd.args([
+            "kernel32.lib",
+            "msvcrt.lib",
+            "ucrt.lib",
+            "vcruntime.lib",
+            "legacy_stdio_definitions.lib",
+        ]);
+        let output = cmd
+            .output()
             .map_err(|e| format!("Failed to invoke link.exe: {}", e))?;
-        if !status.success() {
-            return Err("link.exe failed".to_string());
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            return Err(format!(
+                "link.exe failed (status {:?}): {}{}",
+                output.status.code(),
+                stderr,
+                stdout
+            ));
+        }
+        if !exe_path.is_file() {
+            return Err(format!(
+                "link.exe reported success but executable is missing: {}",
+                exe_path.display()
+            ));
         }
         return Ok(());
     }
@@ -487,7 +563,7 @@ fn emit_output(
             println!("Assembly written to: {}", out.display());
         }
         "obj" | "o" => {
-            let out = src_path.with_extension("o");
+            let out = aot_object_path(src_path, target);
             cg.emit_object(&out)?;
             println!("Object file written to: {}", out.display());
         }
@@ -495,7 +571,7 @@ fn emit_output(
             if target == "wasm" || target == "wasm32-unknown-unknown" {
                 return Err("--emit exe is not supported for wasm target. Use --emit obj to produce a .wasm file.".to_string());
             }
-            let obj_path = src_path.with_extension("o");
+            let obj_path = aot_object_path(src_path, target);
             cg.emit_object(&obj_path)?;
             let exe_path = aot_exe_path(src_path, target);
             link_aot_executable(&obj_path, &exe_path, src_path, target)?;

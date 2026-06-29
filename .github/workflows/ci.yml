@@ -193,6 +193,20 @@ jobs:
           & $libExe.FullName /DEF:C:\llvm\lib\libxml2s.def /OUT:C:\llvm\lib\libxml2s.lib /MACHINE:X64
           Remove-Item C:\llvm\lib\libxml2s.def -Force
 
+      - name: Ensure link.exe on PATH (Windows)
+        shell: pwsh
+        run: |
+          $linkExe = Get-ChildItem "${env:ProgramFiles}\Microsoft Visual Studio" -Recurse -Filter "link.exe" -Depth 8 -ErrorAction SilentlyContinue | Where-Object { $_.Directory.Name -eq "x64" -and $_.Directory.Parent.Name -eq "HostX64" } | Select-Object -First 1
+          if (-not $linkExe) {
+            $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+            if (Test-Path $vswhere) {
+              $vsPath = & $vswhere -latest -property installationPath
+              $linkExe = Get-ChildItem "$vsPath\VC\Tools\MSVC" -Recurse -Filter "link.exe" -Depth 4 -ErrorAction SilentlyContinue | Where-Object { $_.Directory.Name -eq "x64" -and $_.Directory.Parent.Name -eq "HostX64" } | Select-Object -First 1
+            }
+          }
+          if (-not $linkExe) { throw "Cannot find link.exe (required for AOT --emit exe)" }
+          echo "$($linkExe.DirectoryName)" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
       - name: Format check
         run: cargo fmt -- --check
 
@@ -245,7 +259,16 @@ jobs:
           & $Release run examples/bench_for_nested.ac | Out-Null
           $mf = & $Release run examples/map_filter.ac 2>&1 | Out-String
           if ($mf.Trim().Split("`n")[-1] -ne '210215') { throw "map_filter: expected 210215" }
-          # AOT --emit exe is exercised on Linux CI (run_aot_smoke_release); MSVC AOT link is not stable on hosted Windows yet.
+          $exe = Join-Path $PWD "examples/bench_cow.exe"
+          $obj = Join-Path $PWD "examples/bench_cow.obj"
+          Remove-Item $exe, $obj -ErrorAction SilentlyContinue
+          $aotEmit = & $Release run -O2 --emit exe examples/bench_cow.ac 2>&1 | Out-String
+          Write-Host "AOT emit output:`n$aotEmit"
+          if ($LASTEXITCODE -ne 0) { throw "AOT compile bench_cow failed (exit $LASTEXITCODE): $aotEmit" }
+          if (-not (Test-Path $exe)) { throw "AOT bench_cow exe missing: $aotEmit" }
+          $aot = & $exe 2>&1 | Out-String
+          if ($aot.Trim().Split("`n")[-1] -ne '11') { throw "AOT bench_cow: expected 11, got: $aot" }
+          Remove-Item $exe, $obj -ErrorAction SilentlyContinue
 
       - name: Debug run output
         if: failure()

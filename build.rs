@@ -108,7 +108,12 @@ fn build_host_runtime_staticlib() {
         .unwrap_or_else(|_| manifest_dir.join("target"));
 
     let host_rt_target = target_dir.join("host_rt_build");
-    let lib_path = host_rt_target.join(profile).join("libaction_host_rt.a");
+    let lib_name = if std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default() == "windows" {
+        "action_host_rt.lib"
+    } else {
+        "libaction_host_rt.a"
+    };
+    let lib_path = host_rt_target.join(profile).join(lib_name);
     emit_host_rt_link(&host_rt_target, profile);
     let sources = [
         host_rt_manifest.clone(),
