@@ -220,7 +220,7 @@ jobs:
           $lspErrFile = Join-Path $env:RUNNER_TEMP "lsp-err.txt"
           Remove-Item $lspIn, $lspOutFile, $lspErrFile -ErrorAction SilentlyContinue
           [System.IO.File]::WriteAllText($lspIn, $frame, [System.Text.UTF8Encoding]::new($false))
-          $null = Start-Process -FilePath $Action -ArgumentList @("lsp") -RedirectStandardInput $lspIn -RedirectStandardOutput $lspOutFile -RedirectStandardError $lspErrFile -NoNewWindow -Wait -TimeoutSec 10
+          $null = Start-Process -FilePath $Action -ArgumentList @("lsp") -RedirectStandardInput $lspIn -RedirectStandardOutput $lspOutFile -RedirectStandardError $lspErrFile -NoNewWindow -Wait
           $lspOut = (Get-Content -Raw $lspOutFile -ErrorAction SilentlyContinue) + (Get-Content -Raw $lspErrFile -ErrorAction SilentlyContinue)
           if ($lspOut -notmatch '"result"') { throw "LSP initialize failed: $lspOut" }
           cargo test -p action-codegen --lib --target $env:TARGET -- --test-threads=1
