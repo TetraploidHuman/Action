@@ -1,7 +1,7 @@
 # CI push JIT smoke baseline (self-hosted Linux, release action, -O0)
-# Updated from GitHub Actions run 27810734398 (2026-06-19).
+# Updated from GitHub Actions run 28364438143 (2026-06-29).
 # benchmark          min(ms)  avg(ms)  max(ms)  status
-bench_all                186      186      186  PASS
-bench_concat_depth       154      154      154  PASS
-bench_cow                115      115      115  PASS
-bench_insert100          173      173      173  PASS
+bench_all                200      200      200  PASS
+bench_concat_depth       208      208      208  PASS
+bench_cow                153      153      153  PASS
+bench_insert100          155      155      155  PASS
