@@ -22,7 +22,7 @@ impl<'ctx> CodeGen<'ctx> {
         let fmt_sep_ptr = self.make_global_str(".fmt_sep", b", \0")?;
         let malloc_rc_fn = self.module.get_function("action_malloc_rc").unwrap();
         let printf_fn = self.module.get_function("printf").unwrap();
-        let fmt_int_ptr = self.make_global_str(".fmt_int", b"%ld\0")?;
+        let fmt_int_ptr = self.make_global_str(".fmt_int", b"%lld\0")?;
 
         include!("body.inc.rs");
         Ok(())

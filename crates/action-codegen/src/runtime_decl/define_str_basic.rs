@@ -357,7 +357,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap_basic()
             .into_pointer_value();
         // sprintf(buf, "%ld", n)
-        let fmt_int = self.make_global_str(".fmt_int_str", b"%ld\0")?;
+        let fmt_int = self.make_global_str(".fmt_int_str", b"%lld\0")?;
         let _ = self
             .builder
             .build_call(sprintf_fn, &[buf.into(), fmt_int.into(), n.into()], "")

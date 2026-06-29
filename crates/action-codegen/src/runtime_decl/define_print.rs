@@ -37,7 +37,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Format strings for print functions
         let fmt_nl_ptr = self.make_global_str(".fmt_nl", b"\n\0")?;
-        let fmt_int_ptr = self.make_global_str(".fmt_int", b"%ld\0")?;
+        let fmt_int_ptr = self.make_global_str(".fmt_int", b"%lld\0")?;
         let fmt_float_ptr = self.make_global_str(".fmt_float", b"%g\0")?;
         let fmt_str_ptr = self.make_global_str(".fmt_str", b"%s\0")?;
         let fmt_str_prec_ptr = self.make_global_str(".fmt_str_prec", b"%.*s\0")?;

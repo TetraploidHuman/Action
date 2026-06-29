@@ -20,6 +20,7 @@ fn assert_lexer_golden(fixture_stem: &str) {
     let json_path = dir.join(format!("{fixture_stem}.tokens.json"));
 
     let source = fs::read_to_string(&at_path).expect("read fixture source");
+    let source = source.replace("\r\n", "\n");
     let expected = fs::read_to_string(&json_path).expect("read golden tokens json");
     let actual = tokenize_json(&source);
 
