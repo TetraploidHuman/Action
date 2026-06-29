@@ -26,7 +26,10 @@ pub fn check_file(path: &Path, explain: bool) -> Result<CheckedProgram, CheckErr
 }
 
 /// Type-check failures formatted as plain text (legacy CLI path).
-#[deprecated(since = "0.5.5", note = "use `check_file` and `emit::report_check_errors`")]
+#[deprecated(
+    since = "0.5.5",
+    note = "use `check_file` and `emit::report_check_errors`"
+)]
 pub fn load_checked(path: &Path, explain: bool) -> Result<CheckedProgram, String> {
     check_file(path, explain).map_err(|errors| format_loader_errors(&errors))
 }

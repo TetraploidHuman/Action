@@ -326,9 +326,9 @@ impl<'ctx> CodeGen<'ctx> {
         condition: &action_frontend::hir::HirExpr,
         body: &action_frontend::hir::HirExpr,
     ) -> Result<Option<TypedValue<'ctx>>, String> {
+        use crate::ValKind;
         use action_frontend::ast::BinaryOp;
         use action_frontend::hir::HirExprKind;
-        use crate::ValKind;
 
         let (idx_var, end_hir) = match &condition.kind {
             HirExprKind::Binary(lhs, BinaryOp::Lt, rhs) => match &lhs.kind {

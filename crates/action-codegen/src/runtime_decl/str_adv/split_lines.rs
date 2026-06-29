@@ -219,6 +219,6 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self.builder.build_return(Some(&sl_result));
 
-                Ok(())
+        Ok(())
     }
 }

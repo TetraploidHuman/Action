@@ -9,7 +9,7 @@ impl<'ctx> CodeGen<'ctx> {
         let i8 = self.context.i8_type();
         let str_ty = self.string_type;
         let memcmp_fn = self.module.get_function("memcmp").unwrap();
-// ---- action_string_index_of({i64, ptr}, {i64, ptr}) -> i64 (returns -1 if not found) ----
+        // ---- action_string_index_of({i64, ptr}, {i64, ptr}) -> i64 (returns -1 if not found) ----
         let sio_fn = self.module.add_function(
             "action_string_index_of",
             i64.fn_type(&[str_ty.into(), str_ty.into()], false),

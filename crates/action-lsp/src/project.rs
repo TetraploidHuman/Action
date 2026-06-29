@@ -343,11 +343,7 @@ mod tests {
     fn test_ast_symbol_index_finds_type_alias() {
         let mut proj = empty_project();
         let uri = Url::parse("file:///types.ac").unwrap();
-        proj.update_document(
-            &uri,
-            "type Point = Int\nfun main() {}".to_string(),
-            1,
-        );
+        proj.update_document(&uri, "type Point = Int\nfun main() {}".to_string(), 1);
         assert!(proj.symbol_index.contains_key("Point"));
         assert!(proj.symbol_index.contains_key("main"));
     }

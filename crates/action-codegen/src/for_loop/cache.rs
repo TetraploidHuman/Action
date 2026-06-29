@@ -201,10 +201,7 @@ impl<'ctx> CodeGen<'ctx> {
         let key_val = self.compile_hir_expr(key_hir)?;
         let fat = self.to_fat_struct(&key_val)?;
         let set_loaded = self.load_list(set_alloca)?;
-        let hit_cc = self.call_rt(
-            "action_ht_contains",
-            &[set_loaded.into(), fat.into()],
-        )?;
+        let hit_cc = self.call_rt("action_ht_contains", &[set_loaded.into(), fat.into()])?;
         let _hit = hit_cc
             .try_as_basic_value()
             .basic()

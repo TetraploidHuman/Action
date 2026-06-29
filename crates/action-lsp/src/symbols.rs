@@ -285,7 +285,10 @@ fn collect_stmt_symbol_entry(stmt: &Stmt, out: &mut Vec<AstSymbolEntry>) {
             }
         }
         Stmt::Let {
-            name, span, mutable, ..
+            name,
+            span,
+            mutable,
+            ..
         } => {
             out.push(AstSymbolEntry {
                 name: name.clone(),
@@ -330,7 +333,9 @@ fn collect_stmt_symbol_entry(stmt: &Stmt, out: &mut Vec<AstSymbolEntry>) {
                 });
             }
         }
-        Stmt::Module { name, body, span, .. } => {
+        Stmt::Module {
+            name, body, span, ..
+        } => {
             out.push(AstSymbolEntry {
                 name: name.clone(),
                 span: span.clone(),

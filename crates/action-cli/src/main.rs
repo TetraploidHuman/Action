@@ -347,7 +347,9 @@ fn run_file(
         let exe_path = path.with_extension("");
         let status = std::process::Command::new(&exe_path)
             .status()
-            .map_err(|e| RunFailure::Message(format!("Failed to run {}: {}", exe_path.display(), e)))?;
+            .map_err(|e| {
+                RunFailure::Message(format!("Failed to run {}: {}", exe_path.display(), e))
+            })?;
         if !status.success() {
             return Err(RunFailure::Message(format!(
                 "Process exited with status: {}",

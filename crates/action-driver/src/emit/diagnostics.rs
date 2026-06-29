@@ -4,11 +4,7 @@ use std::path::Path;
 
 pub fn report_check_errors(path: &Path, errors: &[CompilerError]) {
     if let Ok(source) = fs::read_to_string(path) {
-        action_frontend::error::report_compiler_errors(
-            &source,
-            &path.to_string_lossy(),
-            errors,
-        );
+        action_frontend::error::report_compiler_errors(&source, &path.to_string_lossy(), errors);
     } else {
         for e in errors {
             eprintln!("Error: {}", e);

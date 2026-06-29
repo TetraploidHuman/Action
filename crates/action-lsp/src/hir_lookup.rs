@@ -335,12 +335,12 @@ fn span_contains(span: &Span, offset: usize) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use action_frontend::hir::lower_program;
     use action_frontend::lexer::Lexer;
     use action_frontend::loader::build_type_registry;
     use action_frontend::parser::Parser;
-    use action_frontend::typecheck::TypeChecker;
     use action_frontend::type_registry::TypeRegistry;
-    use action_frontend::hir::lower_program;
+    use action_frontend::typecheck::TypeChecker;
 
     fn lower_source(source: &str) -> HirModule {
         let mut lexer = Lexer::new(source);

@@ -66,7 +66,9 @@ pub fn run_test_file(
         }
     }
 
-    let results = cg.run_tests(&test_names).map_err(super::RunFailure::Message)?;
+    let results = cg
+        .run_tests(&test_names)
+        .map_err(super::RunFailure::Message)?;
 
     let total = results.len();
     let passed = results.iter().filter(|(_, p, _)| *p).count();
@@ -85,7 +87,10 @@ pub fn run_test_file(
     println!("{} passed, {} failed, {} total", passed, failed, total);
 
     if failed > 0 {
-        Err(super::RunFailure::Message(format!("{} test(s) failed", failed)))
+        Err(super::RunFailure::Message(format!(
+            "{} test(s) failed",
+            failed
+        )))
     } else {
         Ok(())
     }
