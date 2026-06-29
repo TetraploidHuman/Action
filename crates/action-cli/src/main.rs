@@ -483,6 +483,29 @@ fn find_msvc_link_exe() -> Option<PathBuf> {
     None
 }
 
+/// System libraries required when linking `action_host_rt.lib` (Rust std + HTTP/JSON).
+fn windows_aot_system_libs() -> &'static [&'static str] {
+    #[cfg(windows)]
+    {
+        return &[
+            "kernel32.lib",
+            "msvcrt.lib",
+            "ucrt.lib",
+            "vcruntime.lib",
+            "legacy_stdio_definitions.lib",
+            "ws2_32.lib",
+            "ntdll.lib",
+            "advapi32.lib",
+            "userenv.lib",
+            "bcrypt.lib",
+        ];
+    }
+    #[cfg(not(windows))]
+    {
+        &[]
+    }
+}
+
 fn link_aot_executable(
     obj_path: &Path,
     exe_path: &Path,
@@ -508,13 +531,7 @@ fn link_aot_executable(
                 "warning: action_host_rt static library not found; AOT link may fail if program uses JSON/HTTP"
             );
         }
-        cmd.args([
-            "kernel32.lib",
-            "msvcrt.lib",
-            "ucrt.lib",
-            "vcruntime.lib",
-            "legacy_stdio_definitions.lib",
-        ]);
+        cmd.args(windows_aot_system_libs());
         let output = cmd
             .output()
             .map_err(|e| format!("Failed to invoke link.exe: {}", e))?;
