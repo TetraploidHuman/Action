@@ -419,6 +419,30 @@ fn aot_object_path(src_path: &Path, target: &str) -> PathBuf {
 }
 
 #[cfg(windows)]
+fn find_lld_link_exe() -> Option<PathBuf> {
+    if let Ok(prefix) = std::env::var("LLVM_SYS_211_PREFIX") {
+        let lld = PathBuf::from(prefix).join("bin/lld-link.exe");
+        if lld.is_file() {
+            return Some(lld);
+        }
+    }
+    if let Ok(path_var) = std::env::var("PATH") {
+        for dir in std::env::split_paths(&path_var) {
+            let lld = dir.join("lld-link.exe");
+            if lld.is_file() {
+                return Some(lld);
+            }
+        }
+    }
+    None
+}
+
+#[cfg(not(windows))]
+fn find_lld_link_exe() -> Option<PathBuf> {
+    None
+}
+
+#[cfg(windows)]
 fn find_msvc_link_exe() -> Option<PathBuf> {
     if let Ok(path_var) = std::env::var("PATH") {
         for dir in std::env::split_paths(&path_var) {
@@ -466,10 +490,12 @@ fn link_aot_executable(
     target: &str,
 ) -> Result<(), String> {
     if cfg!(windows) && (target == "native" || target == "x86_64-pc-windows-msvc") {
-        let link_exe = find_msvc_link_exe().ok_or_else(|| {
-            "Failed to locate link.exe (install Visual Studio Build Tools or add it to PATH)"
-                .to_string()
-        })?;
+        let link_exe = find_lld_link_exe()
+            .or_else(find_msvc_link_exe)
+            .ok_or_else(|| {
+                "Failed to locate lld-link.exe or link.exe (install LLVM or Visual Studio Build Tools)"
+                    .to_string()
+            })?;
         let mut cmd = std::process::Command::new(link_exe);
         cmd.arg("/NOLOGO")
             .arg("/SUBSYSTEM:CONSOLE")

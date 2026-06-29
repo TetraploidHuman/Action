@@ -262,9 +262,9 @@ jobs:
           $exe = Join-Path $PWD "examples/bench_cow.exe"
           $obj = Join-Path $PWD "examples/bench_cow.obj"
           Remove-Item $exe, $obj -ErrorAction SilentlyContinue
-          $aotEmit = & $Release run -O2 --emit exe examples/bench_cow.ac 2>&1 | Out-String
-          Write-Host "AOT emit output:`n$aotEmit"
-          if ($LASTEXITCODE -ne 0) { throw "AOT compile bench_cow failed (exit $LASTEXITCODE): $aotEmit" }
+          $aotEmit = & $Release build examples/bench_cow.ac --emit exe -O2 2>&1 | Out-String
+          Write-Host "AOT build output:`n$aotEmit"
+          if ($LASTEXITCODE -ne 0) { throw "AOT build bench_cow failed (exit $LASTEXITCODE): $aotEmit" }
           if (-not (Test-Path $exe)) { throw "AOT bench_cow exe missing: $aotEmit" }
           $aot = & $exe 2>&1 | Out-String
           if ($aot.Trim().Split("`n")[-1] -ne '11') { throw "AOT bench_cow: expected 11, got: $aot" }

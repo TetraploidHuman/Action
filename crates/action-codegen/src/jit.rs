@@ -431,6 +431,26 @@ pub(super) fn aot_reloc_mode(
     }
 }
 
+/// TargetMachine opt for AOT file emission (object/asm).
+fn target_machine_opt_for_emit(opt_level: u8) -> inkwell::OptimizationLevel {
+    use inkwell::OptimizationLevel;
+    // action.exe on Windows CI is linked with /FORCE:UNRESOLVED (ACTION_FORCE_LINK).
+    // TargetMachine -O2 runs LLVM passes that can AV on NULL unresolved host symbols —
+    // same failure mode as CodeGen::print_ir avoiding print_to_string on Windows.
+    #[cfg(target_os = "windows")]
+    {
+        let _ = opt_level;
+        return OptimizationLevel::None;
+    }
+    #[cfg(not(target_os = "windows"))]
+    match opt_level {
+        0 => OptimizationLevel::None,
+        1 => OptimizationLevel::Less,
+        2 => OptimizationLevel::Default,
+        _ => OptimizationLevel::Aggressive,
+    }
+}
+
 impl<'ctx> CodeGen<'ctx> {
     pub fn emit_bitcode(&self, path: &std::path::Path) -> Result<(), String> {
         if !self.module.write_bitcode_to_path(path) {
@@ -499,12 +519,7 @@ impl<'ctx> CodeGen<'ctx> {
                 (t, "generic".to_string(), "".to_string(), tt)
             }
         };
-        let opt = match self.opt_level {
-            0 => inkwell::OptimizationLevel::None,
-            1 => inkwell::OptimizationLevel::Less,
-            2 => inkwell::OptimizationLevel::Default,
-            _ => inkwell::OptimizationLevel::Aggressive,
-        };
+        let opt = target_machine_opt_for_emit(self.opt_level);
         let reloc = aot_reloc_mode(&target_triple);
         let target_machine = target
             .create_target_machine(
