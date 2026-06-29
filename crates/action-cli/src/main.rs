@@ -424,11 +424,7 @@ fn link_aot_executable(
         if let Some(host_lib) = find_aot_host_staticlib() {
             cmd.arg(host_lib);
         }
-        cmd.args([
-            "kernel32.lib",
-            "msvcrt.lib",
-            "legacy_stdio_definitions.lib",
-        ]);
+        cmd.args(["kernel32.lib", "msvcrt.lib", "legacy_stdio_definitions.lib"]);
         let status = cmd
             .status()
             .map_err(|e| format!("Failed to invoke link.exe: {}", e))?;
