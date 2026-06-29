@@ -1139,10 +1139,7 @@ fn test_bench_all() {
 
 #[test]
 fn test_ffi_cstring_roundtrip() {
-    assert_eq!(
-        run_example("test_ffi.ac"),
-        "Hello from Atomic FFI!\ndone\n"
-    );
+    assert_eq!(run_example("test_ffi.ac"), "Hello from Atomic FFI!\ndone\n");
 }
 
 #[test]

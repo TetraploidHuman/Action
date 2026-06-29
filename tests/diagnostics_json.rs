@@ -131,8 +131,7 @@ fn test_check_format_json_explain_e002_includes_help() {
 
 #[test]
 fn test_check_format_json_reports_e003_code() {
-    let file =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/test_error_e003_fn_or.ac");
+    let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/test_error_e003_fn_or.ac");
     let output = Command::new(action_binary())
         .args(["check", "--format", "json", file.to_str().unwrap()])
         .output()
@@ -148,8 +147,7 @@ fn test_check_format_json_reports_e003_code() {
 
 #[test]
 fn test_check_format_json_reports_e010_code() {
-    let file =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/test_error_e010_null.ac");
+    let file = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/test_error_e010_null.ac");
     let output = Command::new(action_binary())
         .args(["check", "--format", "json", file.to_str().unwrap()])
         .output()
@@ -165,8 +163,8 @@ fn test_check_format_json_reports_e010_code() {
 
 #[test]
 fn test_check_format_json_reports_e011_code() {
-    let file = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("examples/test_error_e011_nullable_type.ac");
+    let file =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/test_error_e011_nullable_type.ac");
     let output = Command::new(action_binary())
         .args(["check", "--format", "json", file.to_str().unwrap()])
         .output()
