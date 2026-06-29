@@ -392,6 +392,82 @@ fn build_file(
     Ok(())
 }
 
+fn is_windows_aot_target(target: &str) -> bool {
+    if target == "windows-x64"
+        || target == "x86_64-pc-windows-gnu"
+        || target == "x86_64-pc-windows-msvc"
+    {
+        return true;
+    }
+    target == "native" && cfg!(windows)
+}
+
+fn aot_exe_path(src_path: &Path, target: &str) -> PathBuf {
+    if is_windows_aot_target(target) {
+        src_path.with_extension("exe")
+    } else {
+        src_path.with_extension("")
+    }
+}
+
+fn link_aot_executable(
+    obj_path: &Path,
+    exe_path: &Path,
+    src_path: &Path,
+    target: &str,
+) -> Result<(), String> {
+    if cfg!(windows) && (target == "native" || target == "x86_64-pc-windows-msvc") {
+        let mut cmd = std::process::Command::new("link");
+        cmd.arg("/NOLOGO")
+            .arg(format!("/OUT:{}", exe_path.display()))
+            .arg(obj_path);
+        if let Some(host_lib) = find_aot_host_staticlib() {
+            cmd.arg(host_lib);
+        }
+        cmd.args([
+            "kernel32.lib",
+            "msvcrt.lib",
+            "legacy_stdio_definitions.lib",
+        ]);
+        let status = cmd
+            .status()
+            .map_err(|e| format!("Failed to invoke link.exe: {}", e))?;
+        if !status.success() {
+            return Err("link.exe failed".to_string());
+        }
+        return Ok(());
+    }
+
+    let linker = match target {
+        "windows-x64" | "x86_64-pc-windows-gnu" => "x86_64-w64-mingw32-gcc",
+        "linux-arm64" | "aarch64-unknown-linux-gnu" => "aarch64-linux-gnu-gcc",
+        _ => "cc",
+    };
+    let mut link_cmd = std::process::Command::new(linker);
+    link_cmd.arg("-o").arg(exe_path).arg(obj_path);
+    if let Some(host_lib) = find_aot_host_staticlib() {
+        link_cmd.arg(host_lib);
+    }
+    if !matches!(
+        target,
+        "windows-x64" | "x86_64-pc-windows-gnu" | "wasm" | "wasm32-unknown-unknown"
+    ) {
+        link_cmd.args(["-lm", "-lpthread", "-ldl"]);
+    }
+    if let Some(cfg) = config::ProjectConfig::find_and_load(src_path) {
+        if cfg.lto {
+            link_cmd.arg("-flto");
+        }
+    }
+    let status = link_cmd
+        .status()
+        .map_err(|e| format!("Failed to invoke linker '{}': {}", linker, e))?;
+    if !status.success() {
+        return Err(format!("Linker '{}' failed", linker));
+    }
+    Ok(())
+}
+
 fn emit_output(
     cg: &codegen::CodeGen,
     src_path: &Path,
@@ -424,40 +500,8 @@ fn emit_output(
             }
             let obj_path = src_path.with_extension("o");
             cg.emit_object(&obj_path)?;
-            let exe_path = if target == "windows-x64" || target == "x86_64-pc-windows-gnu" {
-                src_path.with_extension("exe")
-            } else {
-                src_path.with_extension("")
-            };
-            let linker = match target {
-                "windows-x64" | "x86_64-pc-windows-gnu" => "x86_64-w64-mingw32-gcc",
-                "linux-arm64" | "aarch64-unknown-linux-gnu" => "aarch64-linux-gnu-gcc",
-                _ => "cc",
-            };
-            let mut link_cmd = std::process::Command::new(linker);
-            link_cmd.arg("-o").arg(&exe_path).arg(&obj_path);
-            // Link Rust host runtime (JSON/HTTP/threading C ABI) for AOT executables.
-            if let Some(host_lib) = find_aot_host_staticlib() {
-                link_cmd.arg(host_lib);
-            }
-            // Runtime math helpers (pow, sin, ...) are declared as external libc symbols.
-            if !matches!(
-                target,
-                "windows-x64" | "x86_64-pc-windows-gnu" | "wasm" | "wasm32-unknown-unknown"
-            ) {
-                link_cmd.args(["-lm", "-lpthread", "-ldl"]);
-            }
-            if let Some(cfg) = config::ProjectConfig::find_and_load(src_path) {
-                if cfg.lto {
-                    link_cmd.arg("-flto");
-                }
-            }
-            let status = link_cmd
-                .status()
-                .map_err(|e| format!("Failed to invoke linker '{}': {}", linker, e))?;
-            if !status.success() {
-                return Err(format!("Linker '{}' failed", linker));
-            }
+            let exe_path = aot_exe_path(src_path, target);
+            link_aot_executable(&obj_path, &exe_path, src_path, target)?;
             let _ = std::fs::remove_file(&obj_path);
             println!("Executable written to: {}", exe_path.display());
         }
@@ -474,33 +518,37 @@ fn emit_output(
 fn find_aot_host_staticlib() -> Option<String> {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let profiles = ["release", "debug"];
+    let lib_names: &[&str] = if cfg!(windows) {
+        &["action_host_rt.lib", "libaction_host_rt.a"]
+    } else {
+        &["libaction_host_rt.a"]
+    };
     let mut candidates = Vec::new();
 
-    if let Ok(target_dir) = std::env::var("CARGO_TARGET_DIR") {
-        let root = PathBuf::from(target_dir);
+    let mut push_candidates = |root: &Path| {
         for profile in profiles {
-            candidates.push(root.join(format!("host_rt_build/{profile}/libaction_host_rt.a")));
+            for name in lib_names {
+                candidates.push(root.join(format!("host_rt_build/{profile}/{name}")));
+                candidates.push(root.join(format!("{profile}/{name}")));
+            }
         }
+    };
+
+    if let Ok(target_dir) = std::env::var("CARGO_TARGET_DIR") {
+        push_candidates(&PathBuf::from(target_dir));
     }
 
     if let Ok(exe) = std::env::current_exe() {
         let mut dir = exe.parent().map(|p| p.to_path_buf());
         for _ in 0..5 {
             if let Some(ref d) = dir {
-                for profile in profiles {
-                    candidates.push(d.join(format!("host_rt_build/{profile}/libaction_host_rt.a")));
-                }
+                push_candidates(d);
                 dir = d.parent().map(|p| p.to_path_buf());
             }
         }
     }
 
-    for profile in profiles {
-        candidates.push(manifest.join(format!(
-            "target/host_rt_build/{profile}/libaction_host_rt.a"
-        )));
-        candidates.push(manifest.join(format!("target/{profile}/libaction_host_rt.a")));
-    }
+    push_candidates(&manifest.join("target"));
 
     for path in candidates {
         if path.exists() {
