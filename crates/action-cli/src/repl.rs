@@ -1,9 +1,9 @@
 use action::ast::*;
 use action::error;
 use action::session::FrontendSession;
+use action_codegen::llvm_targets;
 use action_span::Span;
 use inkwell::context::Context;
-use action_codegen::llvm_targets;
 use std::io::{self, Write};
 use std::path::Path;
 use std::sync::OnceLock;

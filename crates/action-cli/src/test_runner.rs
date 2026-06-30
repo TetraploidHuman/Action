@@ -1,7 +1,7 @@
 use action::ast::*;
+use action_codegen::llvm_targets;
 use action_driver as driver;
 use inkwell::context::Context;
-use action_codegen::llvm_targets;
 use std::path::PathBuf;
 
 /// Run test functions from a source file
