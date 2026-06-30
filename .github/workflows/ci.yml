@@ -36,16 +36,11 @@ jobs:
           GITHUB_SHA: ${{ github.sha }}
         run: bash /home/miaox99/桌面/Runner/checkout-codeload.sh
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ env.LINUX_TARGET }}
-          components: rustfmt
-
       - name: Ensure persistent target dir
         run: mkdir -p "$CARGO_TARGET_DIR"
 
       - name: Format check
-        run: cargo fmt -- --check
+        run: nix-shell --run "cargo fmt -- --check"
 
       - name: Core CI (single nix-shell)
         env:
@@ -79,10 +74,6 @@ jobs:
           GITHUB_SHA: ${{ github.sha }}
         run: bash /home/miaox99/桌面/Runner/checkout-codeload.sh
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ env.LINUX_TARGET }}
-
       - name: Ensure persistent target dir
         run: mkdir -p "$CARGO_TARGET_DIR"
 
@@ -107,10 +98,6 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_SHA: ${{ github.sha }}
         run: bash /home/miaox99/桌面/Runner/checkout-codeload.sh
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ env.LINUX_TARGET }}
 
       - name: Ensure persistent target dir
         run: mkdir -p "$CARGO_TARGET_DIR"
