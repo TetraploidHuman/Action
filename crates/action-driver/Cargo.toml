@@ -8,5 +8,10 @@ publish = false
 action-span = { path = "../action-span" }
 action-frontend = { path = "../action-frontend" }
 action-codegen = { path = "../action-codegen" }
-inkwell = { version = "0.9", features = ["llvm21-1"] }
 serde_json = { version = "1.0", optional = true }
+
+[target.'cfg(windows)'.dependencies]
+inkwell = { version = "0.9", default-features = false, features = ["llvm21-1", "target-x86"] }
+
+[target.'cfg(not(windows))'.dependencies]
+inkwell = { version = "0.9", default-features = false, features = ["llvm21-1", "target-x86", "target-aarch64", "target-webassembly"] }

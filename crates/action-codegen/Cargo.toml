@@ -9,5 +9,10 @@ publish = false
 
 [dependencies]
 action-frontend = { path = "../action-frontend" }
-inkwell = { version = "0.9", features = ["llvm21-1"] }
 llvm-sys = { version = "211" }
+
+[target.'cfg(windows)'.dependencies]
+inkwell = { version = "0.9", default-features = false, features = ["llvm21-1", "target-x86"] }
+
+[target.'cfg(not(windows))'.dependencies]
+inkwell = { version = "0.9", default-features = false, features = ["llvm21-1", "target-x86", "target-aarch64", "target-webassembly"] }
