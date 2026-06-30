@@ -256,7 +256,9 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_compare(IntPredicate::EQ, cur_len, zero, "coll_empty")
             .map_err(llvm_err)?;
         let presize_bb = self.context.append_basic_block(current_fn, "coll_presize");
-        let presize_done = self.context.append_basic_block(current_fn, "coll_presize_done");
+        let presize_done = self
+            .context
+            .append_basic_block(current_fn, "coll_presize_done");
         let _ = self
             .builder
             .build_conditional_branch(needs_presize, presize_bb, presize_done);
@@ -328,7 +330,9 @@ impl<'ctx> CodeGen<'ctx> {
             .try_as_basic_value()
             .basic()
             .ok_or("map_insert failed")?;
-        self.builder.build_store(coll_ptr, new_coll).map_err(llvm_err)?;
+        self.builder
+            .build_store(coll_ptr, new_coll)
+            .map_err(llvm_err)?;
         let _ = self.rc_free_intermediate(&key_val);
         if let Some(val_val) = val_owned {
             let _ = self.rc_free_intermediate(&val_val);

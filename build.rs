@@ -74,10 +74,7 @@ fn configure_llvm_linking() {
 /// LLVM MSVC builds expect `libxml2s.lib` on the library search path (see llvm-config --system-libs).
 fn configure_windows_libxml2(llvm_lib_dir: &Path) {
     if llvm_lib_dir.join("libxml2s.lib").is_file() {
-        println!(
-            "cargo:rustc-link-search=native={}",
-            llvm_lib_dir.display()
-        );
+        println!("cargo:rustc-link-search=native={}", llvm_lib_dir.display());
         return;
     }
     if let Ok(extra) = std::env::var("LIBXML2_LIB_DIR") {

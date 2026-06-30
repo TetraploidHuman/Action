@@ -24,9 +24,7 @@ impl<'ctx> CodeGen<'ctx> {
                 {
                     return Ok(result);
                 }
-                if let Some(result) =
-                    self.try_compile_for_map_insert_build_hir(condition, body)?
-                {
+                if let Some(result) = self.try_compile_for_map_insert_build_hir(condition, body)? {
                     return Ok(result);
                 }
                 if let Some(result) =

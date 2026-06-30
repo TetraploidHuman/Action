@@ -321,9 +321,8 @@ impl<'ctx> CodeGen<'ctx> {
         }
         if method == "reduce" {
             if let Some((map_lam, base_list)) = Self::extract_map_call_args_hir(receiver) {
-                let reduce_lam = trailing.ok_or(
-                    "reduce on map receiver expects trailing lambda: lst.map{}.reduce{}",
-                )?;
+                let reduce_lam = trailing
+                    .ok_or("reduce on map receiver expects trailing lambda: lst.map{}.reduce{}")?;
                 if !args.is_empty() {
                     return Err("reduce on map receiver does not take positional args".to_string());
                 }

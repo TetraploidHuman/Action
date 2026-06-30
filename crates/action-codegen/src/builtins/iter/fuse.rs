@@ -460,9 +460,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(acc_fat.into_struct_value(), 0, "mr_acc_t")
             .map_err(llvm_err)?
             .into_int_value();
-        let reduce_ty = self
-            .string_type
-            .fn_type(&[i64.into(), i64.into()], false);
+        let reduce_ty = self.string_type.fn_type(&[i64.into(), i64.into()], false);
         let reduced = self
             .builder
             .build_indirect_call(
@@ -472,7 +470,10 @@ impl<'ctx> CodeGen<'ctx> {
                 "mr_reduce",
             )
             .map_err(llvm_err)?;
-        let new_acc = reduced.try_as_basic_value().basic().ok_or("mr_reduce failed")?;
+        let new_acc = reduced
+            .try_as_basic_value()
+            .basic()
+            .ok_or("mr_reduce failed")?;
         self.builder.build_store(acc_a, new_acc).map_err(llvm_err)?;
         let ni = self
             .builder

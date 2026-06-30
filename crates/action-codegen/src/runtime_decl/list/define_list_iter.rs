@@ -241,9 +241,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let lgc_seq_check = self.context.append_basic_block(lgc_fn, "seq_check");
         let lgc_slow_pick = self.context.append_basic_block(lgc_fn, "slow_pick");
-        let _ = self
-            .builder
-            .build_unconditional_branch(lgc_seq_check);
+        let _ = self.builder.build_unconditional_branch(lgc_seq_check);
         self.builder.position_at_end(lgc_seq_check);
         let valid_p = unsafe {
             self.builder
