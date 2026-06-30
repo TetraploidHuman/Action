@@ -301,6 +301,7 @@ mod for_loop;
 mod generics;
 mod gep_cursor;
 mod jit;
+pub mod llvm_targets;
 mod map_set;
 mod misc;
 mod mono;

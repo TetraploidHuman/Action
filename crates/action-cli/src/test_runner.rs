@@ -1,7 +1,7 @@
 use action::ast::*;
 use action_driver as driver;
 use inkwell::context::Context;
-use inkwell::targets::{InitializationConfig, Target};
+use action_codegen::llvm_targets;
 use std::path::PathBuf;
 
 /// Run test functions from a source file
@@ -45,8 +45,7 @@ pub fn run_test_file(
         ));
     }
 
-    Target::initialize_x86(&InitializationConfig::default());
-    Target::initialize_aarch64(&InitializationConfig::default());
+    llvm_targets::init_for_jit();
 
     let context = Context::create();
     let cg = driver::codegen_checked(&context, "test_runner", &checked, opt, target)

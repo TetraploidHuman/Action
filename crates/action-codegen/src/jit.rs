@@ -456,13 +456,13 @@ impl<'ctx> CodeGen<'ctx> {
         path: &std::path::Path,
         file_type: inkwell::targets::FileType,
     ) -> Result<(), String> {
-        use inkwell::targets::{InitializationConfig, Target, TargetMachine};
+        use inkwell::targets::{Target, TargetMachine};
         let triple_str = self.target_triple.as_deref().unwrap_or("native");
         let (target, cpu, features, target_triple) = match triple_str {
             "native" | "" => {
                 // Only initialize X86 to avoid pulling in all-target symbols
                 // that may not be linked in static Windows builds.
-                Target::initialize_x86(&InitializationConfig::default());
+                crate::llvm_targets::init_x86();
                 let tt = TargetMachine::get_default_triple();
                 let t =
                     Target::from_triple(&tt).map_err(|e| format!("Failed to get target: {}", e))?;
@@ -471,28 +471,30 @@ impl<'ctx> CodeGen<'ctx> {
                 (t, cpu, features, tt)
             }
             "linux-x64" | "x86_64-unknown-linux-gnu" => {
-                Target::initialize_x86(&InitializationConfig::default());
+                crate::llvm_targets::init_x86();
                 let tt = inkwell::targets::TargetTriple::create("x86_64-unknown-linux-gnu");
                 let t =
                     Target::from_triple(&tt).map_err(|e| format!("Failed to get target: {}", e))?;
                 (t, "generic".to_string(), "".to_string(), tt)
             }
+            #[cfg(not(target_os = "windows"))]
             "linux-arm64" | "aarch64-unknown-linux-gnu" => {
-                Target::initialize_aarch64(&InitializationConfig::default());
+                crate::llvm_targets::init_aarch64();
                 let tt = inkwell::targets::TargetTriple::create("aarch64-unknown-linux-gnu");
                 let t =
                     Target::from_triple(&tt).map_err(|e| format!("Failed to get target: {}", e))?;
                 (t, "generic".to_string(), "".to_string(), tt)
             }
             "windows-x64" | "x86_64-pc-windows-gnu" => {
-                Target::initialize_x86(&InitializationConfig::default());
+                crate::llvm_targets::init_x86();
                 let tt = inkwell::targets::TargetTriple::create("x86_64-pc-windows-gnu");
                 let t =
                     Target::from_triple(&tt).map_err(|e| format!("Failed to get target: {}", e))?;
                 (t, "generic".to_string(), "".to_string(), tt)
             }
+            #[cfg(not(target_os = "windows"))]
             "wasm" | "wasm32-unknown-unknown" => {
-                Target::initialize_webassembly(&InitializationConfig::default());
+                crate::llvm_targets::init_webassembly();
                 let tt = inkwell::targets::TargetTriple::create("wasm32-unknown-unknown");
                 let t =
                     Target::from_triple(&tt).map_err(|e| format!("Failed to get target: {}", e))?;
@@ -501,9 +503,7 @@ impl<'ctx> CodeGen<'ctx> {
             other => {
                 // Try as a raw LLVM triple: initialize common targets individually
                 // (avoid initialize_native which can pull in all-target symbols)
-                Target::initialize_x86(&InitializationConfig::default());
-                Target::initialize_aarch64(&InitializationConfig::default());
-                Target::initialize_webassembly(&InitializationConfig::default());
+                crate::llvm_targets::init_for_cross_triple();
                 let tt = inkwell::targets::TargetTriple::create(other);
                 let t = Target::from_triple(&tt)
                     .map_err(|e| format!("Unknown target '{}': {}", other, e))?;

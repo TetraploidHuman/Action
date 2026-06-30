@@ -3,7 +3,7 @@ use action::error;
 use action::session::FrontendSession;
 use action_span::Span;
 use inkwell::context::Context;
-use inkwell::targets::{InitializationConfig, Target};
+use action_codegen::llvm_targets;
 use std::io::{self, Write};
 use std::path::Path;
 use std::sync::OnceLock;
@@ -21,8 +21,7 @@ fn repl_session() -> Result<&'static FrontendSession, String> {
 
 /// Interactive REPL: read, compile, execute, print
 pub fn run_repl(opt: u8, profile: bool, target: &str) -> Result<(), String> {
-    Target::initialize_x86(&InitializationConfig::default());
-    Target::initialize_aarch64(&InitializationConfig::default());
+    llvm_targets::init_for_jit();
 
     let context = Context::create();
     eprintln!(
