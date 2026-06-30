@@ -15,6 +15,16 @@ impl<'ctx> CodeGen<'ctx> {
         name: &str,
         args: &[BasicMetadataValueEnum<'ctx>],
     ) -> Result<inkwell::values::CallSiteValue<'ctx>, String> {
+        if name.starts_with("action_json_")
+            || name.starts_with("action_http_")
+            || name.starts_with("action_mutex_")
+            || name.starts_with("action_cond_")
+            || name.starts_with("action_thread_")
+            || name == "action_sleep_us"
+            || name == "action_clock_gettime"
+        {
+            self.host_rt_used.set(true);
+        }
         let func = self
             .module
             .get_function(name)

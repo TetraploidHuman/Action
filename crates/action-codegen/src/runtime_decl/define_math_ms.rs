@@ -565,19 +565,31 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(si_a, 2, "acap")
             .map_err(llvm_err)?
             .into_int_value();
+        let si_alen = self
+            .builder
+            .build_extract_value(si_a, 1, "alen")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let si_blen = self
+            .builder
+            .build_extract_value(si_b, 1, "blen")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let si_min_len = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, si_alen, si_blen, "min_cmp")
+            .map_err(llvm_err)?;
+        let si_est = self
+            .builder
+            .build_select(si_min_len, si_alen, si_blen, "est")
+            .map_err(llvm_err)?
+            .into_int_value();
         let si_cap4 = self
             .builder
-            .build_int_add(
-                self.builder
-                    .build_extract_value(si_a, 1, "alen")
-                    .map_err(llvm_err)?
-                    .into_int_value(),
-                i64.const_int(4, false),
-                "cap4",
-            )
+            .build_int_add(si_est, i64.const_int(4, false), "cap4")
             .map_err(llvm_err)?;
         let map_create_fn = self.module.get_function("action_map_create").unwrap();
-        let mi_fn = self.module.get_function("action_map_insert").unwrap();
+        let ht_insert_fn = self.module.get_function("action_ht_insert").unwrap();
         let mc_fn = self.module.get_function("action_map_contains").unwrap();
         let si_res = self
             .builder
@@ -653,7 +665,7 @@ impl<'ctx> CodeGen<'ctx> {
         let si_ins = self
             .builder
             .build_call(
-                mi_fn,
+                ht_insert_fn,
                 &[
                     si_cl2.into(),
                     si_key.into(),

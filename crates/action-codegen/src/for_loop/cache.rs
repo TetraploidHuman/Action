@@ -1,6 +1,6 @@
 //! For-loop codegen (R4-4).
 
-use inkwell::values::{BasicValueEnum, IntValue, PointerValue};
+use inkwell::values::{BasicValue, BasicValueEnum, IntValue, PointerValue};
 use inkwell::IntPredicate;
 
 use super::{llvm_err, CodeGen, TypedValue, ValKind};
@@ -224,6 +224,125 @@ impl<'ctx> CodeGen<'ctx> {
             .into_struct_value();
         self.rc_dec_heap_collection(set_final, ValKind::Set)?;
 
+        Ok(TypedValue::Unit)
+    }
+
+    pub(super) const MAP_INSERT_PRESIZE_MIN_ITERS: u64 = 64;
+
+    /// `for idx < end { coll = coll.insert(...); idx = idx + 1 }` with empty initial map/set:
+    /// presize hash table once to avoid repeated rehash.
+    pub(crate) fn compile_collection_insert_build_loop(
+        &mut self,
+        coll_ptr: PointerValue<'ctx>,
+        end_bound: IntValue<'ctx>,
+        idx_ptr: PointerValue<'ctx>,
+        key_hir: &action_frontend::hir::HirExpr,
+        val_hir: Option<&action_frontend::hir::HirExpr>,
+        inc_hir: &action_frontend::hir::HirExpr,
+        kind: ValKind,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("Cannot compile for outside function")?;
+        let i64 = self.i64_ty();
+        let zero = i64.const_int(0, false);
+
+        let coll_loaded = self.load_list(coll_ptr)?;
+        let cur_len = self.map_len_val(coll_loaded)?;
+        let needs_presize = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, cur_len, zero, "coll_empty")
+            .map_err(llvm_err)?;
+        let presize_bb = self.context.append_basic_block(current_fn, "coll_presize");
+        let presize_done = self.context.append_basic_block(current_fn, "coll_presize_done");
+        let _ = self
+            .builder
+            .build_conditional_branch(needs_presize, presize_bb, presize_done);
+        self.builder.position_at_end(presize_bb);
+        let presized = self
+            .call_rt("action_map_create", &[end_bound.into()])?
+            .try_as_basic_value()
+            .basic()
+            .ok_or("map_create presize failed")?;
+        self.builder
+            .build_store(coll_ptr, presized)
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(presize_done);
+
+        self.builder.position_at_end(presize_done);
+        let header = self.context.append_basic_block(current_fn, "coll_ins_hdr");
+        let body_bb = self.context.append_basic_block(current_fn, "coll_ins_body");
+        let exit = self.context.append_basic_block(current_fn, "coll_ins_exit");
+
+        let saved_continue = self.loop_control.continue_target;
+        let saved_break = self.loop_control.break_target;
+        self.loop_control.continue_target = Some(header);
+        self.loop_control.break_target = Some(exit);
+
+        self.builder
+            .build_unconditional_branch(header)
+            .map_err(llvm_err)?;
+        self.builder.position_at_end(header);
+        let cur_idx = self
+            .builder
+            .build_load(i64, idx_ptr, "coll_i")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let cond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, cur_idx, end_bound, "coll_cond")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_conditional_branch(cond, body_bb, exit)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(body_bb);
+        let key_val = self.compile_hir_expr(key_hir)?;
+        let key_fat = self.to_fat_struct(&key_val)?;
+        let null_val: inkwell::values::BasicValueEnum = {
+            let undef = self.string_type.get_undef();
+            let r1 = self
+                .builder
+                .build_insert_value(undef, zero, 0, "sn0")
+                .map_err(llvm_err)?;
+            self.builder
+                .build_insert_value(r1, self.ptr_ty().const_zero(), 1, "sn1")
+                .map_err(llvm_err)?
+                .as_basic_value_enum()
+        };
+        let (insert_val_fat, val_owned) = if let Some(val_hir) = val_hir {
+            let val_val = self.compile_hir_expr(val_hir)?;
+            let fat = self.to_fat_struct(&val_val)?;
+            (fat, Some(val_val))
+        } else {
+            (null_val, None)
+        };
+        let coll_loaded = self.load_list(coll_ptr)?;
+        let ins_cc = self.call_rt(
+            "action_map_insert",
+            &[coll_loaded.into(), key_fat.into(), insert_val_fat.into()],
+        )?;
+        let new_coll = ins_cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("map_insert failed")?;
+        self.builder.build_store(coll_ptr, new_coll).map_err(llvm_err)?;
+        let _ = self.rc_free_intermediate(&key_val);
+        if let Some(val_val) = val_owned {
+            let _ = self.rc_free_intermediate(&val_val);
+        }
+        let inc_val = self.compile_hir_expr(inc_hir)?;
+        self.rc_discard_value(&inc_val)?;
+        self.builder
+            .build_unconditional_branch(header)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(exit);
+        self.loop_control.continue_target = saved_continue;
+        self.loop_control.break_target = saved_break;
+        let _ = kind;
         Ok(TypedValue::Unit)
     }
 }

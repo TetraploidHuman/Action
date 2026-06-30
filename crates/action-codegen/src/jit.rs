@@ -6,16 +6,11 @@
 
 use std::io::Write;
 use std::path::Path;
-#[cfg(target_os = "windows")]
-use std::path::PathBuf;
-#[cfg(target_os = "windows")]
-use std::process::Command;
 
 use super::CodeGen;
 
 impl<'ctx> CodeGen<'ctx> {
     pub fn run_jit(&self) -> Result<i64, String> {
-        #[cfg(not(target_os = "windows"))]
         if let Err(e) = self.module.verify() {
             return Err(format!("LLVM module verification failed: {}", e));
         }
@@ -439,55 +434,11 @@ pub(super) fn aot_reloc_mode(
 /// TargetMachine opt for AOT file emission (object/asm).
 fn target_machine_opt_for_emit(opt_level: u8) -> inkwell::OptimizationLevel {
     use inkwell::OptimizationLevel;
-    // action.exe on Windows CI is linked with /FORCE:UNRESOLVED (ACTION_FORCE_LINK).
-    // TargetMachine -O2 runs LLVM passes that can AV on NULL unresolved host symbols —
-    // same failure mode as CodeGen::print_ir avoiding print_to_string on Windows.
-    #[cfg(target_os = "windows")]
-    {
-        let _ = opt_level;
-        return OptimizationLevel::None;
-    }
-    #[cfg(not(target_os = "windows"))]
     match opt_level {
         0 => OptimizationLevel::None,
         1 => OptimizationLevel::Less,
         2 => OptimizationLevel::Default,
         _ => OptimizationLevel::Aggressive,
-    }
-}
-
-#[cfg(target_os = "windows")]
-fn resolve_llvm_tool(name: &str) -> Result<PathBuf, String> {
-    if let Ok(prefix) = std::env::var("LLVM_SYS_211_PREFIX") {
-        let tool = PathBuf::from(prefix).join("bin").join(name);
-        if tool.is_file() {
-            return Ok(tool);
-        }
-    }
-    if let Ok(path_var) = std::env::var("PATH") {
-        for dir in std::env::split_paths(&path_var) {
-            let tool = dir.join(name);
-            if tool.is_file() {
-                return Ok(tool);
-            }
-        }
-    }
-    Err(format!(
-        "Failed to locate {name} (set LLVM_SYS_211_PREFIX or add LLVM bin to PATH)"
-    ))
-}
-
-#[cfg(target_os = "windows")]
-fn clang_target_triple(target: Option<&str>) -> String {
-    match target {
-        Some("windows-x64") | Some("x86_64-pc-windows-gnu") => "x86_64-pc-windows-gnu".into(),
-        Some("linux-x64") | Some("x86_64-unknown-linux-gnu") => "x86_64-unknown-linux-gnu".into(),
-        Some("linux-arm64") | Some("aarch64-unknown-linux-gnu") => {
-            "aarch64-unknown-linux-gnu".into()
-        }
-        Some("wasm") | Some("wasm32-unknown-unknown") => "wasm32-unknown-unknown".into(),
-        Some(other) if !other.is_empty() && other != "native" => other.to_string(),
-        _ => "x86_64-pc-windows-msvc".into(),
     }
 }
 
@@ -583,68 +534,12 @@ impl<'ctx> CodeGen<'ctx> {
     pub fn emit_object(&self, path: &Path) -> Result<(), String> {
         // AOT -O2 optimization is applied by TargetMachine during object emission.
         // A separate IR PassManager (default<O2>) miscompiled nested loops and large runtime IR.
-        #[cfg(target_os = "windows")]
-        {
-            return self.emit_object_via_clang(path);
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            self.emit_via_target_machine(path, inkwell::targets::FileType::Object)
-        }
-    }
-
-    /// Windows: compile IR via external `clang -c` subprocess.
-    ///
-    /// In-process `TargetMachine::write_to_file` can AV when action.exe is linked with
-    /// `/FORCE:UNRESOLVED` (ACTION_FORCE_LINK). Writing IR with `print_to_file` and
-    /// compiling in a separate clang process avoids that (same idea as `print_ir`).
-    #[cfg(target_os = "windows")]
-    fn emit_object_via_clang(&self, path: &Path) -> Result<(), String> {
-        let ll_path = path.with_extension("ll");
-        self.module
-            .print_to_file(&ll_path)
-            .map_err(|e| format!("Failed to write IR to {}: {}", ll_path.display(), e))?;
-
-        let clang = resolve_llvm_tool("clang.exe")?;
-        let o_flag = match self.opt_level {
-            0 => "-O0",
-            1 => "-O1",
-            2 => "-O2",
-            _ => "-O3",
-        };
-        let triple = clang_target_triple(self.target_triple.as_deref());
-        let output = Command::new(&clang)
-            .arg("-c")
-            .arg(o_flag)
-            .arg(format!("--target={triple}"))
-            .arg(format!("-o{}", path.display()))
-            .arg(&ll_path)
-            .output()
-            .map_err(|e| format!("Failed to invoke {}: {}", clang.display(), e))?;
-        let _ = std::fs::remove_file(&ll_path);
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            return Err(format!(
-                "clang -c failed (status {:?}): {}{}",
-                output.status.code(),
-                stderr,
-                stdout
-            ));
-        }
-        if !path.is_file() {
-            return Err(format!(
-                "clang reported success but object file is missing: {}",
-                path.display()
-            ));
-        }
-        Ok(())
+        self.emit_via_target_machine(path, inkwell::targets::FileType::Object)
     }
 }
 /// Run all test functions via JIT and return results as (name, passed, output) triples
 impl<'ctx> CodeGen<'ctx> {
     pub fn run_tests(&self, test_names: &[String]) -> Result<Vec<(String, bool, String)>, String> {
-        #[cfg(not(target_os = "windows"))]
         if let Err(e) = self.module.verify() {
             return Err(format!("LLVM module verification failed: {}", e));
         }

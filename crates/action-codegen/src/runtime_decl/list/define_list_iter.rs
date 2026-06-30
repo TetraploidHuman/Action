@@ -240,9 +240,10 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .map_err(llvm_err)?;
         let lgc_seq_check = self.context.append_basic_block(lgc_fn, "seq_check");
+        let lgc_slow_pick = self.context.append_basic_block(lgc_fn, "slow_pick");
         let _ = self
             .builder
-            .build_conditional_branch(lgc_is_concat, slow_concat, lgc_seq_check);
+            .build_unconditional_branch(lgc_seq_check);
         self.builder.position_at_end(lgc_seq_check);
         let valid_p = unsafe {
             self.builder
@@ -290,7 +291,14 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_and(is_valid, is_seq, "can_fast")
             .map_err(llvm_err)?;
-        let _ = self.builder.build_conditional_branch(can_fast, fast, slow);
+        let _ = self
+            .builder
+            .build_conditional_branch(can_fast, fast, lgc_slow_pick);
+
+        self.builder.position_at_end(lgc_slow_pick);
+        let _ = self
+            .builder
+            .build_conditional_branch(lgc_is_concat, slow_concat, slow);
 
         self.builder.position_at_end(fast);
         let leaf = self
@@ -326,7 +334,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self
             .builder
-            .build_conditional_branch(in_leaf, fast_load, slow);
+            .build_conditional_branch(in_leaf, fast_load, lgc_slow_pick);
 
         self.builder.position_at_end(fast_load);
         let eb = unsafe {

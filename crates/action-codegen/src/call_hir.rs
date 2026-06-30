@@ -5,7 +5,6 @@ use action_frontend::hir::{HirExpr, HirExprKind, HirStmt};
 
 use super::builtin_dispatch::BuiltinDispatch;
 use super::call_arg::CallArg;
-use super::mono::DirectLambdaTarget;
 use super::{CodeGen, TypedValue, ValKind};
 
 impl<'ctx> CodeGen<'ctx> {
@@ -320,6 +319,17 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
         }
+        if method == "reduce" {
+            if let Some((map_lam, base_list)) = Self::extract_map_call_args_hir(receiver) {
+                let reduce_lam = trailing.ok_or(
+                    "reduce on map receiver expects trailing lambda: lst.map{}.reduce{}",
+                )?;
+                if !args.is_empty() {
+                    return Err("reduce on map receiver does not take positional args".to_string());
+                }
+                return self.fused_map_reduce_hir(map_lam, reduce_lam.as_ref(), base_list);
+            }
+        }
 
         let call_args = Self::call_args_from_hir(args);
         let trailing_ca = Self::trailing_call_arg_hir(trailing);
@@ -555,6 +565,9 @@ impl<'ctx> CodeGen<'ctx> {
         args: &[CallArg<'_>],
         trailing: Option<CallArg<'_>>,
     ) -> Result<TypedValue<'ctx>, String> {
+        if let Some(result) = self.try_devirtualize_fn_call(&target, args, trailing)? {
+            return Ok(result);
+        }
         use inkwell::types::BasicMetadataTypeEnum;
         use inkwell::values::BasicMetadataValueEnum;
         match target {
@@ -801,9 +814,6 @@ impl<'ctx> CodeGen<'ctx> {
         arg: CallArg<'_>,
     ) -> Result<Option<TypedValue<'ctx>>, String> {
         let Some(dl) = self.try_direct_lambda(target.clone()) else {
-            return Ok(None);
-        };
-        let DirectLambdaTarget::Plain(_) = dl else {
             return Ok(None);
         };
         let av = self.compile_call_arg(arg)?;

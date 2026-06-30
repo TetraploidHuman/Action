@@ -506,11 +506,22 @@ fn windows_aot_system_libs() -> &'static [&'static str] {
     }
 }
 
+fn windows_aot_minimal_libs() -> &'static [&'static str] {
+    &[
+        "kernel32.lib",
+        "msvcrt.lib",
+        "ucrt.lib",
+        "vcruntime.lib",
+        "legacy_stdio_definitions.lib",
+    ]
+}
+
 fn link_aot_executable(
     obj_path: &Path,
     exe_path: &Path,
     src_path: &Path,
     target: &str,
+    needs_host_rt: bool,
 ) -> Result<(), String> {
     if cfg!(windows) && (target == "native" || target == "x86_64-pc-windows-msvc") {
         let link_exe = find_lld_link_exe()
@@ -524,14 +535,18 @@ fn link_aot_executable(
             .arg("/SUBSYSTEM:CONSOLE")
             .arg(format!("/OUT:{}", exe_path.display()))
             .arg(obj_path);
-        if let Some(host_lib) = find_aot_host_staticlib() {
-            cmd.arg(host_lib);
+        if needs_host_rt {
+            if let Some(host_lib) = find_aot_host_staticlib() {
+                cmd.arg(host_lib);
+            } else {
+                eprintln!(
+                    "warning: action_host_rt static library not found; AOT link may fail if program uses JSON/HTTP"
+                );
+            }
+            cmd.args(windows_aot_system_libs());
         } else {
-            eprintln!(
-                "warning: action_host_rt static library not found; AOT link may fail if program uses JSON/HTTP"
-            );
+            cmd.args(windows_aot_minimal_libs());
         }
-        cmd.args(windows_aot_system_libs());
         let output = cmd
             .output()
             .map_err(|e| format!("Failed to invoke link.exe: {}", e))?;
@@ -561,8 +576,10 @@ fn link_aot_executable(
     };
     let mut link_cmd = std::process::Command::new(linker);
     link_cmd.arg("-o").arg(exe_path).arg(obj_path);
-    if let Some(host_lib) = find_aot_host_staticlib() {
-        link_cmd.arg(host_lib);
+    if needs_host_rt {
+        if let Some(host_lib) = find_aot_host_staticlib() {
+            link_cmd.arg(host_lib);
+        }
     }
     if !matches!(
         target,
@@ -617,7 +634,13 @@ fn emit_output(
             let obj_path = aot_object_path(src_path, target);
             cg.emit_object(&obj_path)?;
             let exe_path = aot_exe_path(src_path, target);
-            link_aot_executable(&obj_path, &exe_path, src_path, target)?;
+            link_aot_executable(
+                &obj_path,
+                &exe_path,
+                src_path,
+                target,
+                cg.needs_host_rt_link(),
+            )?;
             let _ = std::fs::remove_file(&obj_path);
             println!("Executable written to: {}", exe_path.display());
         }

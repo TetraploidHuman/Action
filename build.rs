@@ -59,12 +59,7 @@ fn configure_llvm_linking() {
         let lib_dir = Path::new(&prefix).join("lib");
         if lib_dir.exists() {
             if std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default() == "windows" {
-                // Only enable /FORCE:UNRESOLVED when explicitly opted in via
-                // ACTION_FORCE_LINK env var. Unconditional force-unresolved
-                // masks real linker errors.
-                if std::env::var("ACTION_FORCE_LINK").is_ok() {
-                    println!("cargo:rustc-link-arg=/FORCE:UNRESOLVED");
-                }
+                configure_windows_libxml2(&lib_dir);
                 println!("cargo:rustc-link-arg=/STACK:8388608");
             } else {
                 println!("cargo:rustc-link-arg=-Wl,-rpath,{}", lib_dir.display());
@@ -73,7 +68,30 @@ fn configure_llvm_linking() {
     }
 
     println!("cargo:rerun-if-env-changed=LLVM_SYS_211_PREFIX");
-    println!("cargo:rerun-if-env-changed=ACTION_FORCE_LINK");
+    println!("cargo:rerun-if-env-changed=LIBXML2_LIB_DIR");
+}
+
+/// LLVM MSVC builds expect `libxml2s.lib` on the library search path (see llvm-config --system-libs).
+fn configure_windows_libxml2(llvm_lib_dir: &Path) {
+    if llvm_lib_dir.join("libxml2s.lib").is_file() {
+        println!(
+            "cargo:rustc-link-search=native={}",
+            llvm_lib_dir.display()
+        );
+        return;
+    }
+    if let Ok(extra) = std::env::var("LIBXML2_LIB_DIR") {
+        let extra_dir = PathBuf::from(&extra);
+        if extra_dir.join("libxml2s.lib").is_file() {
+            println!("cargo:rustc-link-search=native={}", extra_dir.display());
+            return;
+        }
+    }
+    println!(
+        "cargo:warning=libxml2s.lib not found in {} (required for Windows LLVM link). \
+         Run scripts/build-libxml2-windows.ps1 or set LIBXML2_LIB_DIR.",
+        llvm_lib_dir.display()
+    );
 }
 
 /// Build `libaction_host_rt.a` for AOT executable linking (JSON/HTTP/threading C ABI).

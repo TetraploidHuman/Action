@@ -13,7 +13,6 @@ on:
 env:
   LLVM_VERSION: '21.1.8'
   LLVM_TAG: llvmorg-21.1.8
-  ACTION_FORCE_LINK: true
 
 permissions:
   contents: write
@@ -106,22 +105,10 @@ jobs:
           echo "LLVM_SYS_211_PREFIX=C:\llvm" >> $env:GITHUB_ENV
           echo "C:\llvm\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-      - name: Create libxml2 stub (Windows)
+      - name: Build libxml2 (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: |
-          $libExe = Get-ChildItem "${env:ProgramFiles}\Microsoft Visual Studio" -Recurse -Filter "lib.exe" -Depth 8 -ErrorAction SilentlyContinue | Where-Object { $_.Directory.Name -eq "x64" -and $_.Directory.Parent.Name -eq "HostX64" } | Select-Object -First 1
-          if (-not $libExe) {
-            $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-            if (Test-Path $vswhere) {
-              $vsPath = & $vswhere -latest -property installationPath
-              $libExe = Get-ChildItem "$vsPath\VC\Tools\MSVC" -Recurse -Filter "lib.exe" -Depth 4 -ErrorAction SilentlyContinue | Where-Object { $_.Directory.Name -eq "x64" -and $_.Directory.Parent.Name -eq "HostX64" } | Select-Object -First 1
-            }
-          }
-          if (-not $libExe) { throw "Cannot find lib.exe" }
-          "LIBRARY libxml2`nEXPORTS" | Out-File -Encoding ASCII C:\llvm\lib\libxml2s.def
-          & $libExe.FullName /DEF:C:\llvm\lib\libxml2s.def /OUT:C:\llvm\lib\libxml2s.lib /MACHINE:X64
-          Remove-Item C:\llvm\lib\libxml2s.def -Force
+        run: ./scripts/build-libxml2-windows.ps1 -InstallDir C:\llvm\lib
 
       # ── Build ─────────────────────────────────────────
       - name: Build (Windows)

@@ -11,6 +11,7 @@ use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::types::StructType;
 use inkwell::values::PointerValue;
+use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 
 mod loop_control;
@@ -102,6 +103,8 @@ pub struct CodeGen<'ctx> {
     /// Counter for unique wrapper function names (lazy_map, lazy_filter, etc.)
     pub(crate) wrapper_counter: u64,
     pub(crate) mono_cache: MonoCache,
+    /// Tracks whether emitted IR calls host_rt (JSON/HTTP/threading) symbols.
+    pub(crate) host_rt_used: Cell<bool>,
     /// Tracks whether compile_block did an rc_inc on the last expression.
     /// val stmt uses this to apply a balancing rc_dec.
     pub(crate) block_did_rc_inc: bool,
@@ -263,44 +266,22 @@ impl<'ctx> CodeGen<'ctx> {
             target_triple,
             wrapper_counter: 0,
             mono_cache: MonoCache::default(),
+            host_rt_used: Cell::new(false),
             block_did_rc_inc: false,
         }
     }
 
     pub fn print_ir(&self) -> String {
-        // On Windows with /FORCE:UNRESOLVED, print_to_string can trigger LLVM
-        // analysis passes that call into NULL unresolved symbols. Write to a
-        // temp file and read it back instead.
-        #[cfg(target_os = "windows")]
-        {
-            let dir = std::env::temp_dir();
-            let path = dir.join(format!("action_ir_{}.ll", std::process::id()));
-            self.module
-                .print_to_file(&path)
-                .expect("Failed to write IR to temp file");
-            let ir = std::fs::read_to_string(&path).expect("Failed to read IR temp file");
-            let _ = std::fs::remove_file(&path);
-            ir
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            self.module.print_to_string().to_string()
-        }
+        self.module.print_to_string().to_string()
     }
 
     pub fn verify(&self) -> Result<(), String> {
-        // Module verification can trigger analysis passes that call into
-        // unresolved symbols on Windows (/FORCE:UNRESOLVED makes them NULL).
-        // The IR will be verified again by clang during compilation anyway.
-        #[cfg(not(target_os = "windows"))]
-        {
-            self.module.verify().map_err(|e| e.to_string())
-        }
-        #[cfg(target_os = "windows")]
-        {
-            let _ = self;
-            Ok(())
-        }
+        self.module.verify().map_err(|e| e.to_string())
+    }
+
+    /// Whether AOT linking needs `action_host_rt` (JSON/HTTP/threading C ABI).
+    pub fn needs_host_rt_link(&self) -> bool {
+        self.host_rt_used.get()
     }
 
     // Write LLVM bitcode to a file

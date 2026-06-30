@@ -72,7 +72,11 @@ impl<'ctx> CodeGen<'ctx> {
             "action_map_contains_key",
             "action_ht_insert",
             "action_ht_from_list",
+            "action_ht_contains",
             "action_ht_bulk_copy_active_slots",
+            "action_set_intersection",
+            "action_set_union",
+            "action_set_difference",
             "action_rc_inc",
             "action_rc_dec",
         ];

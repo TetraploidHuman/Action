@@ -25,6 +25,11 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(result);
                 }
                 if let Some(result) =
+                    self.try_compile_for_map_insert_build_hir(condition, body)?
+                {
+                    return Ok(result);
+                }
+                if let Some(result) =
                     self.try_compile_for_invariant_contains_hir(condition, body)?
                 {
                     return Ok(result);
@@ -1351,6 +1356,7 @@ impl<'ctx> CodeGen<'ctx> {
                 None
             }
             HirExprKind::Block(_) => Self::find_list_get_in_hir(expr),
+            HirExprKind::OrBlock { fallible, .. } => Self::find_list_get_in_hir_inner(fallible),
             _ => None,
         }
     }
@@ -1376,6 +1382,151 @@ impl<'ctx> CodeGen<'ctx> {
                 _ => false,
             },
             _ => false,
+        }
+    }
+
+    pub(crate) fn try_compile_for_map_insert_build_hir(
+        &mut self,
+        condition: &HirExpr,
+        body: &HirExpr,
+    ) -> Result<Option<TypedValue<'ctx>>, String> {
+        use crate::ValKind;
+        use action_frontend::ast::BinaryOp;
+        use action_frontend::hir::HirExprKind;
+
+        let (idx_var, end_hir) = match &condition.kind {
+            HirExprKind::Binary(lhs, BinaryOp::Lt, rhs) => match &lhs.kind {
+                HirExprKind::Ident(v) => (v.clone(), rhs.as_ref().clone()),
+                _ => return Ok(None),
+            },
+            _ => return Ok(None),
+        };
+        let (coll_var, key_hir, val_hir, inc_hir) =
+            match Self::extract_collection_insert_loop_body(body, &idx_var) {
+                Some(v) => v,
+                None => return Ok(None),
+            };
+        if Self::hir_expr_refs_var(&key_hir, &idx_var) {
+            return Ok(None);
+        }
+        if val_hir
+            .as_ref()
+            .is_some_and(|v| Self::hir_expr_refs_var(v, &idx_var))
+        {
+            return Ok(None);
+        }
+
+        let end_val = self.compile_hir_expr(&end_hir)?;
+        let end_bound = match end_val {
+            TypedValue::Int(v) => v,
+            _ => return Ok(None),
+        };
+        if let Some(n) = end_bound.get_zero_extended_constant() {
+            if n < Self::MAP_INSERT_PRESIZE_MIN_ITERS {
+                return Ok(None);
+            }
+        }
+
+        let coll_scope = match self.scope.get(&coll_var) {
+            Some(v) if matches!(v.kind, ValKind::Map | ValKind::Set) => v,
+            _ => return Ok(None),
+        };
+        if !coll_scope.mutable {
+            return Ok(None);
+        }
+        let idx_scope = match self.scope.get(&idx_var) {
+            Some(v) if v.kind == ValKind::Int => v,
+            _ => return Ok(None),
+        };
+
+        self.compile_collection_insert_build_loop(
+            coll_scope.ptr,
+            end_bound,
+            idx_scope.ptr,
+            &key_hir,
+            val_hir.as_ref(),
+            &inc_hir,
+            coll_scope.kind,
+        )
+        .map(Some)
+    }
+
+    pub(crate) fn extract_collection_insert_loop_body(
+        body: &HirExpr,
+        idx_var: &str,
+    ) -> Option<(
+        String,
+        action_frontend::hir::HirExpr,
+        Option<action_frontend::hir::HirExpr>,
+        action_frontend::hir::HirExpr,
+    )> {
+        use action_frontend::hir::{HirExprKind, HirStmt};
+        let stmts = match &body.kind {
+            HirExprKind::Block(stmts) => stmts,
+            _ => return None,
+        };
+        if stmts.len() != 2 {
+            return None;
+        }
+        let insert_expr = match &stmts[0] {
+            HirStmt::Let { value, .. } | HirStmt::Expr { expr: value, .. } => value,
+            _ => return None,
+        };
+        let (coll_var, key_hir, val_hir) = Self::extract_self_insert_assign_hir(insert_expr)?;
+        let inc_hir = match &stmts[1] {
+            HirStmt::Let { value, .. } | HirStmt::Expr { expr: value, .. } => {
+                if Self::hir_stmt_is_increment_expr(value, idx_var) {
+                    Some(value.clone())
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }?;
+        Some((coll_var, key_hir, val_hir, inc_hir))
+    }
+
+    pub(crate) fn extract_self_insert_assign_hir(
+        expr: &action_frontend::hir::HirExpr,
+    ) -> Option<(
+        String,
+        action_frontend::hir::HirExpr,
+        Option<action_frontend::hir::HirExpr>,
+    )> {
+        use action_frontend::hir::HirExprKind;
+        let HirExprKind::Assign { target, value } = &expr.kind else {
+            return None;
+        };
+        let HirExprKind::Ident(coll_var) = &target.kind else {
+            return None;
+        };
+        let HirExprKind::Call {
+            func,
+            args,
+            trailing_lambda,
+        } = &value.kind
+        else {
+            return None;
+        };
+        if trailing_lambda.is_some() {
+            return None;
+        }
+        let HirExprKind::FieldAccess(obj, method) = &func.kind else {
+            return None;
+        };
+        if method != "insert" {
+            return None;
+        }
+        let HirExprKind::Ident(recv) = &obj.kind else {
+            return None;
+        };
+        if recv != coll_var {
+            return None;
+        }
+        match args.len() {
+            1 => Some((coll_var.clone(), args[0].clone(), None)),
+            2 => Some((coll_var.clone(), args[0].clone(), Some(args[1].clone()))),
+            _ => None,
         }
     }
 
