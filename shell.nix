@@ -8,6 +8,7 @@ pkgs.mkShell {
     pkg-config
     rustc
     cargo
+    clippy
 
     # Required for linking LLVM
     libffi

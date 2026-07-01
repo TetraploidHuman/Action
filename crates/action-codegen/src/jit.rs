@@ -11,6 +11,7 @@ use super::CodeGen;
 
 impl<'ctx> CodeGen<'ctx> {
     pub fn run_jit(&self) -> Result<i64, String> {
+        crate::llvm_targets::init_for_jit();
         if let Err(e) = self.module.verify() {
             return Err(format!("LLVM module verification failed: {}", e));
         }
@@ -540,6 +541,7 @@ impl<'ctx> CodeGen<'ctx> {
 /// Run all test functions via JIT and return results as (name, passed, output) triples
 impl<'ctx> CodeGen<'ctx> {
     pub fn run_tests(&self, test_names: &[String]) -> Result<Vec<(String, bool, String)>, String> {
+        crate::llvm_targets::init_for_jit();
         if let Err(e) = self.module.verify() {
             return Err(format!("LLVM module verification failed: {}", e));
         }

@@ -200,6 +200,7 @@ jobs:
           & $Action check examples/hello.ac
           $out = & $Action run examples/hello.ac 2>&1 | Out-String
           Write-Host $out
+          if ($LASTEXITCODE -ne 0) { throw "hello.ac run failed (exit $LASTEXITCODE): $out" }
           if ($out -notmatch 'hello') { throw "hello.ac output unexpected: $out" }
           $msg = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"capabilities":{}}}'
           $frame = "Content-Length: $($msg.Length)`r`n`r`n$msg"
