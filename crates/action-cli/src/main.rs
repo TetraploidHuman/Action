@@ -147,8 +147,6 @@ fn main() {
     unsafe {
         SetConsoleOutputCP(65001);
     }
-    // One-time LLVM target init before any Context::create / MCJIT (Windows MCJIT is sensitive).
-    action_codegen::llvm_targets::init_for_jit();
 
     let cli = Cli::parse();
 
