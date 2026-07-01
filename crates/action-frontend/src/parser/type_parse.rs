@@ -5,8 +5,8 @@ impl Parser {
         let ty = self.parse_type_primary()?;
 
         // Function type arrow
-        // Check for nullable type: T? (allow chained ? for T?? error)
-        while self.skip(TokenKind::Question) {
+        // Nullable type: T? (allow chained ? for T?? error)
+        if self.skip(TokenKind::Question) {
             return Err(self.error_coded(
                 "nullable types (T?) are not supported; use fallible return types with or { }",
                 crate::error::DiagnosticCode::E011,

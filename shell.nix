@@ -29,5 +29,8 @@ pkgs.mkShell {
     echo "Atomic Language Development Environment"
     echo "LLVM version: $(llvm-config --version)"
     echo "Rust version: $(rustc --version)"
+    unset RUSTUP_TOOLCHAIN 2>/dev/null || true
+    unset RUSTUP_OVERRIDE_TOML 2>/dev/null || true
+    unset RUSTUP_HOME 2>/dev/null || true
   '';
 }

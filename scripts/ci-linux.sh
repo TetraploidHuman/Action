@@ -26,6 +26,13 @@ verify_env() {
 nix_clippy_path() {
     export PATH
     PATH="$(echo "$PATH" | tr ':' '\n' | grep -v '.cargo/bin' | tr '\n' ':' | sed 's/:$//')"
+    unset RUSTUP_TOOLCHAIN RUSTUP_OVERRIDE_TOML RUSTUP_HOME
+}
+
+run_clippy() {
+    verify_env
+    nix_clippy_path
+    cargo-clippy
 }
 
 ALL_INTEGRATION_TESTS="integration hir_golden lexer_golden bootstrap_subset diagnostics_json"
@@ -63,12 +70,6 @@ run_test() {
     run_lsp_smoke
     run_crate_unit_tests
     run_all_integration_tests
-}
-
-run_clippy() {
-    verify_env
-    nix_clippy_path
-    cargo clippy --target "$TARGET" -- -W clippy::all
 }
 
 run_frontend() {

@@ -198,9 +198,13 @@ jobs:
           $Action = Join-Path $PWD "target/$env:TARGET/debug/action.exe"
           if (-not (Test-Path $Action)) { throw "missing binary: $Action" }
           & $Action check examples/hello.ac
-          $out = & $Action run examples/hello.ac 2>&1 | Out-String
+          $helloOut = Join-Path $env:RUNNER_TEMP "hello-out.txt"
+          $helloErr = Join-Path $env:RUNNER_TEMP "hello-err.txt"
+          Remove-Item $helloOut, $helloErr -ErrorAction SilentlyContinue
+          $helloProc = Start-Process -FilePath $Action -ArgumentList @("run", "examples/hello.ac") -RedirectStandardOutput $helloOut -RedirectStandardError $helloErr -NoNewWindow -Wait -PassThru
+          $out = (Get-Content -Raw $helloOut -ErrorAction SilentlyContinue) + (Get-Content -Raw $helloErr -ErrorAction SilentlyContinue)
           Write-Host $out
-          if ($LASTEXITCODE -ne 0) { throw "hello.ac run failed (exit $LASTEXITCODE): $out" }
+          if ($helloProc.ExitCode -ne 0) { throw "hello.ac run failed (exit $($helloProc.ExitCode)): $out" }
           if ($out -notmatch 'hello') { throw "hello.ac output unexpected: $out" }
           $msg = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"capabilities":{}}}'
           $frame = "Content-Length: $($msg.Length)`r`n`r`n$msg"
