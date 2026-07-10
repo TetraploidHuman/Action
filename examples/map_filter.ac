@@ -12,9 +12,9 @@ fun main() {
     // Fold: sum of all elements -> 15
     val sum = fold(0, nums) { acc, x -> acc + x }
 
-    // Access results
-    print(doubled[0])   // 2
-    print(doubled[4])   // 10
-    print(evens[0])     // 2
+    // Access results (indices in range; or { } required when receiver is not a literal)
+    print(doubled[0] or { 0 })   // 2
+    print(doubled[4] or { 0 })   // 10
+    print(evens[0] or { 0 })     // 2
     print(sum)          // 15
 }
