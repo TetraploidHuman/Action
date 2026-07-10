@@ -290,7 +290,16 @@ impl<'ctx> CodeGen<'ctx> {
         match &target.kind {
             HirExprKind::Ident(name) => {
                 let v = self.compile_hir_expr(value)?;
-                self.assign_mutable_ident(name, v)
+                let is_closure = matches!(v, TypedValue::Closure { .. });
+                let is_fn = matches!(v, TypedValue::Fn(_, _));
+                let result = self.assign_mutable_ident(name, v)?;
+                if is_closure {
+                    self.scope.set_direct_fn_name(name, None);
+                } else if is_fn {
+                    let dn = Self::resolve_stored_direct_fn_name(self, value);
+                    self.scope.set_direct_fn_name(name, dn);
+                }
+                Ok(result)
             }
             _ => {
                 let v = self.compile_hir_expr(value)?;

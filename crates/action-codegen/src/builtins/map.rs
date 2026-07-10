@@ -58,36 +58,41 @@ impl<'ctx> CodeGen<'ctx> {
             .ok_or("Cannot compile mapFilter outside function")?;
 
         let i64 = self.i64_ty();
+        let ptr = self.ptr_ty();
+        let zero = i64.const_int(0, false);
+        let tomb = i64.const_int(Self::HT_TOMBSTONE, false);
+        let marker = i64.const_int(Self::HT_SCALAR_MARKER, false);
 
-        // Create new empty map (use input_len as capacity)
-        let cc = self.call_rt("action_map_create", &[input_len.into()])?;
-        let new_map_bv = cc
-            .try_as_basic_value()
-            .basic()
-            .ok_or("list_create failed")?;
-        let result_alloca = self
+        let entry_bb = self
             .builder
-            .build_alloca(self.list_type, "mf_result")
-            .map_err(llvm_err)?;
+            .get_insert_block()
+            .ok_or("mapFilter: no insert block")?;
+        let cow_bb = self.context.append_basic_block(current_fn, "mf_cow");
+        let cow_merge = self.context.append_basic_block(current_fn, "mf_mrg");
+        let cow_data = self.ht_cow(data_ptr, map_cap, entry_bb, cow_bb, cow_merge)?;
+        self.builder.position_at_end(cow_merge);
+
+        let len_alloca = self.builder.build_alloca(i64, "mf_len").map_err(llvm_err)?;
         self.builder
-            .build_store(result_alloca, new_map_bv)
+            .build_store(len_alloca, input_len)
             .map_err(llvm_err)?;
 
         let i_alloca = self.builder.build_alloca(i64, "mf_i").map_err(llvm_err)?;
-        self.builder
-            .build_store(i_alloca, i64.const_int(0, false))
-            .map_err(llvm_err)?;
+        self.builder.build_store(i_alloca, zero).map_err(llvm_err)?;
 
         let loop_header = self.context.append_basic_block(current_fn, "mf_hdr");
         let loop_chk = self.context.append_basic_block(current_fn, "mf_chk");
         let loop_body = self.context.append_basic_block(current_fn, "mf_bdy");
-        let loop_insert = self.context.append_basic_block(current_fn, "mf_ins");
+        let loop_tomb = self.context.append_basic_block(current_fn, "mf_tmb");
+        let loop_kp_dec = self.context.append_basic_block(current_fn, "mf_kpd");
+        let loop_vp_dec = self.context.append_basic_block(current_fn, "mf_vpd");
+        let loop_vp_do_dec = self.context.append_basic_block(current_fn, "mf_vdd");
+        let loop_store_tomb = self.context.append_basic_block(current_fn, "mf_stb");
         let loop_next = self.context.append_basic_block(current_fn, "mf_nxt");
         let loop_exit = self.context.append_basic_block(current_fn, "mf_ext");
 
         let _ = self.builder.build_unconditional_branch(loop_header);
 
-        // Header: scan slots 0..cap-1 (Robin-Hood layout)
         self.builder.position_at_end(loop_header);
         let i_val = self
             .builder
@@ -103,12 +108,11 @@ impl<'ctx> CodeGen<'ctx> {
             .build_conditional_branch(cond, loop_chk, loop_exit);
 
         self.builder.position_at_end(loop_chk);
-        self.ht_branch_if_slot_active(data_ptr, i_val, loop_body, loop_next)?;
+        self.ht_branch_if_slot_active(cow_data, i_val, loop_body, loop_next)?;
 
-        // Body: load key/value from slot, call predicate
         self.builder.position_at_end(loop_body);
-        let key_fat = self.ht_key_fat_at(data_ptr, i_val)?;
-        let val_fat = self.ht_val_fat_at(data_ptr, i_val)?;
+        let key_fat = self.ht_key_fat_at(cow_data, i_val)?;
+        let val_fat = self.ht_val_fat_at(cow_data, i_val)?;
         let kt = self
             .builder
             .build_extract_value(key_fat.into_struct_value(), 0, "kt")
@@ -140,33 +144,83 @@ impl<'ctx> CodeGen<'ctx> {
         };
         let keep = self
             .builder
-            .build_int_compare(IntPredicate::NE, pred_tag, i64.const_int(0, false), "keep")
+            .build_int_compare(IntPredicate::NE, pred_tag, zero, "keep")
             .map_err(llvm_err)?;
         let _ = self
             .builder
-            .build_conditional_branch(keep, loop_insert, loop_next);
+            .build_conditional_branch(keep, loop_next, loop_tomb);
 
-        // Insert: add entry to result map, then go to next
-        self.builder.position_at_end(loop_insert);
-        let cur_map = self
+        self.builder.position_at_end(loop_tomb);
+        let (_kt_slot, kp, _vt_old, vp_old, _dist) = self.ht_load_slot(cow_data, i_val)?;
+        let kp_ne0 = self
             .builder
-            .build_load(self.list_type, result_alloca, "cur_map")
+            .build_int_compare(IntPredicate::NE, kp, zero, "kpne0")
+            .map_err(llvm_err)?;
+        let kp_nem = self
+            .builder
+            .build_int_compare(IntPredicate::NE, kp, marker, "kpnem")
+            .map_err(llvm_err)?;
+        let kp_rc = self
+            .builder
+            .build_and(kp_ne0, kp_nem, "kprc")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(kp_rc, loop_kp_dec, loop_vp_dec);
+
+        self.builder.position_at_end(loop_kp_dec);
+        let rc_dec_fn = self
+            .module
+            .get_function("action_rc_dec")
+            .ok_or("action_rc_dec not found")?;
+        let _ = self.builder.build_call(
+            rc_dec_fn,
+            &[self
+                .builder
+                .build_int_to_ptr(kp, ptr, "kpp")
+                .map_err(llvm_err)?
+                .into()],
+            "",
+        );
+        let _ = self.builder.build_unconditional_branch(loop_vp_dec);
+
+        self.builder.position_at_end(loop_vp_dec);
+        let vp_ne = self
+            .builder
+            .build_int_compare(IntPredicate::NE, vp_old, zero, "vpne")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(vp_ne, loop_vp_do_dec, loop_store_tomb);
+
+        self.builder.position_at_end(loop_vp_do_dec);
+        let _ = self.builder.build_call(
+            rc_dec_fn,
+            &[self
+                .builder
+                .build_int_to_ptr(vp_old, ptr, "vpp")
+                .map_err(llvm_err)?
+                .into()],
+            "",
+        );
+        let _ = self.builder.build_unconditional_branch(loop_store_tomb);
+
+        self.builder.position_at_end(loop_store_tomb);
+        self.ht_store_slot(cow_data, i_val, zero, tomb, zero, zero, zero)?;
+        let cur_len = self
+            .builder
+            .build_load(i64, len_alloca, "clen")
             .map_err(llvm_err)?
-            .into_struct_value();
-        let ins_cc = self.call_rt(
-            "action_map_insert",
-            &[cur_map.into(), key_fat.into(), val_fat.into()],
-        )?;
-        let new_map = ins_cc
-            .try_as_basic_value()
-            .basic()
-            .ok_or("map_insert failed")?;
+            .into_int_value();
+        let new_len = self
+            .builder
+            .build_int_sub(cur_len, i64.const_int(1, false), "nlen")
+            .map_err(llvm_err)?;
         self.builder
-            .build_store(result_alloca, new_map)
+            .build_store(len_alloca, new_len)
             .map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(loop_next);
 
-        // Next: increment i, go back to header
         self.builder.position_at_end(loop_next);
         let ni = self
             .builder
@@ -175,8 +229,20 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_store(i_alloca, ni).map_err(llvm_err)?;
         let _ = self.builder.build_unconditional_branch(loop_header);
 
-        // Exit
         self.builder.position_at_end(loop_exit);
+        let final_len = self
+            .builder
+            .build_load(i64, len_alloca, "flen")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let result_map = self.ht_pack(cow_data, final_len, map_cap)?;
+        let result_alloca = self
+            .builder
+            .build_alloca(self.list_type, "mf_result")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(result_alloca, result_map)
+            .map_err(llvm_err)?;
         Ok(TypedValue::Map(result_alloca))
     }
 

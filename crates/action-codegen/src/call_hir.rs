@@ -892,6 +892,36 @@ impl<'ctx> CodeGen<'ctx> {
         acc
     }
 
+    pub(super) fn is_generic_user_fn(&self, name: &str) -> bool {
+        self.mono_cache
+            .generic_fun_defs
+            .get(name)
+            .is_some_and(|stmt| {
+                matches!(
+                    stmt,
+                    action_frontend::hir::HirStmt::Fun { type_params, .. }
+                        if !type_params.is_empty()
+                )
+            })
+    }
+
+    pub(super) fn resolve_stored_direct_fn_name(
+        &self,
+        value: &action_frontend::hir::HirExpr,
+    ) -> Option<String> {
+        use action_frontend::hir::HirExprKind;
+        if let HirExprKind::Ident(name) = &value.kind {
+            if self.is_generic_user_fn(name) {
+                return None;
+            }
+        }
+        let dn = Self::infer_direct_fn_name_from_init(self, value)?;
+        if self.is_generic_user_fn(&dn) {
+            return None;
+        }
+        Some(dn)
+    }
+
     pub(super) fn infer_direct_fn_name_from_init(
         &self,
         value: &action_frontend::hir::HirExpr,
@@ -914,6 +944,9 @@ impl<'ctx> CodeGen<'ctx> {
         use action_frontend::hir::HirExprKind;
         match &hir.kind {
             HirExprKind::Ident(name) => {
+                if codegen.is_generic_user_fn(name) {
+                    return None;
+                }
                 if let Some(v) = codegen.scope.get(name) {
                     if v.kind == ValKind::Fn && !v.is_closure {
                         if let Some(dn) = &v.direct_fn_name {

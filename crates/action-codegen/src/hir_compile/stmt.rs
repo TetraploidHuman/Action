@@ -81,7 +81,7 @@ impl<'ctx> CodeGen<'ctx> {
                 *capture_ptr_rc_mask,
             );
         } else if matches!(kind, crate::ValKind::Fn) {
-            if let Some(dn) = Self::infer_direct_fn_name_from_init(self, value) {
+            if let Some(dn) = Self::resolve_stored_direct_fn_name(self, value) {
                 self.scope.set_direct_fn_name(name, Some(dn));
             }
         }

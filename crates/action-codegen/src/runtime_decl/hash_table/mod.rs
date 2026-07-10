@@ -18,8 +18,8 @@ use crate::{llvm_err, CodeGen};
 impl<'ctx> CodeGen<'ctx> {
     const HT_ENTRY_I64S: u64 = 5;
     const HT_ENTRY_BYTES: u64 = 40;
-    const HT_SCALAR_MARKER: u64 = 1;
-    const HT_TOMBSTONE: u64 = 2;
+    pub(crate) const HT_SCALAR_MARKER: u64 = 1;
+    pub(crate) const HT_TOMBSTONE: u64 = 2;
     const HT_MIN_CAP: u64 = 8;
     const HT_LOAD_NUM: u64 = 7;
     const HT_LOAD_DEN: u64 = 8;

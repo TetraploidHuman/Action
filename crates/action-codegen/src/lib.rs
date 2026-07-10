@@ -739,6 +739,36 @@ mod tests {
     }
 
     #[test]
+    fn test_var_fn_reassign_devirt() {
+        let ir = compile_program(
+            "fun add1(n: Int) -> Int { n + 1 }\n\
+             fun add2(n: Int) -> Int { n + 2 }\n\
+             fun main() { var f = add1; f = add2; println(f(3)) }",
+        );
+        let main = function_ir(&ir, "main");
+        assert!(
+            main.contains("call i64 @add2"),
+            "@main must call @add2 after reassign: {main}"
+        );
+        assert!(
+            !main.contains("indirect"),
+            "@main must not indirect-call rebound fn: {main}"
+        );
+    }
+
+    #[test]
+    fn test_generic_identity_monomorphized_call_direct() {
+        let ir = compile_program(
+            "fun <T> identity(x: T) -> T { x }\nfun main() { println(identity(42)) }",
+        );
+        let main = function_ir(&ir, "main");
+        assert!(
+            !main.contains("indirect"),
+            "monomorphized identity(42) should not use indirect call: {main}"
+        );
+    }
+
+    #[test]
     fn test_scope_fn_apply_devirt() {
         let ir = compile_program(
             "fun double(n: Int) -> Int { n * 2 }\n\
