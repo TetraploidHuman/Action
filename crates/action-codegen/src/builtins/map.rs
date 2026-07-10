@@ -233,19 +233,25 @@ impl<'ctx> CodeGen<'ctx> {
             .ok_or("Cannot compile mapMapValues outside function")?;
 
         let i64 = self.i64_ty();
+        let ptr = self.ptr_ty();
+        let zero = i64.const_int(0, false);
 
-        // Create new empty map for transformed values
-        let cc = self.call_rt("action_map_create", &[input_len.into()])?;
-        let new_map_bv = cc
-            .try_as_basic_value()
-            .basic()
-            .ok_or("list_create failed")?;
+        // CoW-copy table in place (keys/dist unchanged); update values without re-insert reprobing.
+        let entry_bb = self
+            .builder
+            .get_insert_block()
+            .ok_or("mapMapValues: no insert block")?;
+        let cow_bb = self.context.append_basic_block(current_fn, "mmv_cow");
+        let cow_merge = self.context.append_basic_block(current_fn, "mmv_mrg");
+        let cow_data = self.ht_cow(data_ptr, map_cap, entry_bb, cow_bb, cow_merge)?;
+        self.builder.position_at_end(cow_merge);
+        let result_map = self.ht_pack(cow_data, input_len, map_cap)?;
         let result_alloca = self
             .builder
             .build_alloca(self.list_type, "mmv_result")
             .map_err(llvm_err)?;
         self.builder
-            .build_store(result_alloca, new_map_bv)
+            .build_store(result_alloca, result_map)
             .map_err(llvm_err)?;
 
         let i_alloca = self.builder.build_alloca(i64, "mmv_i").map_err(llvm_err)?;
@@ -256,6 +262,8 @@ impl<'ctx> CodeGen<'ctx> {
         let loop_header = self.context.append_basic_block(current_fn, "mmv_hdr");
         let loop_chk = self.context.append_basic_block(current_fn, "mmv_chk");
         let loop_body = self.context.append_basic_block(current_fn, "mmv_bdy");
+        let loop_vp_dec = self.context.append_basic_block(current_fn, "mmv_vpd");
+        let loop_store = self.context.append_basic_block(current_fn, "mmv_st");
         let loop_next = self.context.append_basic_block(current_fn, "mmv_nxt");
         let loop_exit = self.context.append_basic_block(current_fn, "mmv_ext");
 
@@ -276,18 +284,17 @@ impl<'ctx> CodeGen<'ctx> {
             .build_conditional_branch(cond, loop_chk, loop_exit);
 
         self.builder.position_at_end(loop_chk);
-        self.ht_branch_if_slot_active(data_ptr, i_val, loop_body, loop_next)?;
+        self.ht_branch_if_slot_active(cow_data, i_val, loop_body, loop_next)?;
 
         self.builder.position_at_end(loop_body);
-        let key_fat = self.ht_key_fat_at(data_ptr, i_val)?;
-        let val_fat = self.ht_val_fat_at(data_ptr, i_val)?;
+        let (kt, kp, _vt_old, vp_old, dist) = self.ht_load_slot(cow_data, i_val)?;
+        let val_fat = self.ht_val_fat_at(cow_data, i_val)?;
         let vt = self
             .builder
             .build_extract_value(val_fat.into_struct_value(), 0, "vt")
             .map_err(llvm_err)?
             .into_int_value();
 
-        // Call transform(val_tag) -> fat {i64, ptr} (new value)
         let fat_ret_ty = self.string_type;
         let fn_type = fat_ret_ty.fn_type(&[i64.into()], false);
         let call_result = self
@@ -299,23 +306,47 @@ impl<'ctx> CodeGen<'ctx> {
             .basic()
             .ok_or("mmv call failed")?;
         let new_val = new_val_bv.into_struct_value();
-
-        let cur_map = self
+        let new_vt = self
             .builder
-            .build_load(self.list_type, result_alloca, "cur_map")
+            .build_extract_value(new_val, 0, "nvt")
             .map_err(llvm_err)?
-            .into_struct_value();
-        let ins_cc = self.call_rt(
-            "action_map_insert",
-            &[cur_map.into(), key_fat.into(), new_val.into()],
-        )?;
-        let new_map = ins_cc
-            .try_as_basic_value()
-            .basic()
-            .ok_or("map_insert failed")?;
-        self.builder
-            .build_store(result_alloca, new_map)
+            .into_int_value();
+        let new_vp_ptr = self
+            .builder
+            .build_extract_value(new_val, 1, "nvp")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let new_vp = self
+            .builder
+            .build_ptr_to_int(new_vp_ptr, i64, "nvp_i")
             .map_err(llvm_err)?;
+
+        let vp_ne = self
+            .builder
+            .build_int_compare(IntPredicate::NE, vp_old, zero, "vp_ne")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(vp_ne, loop_vp_dec, loop_store);
+
+        self.builder.position_at_end(loop_vp_dec);
+        let rc_dec_fn = self
+            .module
+            .get_function("action_rc_dec")
+            .ok_or("action_rc_dec not found")?;
+        let _ = self.builder.build_call(
+            rc_dec_fn,
+            &[self
+                .builder
+                .build_int_to_ptr(vp_old, ptr, "vp_p")
+                .map_err(llvm_err)?
+                .into()],
+            "",
+        );
+        let _ = self.builder.build_unconditional_branch(loop_store);
+
+        self.builder.position_at_end(loop_store);
+        self.ht_store_slot(cow_data, i_val, kt, kp, new_vt, new_vp, dist)?;
         let _ = self.builder.build_unconditional_branch(loop_next);
 
         self.builder.position_at_end(loop_next);

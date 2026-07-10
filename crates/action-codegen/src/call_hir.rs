@@ -54,6 +54,12 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<TypedValue<'ctx>, String> {
         if let Some(scope_var) = self.scope.get(name) {
             if scope_var.kind == ValKind::Fn {
+                if !scope_var.is_closure {
+                    if let Some(fn_name) = scope_var.direct_fn_name.clone() {
+                        return self
+                            .compile_direct_function_call_from_call_args(&fn_name, args, trailing);
+                    }
+                }
                 let target = self.compile_ident(name)?;
                 if let Some(result) = self.try_devirtualize_fn_call(&target, args, trailing)? {
                     return Ok(result);
@@ -886,6 +892,21 @@ impl<'ctx> CodeGen<'ctx> {
         acc
     }
 
+    pub(super) fn infer_direct_fn_name_from_init(
+        &self,
+        value: &action_frontend::hir::HirExpr,
+    ) -> Option<String> {
+        use action_frontend::hir::HirExprKind;
+        match &value.kind {
+            HirExprKind::Ident(src) => self
+                .scope
+                .get(src)
+                .and_then(|v| v.direct_fn_name.clone())
+                .or_else(|| Self::resolve_direct_fn_name_hir(self, value)),
+            _ => Self::resolve_direct_fn_name_hir(self, value),
+        }
+    }
+
     fn resolve_direct_fn_name_hir(
         codegen: &CodeGen<'_>,
         hir: &action_frontend::hir::HirExpr,
@@ -893,6 +914,13 @@ impl<'ctx> CodeGen<'ctx> {
         use action_frontend::hir::HirExprKind;
         match &hir.kind {
             HirExprKind::Ident(name) => {
+                if let Some(v) = codegen.scope.get(name) {
+                    if v.kind == ValKind::Fn && !v.is_closure {
+                        if let Some(dn) = &v.direct_fn_name {
+                            return Some(dn.clone());
+                        }
+                    }
+                }
                 if codegen.module.get_function(name).is_some() {
                     Some(name.clone())
                 } else {

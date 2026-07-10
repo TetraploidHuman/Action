@@ -45,6 +45,8 @@ pub(crate) struct ScopeVar<'ctx> {
     pub(crate) closure_fn_ptr: Option<PointerValue<'ctx>>,
     pub(crate) actual_fn_type: Option<FunctionType<'ctx>>,
     pub(crate) closure_capture_ptr_rc_mask: u64,
+    /// Resolved LLVM symbol for a bound top-level function (`val f = fib`), not closures.
+    pub(crate) direct_fn_name: Option<String>,
 }
 
 #[derive(Clone)]
@@ -99,8 +101,15 @@ impl<'ctx> Scope<'ctx> {
                 closure_fn_ptr: None,
                 actual_fn_type: None,
                 closure_capture_ptr_rc_mask: 0,
+                direct_fn_name: None,
             },
         );
+    }
+
+    pub(crate) fn set_direct_fn_name(&mut self, name: &str, direct: Option<String>) {
+        if let Some(var) = self.variables.get_mut(name) {
+            var.direct_fn_name = direct;
+        }
     }
 
     pub(crate) fn set_with_fn_type(
@@ -129,6 +138,7 @@ impl<'ctx> Scope<'ctx> {
                 closure_fn_ptr: None,
                 actual_fn_type: None,
                 closure_capture_ptr_rc_mask: 0,
+                direct_fn_name: None,
             },
         );
     }
@@ -159,6 +169,7 @@ impl<'ctx> Scope<'ctx> {
                 closure_fn_ptr: None,
                 actual_fn_type: None,
                 closure_capture_ptr_rc_mask: 0,
+                direct_fn_name: None,
             },
         );
     }
@@ -191,6 +202,7 @@ impl<'ctx> Scope<'ctx> {
                 closure_fn_ptr: None,
                 actual_fn_type: None,
                 closure_capture_ptr_rc_mask: 0,
+                direct_fn_name: None,
             },
         );
     }
@@ -222,6 +234,7 @@ impl<'ctx> Scope<'ctx> {
                 closure_fn_ptr: None,
                 actual_fn_type: None,
                 closure_capture_ptr_rc_mask: 0,
+                direct_fn_name: None,
             },
         );
     }
@@ -241,6 +254,7 @@ impl<'ctx> Scope<'ctx> {
             var.actual_fn_type = Some(actual_fn_type);
             var.fn_type = None;
             var.closure_capture_ptr_rc_mask = capture_ptr_rc_mask;
+            var.direct_fn_name = None;
         }
     }
 
@@ -252,6 +266,7 @@ impl<'ctx> Scope<'ctx> {
             var.closure_fn_ptr = None;
             var.actual_fn_type = None;
             var.closure_capture_ptr_rc_mask = 0;
+            var.direct_fn_name = None;
         }
     }
 

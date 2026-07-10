@@ -80,6 +80,10 @@ impl<'ctx> CodeGen<'ctx> {
                 *actual_fn_type,
                 *capture_ptr_rc_mask,
             );
+        } else if matches!(kind, crate::ValKind::Fn) {
+            if let Some(dn) = Self::infer_direct_fn_name_from_init(self, value) {
+                self.scope.set_direct_fn_name(name, Some(dn));
+            }
         }
         Ok(())
     }

@@ -722,6 +722,41 @@ mod tests {
     }
 
     #[test]
+    fn test_scope_fn_binding_direct_call() {
+        let ir = compile_program(
+            "fun add1(n: Int) -> Int { n + 1 }\n\
+             fun main() { val f = add1; val x = f(5) }",
+        );
+        let main = function_ir(&ir, "main");
+        assert!(
+            !main.contains("indirect"),
+            "@main must not indirect-call bound fn: {main}"
+        );
+        assert!(
+            main.contains("call i64 @add1"),
+            "@main must call @add1 directly: {main}"
+        );
+    }
+
+    #[test]
+    fn test_scope_fn_apply_devirt() {
+        let ir = compile_program(
+            "fun double(n: Int) -> Int { n * 2 }\n\
+             fun apply(f: (Int) -> Int, x: Int) -> Int { f(x) }\n\
+             fun main() { val f = double; val x = apply(f, 5) }",
+        );
+        let main = function_ir(&ir, "main");
+        assert!(
+            main.contains("call i64 @double"),
+            "@main must call @double: {main}"
+        );
+        assert!(
+            !main.contains("indirect"),
+            "@main must not indirect-call bound fn: {main}"
+        );
+    }
+
+    #[test]
     fn test_list_index_assign() {
         let ir = compile_program(
             "fun main() {\n\
