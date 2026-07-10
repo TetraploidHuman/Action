@@ -11,7 +11,7 @@ env:
 jobs:
   linux-clippy:
     name: Linux Clippy
-    runs-on: [self-hosted, linux]
+    runs-on: [self-hosted, linux, ci]
     env:
       CARGO_TARGET_DIR: /home/miaox99/桌面/Runner/ci-target
       CARGO_INCREMENTAL: 1
@@ -22,11 +22,6 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_SHA: ${{ github.sha }}
         run: bash /home/miaox99/桌面/Runner/checkout-codeload.sh
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ env.LINUX_TARGET }}
-          components: clippy
 
       - name: Ensure persistent target dir
         run: mkdir -p "$CARGO_TARGET_DIR"

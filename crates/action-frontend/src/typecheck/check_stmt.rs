@@ -69,6 +69,23 @@ impl TypeChecker {
         }
     }
 
+    fn collect_lvalue_errors(&mut self, expr: &Expr, errors: &mut Vec<CompilerError>) {
+        match &expr.kind {
+            ExprKind::Ident(_) => {}
+            ExprKind::FieldAccess(obj, _) => self.collect_lvalue_errors(obj, errors),
+            ExprKind::Index(obj, idx) => {
+                self.collect_lvalue_errors(obj, errors);
+                self.collect_expr_errors(idx, errors);
+            }
+            ExprKind::Tuple(items) => {
+                for (_, e) in items {
+                    self.collect_lvalue_errors(e, errors);
+                }
+            }
+            _ => self.collect_expr_errors(expr, errors),
+        }
+    }
+
     pub(crate) fn collect_expr_errors(&mut self, expr: &Expr, errors: &mut Vec<CompilerError>) {
         match &expr.kind {
             ExprKind::Binary(lhs, op, rhs) => {
@@ -345,7 +362,7 @@ impl TypeChecker {
                 }
             }
             ExprKind::Assign { target, value, .. } => {
-                self.collect_expr_errors(target, errors);
+                self.collect_lvalue_errors(target, errors);
                 self.collect_expr_errors(value, errors);
                 // Check if target is an immutable variable
                 if let ExprKind::Ident(name) = &target.as_ref().kind {

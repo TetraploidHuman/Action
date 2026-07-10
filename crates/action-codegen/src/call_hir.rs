@@ -20,6 +20,17 @@ impl<'ctx> CodeGen<'ctx> {
                 let trailing_ca = Self::trailing_call_arg_hir(trailing);
                 self.dispatch_named_call(name, &call_args, trailing_ca)
             }
+            HirExprKind::FunctionRef(_) => {
+                let call_args = Self::call_args_from_hir(args);
+                let trailing_ca = Self::trailing_call_arg_hir(trailing);
+                if let Some(fn_name) = Self::resolve_direct_fn_name_hir(self, func) {
+                    return self.compile_direct_function_call_from_call_args(
+                        &fn_name, &call_args, trailing_ca,
+                    );
+                }
+                let target = self.compile_hir_expr(func)?;
+                self.compile_indirect_call_impl(target, &call_args, trailing_ca)
+            }
             HirExprKind::FieldAccess(receiver, method) => {
                 self.compile_ufcs_call_hir(receiver, method, args, trailing)
             }

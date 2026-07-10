@@ -1084,6 +1084,11 @@ fn test_string_ops() {
 }
 
 #[test]
+fn test_list_index_assign() {
+    assert_eq!(run_example("test_list_index_assign.ac"), "10\n42\n30\n");
+}
+
+#[test]
 fn test_list_insert_remove() {
     let out = run_example("list_insert_remove.ac");
     assert!(out.contains("All List insert/remove tests passed"));

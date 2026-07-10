@@ -539,6 +539,20 @@ mod tests {
     }
 
     #[test]
+    fn test_list_index_assign_lvalue_no_e006() {
+        let errors = check_source(
+            "fun main() { var lst = List[10, 20, 30]; lst[1] = 42; println(lst[0] or { -1 }) }",
+        );
+        assert!(
+            !errors
+                .iter()
+                .any(|e| e.code == Some(crate::error::DiagnosticCode::E006)),
+            "index assign target must not require or {{}}: {:?}",
+            errors
+        );
+    }
+
+    #[test]
     fn test_e006_list_index_needs_or() {
         for src in [
             "fun main() { println(List[][0]) }",

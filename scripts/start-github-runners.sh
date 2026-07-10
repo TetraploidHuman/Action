@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # Start all local GitHub Actions runner instances (background).
+#
+# Prefer systemd for boot persistence:
+#   ./scripts/install-github-runner-services.sh --enable-now
 set -euo pipefail
 
 ROOT="${RUNNER_ROOT:-$HOME/桌面/Runner}"

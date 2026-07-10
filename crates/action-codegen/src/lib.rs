@@ -708,6 +708,36 @@ mod tests {
     }
 
     #[test]
+    fn test_consteval_fib_function_ref_no_runtime_call() {
+        let ir = compile_program(
+            "fun fib(n: Int) -> Int { when n <= 1 { n else fib(n - 1) + fib(n - 2) } }\n\
+             fun main() { val x = ::fib(30); val y = ::fib(5) }",
+        );
+        assert!(ir.contains("832040"), "fib(30) should fold to 832040");
+        let main = function_ir(&ir, "main");
+        assert!(
+            !main.contains("call i64 @fib"),
+            "@main must not call fib for literal ::fib arguments: {main}"
+        );
+    }
+
+    #[test]
+    fn test_list_index_assign() {
+        let ir = compile_program(
+            "fun main() {\n\
+                 var lst = List[1, 2, 3]\n\
+                 lst[0] = 99\n\
+                 println(lst[0] or { 0 })\n\
+             }",
+        );
+        let main = function_ir(&ir, "main");
+        assert!(
+            main.contains("action_list_set"),
+            "list index assign should call action_list_set: {main}"
+        );
+    }
+
+    #[test]
     fn test_consteval_fact_literals_no_runtime_call() {
         let ir = compile_program(
             "fun fact(n: Int, acc: Int) -> Int { when n <= 1 { acc else fact(n - 1, acc * n) } }\n\

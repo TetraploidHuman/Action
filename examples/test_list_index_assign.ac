@@ -1,0 +1,8 @@
+// List element assignment via index lvalue
+fun main() {
+    var lst = List[10, 20, 30]
+    lst[1] = 42
+    println(lst[0] or { -1 })
+    println(lst[1] or { -1 })
+    println(lst[2] or { -1 })
+}
