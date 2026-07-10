@@ -823,6 +823,88 @@ mod tests {
     }
 
     #[test]
+    fn test_apply_lambda_acc_loop_fused() {
+        let ir = compile_program(
+            "fun apply(f: (Int) -> Int, x: Int) -> Int { f(x) }\n\
+             fun main() {\n\
+             var total = 0; var i = 0\n\
+             for i < 10 { total = total + apply({ it * 3 }, i); i = i + 1 }\n\
+             println(total)\n\
+             }",
+        );
+        let main = function_ir(&ir, "main");
+        assert!(
+            main.contains("lamacc_term") && main.contains("mul i64"),
+            "@main should fuse apply+lambda acc: {main}"
+        );
+        assert!(
+            !main.contains("call i64 @apply"),
+            "fused loop must not call user apply: {main}"
+        );
+    }
+
+    #[test]
+    fn test_invariant_lambda_acc_loop_fused() {
+        let ir = compile_program(
+            "fun main() {\n\
+             var sum = 0; var i = 0\n\
+             for i < 10 { val d = { x -> x * 2 }; sum = sum + d(i); i = i + 1 }\n\
+             println(sum)\n\
+             }",
+        );
+        let main = function_ir(&ir, "main");
+        assert!(
+            main.contains("lamacc_term") && main.contains("mul i64"),
+            "@main should fuse invariant lambda acc: {main}"
+        );
+        assert!(
+            !main.contains(".lambda_"),
+            "fused loop must not allocate per-iter lambdas: {main}"
+        );
+    }
+
+    #[test]
+    fn test_range_int_sum_loop_fused() {
+        let ir = compile_program(
+            "fun main() {\n\
+             var sum = 0\n\
+             for i in 0..100 { sum = sum + i }\n\
+             println(sum)\n\
+             }",
+        );
+        let main = function_ir(&ir, "main");
+        assert!(
+            main.contains("rs_new") || main.contains("4950"),
+            "@main should fuse range sum loop: {main}"
+        );
+        assert!(
+            !main.contains("for_header"),
+            "fused range sum must not emit iterate loop: {main}"
+        );
+    }
+
+    #[test]
+    fn test_remove_front_loop_fused_to_single_drop() {
+        let ir = compile_program(
+            "fun main() {\n\
+             var lst = List[1, 2, 3, 4, 5]\n\
+             var i = 0\n\
+             for i < 4 { lst = lst.remove(0); i = i + 1 }\n\
+             println(lst.len())\n\
+             }",
+        );
+        let main = function_ir(&ir, "main");
+        assert!(
+            main.contains("action_list_drop") && main.contains("i64 4"),
+            "@main should fuse remove(0) loop to drop(4): {main}"
+        );
+        assert!(
+            !main.contains("for_cond_body"),
+            "fused loop must not emit generic for body: {main}"
+        );
+    }
+
+    #[test]
     fn test_ufcs_remove_len_single_list_remove_in_main() {
         let ir = compile_program(
             "fun main() {\n\

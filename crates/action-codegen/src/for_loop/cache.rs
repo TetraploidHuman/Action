@@ -65,6 +65,159 @@ impl<'ctx> CodeGen<'ctx> {
             .ok_or_else(|| "list_get_cached_fat failed".to_string())
     }
 
+    /// `sum += Σ i` for `i in [start, end)` — closed form matching range for-loop semantics.
+    pub(crate) fn compile_range_int_sum_update(
+        &mut self,
+        sum_ptr: PointerValue<'ctx>,
+        start: IntValue<'ctx>,
+        end: IntValue<'ctx>,
+    ) -> Result<(), String> {
+        let i64 = self.i64_ty();
+        let one = i64.const_int(1, false);
+        let two = i64.const_int(2, false);
+        let n = self
+            .builder
+            .build_int_sub(end, start, "rs_n")
+            .map_err(llvm_err)?;
+        let last = self
+            .builder
+            .build_int_sub(end, one, "rs_last")
+            .map_err(llvm_err)?;
+        let first_plus_last = self
+            .builder
+            .build_int_add(start, last, "rs_fpl")
+            .map_err(llvm_err)?;
+        let product = self
+            .builder
+            .build_int_mul(n, first_plus_last, "rs_prod")
+            .map_err(llvm_err)?;
+        let delta = self
+            .builder
+            .build_int_signed_div(product, two, "rs_delta")
+            .map_err(llvm_err)?;
+        let cur = self
+            .builder
+            .build_load(i64, sum_ptr, "rs_cur")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let new_sum = self
+            .builder
+            .build_int_add(cur, delta, "rs_new")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(sum_ptr, new_sum)
+            .map_err(llvm_err)?;
+        Ok(())
+    }
+
+    /// `for i < end { sum += i * k; i++ }` from loop-local `{ x -> x * k }(i)`.
+    pub(crate) fn compile_invariant_lambda_acc_loop(
+        &mut self,
+        sum_ptr: PointerValue<'ctx>,
+        idx_ptr: PointerValue<'ctx>,
+        end_bound: IntValue<'ctx>,
+        mul_const: u64,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("Cannot compile for outside function")?;
+        let i64 = self.i64_ty();
+        let one = i64.const_int(1, false);
+        let k = i64.const_int(mul_const, false);
+
+        let header = self.context.append_basic_block(current_fn, "lamacc_hdr");
+        let body_bb = self.context.append_basic_block(current_fn, "lamacc_body");
+        let exit = self.context.append_basic_block(current_fn, "lamacc_exit");
+
+        let saved_continue = self.loop_control.continue_target;
+        let saved_break = self.loop_control.break_target;
+        self.loop_control.continue_target = Some(header);
+        self.loop_control.break_target = Some(exit);
+
+        self.builder
+            .build_unconditional_branch(header)
+            .map_err(llvm_err)?;
+        self.builder.position_at_end(header);
+        let cur = self
+            .builder
+            .build_load(i64, idx_ptr, "lamacc_i")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let cond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, cur, end_bound, "lamacc_cond")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_conditional_branch(cond, body_bb, exit)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(body_bb);
+        let term = self
+            .builder
+            .build_int_mul(cur, k, "lamacc_term")
+            .map_err(llvm_err)?;
+        let sum_cur = self
+            .builder
+            .build_load(i64, sum_ptr, "lamacc_sum")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let sum_new = self
+            .builder
+            .build_int_add(sum_cur, term, "lamacc_sum_new")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(sum_ptr, sum_new)
+            .map_err(llvm_err)?;
+        let next = self
+            .builder
+            .build_int_add(cur, one, "lamacc_next")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(idx_ptr, next)
+            .map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(header)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(exit);
+        self.loop_control.continue_target = saved_continue;
+        self.loop_control.break_target = saved_break;
+        Ok(TypedValue::Unit)
+    }
+
+    /// `for idx < end { lst = lst.remove(0); idx = idx + 1 }` → single `drop(end)`.
+    pub(crate) fn compile_remove_front_loop(
+        &mut self,
+        list_ptr: PointerValue<'ctx>,
+        end_bound: IntValue<'ctx>,
+        idx_ptr: PointerValue<'ctx>,
+        coll_var: &str,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let list_loaded = self.load_list(list_ptr)?;
+        let drop_cc = self.call_rt(
+            "action_list_drop",
+            &[list_loaded.into(), end_bound.into()],
+        )?;
+        let new_list = drop_cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("list drop front fusion failed")?;
+        let scratch = self
+            .builder
+            .build_alloca(self.list_type, "drop_front")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(scratch, new_list)
+            .map_err(llvm_err)?;
+        self.assign_mutable_ident(coll_var, TypedValue::List(scratch))?;
+        self.builder
+            .build_store(idx_ptr, end_bound)
+            .map_err(llvm_err)?;
+        Ok(TypedValue::Unit)
+    }
+
     /// `for idx < end { lst.get(idx); idx = idx + 1 }` — cached sequential walk.
 
     pub(crate) fn compile_sequential_list_get_loop(

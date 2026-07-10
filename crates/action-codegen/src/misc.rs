@@ -525,7 +525,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    fn assign_mutable_ident(
+    pub(super) fn assign_mutable_ident(
         &mut self,
         name: &str,
         v: TypedValue<'ctx>,

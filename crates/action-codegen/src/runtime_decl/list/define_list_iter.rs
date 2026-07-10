@@ -27,6 +27,8 @@ impl<'ctx> CodeGen<'ctx> {
             None,
         );
         let fl_entry = self.context.append_basic_block(fl_fn, "entry");
+        let fl_concat_loop = self.context.append_basic_block(fl_fn, "concat_loop");
+        let fl_check_h0 = self.context.append_basic_block(fl_fn, "check_h0");
         let fl_h0 = self.context.append_basic_block(fl_fn, "h0");
         let fl_hgt0 = self.context.append_basic_block(fl_fn, "hgt0");
         let fl_loop = self.context.append_basic_block(fl_fn, "loop");
@@ -40,9 +42,119 @@ impl<'ctx> CodeGen<'ctx> {
         let fl_node = fl_fn.get_first_param().unwrap().into_pointer_value();
         let fl_height = fl_fn.get_nth_param(1).unwrap().into_int_value();
         let fl_idx = fl_fn.get_nth_param(2).unwrap().into_int_value();
+        let neg1 = i64.const_int(-1i64 as u64, true);
+        let fl_is_concat = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, fl_height, neg1, "is_concat")
+            .map_err(llvm_err)?;
+        let _ = self
+            .builder
+            .build_conditional_branch(fl_is_concat, fl_concat_loop, fl_check_h0);
+
+        // ConcatNode descent (mirrors action_list_get concat_loop).
+        self.builder.position_at_end(fl_concat_loop);
+        let fl_cc_phi_node = self.builder.build_phi(ptr, "cc_phi_n").map_err(llvm_err)?;
+        let fl_cc_phi_idx = self.builder.build_phi(i64, "cc_phi_i").map_err(llvm_err)?;
+        fl_cc_phi_node.add_incoming(&[(&fl_node, fl_entry)]);
+        fl_cc_phi_idx.add_incoming(&[(&fl_idx, fl_entry)]);
+        let cc_node = fl_cc_phi_node.as_basic_value().into_pointer_value();
+        let cc_idx = fl_cc_phi_idx.as_basic_value().into_int_value();
+        let cc_left_len_p = unsafe {
+            self.builder
+                .build_gep(i64, cc_node, &[i64.const_int(3, false)], "cc_llp")
+                .map_err(llvm_err)
+        }?;
+        let cc_left_len = self
+            .builder
+            .build_load(i64, cc_left_len_p, "cc_ll")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let cc_go_left = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, cc_idx, cc_left_len, "cc_gl")
+            .map_err(llvm_err)?;
+        let cc_left_node_p = unsafe {
+            self.builder
+                .build_gep(ptr, cc_node, &[i64.const_int(2, false)], "cc_lnp")
+                .map_err(llvm_err)
+        }?;
+        let cc_left_node = self
+            .builder
+            .build_load(ptr, cc_left_node_p, "cc_ln")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let cc_left_h_p = unsafe {
+            self.builder
+                .build_gep(i64, cc_node, &[i64.const_int(4, false)], "cc_lhp")
+                .map_err(llvm_err)
+        }?;
+        let cc_left_h = self
+            .builder
+            .build_load(i64, cc_left_h_p, "cc_lh")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let cc_right_node_p = unsafe {
+            self.builder
+                .build_gep(ptr, cc_node, &[i64.const_int(5, false)], "cc_rnp")
+                .map_err(llvm_err)
+        }?;
+        let cc_right_node = self
+            .builder
+            .build_load(ptr, cc_right_node_p, "cc_rn")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let cc_right_h_p = unsafe {
+            self.builder
+                .build_gep(i64, cc_node, &[i64.const_int(7, false)], "cc_rhp")
+                .map_err(llvm_err)
+        }?;
+        let cc_right_h = self
+            .builder
+            .build_load(i64, cc_right_h_p, "cc_rh")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let cc_right_idx = self
+            .builder
+            .build_int_sub(cc_idx, cc_left_len, "cc_ni")
+            .map_err(llvm_err)?;
+        let cc_next_node = self
+            .builder
+            .build_select(cc_go_left, cc_left_node, cc_right_node, "cc_nn")
+            .map_err(llvm_err)?
+            .into_pointer_value();
+        let cc_next_h = self
+            .builder
+            .build_select(cc_go_left, cc_left_h, cc_right_h, "cc_nh")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let cc_next_idx = self
+            .builder
+            .build_select(cc_go_left, cc_idx, cc_right_idx, "cc_ni2")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let cc_child_is_concat = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, cc_next_h, neg1, "cc_cic")
+            .map_err(llvm_err)?;
+        fl_cc_phi_node.add_incoming(&[(&cc_next_node, fl_concat_loop)]);
+        fl_cc_phi_idx.add_incoming(&[(&cc_next_idx, fl_concat_loop)]);
+        let _ = self
+            .builder
+            .build_conditional_branch(cc_child_is_concat, fl_concat_loop, fl_check_h0);
+
+        self.builder.position_at_end(fl_check_h0);
+        let fl_resolved_node = self.builder.build_phi(ptr, "fl_rn").map_err(llvm_err)?;
+        let fl_resolved_h = self.builder.build_phi(i64, "fl_rh").map_err(llvm_err)?;
+        let fl_resolved_idx = self.builder.build_phi(i64, "fl_ri").map_err(llvm_err)?;
+        fl_resolved_node.add_incoming(&[(&fl_node, fl_entry), (&cc_next_node, fl_concat_loop)]);
+        fl_resolved_h.add_incoming(&[(&fl_height, fl_entry), (&cc_next_h, fl_concat_loop)]);
+        fl_resolved_idx.add_incoming(&[(&fl_idx, fl_entry), (&cc_next_idx, fl_concat_loop)]);
+        let rn = fl_resolved_node.as_basic_value().into_pointer_value();
+        let rh = fl_resolved_h.as_basic_value().into_int_value();
+        let ri = fl_resolved_idx.as_basic_value().into_int_value();
         let is_h0 = self
             .builder
-            .build_int_compare(IntPredicate::EQ, fl_height, zero, "is_h0")
+            .build_int_compare(IntPredicate::EQ, rh, zero, "is_h0")
             .map_err(llvm_err)?;
         let _ = self.builder.build_conditional_branch(is_h0, fl_h0, fl_hgt0);
 
@@ -51,11 +163,11 @@ impl<'ctx> CodeGen<'ctx> {
         let fl_undef = fl_pair_ty.get_undef();
         let fl_r1 = self
             .builder
-            .build_insert_value(fl_undef, fl_node, 0, "r1")
+            .build_insert_value(fl_undef, rn, 0, "r1")
             .map_err(llvm_err)?;
         let fl_r2 = self
             .builder
-            .build_insert_value(fl_r1, fl_idx, 1, "r2")
+            .build_insert_value(fl_r1, ri, 1, "r2")
             .map_err(llvm_err)?;
         let _ = self.builder.build_return(Some(&fl_r2));
 
@@ -66,9 +178,9 @@ impl<'ctx> CodeGen<'ctx> {
         let phi_node = self.builder.build_phi(ptr, "phi_n").map_err(llvm_err)?;
         let phi_h = self.builder.build_phi(i64, "phi_h").map_err(llvm_err)?;
         let phi_idx = self.builder.build_phi(i64, "phi_i").map_err(llvm_err)?;
-        phi_node.add_incoming(&[(&fl_node, fl_hgt0)]);
-        phi_h.add_incoming(&[(&fl_height, fl_hgt0)]);
-        phi_idx.add_incoming(&[(&fl_idx, fl_hgt0)]);
+        phi_node.add_incoming(&[(&rn, fl_hgt0)]);
+        phi_h.add_incoming(&[(&rh, fl_hgt0)]);
+        phi_idx.add_incoming(&[(&ri, fl_hgt0)]);
         let cur_node = phi_node.as_basic_value().into_pointer_value();
         let cur_h = phi_h.as_basic_value().into_int_value();
         let cur_idx = phi_idx.as_basic_value().into_int_value();
@@ -217,7 +329,6 @@ impl<'ctx> CodeGen<'ctx> {
         let fast = self.context.append_basic_block(lgc_fn, "fast");
         let fast_load = self.context.append_basic_block(lgc_fn, "fast_load");
         let slow = self.context.append_basic_block(lgc_fn, "slow");
-        let slow_concat = self.context.append_basic_block(lgc_fn, "slow_concat");
         let slow_update = self.context.append_basic_block(lgc_fn, "slow_update");
         let ret_bb = self.context.append_basic_block(lgc_fn, "ret");
 
@@ -225,22 +336,7 @@ impl<'ctx> CodeGen<'ctx> {
         let lgc_list = lgc_fn.get_first_param().unwrap().into_struct_value();
         let lgc_idx = lgc_fn.get_nth_param(1).unwrap().into_int_value();
         let lgc_cache = lgc_fn.get_nth_param(2).unwrap().into_pointer_value();
-        let lgc_height = self
-            .builder
-            .build_extract_value(lgc_list, 2, "lgc_height")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let lgc_is_concat = self
-            .builder
-            .build_int_compare(
-                IntPredicate::EQ,
-                lgc_height,
-                i64.const_int(-1i64 as u64, true),
-                "lgc_is_concat",
-            )
-            .map_err(llvm_err)?;
         let lgc_seq_check = self.context.append_basic_block(lgc_fn, "seq_check");
-        let lgc_slow_pick = self.context.append_basic_block(lgc_fn, "slow_pick");
         let _ = self.builder.build_unconditional_branch(lgc_seq_check);
         self.builder.position_at_end(lgc_seq_check);
         let valid_p = unsafe {
@@ -291,12 +387,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self
             .builder
-            .build_conditional_branch(can_fast, fast, lgc_slow_pick);
-
-        self.builder.position_at_end(lgc_slow_pick);
-        let _ = self
-            .builder
-            .build_conditional_branch(lgc_is_concat, slow_concat, slow);
+            .build_conditional_branch(can_fast, fast, slow);
 
         self.builder.position_at_end(fast);
         let leaf = self
@@ -332,7 +423,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self
             .builder
-            .build_conditional_branch(in_leaf, fast_load, lgc_slow_pick);
+            .build_conditional_branch(in_leaf, fast_load, slow);
 
         self.builder.position_at_end(fast_load);
         let eb = unsafe {
@@ -355,130 +446,6 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(last_p, lgc_idx)
             .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(ret_bb);
-
-        self.builder.position_at_end(slow_concat);
-        let lgc_node = self
-            .builder
-            .build_extract_value(lgc_list, 0, "cn")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let lgc_total_len = self
-            .builder
-            .build_extract_value(lgc_list, 1, "cl")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let cc_left_len_p = unsafe {
-            self.builder
-                .build_gep(i64, lgc_node, &[i64.const_int(3, false)], "cc_llp")
-                .map_err(llvm_err)
-        }?;
-        let cc_left_len = self
-            .builder
-            .build_load(i64, cc_left_len_p, "cc_ll")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let cc_go_left = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, lgc_idx, cc_left_len, "cc_gl")
-            .map_err(llvm_err)?;
-        let cc_left_node_p = unsafe {
-            self.builder
-                .build_gep(ptr, lgc_node, &[i64.const_int(2, false)], "cc_lnp")
-                .map_err(llvm_err)
-        }?;
-        let cc_left_node = self
-            .builder
-            .build_load(ptr, cc_left_node_p, "cc_ln")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let cc_left_h_p = unsafe {
-            self.builder
-                .build_gep(i64, lgc_node, &[i64.const_int(4, false)], "cc_lhp")
-                .map_err(llvm_err)
-        }?;
-        let cc_left_h = self
-            .builder
-            .build_load(i64, cc_left_h_p, "cc_lh")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let cc_right_node_p = unsafe {
-            self.builder
-                .build_gep(ptr, lgc_node, &[i64.const_int(5, false)], "cc_rnp")
-                .map_err(llvm_err)
-        }?;
-        let cc_right_node = self
-            .builder
-            .build_load(ptr, cc_right_node_p, "cc_rn")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let cc_right_h_p = unsafe {
-            self.builder
-                .build_gep(i64, lgc_node, &[i64.const_int(7, false)], "cc_rhp")
-                .map_err(llvm_err)
-        }?;
-        let cc_right_h = self
-            .builder
-            .build_load(i64, cc_right_h_p, "cc_rh")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let cc_right_len = self
-            .builder
-            .build_int_sub(lgc_total_len, cc_left_len, "cc_rl")
-            .map_err(llvm_err)?;
-        let cc_sub_idx = self
-            .builder
-            .build_int_sub(lgc_idx, cc_left_len, "cc_si")
-            .map_err(llvm_err)?;
-        let left_u = self.list_type.get_undef();
-        let left_r1 = self
-            .builder
-            .build_insert_value(left_u, cc_left_node, 0, "left_n")
-            .map_err(llvm_err)?;
-        let left_r2 = self
-            .builder
-            .build_insert_value(left_r1, cc_left_len, 1, "left_l")
-            .map_err(llvm_err)?;
-        let left_list = self
-            .builder
-            .build_insert_value(left_r2, cc_left_h, 2, "left_h")
-            .map_err(llvm_err)?
-            .into_struct_value();
-        let right_u = self.list_type.get_undef();
-        let right_r1 = self
-            .builder
-            .build_insert_value(right_u, cc_right_node, 0, "right_n")
-            .map_err(llvm_err)?;
-        let right_r2 = self
-            .builder
-            .build_insert_value(right_r1, cc_right_len, 1, "right_l")
-            .map_err(llvm_err)?;
-        let right_list = self
-            .builder
-            .build_insert_value(right_r2, cc_right_h, 2, "right_h")
-            .map_err(llvm_err)?
-            .into_struct_value();
-        let sub_list = self
-            .builder
-            .build_select(cc_go_left, left_list, right_list, "sub_list")
-            .map_err(llvm_err)?
-            .into_struct_value();
-        let sub_idx = self
-            .builder
-            .build_select(cc_go_left, lgc_idx, cc_sub_idx, "sub_idx")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let elem_concat = self
-            .builder
-            .build_call(
-                lgc_fn,
-                &[sub_list.into(), sub_idx.into(), lgc_cache.into()],
-                "get_concat_rec",
-            )
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .basic()
-            .ok_or("get_cached recurse failed")?;
         let _ = self.builder.build_unconditional_branch(ret_bb);
 
         self.builder.position_at_end(slow);
@@ -542,7 +509,6 @@ impl<'ctx> CodeGen<'ctx> {
         ret_phi.add_incoming(&[
             (&elem, fast_load),
             (&elem_slow, slow_update),
-            (&elem_concat, slow_concat),
         ]);
         let _ = self.builder.build_return(Some(&ret_phi.as_basic_value()));
 
