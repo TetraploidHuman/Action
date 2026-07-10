@@ -25,7 +25,9 @@ impl<'ctx> CodeGen<'ctx> {
                 let trailing_ca = Self::trailing_call_arg_hir(trailing);
                 if let Some(fn_name) = Self::resolve_direct_fn_name_hir(self, func) {
                     return self.compile_direct_function_call_from_call_args(
-                        &fn_name, &call_args, trailing_ca,
+                        &fn_name,
+                        &call_args,
+                        trailing_ca,
                     );
                 }
                 let target = self.compile_hir_expr(func)?;
