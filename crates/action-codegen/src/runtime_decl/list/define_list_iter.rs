@@ -138,9 +138,9 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         fl_cc_phi_node.add_incoming(&[(&cc_next_node, fl_concat_loop)]);
         fl_cc_phi_idx.add_incoming(&[(&cc_next_idx, fl_concat_loop)]);
-        let _ = self
-            .builder
-            .build_conditional_branch(cc_child_is_concat, fl_concat_loop, fl_check_h0);
+        let _ =
+            self.builder
+                .build_conditional_branch(cc_child_is_concat, fl_concat_loop, fl_check_h0);
 
         self.builder.position_at_end(fl_check_h0);
         let fl_resolved_node = self.builder.build_phi(ptr, "fl_rn").map_err(llvm_err)?;
@@ -385,9 +385,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_and(is_valid, is_seq, "can_fast")
             .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_conditional_branch(can_fast, fast, slow);
+        let _ = self.builder.build_conditional_branch(can_fast, fast, slow);
 
         self.builder.position_at_end(fast);
         let leaf = self
@@ -506,10 +504,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_phi(self.string_type, "ret_phi")
             .map_err(llvm_err)?;
-        ret_phi.add_incoming(&[
-            (&elem, fast_load),
-            (&elem_slow, slow_update),
-        ]);
+        ret_phi.add_incoming(&[(&elem, fast_load), (&elem_slow, slow_update)]);
         let _ = self.builder.build_return(Some(&ret_phi.as_basic_value()));
 
         Ok(())

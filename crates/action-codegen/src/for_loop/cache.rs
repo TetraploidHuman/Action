@@ -174,9 +174,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_add(cur, one, "lamacc_next")
             .map_err(llvm_err)?;
-        self.builder
-            .build_store(idx_ptr, next)
-            .map_err(llvm_err)?;
+        self.builder.build_store(idx_ptr, next).map_err(llvm_err)?;
         self.builder
             .build_unconditional_branch(header)
             .map_err(llvm_err)?;
@@ -258,9 +256,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_add(cur, one, "capacc_next")
             .map_err(llvm_err)?;
-        self.builder
-            .build_store(idx_ptr, next)
-            .map_err(llvm_err)?;
+        self.builder.build_store(idx_ptr, next).map_err(llvm_err)?;
         self.builder
             .build_unconditional_branch(header)
             .map_err(llvm_err)?;
@@ -321,10 +317,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let elem_fat = self.make_int_fat(elem)?;
         let list_loaded = self.load_list(list_ptr)?;
-        let cc = self.call_rt(
-            "action_list_push",
-            &[list_loaded.into(), elem_fat.into()],
-        )?;
+        let cc = self.call_rt("action_list_push", &[list_loaded.into(), elem_fat.into()])?;
         let new_list = cc
             .try_as_basic_value()
             .basic()
@@ -336,9 +329,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_add(cur, one, "capapp_next")
             .map_err(llvm_err)?;
-        self.builder
-            .build_store(idx_ptr, next)
-            .map_err(llvm_err)?;
+        self.builder.build_store(idx_ptr, next).map_err(llvm_err)?;
         self.builder
             .build_unconditional_branch(header)
             .map_err(llvm_err)?;
@@ -358,10 +349,7 @@ impl<'ctx> CodeGen<'ctx> {
         coll_var: &str,
     ) -> Result<TypedValue<'ctx>, String> {
         let list_loaded = self.load_list(list_ptr)?;
-        let drop_cc = self.call_rt(
-            "action_list_drop",
-            &[list_loaded.into(), end_bound.into()],
-        )?;
+        let drop_cc = self.call_rt("action_list_drop", &[list_loaded.into(), end_bound.into()])?;
         let new_list = drop_cc
             .try_as_basic_value()
             .basic()

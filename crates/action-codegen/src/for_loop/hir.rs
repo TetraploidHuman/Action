@@ -24,9 +24,7 @@ impl<'ctx> CodeGen<'ctx> {
                 {
                     return Ok(result);
                 }
-                if let Some(result) =
-                    self.try_compile_for_remove_front_hir(condition, body)?
-                {
+                if let Some(result) = self.try_compile_for_remove_front_hir(condition, body)? {
                     return Ok(result);
                 }
                 if let Some(result) =
@@ -211,9 +209,7 @@ impl<'ctx> CodeGen<'ctx> {
         body: &HirExpr,
         collect: bool,
     ) -> Result<TypedValue<'ctx>, String> {
-        if let Some(result) =
-            self.try_compile_range_int_sum_hir(variable, iterator, body)?
-        {
+        if let Some(result) = self.try_compile_range_int_sum_hir(variable, iterator, body)? {
             return Ok(result);
         }
         self.compile_for_iterate(
@@ -1392,10 +1388,7 @@ impl<'ctx> CodeGen<'ctx> {
     fn hir_expr_is_int_zero(expr: &HirExpr) -> bool {
         use action_frontend::ast::Literal;
         use action_frontend::hir::HirExprKind;
-        matches!(
-            &expr.kind,
-            HirExprKind::Literal(Literal::Int(0))
-        )
+        matches!(&expr.kind, HirExprKind::Literal(Literal::Int(0)))
     }
 
     pub(super) const REMOVE_FRONT_FUSION_MIN_ITERS: u64 = 4;
@@ -1443,9 +1436,7 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(Some(TypedValue::Unit))
     }
 
-    pub(crate) fn extract_range_bounds_hir(
-        iterator: &HirExpr,
-    ) -> Option<(HirExpr, HirExpr)> {
+    pub(crate) fn extract_range_bounds_hir(iterator: &HirExpr) -> Option<(HirExpr, HirExpr)> {
         use action_frontend::ast::BinaryOp;
         use action_frontend::hir::HirExprKind;
         match &iterator.kind {
@@ -1476,12 +1467,8 @@ impl<'ctx> CodeGen<'ctx> {
         let HirExprKind::Binary(lhs, BinaryOp::Add, rhs) = &value.kind else {
             return None;
         };
-        let matches_loop = |e: &HirExpr| {
-            matches!(&e.kind, HirExprKind::Ident(v) if v == loop_var)
-        };
-        let matches_sum = |e: &HirExpr| {
-            matches!(&e.kind, HirExprKind::Ident(v) if v == sum_var)
-        };
+        let matches_loop = |e: &HirExpr| matches!(&e.kind, HirExprKind::Ident(v) if v == loop_var);
+        let matches_sum = |e: &HirExpr| matches!(&e.kind, HirExprKind::Ident(v) if v == sum_var);
         if (matches_loop(lhs) && matches_sum(rhs)) || (matches_loop(rhs) && matches_sum(lhs)) {
             Some(sum_var.clone())
         } else {
@@ -1534,13 +1521,8 @@ impl<'ctx> CodeGen<'ctx> {
             _ => return Ok(None),
         };
 
-        self.compile_invariant_lambda_acc_loop(
-            sum_scope.ptr,
-            idx_scope.ptr,
-            end_bound,
-            mul_const,
-        )
-        .map(Some)
+        self.compile_invariant_lambda_acc_loop(sum_scope.ptr, idx_scope.ptr, end_bound, mul_const)
+            .map(Some)
     }
 
     pub(crate) fn extract_invariant_lambda_acc_loop_body(
@@ -1594,7 +1576,12 @@ impl<'ctx> CodeGen<'ctx> {
             _ => return None,
         };
         let _ = sum_side;
-        let HirExprKind::Call { func, args, trailing_lambda } = &call_side.kind else {
+        let HirExprKind::Call {
+            func,
+            args,
+            trailing_lambda,
+        } = &call_side.kind
+        else {
             return None;
         };
         if trailing_lambda.is_some() || args.len() != 1 {
@@ -1645,9 +1632,7 @@ impl<'ctx> CodeGen<'ctx> {
         let HirExprKind::Binary(lhs, BinaryOp::Add, rhs) = &value.kind else {
             return None;
         };
-        let matches_acc = |e: &HirExpr| {
-            matches!(&e.kind, HirExprKind::Ident(v) if v == acc_var)
-        };
+        let matches_acc = |e: &HirExpr| matches!(&e.kind, HirExprKind::Ident(v) if v == acc_var);
         let call_side = if matches_acc(lhs) {
             rhs.as_ref()
         } else if matches_acc(rhs) {
@@ -1746,14 +1731,13 @@ impl<'ctx> CodeGen<'ctx> {
             },
             _ => return Ok(None),
         };
-        let (sum_var, term) =
-            match Self::extract_captured_lambda_acc_loop_body(body, &idx_var) {
+        let (sum_var, term) = match Self::extract_captured_lambda_acc_loop_body(body, &idx_var) {
+            Some(v) => v,
+            None => match Self::extract_captured_apply_lambda_acc_loop_body(body, &idx_var) {
                 Some(v) => v,
-                None => match Self::extract_captured_apply_lambda_acc_loop_body(body, &idx_var) {
-                    Some(v) => v,
-                    None => return Ok(None),
-                },
-            };
+                None => return Ok(None),
+            },
+        };
 
         let end_val = self.compile_hir_expr(&end_hir)?;
         let end_bound = match end_val {
@@ -1846,12 +1830,7 @@ impl<'ctx> CodeGen<'ctx> {
     fn extract_captured_idx_add_lambda_hir(lam_expr: &HirExpr, idx_var: &str) -> Option<()> {
         use crate::expr::collect_free_vars_hir;
         use action_frontend::hir::HirExprKind;
-        let HirExprKind::Lambda {
-            params,
-            body,
-            ..
-        } = &lam_expr.kind
-        else {
+        let HirExprKind::Lambda { params, body, .. } = &lam_expr.kind else {
             return None;
         };
         if params.len() != 1 {
@@ -1870,7 +1849,10 @@ impl<'ctx> CodeGen<'ctx> {
         Some(())
     }
 
-    fn captured_call_arg_term(call_arg: &HirExpr, idx_var: &str) -> Option<super::CapturedIdxAddTerm> {
+    fn captured_call_arg_term(
+        call_arg: &HirExpr,
+        idx_var: &str,
+    ) -> Option<super::CapturedIdxAddTerm> {
         use action_frontend::ast::Literal;
         use action_frontend::hir::HirExprKind;
         match &call_arg.kind {
@@ -1920,7 +1902,12 @@ impl<'ctx> CodeGen<'ctx> {
             (_, HirExprKind::Ident(s)) if s == sum_var => lhs.as_ref(),
             _ => return None,
         };
-        let HirExprKind::Call { func, args, trailing_lambda } = &call_side.kind else {
+        let HirExprKind::Call {
+            func,
+            args,
+            trailing_lambda,
+        } = &call_side.kind
+        else {
             return None;
         };
         if trailing_lambda.is_some() || args.len() != 1 {
