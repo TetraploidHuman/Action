@@ -1,7 +1,7 @@
 fun main() {
-    val r1 = head(List[10]) or { 0 }
+    val r1 = head(List[10])
     print(r1)
     val r2 = head(List[]) or { 42 }
     print(r2)
-    print(head(List[10]) or { 9 })
+    print(head(List[10]))
 }

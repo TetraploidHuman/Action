@@ -52,6 +52,19 @@ impl Parser {
         false
     }
 
+    pub(crate) fn coerce_trailing_lambda(&self, expr: Expr) -> Result<Expr, ParseError> {
+        match &expr.kind {
+            ExprKind::Lambda { .. } => Ok(expr),
+            ExprKind::Block(_) => Ok(ExprKind::Lambda {
+                params: vec![],
+                body: Box::new(expr),
+                implicit_it: false,
+            }
+            .into()),
+            _ => Err(self.error("Expected lambda after call")),
+        }
+    }
+
     pub(crate) fn parse_lambda_or_struct(&mut self) -> Result<Expr, ParseError> {
         self.advance(); // skip '{'
 

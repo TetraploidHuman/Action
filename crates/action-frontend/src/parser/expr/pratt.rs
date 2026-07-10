@@ -120,6 +120,7 @@ impl Parser {
                         || matches!(&left.kind, ExprKind::FieldAccess(_, _));
                     if is_callable {
                         let lambda = self.parse_lambda_or_struct()?;
+                        let lambda = self.coerce_trailing_lambda(lambda)?;
                         if matches!(&lambda.kind, ExprKind::Lambda { .. }) {
                             left = ExprKind::Call {
                                 func: Box::new(left),

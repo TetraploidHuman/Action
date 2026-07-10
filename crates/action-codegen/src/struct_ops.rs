@@ -48,9 +48,28 @@ impl<'ctx> CodeGen<'ctx> {
                 break;
             }
         }
-        Err(format!(
-            "codegen: unknown struct field type at index {field_idx}"
-        ))
+        // Anonymous tuples (e.g. partition pair) are not in the type registry.
+        let field_types = st.get_field_types();
+        let idx = field_idx as usize;
+        if idx >= field_types.len() {
+            return Err(format!(
+                "codegen: struct field index {field_idx} out of range ({} fields)",
+                field_types.len()
+            ));
+        }
+        match field_types[idx] {
+            BasicTypeEnum::StructType(ft) if ft == self.list_type => Ok(ValKind::List),
+            BasicTypeEnum::StructType(ft) if ft == self.string_type => Ok(ValKind::Str),
+            BasicTypeEnum::StructType(ft) if ft == self.lazylist_type => Ok(ValKind::LazyList),
+            BasicTypeEnum::IntType(t) if t.get_bit_width() == 1 => Ok(ValKind::Bool),
+            BasicTypeEnum::IntType(_) => Ok(ValKind::Int),
+            BasicTypeEnum::FloatType(_) => Ok(ValKind::Float),
+            BasicTypeEnum::PointerType(_) => Ok(ValKind::Ptr),
+            BasicTypeEnum::StructType(_) => Ok(ValKind::Struct),
+            _ => Err(format!(
+                "codegen: unknown struct field type at index {field_idx}"
+            )),
+        }
     }
 
     /// Extract a field value from a TypedValue::Struct at the given index.

@@ -34,6 +34,7 @@ impl Parser {
             && self.brace_is_lambda_like()
         {
             let lambda = self.parse_lambda_or_struct()?;
+            let lambda = self.coerce_trailing_lambda(lambda)?;
             if matches!(&lambda.kind, ExprKind::Lambda { .. }) {
                 return Ok(ExprKind::Call {
                     func: Box::new(func),

@@ -8,8 +8,8 @@ fun main() {
     print(flat.len())
 
     val sorted = sortedBy(nums) { x -> -x }
-    print(sorted[0])
-    print(sorted[4])
+    print(sorted[0] or { 0 })
+    print(sorted[4] or { 0 })
 
     val parts = partition(nums) { x -> x % 2 == 0 }
     print(parts[0][0])
