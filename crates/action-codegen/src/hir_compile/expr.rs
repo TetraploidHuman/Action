@@ -67,17 +67,29 @@ impl<'ctx> CodeGen<'ctx> {
         idx: &HirExpr,
     ) -> Result<TypedValue<'ctx>, String> {
         use action_frontend::ast::Literal;
+        use action_frontend::fallible_safety::hir_index_access_is_compile_time_safe;
         use action_frontend::hir::HirExprKind;
 
+        if self.in_fallible_region() {
+            let region_index = HirExpr {
+                ty: obj.ty.clone(),
+                span: obj.span,
+                kind: HirExprKind::Index(Box::new(obj.clone()), Box::new(idx.clone())),
+            };
+            if let Some(v) = self.try_compile_fallible_expr(&region_index)? {
+                return self.unwrap_fallible_value(v);
+            }
+        }
+
         let obj_val = self.compile_hir_expr(obj)?;
-        match obj_val {
+        let result = match obj_val {
             TypedValue::Map(map_ptr) => {
                 let key_val = self.compile_hir_expr(idx)?;
-                self.compile_map_index_key(map_ptr, key_val)
+                self.compile_map_index_key(map_ptr, key_val)?
             }
             TypedValue::Set(set_ptr) => {
                 let elem_val = self.compile_hir_expr(idx)?;
-                self.compile_set_index_key(set_ptr, elem_val)
+                self.compile_set_index_key(set_ptr, elem_val)?
             }
             TypedValue::Struct(ptr, struct_ty) => {
                 let index = match &idx.kind {
@@ -94,12 +106,17 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_extract_value(struct_val, index, "tuple_idx")
                     .map_err(super::llvm_err)?;
-                self.bv_to_typed(field_val)
+                self.bv_to_typed(field_val)?
             }
             other => {
                 let idx_val = self.compile_hir_expr(idx)?;
-                self.compile_index_values(other, idx_val)
+                self.compile_index_values(other, idx_val)?
             }
+        };
+        if hir_index_access_is_compile_time_safe(obj, idx) {
+            self.unwrap_fallible_value(result)
+        } else {
+            Ok(result)
         }
     }
 

@@ -421,7 +421,9 @@ impl Parser {
         }
 
         // Parse the first expression (for condition loops)
+        self.no_trailing_lambda = true;
         let first = self.parse_expr()?;
+        self.no_trailing_lambda = false;
 
         // for condition { body }
         if self.current_kind() == TokenKind::LBrace {

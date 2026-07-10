@@ -135,7 +135,13 @@ impl<'ctx> CodeGen<'ctx> {
             .build_conditional_branch(cond_val, body_block, exit);
 
         self.builder.position_at_end(body_block);
+        let saved_narrowing = self.narrowing.clone();
+        self.narrowing =
+            action_frontend::fallibility_narrowing::NarrowingContext::from_hir_loop_condition(
+                condition,
+            );
         let body_val = self.compile_hir_expr(body)?;
+        self.narrowing = saved_narrowing;
         self.rc_discard_value(&body_val)?;
         let _ = self.builder.build_unconditional_branch(header);
 

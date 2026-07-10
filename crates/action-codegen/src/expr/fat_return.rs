@@ -1,9 +1,11 @@
 //! Expression codegen (R4-3).
 
 use action_frontend::ast::*;
+use action_frontend::types::collection_kind_from_type;
 use inkwell::types::BasicTypeEnum;
 use inkwell::values::BasicValueEnum;
 
+use crate::type_helpers::val_kind_for_collection;
 use super::{llvm_err, CodeGen, InnerType, TypedValue, ValKind};
 
 impl<'ctx> CodeGen<'ctx> {
@@ -67,20 +69,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     pub(crate) fn heap_collection_kind(t: &Type) -> Option<ValKind> {
-        match t {
-            Type::Map(_, _) => Some(ValKind::Map),
-            Type::Set(_) => Some(ValKind::Set),
-            Type::Generic(base, _) if matches!(base.as_ref(), Type::Named(n) if n == "List" || n == "list") => {
-                Some(ValKind::List)
-            }
-            Type::Named(name) => match name.as_str() {
-                "map" | "Map" => Some(ValKind::Map),
-                "set" | "Set" => Some(ValKind::Set),
-                "list" | "List" => Some(ValKind::List),
-                _ => None,
-            },
-            _ => None,
-        }
+        collection_kind_from_type(t).map(val_kind_for_collection)
     }
 
     pub(crate) fn bv_to_typed(

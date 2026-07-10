@@ -12,12 +12,47 @@ pub fn mangle_name(name: &str, param_types: &[Type]) -> String {
     format!("{}_{}", name, parts.join("_"))
 }
 
-/// Normalize type aliases to canonical names.
+/// Normalize type aliases to canonical surface names.
 pub fn normalize_type_name(name: &str) -> &str {
     match name {
         "Str" => "String",
         "Double" => "Float",
+        "list" => "List",
+        "map" => "Map",
+        "set" => "Set",
         other => other,
+    }
+}
+
+/// List / Map / Set — the three collection families sharing runtime layout.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CollectionKind {
+    List,
+    Map,
+    Set,
+}
+
+/// Resolve a named type (any legacy casing) to a collection kind.
+pub fn collection_kind_from_type_name(name: &str) -> Option<CollectionKind> {
+    match normalize_type_name(name) {
+        "List" => Some(CollectionKind::List),
+        "Map" => Some(CollectionKind::Map),
+        "Set" => Some(CollectionKind::Set),
+        _ => None,
+    }
+}
+
+/// Resolve an AST type to a collection kind (`List[Int]`, bare `List`, `Type::Map`, …).
+pub fn collection_kind_from_type(ty: &Type) -> Option<CollectionKind> {
+    match ty {
+        Type::Named(n) => collection_kind_from_type_name(n),
+        Type::Generic(base, _) => match base.as_ref() {
+            Type::Named(n) => collection_kind_from_type_name(n),
+            _ => None,
+        },
+        Type::Map(_, _) => Some(CollectionKind::Map),
+        Type::Set(_) => Some(CollectionKind::Set),
+        _ => None,
     }
 }
 
@@ -36,26 +71,11 @@ fn ptr_pointee(ty: &Type) -> Option<&Type> {
 
 /// Normalize list/map/set surface types for compatibility checks.
 fn normalize_collection_kind(ty: &Type) -> Option<&'static str> {
-    match ty {
-        Type::Named(n) => match normalize_type_name(n) {
-            "list" | "List" => Some("list"),
-            "map" | "Map" => Some("map"),
-            "set" | "Set" => Some("set"),
-            _ => None,
-        },
-        Type::Generic(base, _) => match base.as_ref() {
-            Type::Named(n) => match normalize_type_name(n) {
-                "list" | "List" => Some("list"),
-                "map" | "Map" => Some("map"),
-                "set" | "Set" => Some("set"),
-                _ => None,
-            },
-            _ => None,
-        },
-        Type::Map(_, _) => Some("map"),
-        Type::Set(_) => Some("set"),
-        _ => None,
-    }
+    collection_kind_from_type(ty).map(|k| match k {
+        CollectionKind::List => "List",
+        CollectionKind::Map => "Map",
+        CollectionKind::Set => "Set",
+    })
 }
 
 /// Check if two types are structurally compatible (no type-var binding).
@@ -231,17 +251,37 @@ mod tests {
 
     #[test]
     fn types_compatible_list_generic() {
-        let plain = Type::Named("list".into());
+        let plain = Type::Named("List".into());
         let generic = Type::Generic(
             Box::new(Type::Named("List".into())),
             vec![Type::Named("Int".into())],
         );
         assert!(types_compatible(&plain, &generic));
+        // Legacy lowercase internal spelling still compatible.
+        assert!(types_compatible(
+            &Type::Named("list".into()),
+            &generic
+        ));
+    }
+
+    #[test]
+    fn collection_kind_from_type_name_normalizes_casing() {
+        use super::CollectionKind;
+        assert_eq!(
+            collection_kind_from_type_name("List"),
+            Some(CollectionKind::List)
+        );
+        assert_eq!(
+            collection_kind_from_type_name("list"),
+            Some(CollectionKind::List)
+        );
+        assert_eq!(collection_kind_from_type_name("Int"), None);
     }
 
     #[test]
     fn normalize_type_aliases() {
         assert_eq!(normalize_type_name("Str"), "String");
         assert_eq!(normalize_type_name("Double"), "Float");
+        assert_eq!(normalize_type_name("list"), "List");
     }
 }

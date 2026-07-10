@@ -2,6 +2,7 @@
 
 use action_frontend::ast::{Literal, Type};
 use action_frontend::builtin;
+use action_frontend::fallible_safety::{hir_call_is_compile_time_safe, hir_index_access_is_compile_time_safe};
 use action_frontend::hir::{HirExpr, HirExprKind};
 use inkwell::basic_block::BasicBlock;
 use inkwell::types::BasicTypeEnum;
@@ -20,7 +21,7 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         ret_ast: &Type,
     ) -> Result<inkwell::types::StructType<'ctx>, String> {
-        let payload = self.ast_type_to_basic_type(ret_ast);
+        let payload = self.llvm_layout_for_type(ret_ast)?;
         Ok(self
             .context
             .struct_type(&[payload, self.bool_ty().into()], false))
@@ -1154,10 +1155,23 @@ impl<'ctx> CodeGen<'ctx> {
         self.try_compile_fallible_expr(expr)
     }
 
-    fn try_compile_fallible_expr(
+    pub(crate) fn try_compile_fallible_expr(
         &mut self,
         expr: &HirExpr,
     ) -> Result<Option<TypedValue<'ctx>>, String> {
+        match &expr.kind {
+            HirExprKind::Index(obj, idx)
+                if hir_index_access_is_compile_time_safe(obj, idx) =>
+            {
+                return Ok(None);
+            }
+            HirExprKind::Call { func, args, .. }
+                if hir_call_is_compile_time_safe(func, args) =>
+            {
+                return Ok(None);
+            }
+            _ => {}
+        }
         match &expr.kind {
             HirExprKind::Call {
                 func,
@@ -1624,6 +1638,9 @@ impl<'ctx> CodeGen<'ctx> {
         fallible: &HirExpr,
         fallback: &HirExpr,
     ) -> Result<TypedValue<'ctx>, String> {
+        if matches!(fallible.kind, HirExprKind::Block(_)) {
+            return self.compile_or_block_region_hir(fallible, fallback);
+        }
         self.or_block_depth += 1;
         let result = if let Some(v) = self.try_compile_fallible_lhs_for_or(fallible)? {
             self.compile_or_block_fallible_from_ok(fallback, v)
@@ -1642,6 +1659,114 @@ impl<'ctx> CodeGen<'ctx> {
         };
         self.or_block_depth -= 1;
         result
+    }
+
+    /// `{ stmts... } or { fallback }` — any fallible failure inside the block jumps to fallback.
+    fn compile_or_block_region_hir(
+        &mut self,
+        fallible: &HirExpr,
+        fallback: &HirExpr,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("or-block region: no function")?;
+        let fail_bb = self.context.append_basic_block(current_fn, "orblk_region_fail");
+
+        self.or_block_depth += 1;
+        self.push_fallible_fail_bb(fail_bb);
+
+        let result = self.compile_hir_expr(fallible)?;
+        let unwrapped = self.unwrap_fallible_value(result)?;
+
+        self.pop_fallible_fail_bb();
+        self.or_block_depth -= 1;
+
+        let ok_bb = self
+            .builder
+            .get_insert_block()
+            .ok_or("or-block region: no ok block")?;
+        let ok_has_term = ok_bb.get_terminator().is_some();
+
+        if ok_has_term {
+            self.builder.position_at_end(fail_bb);
+            self.emit_scope_cleanup()?;
+            let fb = self.compile_hir_expr(fallback)?;
+            let fb = self.unwrap_fallible_value(fb)?;
+            self.compile_return_value(fb)?;
+            return Ok(TypedValue::Unit);
+        }
+
+        let merge_bb = self.context.append_basic_block(current_fn, "orblk_region_merge");
+        self.builder
+            .build_unconditional_branch(merge_bb)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(fail_bb);
+        self.emit_scope_cleanup()?;
+        let fb = self.compile_hir_expr(fallback)?;
+        let fb = self.unwrap_fallible_value(fb)?;
+        self.builder
+            .build_unconditional_branch(merge_bb)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(merge_bb);
+        self.merge_or_block_values(&unwrapped, &fb, ok_bb, fail_bb)
+    }
+
+    fn merge_or_block_values(
+        &mut self,
+        ok_val: &TypedValue<'ctx>,
+        fb_val: &TypedValue<'ctx>,
+        ok_bb: inkwell::basic_block::BasicBlock<'ctx>,
+        fail_bb: inkwell::basic_block::BasicBlock<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        match (ok_val, fb_val) {
+            (&TypedValue::Int(a), &TypedValue::Int(b)) => {
+                let phi = self
+                    .builder
+                    .build_phi(self.i64_ty(), "or_region_int")
+                    .map_err(llvm_err)?;
+                phi.add_incoming(&[(&a, ok_bb), (&b, fail_bb)]);
+                Ok(TypedValue::Int(phi.as_basic_value().into_int_value()))
+            }
+            (&TypedValue::Float(a), &TypedValue::Float(b)) => {
+                let phi = self
+                    .builder
+                    .build_phi(self.f64_ty(), "or_region_float")
+                    .map_err(llvm_err)?;
+                phi.add_incoming(&[(&a, ok_bb), (&b, fail_bb)]);
+                Ok(TypedValue::Float(phi.as_basic_value().into_float_value()))
+            }
+            (&TypedValue::Bool(a), &TypedValue::Bool(b)) => {
+                let phi = self
+                    .builder
+                    .build_phi(self.bool_ty(), "or_region_bool")
+                    .map_err(llvm_err)?;
+                phi.add_incoming(&[(&a, ok_bb), (&b, fail_bb)]);
+                Ok(TypedValue::Bool(phi.as_basic_value().into_int_value()))
+            }
+            (&TypedValue::Str(a), &TypedValue::Str(b)) => {
+                let av = self.load_string(a)?;
+                let bv = self.load_string(b)?;
+                let phi = self
+                    .builder
+                    .build_phi(self.string_type, "or_region_str")
+                    .map_err(llvm_err)?;
+                phi.add_incoming(&[(&av, ok_bb), (&bv, fail_bb)]);
+                Ok(TypedValue::Str(phi.as_basic_value().into_pointer_value()))
+            }
+            (&TypedValue::Ptr(a), &TypedValue::Ptr(b)) => {
+                let phi = self
+                    .builder
+                    .build_phi(self.ptr_ty(), "or_region_ptr")
+                    .map_err(llvm_err)?;
+                phi.add_incoming(&[(&a, ok_bb), (&b, fail_bb)]);
+                Ok(TypedValue::Ptr(phi.as_basic_value().into_pointer_value()))
+            }
+            _ => Err("or-block region: incompatible fallback types".into()),
+        }
     }
 
     fn compile_or_block_fallible_ptr(
@@ -1839,6 +1964,19 @@ impl<'ctx> CodeGen<'ctx> {
             val: fat_alloca,
             ok: ok_i1,
         })
+    }
+
+    pub(crate) fn unwrap_if_compile_time_safe_call(
+        &self,
+        func: &HirExpr,
+        args: &[HirExpr],
+        v: TypedValue<'ctx>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        if hir_call_is_compile_time_safe(func, args) {
+            self.unwrap_fallible_value(v)
+        } else {
+            Ok(v)
+        }
     }
 
     pub(crate) fn unwrap_fallible_value(

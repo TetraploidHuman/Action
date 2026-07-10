@@ -47,7 +47,7 @@ fn string() -> Type {
     Type::Named("String".into())
 }
 fn list() -> Type {
-    Type::Named("list".into())
+    Type::Named("List".into())
 }
 fn unit() -> Type {
     Type::Unit
@@ -813,17 +813,17 @@ pub fn lookup_ufcs_return_type(kind: UfcsReceiverKind, method: &str) -> Option<T
 
 /// Map a typechecker receiver type to a UFCS kind.
 pub fn receiver_kind_from_type(ty: &Type) -> Option<UfcsReceiverKind> {
+    use crate::types::collection_kind_from_type;
     match ty {
-        Type::Named(n) if n == "list" || n == "List" => Some(UfcsReceiverKind::List),
         Type::Named(n) if n == "String" => Some(UfcsReceiverKind::String),
-        Type::Generic(base, _) if matches!(base.as_ref(), Type::Named(n) if n == "List" || n == "list") => {
-            Some(UfcsReceiverKind::List)
-        }
         Type::LazyList(_) => Some(UfcsReceiverKind::List),
         Type::Map(_, _) => Some(UfcsReceiverKind::Map),
         Type::Set(_) => Some(UfcsReceiverKind::Set),
         Type::Stream(_) => Some(UfcsReceiverKind::Stream),
         Type::Task(_) => Some(UfcsReceiverKind::Task),
+        ty if collection_kind_from_type(ty) == Some(crate::types::CollectionKind::List) => {
+            Some(UfcsReceiverKind::List)
+        }
         Type::Named(_) => Some(UfcsReceiverKind::Collection),
         _ => None,
     }

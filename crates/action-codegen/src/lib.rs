@@ -88,6 +88,8 @@ pub struct CodeGen<'ctx> {
     pub(crate) in_unsafe: bool,
     /// Fallibility context copied from CheckedProgram (R7).
     pub(crate) fallibility: action_frontend::typecheck::FallibilityContext,
+    /// Active fallibility narrowing facts (loop bounds, when guards).
+    pub(crate) narrowing: action_frontend::fallibility_narrowing::NarrowingContext,
     /// Depth of nested `or { }` blocks during codegen.
     pub(crate) or_block_depth: usize,
     /// Stack of fail basic blocks for fallible regions (or-block / fn or).
@@ -258,6 +260,7 @@ impl<'ctx> CodeGen<'ctx> {
             overloaded_functions: HashMap::new(),
             in_unsafe: false,
             fallibility: action_frontend::typecheck::FallibilityContext::new(),
+            narrowing: action_frontend::fallibility_narrowing::NarrowingContext::default(),
             or_block_depth: 0,
             fallible_fail_stack: Vec::new(),
             propagating_fallible_ret: None,

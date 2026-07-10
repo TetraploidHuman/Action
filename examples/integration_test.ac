@@ -1,5 +1,5 @@
 fun main() {
-    print((head(List[42]) or { 0 }) * 2)
+    print(head(List[42]) * 2)
     print(42 + 10)
     print(head(List[]) or { 99 })
     print(31 + 10)

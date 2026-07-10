@@ -1,0 +1,13 @@
+fun sumIndexed(lst: List[Int]) -> Int {
+    var total = 0
+    var i = 0
+    for i < len(lst) {
+        total = total + lst.get(i)
+        i = i + 1
+    }
+    total
+}
+
+fun main() {
+    println(sumIndexed(List[1, 2, 3]))
+}

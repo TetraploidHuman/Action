@@ -502,7 +502,7 @@ impl<'ctx> CodeGen<'ctx> {
                     if inc {
                         self.rc_inc(data_ptr)?;
                     } else {
-                        let field_kind = self.struct_field_val_kind(&struct_ty, i as u32);
+                        let field_kind = self.struct_field_val_kind(&struct_ty, i as u32)?;
                         self.rc_dec_heap_collection(sv, field_kind)?;
                     }
                 }

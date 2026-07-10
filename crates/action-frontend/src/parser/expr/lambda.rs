@@ -66,6 +66,14 @@ impl Parser {
             return Err(self.error("Use Map[] for empty map literal, not {:}"));
         }
 
+        // `{ val ...; return x }` in expression position → plain block (supports `{ } or { }`).
+        if self.brace_starts_statement_block() {
+            let return_on_close = !self.block_parse_stack.is_empty();
+            self.block_parse_stack
+                .push(BlockFrame::new(BlockFrameKind::PlainBlock, return_on_close));
+            return self.run_block_parse_loop();
+        }
+
         // To distinguish struct literal from lambda:
         // - {x = expr, ...} or {x: expr, ...} → struct (Ident + '=' or ':')
         // - {x, y} → struct if no '->' before '}' (shorthand fields)
@@ -220,6 +228,27 @@ impl Parser {
         .into())
     }
 
+    /// After `{` was consumed: `{ val/for/return ... }` is a statement block, not a lambda.
+    pub(crate) fn brace_starts_statement_block(&self) -> bool {
+        matches!(
+            self.current_kind(),
+            TokenKind::Var
+                | TokenKind::Val
+                | TokenKind::Lazy
+                | TokenKind::For
+                | TokenKind::When
+                | TokenKind::Return
+                | TokenKind::Const
+                | TokenKind::Fun
+                | TokenKind::Import
+                | TokenKind::Export
+                | TokenKind::Type
+                | TokenKind::Enum
+                | TokenKind::External
+                | TokenKind::Module
+        )
+    }
+
     pub(crate) fn brace_starts_block_body(&self) -> bool {
         if self.current_kind() != TokenKind::LBrace {
             return false;
@@ -230,6 +259,20 @@ impl Parser {
         }
         match &self.tokens[inner_pos].kind {
             TokenKind::RBrace | TokenKind::Colon => false,
+            TokenKind::Var
+            | TokenKind::Val
+            | TokenKind::Lazy
+            | TokenKind::For
+            | TokenKind::When
+            | TokenKind::Return
+            | TokenKind::Const
+            | TokenKind::Fun
+            | TokenKind::Import
+            | TokenKind::Export
+            | TokenKind::Type
+            | TokenKind::Enum
+            | TokenKind::External
+            | TokenKind::Module => false,
             TokenKind::Ident(name) => match self.tokens.get(inner_pos + 1).map(|t| &t.kind) {
                 Some(TokenKind::Eq) | Some(TokenKind::Colon) => false,
                 Some(TokenKind::Comma) => !self.scan_ahead_for_arrow_from(inner_pos),

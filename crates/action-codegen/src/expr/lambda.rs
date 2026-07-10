@@ -68,7 +68,7 @@ impl<'ctx> CodeGen<'ctx> {
         for _ in params.iter() {
             param_tys.push(BasicMetadataTypeEnum::from(i64));
         }
-        let fn_type = self.build_fn_type(None, &lambda_name, &param_tys);
+        let fn_type = self.build_fn_type(None, &lambda_name, &param_tys)?;
 
         let function = self.module.add_function(&lambda_name, fn_type, None);
         let fn_ptr = function.as_global_value().as_pointer_value();

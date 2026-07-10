@@ -1,4 +1,5 @@
 use super::*;
+use crate::fallibility_narrowing::{call_is_proven_safe, index_access_is_proven_safe, NarrowingContext};
 use crate::types::{infer_type_args, mangle_name, types_compatible};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -59,14 +60,103 @@ impl TypeChecker {
             .or_else(|| Self::collection_kind_from_ast(obj))
     }
 
-    fn expr_is_fallible(&self, expr: &Expr) -> bool {
+    fn index_access_is_proven_safe(&self, obj: &Expr, idx: &Expr) -> bool {
+        index_access_is_proven_safe(obj, idx, &self.narrowing)
+    }
+
+    fn call_is_proven_safe(&self, func: &Expr, args: &[Expr]) -> bool {
+        call_is_proven_safe(func, args, &self.narrowing)
+    }
+
+    fn expr_contains_fallible(&self, expr: &Expr) -> bool {
         match &expr.kind {
-            ExprKind::Call { func, .. } => self.fallibility.call_expr_is_fallible(func),
-            ExprKind::Index(_, _) => true,
-            ExprKind::FieldAccess(_, _) => true,
-            ExprKind::OrBlock { fallible, .. } => self.expr_is_fallible(fallible),
+            ExprKind::Call { func, args, .. } => {
+                self.fallibility.call_expr_is_fallible(func) && !self.call_is_proven_safe(func, args)
+            }
+            ExprKind::Index(obj, idx) => {
+                self.collection_index_receiver_kind(obj).is_some()
+                    && !self.index_access_is_proven_safe(obj, idx)
+            }
+            ExprKind::Block(stmts) => stmts.iter().any(|s| self.stmt_contains_fallible(s)),
+            ExprKind::Binary(l, _, r) => self.expr_contains_fallible(l) || self.expr_contains_fallible(r),
+            ExprKind::Unary(_, inner) => self.expr_contains_fallible(inner),
+            ExprKind::When(w) => self.when_contains_fallible(w),
+            ExprKind::For(f) => self.for_contains_fallible(f),
+            ExprKind::OrBlock { fallible, .. } => self.expr_contains_fallible(fallible),
+            ExprKind::Assign { target, value, .. } => {
+                self.expr_contains_fallible(target) || self.expr_contains_fallible(value)
+            }
+            ExprKind::Lambda { body, .. } => self.expr_contains_fallible(body),
+            ExprKind::Copy(inner) | ExprKind::Unsafe(inner) => self.expr_contains_fallible(inner),
+            ExprKind::StructLiteral(fields) => fields.iter().any(|(_, e)| self.expr_contains_fallible(e)),
+            ExprKind::MapLiteral(entries) => entries
+                .iter()
+                .any(|(k, v)| self.expr_contains_fallible(k) || self.expr_contains_fallible(v)),
+            ExprKind::SetLiteral(elems) => elems.iter().any(|e| self.expr_contains_fallible(e)),
+            ExprKind::Tuple(items) => items.iter().any(|(_, e)| self.expr_contains_fallible(e)),
+            ExprKind::StringInterpolate(parts) => parts.iter().any(|p| {
+                matches!(p, crate::ast::StringPart::Expr(e) if self.expr_contains_fallible(e))
+            }),
             _ => false,
         }
+    }
+
+    fn stmt_contains_fallible(&self, stmt: &Stmt) -> bool {
+        match stmt {
+            Stmt::Let { value, .. } | Stmt::Expr { expr: value, .. } => self.expr_contains_fallible(value),
+            Stmt::Return { value: Some(v), .. } => self.expr_contains_fallible(v),
+            _ => false,
+        }
+    }
+
+    fn when_contains_fallible(&self, w: &When) -> bool {
+        use crate::ast::WhenKind;
+        match &w.kind {
+            WhenKind::OneLine { condition, then_expr, else_expr } => {
+                self.expr_contains_fallible(condition)
+                    || self.expr_contains_fallible(then_expr)
+                    || self.expr_contains_fallible(else_expr)
+            }
+            WhenKind::ValueMatch { value, arms } => {
+                self.expr_contains_fallible(value)
+                    || arms.iter().any(|arm| {
+                        arm.guard
+                            .as_ref()
+                            .is_some_and(|g| self.expr_contains_fallible(g))
+                            || self.expr_contains_fallible(&arm.body)
+                    })
+            }
+            WhenKind::ConditionChain { arms } => arms.iter().any(|arm| {
+                arm.guard
+                    .as_ref()
+                    .is_some_and(|g| self.expr_contains_fallible(g))
+                    || self.expr_contains_fallible(&arm.body)
+            }),
+        }
+    }
+
+    fn for_contains_fallible(&self, f: &For) -> bool {
+        use crate::ast::ForKind;
+        match &f.kind {
+            ForKind::Iterate { iterable, body, .. } => {
+                self.expr_contains_fallible(iterable) || self.expr_contains_fallible(body)
+            }
+            ForKind::IterateWithIndex { iterable, body, .. } => {
+                self.expr_contains_fallible(iterable) || self.expr_contains_fallible(body)
+            }
+            ForKind::Condition { condition, body } => {
+                self.expr_contains_fallible(condition) || self.expr_contains_fallible(body)
+            }
+            ForKind::Infinite { body } => self.expr_contains_fallible(body),
+            ForKind::NestedIterate { bindings, body, .. } => {
+                bindings.iter().any(|(_, e)| self.expr_contains_fallible(e))
+                    || self.expr_contains_fallible(body)
+            }
+        }
+    }
+
+    fn expr_is_fallible(&self, expr: &Expr) -> bool {
+        self.expr_contains_fallible(expr)
     }
 
     fn collect_lvalue_errors(&mut self, expr: &Expr, errors: &mut Vec<CompilerError>) {
@@ -140,7 +230,13 @@ impl TypeChecker {
                             saved_pattern_vars.push((pv.clone(), old));
                         }
 
+                        let saved_narrow = self.narrowing.clone();
+                        if let Some(guard) = &arm.guard {
+                            self.collect_expr_errors(guard, errors);
+                            self.narrowing = self.narrowing.with_guard(guard);
+                        }
                         self.collect_expr_errors(&arm.body, errors);
+                        self.narrowing = saved_narrow;
                         // Restore pattern variable bindings
                         for (name, old) in saved_pattern_vars {
                             if let Some(old_val) = old {
@@ -167,7 +263,9 @@ impl TypeChecker {
                 args,
                 trailing_lambda,
             } => {
-                self.check_fallible_call_e001(func, errors);
+                if !self.call_is_proven_safe(func, args) {
+                    self.check_fallible_call_e001(func, errors);
+                }
                 if let Err(e) = self.check_call(func, args) {
                     errors.push(e);
                 }
@@ -241,7 +339,10 @@ impl TypeChecker {
                     condition, body, ..
                 } => {
                     self.collect_expr_errors(condition, errors);
+                    let saved = self.narrowing.clone();
+                    self.narrowing = NarrowingContext::from_loop_condition(condition);
                     self.collect_expr_errors(body, errors);
+                    self.narrowing = saved;
                 }
                 ForKind::Infinite { body, .. } => {
                     self.collect_expr_errors(body, errors);
@@ -333,32 +434,34 @@ impl TypeChecker {
             ExprKind::Index(obj, idx) => {
                 self.collect_expr_errors(obj, errors);
                 self.collect_expr_errors(idx, errors);
-                match self.collection_index_receiver_kind(obj) {
-                    Some(CollectionIndexKind::List) => {
-                        if let Some(err) = self
-                            .fallibility
-                            .check_r6_fallible_index_needs_or(self.current_span)
-                        {
-                            errors.push(err);
+                if !self.index_access_is_proven_safe(obj, idx) {
+                    match self.collection_index_receiver_kind(obj) {
+                        Some(CollectionIndexKind::List) => {
+                            if let Some(err) = self
+                                .fallibility
+                                .check_r6_fallible_index_needs_or(self.current_span)
+                            {
+                                errors.push(err);
+                            }
                         }
-                    }
-                    Some(CollectionIndexKind::Map) => {
-                        if let Some(err) = self
-                            .fallibility
-                            .check_r8_map_index_needs_or(self.current_span)
-                        {
-                            errors.push(err);
+                        Some(CollectionIndexKind::Map) => {
+                            if let Some(err) = self
+                                .fallibility
+                                .check_r8_map_index_needs_or(self.current_span)
+                            {
+                                errors.push(err);
+                            }
                         }
-                    }
-                    Some(CollectionIndexKind::Set) => {
-                        if let Some(err) = self
-                            .fallibility
-                            .check_r9_set_index_needs_or(self.current_span)
-                        {
-                            errors.push(err);
+                        Some(CollectionIndexKind::Set) => {
+                            if let Some(err) = self
+                                .fallibility
+                                .check_r9_set_index_needs_or(self.current_span)
+                            {
+                                errors.push(err);
+                            }
                         }
+                        None => {}
                     }
-                    None => {}
                 }
             }
             ExprKind::Assign { target, value, .. } => {

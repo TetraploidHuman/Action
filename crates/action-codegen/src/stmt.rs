@@ -327,15 +327,15 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_alloca(pv.get_type(), &param.name)
                     .map_err(llvm_err)?;
                 self.builder.build_store(alloca, pv).map_err(llvm_err)?;
-                let kind = self.param_val_kind(param.ty.as_ref());
+                let kind = self.param_val_kind(param.ty.as_ref())?;
                 param_slots.push((alloca, pv.get_type(), kind));
                 if let Some(Type::Function(param_tys_ast, ret_ast)) = param.ty.as_ref() {
                     let ret = Some(ret_ast.as_ref());
                     let param_llvm_tys: Vec<BasicMetadataTypeEnum> = param_tys_ast
                         .iter()
                         .map(|t| self.ast_type_to_llvm(Some(t)))
-                        .collect();
-                    let fn_type = self.build_fn_type(ret, name, &param_llvm_tys);
+                        .collect::<Result<_, _>>()?;
+                    let fn_type = self.build_fn_type(ret, name, &param_llvm_tys)?;
                     self.scope.set_with_fn_type(
                         param.name.clone(),
                         alloca,
@@ -728,139 +728,6 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         Ok(())
-    }
-
-    pub(super) fn ast_type_to_llvm(
-        &mut self,
-        ty: Option<&Type>,
-    ) -> inkwell::types::BasicMetadataTypeEnum<'ctx> {
-        match ty {
-            None | Some(Type::Unit) => self.i64_ty().into(),
-            Some(Type::Named(n)) => match n.as_str() {
-                "Float" | "Double" => self.f64_ty().into(),
-                "Bool" => self.bool_ty().into(),
-                "String" | "Str" => self.string_type.into(),
-                "Unit" => self.i64_ty().into(),
-                name => {
-                    if let Some(st) = self.type_layout.named_structs.get(name) {
-                        (*st).into()
-                    } else if let Some(et) = self.type_layout.enum_types.get(name) {
-                        (*et).into()
-                    } else {
-                        self.i64_ty().into()
-                    }
-                }
-            },
-            Some(Type::Function(_, _)) => self.ptr_ty().into(),
-            Some(Type::Generic(base, _)) => match base.as_ref() {
-                Type::Named(n) => match n.as_str() {
-                    "list" | "set" | "map" => self.list_type.into(),
-                    "Task" => self.task_type.into(),
-                    "Stream" => self.ptr_ty().into(),
-                    "LazyList" => self.lazylist_type.into(),
-                    "Ptr" => self.ptr_ty().into(),
-                    _ => self.i64_ty().into(),
-                },
-                _ => self.i64_ty().into(),
-            },
-            _ => self.i64_ty().into(),
-        }
-    }
-
-    pub(super) fn ast_type_to_basic_type(&mut self, ty: &Type) -> BasicTypeEnum<'ctx> {
-        match ty {
-            Type::Named(n) => match n.as_str() {
-                "Int" => self.i64_ty().into(),
-                "Float" | "Double" => self.f64_ty().into(),
-                "Bool" => self.bool_ty().into(),
-                "String" | "Str" => self.string_type.into(),
-                "Unit" => self.i64_ty().into(),
-                "list" | "set" | "map" => self.list_type.into(),
-                "LazyList" => self.lazylist_type.into(),
-                "Task" => self.task_type.into(),
-                "Stream" => self.ptr_ty().into(),
-                "Ptr" | "CString" | "FileHandle" => self.ptr_ty().into(),
-                name => {
-                    if let Some(st) = self.type_layout.named_structs.get(name) {
-                        (*st).into()
-                    } else if let Some(et) = self.type_layout.enum_types.get(name) {
-                        (*et).into()
-                    } else {
-                        self.i64_ty().into()
-                    }
-                }
-            },
-            Type::Struct(fields) => {
-                let field_tys: Vec<BasicTypeEnum> = fields
-                    .iter()
-                    .map(|(_, fty)| self.ast_type_to_basic_type(fty))
-                    .collect();
-                self.context.struct_type(&field_tys, false).into()
-            }
-            Type::Function(_, _) => self.ptr_ty().into(),
-            Type::Map(_, _) => self.list_type.into(),
-            Type::Set(_) => self.list_type.into(),
-            Type::Task(_) => self.task_type.into(),
-            Type::Stream(_) => self.ptr_ty().into(),
-            Type::LazyList(_) => self.lazylist_type.into(),
-            Type::CString | Type::Ptr(_) | Type::FileHandle => self.ptr_ty().into(),
-            Type::Generic(base, _) => match base.as_ref() {
-                Type::Named(n) => match n.as_str() {
-                    "list" => return self.list_type.into(),
-                    "set" => return self.list_type.into(),
-                    "map" => return self.list_type.into(),
-                    "Task" => return self.task_type.into(),
-                    "Stream" => return self.ptr_ty().into(),
-                    "LazyList" => return self.lazylist_type.into(),
-                    "Ptr" => return self.ptr_ty().into(),
-                    _ => self.i64_ty().into(),
-                },
-                _ => self.i64_ty().into(),
-            },
-            _ => self.i64_ty().into(),
-        }
-    }
-
-    pub(super) fn param_val_kind(&self, ty: Option<&Type>) -> ValKind {
-        match ty {
-            Some(Type::Named(n)) => match n.as_str() {
-                "Float" => ValKind::Float,
-                "Bool" => ValKind::Bool,
-                "String" | "Str" => ValKind::Str,
-                name => {
-                    if self.type_layout.named_structs.contains_key(name) {
-                        ValKind::Struct
-                    } else if self.type_layout.enum_types.contains_key(name) {
-                        ValKind::Enum
-                    } else {
-                        ValKind::Int
-                    }
-                }
-            },
-            Some(Type::Function(_, _)) => ValKind::Fn,
-            Some(Type::Map(_, _)) => ValKind::Map,
-            Some(Type::Set(_)) => ValKind::Set,
-            Some(Type::Task(_)) => ValKind::Task,
-            Some(Type::Stream(_)) => ValKind::Stream,
-            Some(Type::LazyList(_)) => ValKind::LazyList,
-            Some(Type::Generic(base, _)) => match base.as_ref() {
-                Type::Named(n) => match n.as_str() {
-                    "Float" => ValKind::Float,
-                    "Bool" => ValKind::Bool,
-                    "String" | "Str" => ValKind::Str,
-                    "list" => ValKind::List,
-                    "set" => ValKind::Set,
-                    "map" => ValKind::Map,
-                    "Task" => ValKind::Task,
-                    "Stream" => ValKind::Stream,
-                    "LazyList" => ValKind::LazyList,
-                    "Ptr" => ValKind::Ptr,
-                    _ => ValKind::Int,
-                },
-                _ => ValKind::Int,
-            },
-            _ => ValKind::Int,
-        }
     }
 
     // ---- Expressions (all &mut self since they may assign) ----

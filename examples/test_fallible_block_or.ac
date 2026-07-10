@@ -1,0 +1,13 @@
+fun safeParse(s: String) -> Int {
+    {
+        val n = parseInt(s)
+        return n
+    } or { -1 }
+}
+
+fun main() {
+    println(List[10, 20, 30].get(0))
+    println(head(List[99]))
+    println(safeParse("42"))
+    println(safeParse("nope"))
+}

@@ -5,14 +5,178 @@
 
 use action_frontend::ast::*;
 use action_frontend::hir::{HirExpr, HirExprKind};
-use inkwell::types::{BasicTypeEnum, StructType};
+use action_frontend::types::{collection_kind_from_type, collection_kind_from_type_name, normalize_type_name, CollectionKind};
+use inkwell::types::{BasicType, BasicTypeEnum, StructType};
 use inkwell::values::{BasicValue, BasicValueEnum};
 
 use super::{llvm_err, CodeGen, TypedValue, ValKind};
 use inkwell::types::BasicMetadataTypeEnum;
 use inkwell::types::FunctionType;
 
+pub(crate) fn val_kind_for_collection(kind: CollectionKind) -> ValKind {
+    match kind {
+        CollectionKind::List => ValKind::List,
+        CollectionKind::Map => ValKind::Map,
+        CollectionKind::Set => ValKind::Set,
+    }
+}
+
+fn codegen_unsupported_type(ty: &Type) -> String {
+    format!("codegen: unsupported type '{ty}' (no LLVM layout mapping)")
+}
+
 impl<'ctx> CodeGen<'ctx> {
+    /// Map a fully-resolved AST type to LLVM layout. Unknown types are errors, not Int.
+    pub(super) fn llvm_layout_for_type(
+        &mut self,
+        ty: &Type,
+    ) -> Result<BasicTypeEnum<'ctx>, String> {
+        if collection_kind_from_type(ty).is_some() {
+            return Ok(self.collection_layout_type());
+        }
+        match ty {
+            Type::Named(n) => {
+                match normalize_type_name(n) {
+                    "Int" | "Char" | "Unit" => Ok(self.i64_ty().into()),
+                    "Float" => Ok(self.f64_ty().into()),
+                    "Bool" => Ok(self.bool_ty().into()),
+                    "String" => Ok(self.string_type.into()),
+                    "LazyList" => Ok(self.lazylist_type.into()),
+                    "Task" => Ok(self.task_type.into()),
+                    "Stream" => Ok(self.ptr_ty().into()),
+                    "Ptr" | "CString" | "FileHandle" => Ok(self.ptr_ty().into()),
+                    name => {
+                        if let Some(st) = self.type_layout.named_structs.get(name) {
+                            Ok((*st).into())
+                        } else if let Some(et) = self.type_layout.enum_types.get(name) {
+                            Ok((*et).into())
+                        } else {
+                            Err(codegen_unsupported_type(ty))
+                        }
+                    }
+                }
+            }
+            Type::Struct(fields) => {
+                let field_tys: Vec<BasicTypeEnum> = fields
+                    .iter()
+                    .map(|(_, fty)| self.llvm_layout_for_type(fty))
+                    .collect::<Result<_, _>>()?;
+                Ok(self.context.struct_type(&field_tys, false).into())
+            }
+            Type::Function(_, _) => Ok(self.ptr_ty().into()),
+            Type::Map(_, _) | Type::Set(_) => Ok(self.collection_layout_type()),
+            Type::Task(_) => Ok(self.task_type.into()),
+            Type::Stream(_) => Ok(self.ptr_ty().into()),
+            Type::LazyList(_) => Ok(self.lazylist_type.into()),
+            Type::CString | Type::Ptr(_) | Type::FileHandle => Ok(self.ptr_ty().into()),
+            Type::Unit => Ok(self.i64_ty().into()),
+            Type::Generic(base, _) => match base.as_ref() {
+                Type::Named(n) => match normalize_type_name(n) {
+                    "Task" => Ok(self.task_type.into()),
+                    "Stream" => Ok(self.ptr_ty().into()),
+                    "LazyList" => Ok(self.lazylist_type.into()),
+                    "Ptr" => Ok(self.ptr_ty().into()),
+                    name if collection_kind_from_type_name(name).is_some() => {
+                        Ok(self.collection_layout_type())
+                    }
+                    _ => Err(codegen_unsupported_type(ty)),
+                },
+                _ => Err(codegen_unsupported_type(ty)),
+            },
+            Type::TypeVar(name) => Err(format!(
+                "codegen: unresolved type variable '{name}' (instantiate before codegen)"
+            )),
+            // Ephemeral HM metavariable; HIR may still carry ?N after typecheck.
+            Type::InferVar(_) => Ok(self.i64_ty().into()),
+        }
+    }
+
+    pub(super) fn ast_type_to_basic_type(
+        &mut self,
+        ty: &Type,
+    ) -> Result<BasicTypeEnum<'ctx>, String> {
+        self.llvm_layout_for_type(ty)
+    }
+
+    pub(super) fn ast_type_to_llvm(
+        &mut self,
+        ty: Option<&Type>,
+    ) -> Result<inkwell::types::BasicMetadataTypeEnum<'ctx>, String> {
+        match ty {
+            None => Ok(self.i64_ty().into()),
+            Some(t) => self.llvm_layout_for_type(t).map(|b| b.into()),
+        }
+    }
+
+    fn val_kind_for_ast_type(&self, ty: &Type) -> Result<ValKind, String> {
+        if let Some(kind) = collection_kind_from_type(ty) {
+            return Ok(val_kind_for_collection(kind));
+        }
+        match ty {
+            Type::Named(n) => match normalize_type_name(n) {
+                "Int" | "Char" | "Unit" => Ok(ValKind::Int),
+                "Float" => Ok(ValKind::Float),
+                "Bool" => Ok(ValKind::Bool),
+                "String" => Ok(ValKind::Str),
+                "LazyList" => Ok(ValKind::LazyList),
+                "Task" => Ok(ValKind::Task),
+                "Stream" => Ok(ValKind::Stream),
+                "Ptr" | "CString" | "FileHandle" => Ok(ValKind::Ptr),
+                name => {
+                    if self.type_layout.named_structs.contains_key(name) {
+                        Ok(ValKind::Struct)
+                    } else if self.type_layout.enum_types.contains_key(name) {
+                        Ok(ValKind::Enum)
+                    } else {
+                        Err(codegen_unsupported_type(ty))
+                    }
+                }
+            },
+            Type::Function(_, _) => Ok(ValKind::Fn),
+            Type::Map(_, _) => Ok(ValKind::Map),
+            Type::Set(_) => Ok(ValKind::Set),
+            Type::Task(_) => Ok(ValKind::Task),
+            Type::Stream(_) => Ok(ValKind::Stream),
+            Type::LazyList(_) => Ok(ValKind::LazyList),
+            Type::Ptr(_) | Type::CString | Type::FileHandle => Ok(ValKind::Ptr),
+            Type::Struct(_) => Ok(ValKind::Struct),
+            Type::Unit => Ok(ValKind::Int),
+            Type::Generic(base, _) => match base.as_ref() {
+                Type::Named(n) => match normalize_type_name(n) {
+                    "Float" => Ok(ValKind::Float),
+                    "Bool" => Ok(ValKind::Bool),
+                    "String" => Ok(ValKind::Str),
+                    "Task" => Ok(ValKind::Task),
+                    "Stream" => Ok(ValKind::Stream),
+                    "LazyList" => Ok(ValKind::LazyList),
+                    "Ptr" => Ok(ValKind::Ptr),
+                    name if collection_kind_from_type_name(name).is_some() => {
+                        Ok(val_kind_for_collection(
+                            collection_kind_from_type_name(name).unwrap(),
+                        ))
+                    }
+                    _ => Err(codegen_unsupported_type(ty)),
+                },
+                _ => Err(codegen_unsupported_type(ty)),
+            },
+            Type::TypeVar(name) => Err(format!(
+                "codegen: unresolved type variable '{name}' (instantiate before codegen)"
+            )),
+            Type::InferVar(_) => Ok(ValKind::Int),
+        }
+    }
+
+    pub(super) fn param_val_kind(&self, ty: Option<&Type>) -> Result<ValKind, String> {
+        match ty {
+            None => Ok(ValKind::Int),
+            Some(t) => self.val_kind_for_ast_type(t),
+        }
+    }
+    /// LLVM struct type for List / Map / Set (shared `{ptr, len, height}` layout).
+    pub(super) fn collection_layout_type(&self) -> BasicTypeEnum<'ctx> {
+        self.list_type.into()
+    }
+
     pub(super) fn to_fat_struct(
         &mut self,
         val: &TypedValue<'ctx>,
@@ -282,9 +446,9 @@ impl<'ctx> CodeGen<'ctx> {
                             Type::Named("Int".into())
                         }
                         ValKind::Str => Type::Named("String".into()),
-                        ValKind::List => Type::Named("list".into()),
-                        ValKind::Map => Type::Named("map".into()),
-                        ValKind::Set => Type::Named("set".into()),
+                        ValKind::List => Type::Named("List".into()),
+                        ValKind::Map => Type::Named("Map".into()),
+                        ValKind::Set => Type::Named("Set".into()),
                         ValKind::Fn => Type::Named("Int".into()),
                         _ => Type::Named("Int".into()),
                     }
@@ -341,68 +505,18 @@ impl<'ctx> CodeGen<'ctx> {
         ret_ast: Option<&Type>,
         name: &str,
         param_tys: &[BasicMetadataTypeEnum<'ctx>],
-    ) -> FunctionType<'ctx> {
+    ) -> Result<FunctionType<'ctx>, String> {
         match ret_ast {
-            Some(Type::Unit) => self.void_ty().fn_type(param_tys, false),
-            Some(Type::Named(n)) => match n.as_str() {
-                "Float" | "Double" => self.f64_ty().fn_type(param_tys, false),
-                "Bool" => self.bool_ty().fn_type(param_tys, false),
-                "String" | "Str" => self.string_type.fn_type(param_tys, false),
-                "Unit" => self.void_ty().fn_type(param_tys, false),
-                "Int" => self.i64_ty().fn_type(param_tys, false),
-                "list" | "List" | "set" | "Set" | "map" | "Map" => {
-                    self.list_type.fn_type(param_tys, false)
-                }
-                "LazyList" => self.lazylist_type.fn_type(param_tys, false),
-                name => {
-                    if let Some(st) = self.type_layout.named_structs.get(name) {
-                        (*st).fn_type(param_tys, false)
-                    } else if let Some(et) = self.type_layout.enum_types.get(name) {
-                        (*et).fn_type(param_tys, false)
-                    } else {
-                        self.i64_ty().fn_type(param_tys, false)
-                    }
-                }
-            },
-            Some(Type::Function(_, _)) => self.ptr_ty().fn_type(param_tys, false),
-            None => {
-                if name == "main" {
-                    self.void_ty().fn_type(param_tys, false)
-                } else {
-                    // Use named fat-return type to distinguish from enum types
-                    self.fat_return_type.fn_type(param_tys, false)
-                }
+            None => Ok(if name == "main" {
+                self.void_ty().fn_type(param_tys, false)
+            } else {
+                self.fat_return_type.fn_type(param_tys, false)
+            }),
+            Some(Type::Unit) => Ok(self.void_ty().fn_type(param_tys, false)),
+            Some(ty) => {
+                let ret_ty = self.llvm_layout_for_type(ty)?;
+                Ok(ret_ty.fn_type(param_tys, false))
             }
-            Some(Type::Struct(fields)) => {
-                let field_tys: Vec<BasicTypeEnum> = fields
-                    .iter()
-                    .map(|(_, ty)| self.ast_type_to_basic_type(ty))
-                    .collect();
-                let st = self.context.struct_type(&field_tys, false);
-                st.fn_type(param_tys, false)
-            }
-            Some(Type::Map(_, _)) | Some(Type::Set(_)) => {
-                // Map and Set use the {ptr, i64, i64} list layout
-                let fat_ty = self.list_type;
-                fat_ty.fn_type(param_tys, false)
-            }
-            Some(Type::Ptr(_)) | Some(Type::CString) | Some(Type::FileHandle) => {
-                self.ptr_ty().fn_type(param_tys, false)
-            }
-            Some(Type::Generic(base, _)) => match base.as_ref() {
-                Type::Named(n) => match n.as_str() {
-                    "list" | "List" | "set" | "Set" | "map" | "Map" => {
-                        self.list_type.fn_type(param_tys, false)
-                    }
-                    "Task" => self.task_type.fn_type(param_tys, false),
-                    "Stream" => self.ptr_ty().fn_type(param_tys, false),
-                    "LazyList" => self.lazylist_type.fn_type(param_tys, false),
-                    "Ptr" => self.ptr_ty().fn_type(param_tys, false),
-                    _ => self.string_type.fn_type(param_tys, false),
-                },
-                _ => self.string_type.fn_type(param_tys, false),
-            },
-            _ => self.string_type.fn_type(param_tys, false),
         }
     }
 
@@ -410,12 +524,12 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         ret_ast: &Type,
         param_tys: &[BasicMetadataTypeEnum<'ctx>],
-    ) -> inkwell::types::FunctionType<'ctx> {
-        let payload = self.ast_type_to_basic_type(ret_ast);
+    ) -> Result<inkwell::types::FunctionType<'ctx>, String> {
+        let payload = self.llvm_layout_for_type(ret_ast)?;
         let st = self
             .context
             .struct_type(&[payload, self.bool_ty().into()], false);
-        st.fn_type(param_tys, false)
+        Ok(st.fn_type(param_tys, false))
     }
 
     /// Mangle a function name by appending param types: add(Int,Float) → add_Int_Float
@@ -431,7 +545,7 @@ impl<'ctx> CodeGen<'ctx> {
             TypedValue::Bool(_) => "Bool".to_string(),
             TypedValue::Str(_) => "String".to_string(),
             TypedValue::Fn(_, _) | TypedValue::Closure { .. } => "Fn".to_string(),
-            TypedValue::List(_) => "list".to_string(),
+            TypedValue::List(_) => "List".to_string(),
             TypedValue::Struct(_, st) => {
                 // Try to find the named struct type
                 for (name, ty) in &self.type_layout.named_structs {
@@ -446,8 +560,8 @@ impl<'ctx> CodeGen<'ctx> {
                 // we use the registry to find the enum name
                 "Enum".to_string()
             }
-            TypedValue::Map(_) => "map".to_string(),
-            TypedValue::Set(_) => "set".to_string(),
+            TypedValue::Map(_) => "Map".to_string(),
+            TypedValue::Set(_) => "Set".to_string(),
             TypedValue::Task(_) => "Task".to_string(),
             TypedValue::Stream(_) => "Stream".to_string(),
             TypedValue::LazyList(_) => "LazyList".to_string(),

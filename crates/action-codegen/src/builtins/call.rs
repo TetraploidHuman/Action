@@ -47,8 +47,9 @@ impl<'ctx> CodeGen<'ctx> {
                 if !args.is_empty() {
                     return Err("list.head expects 0 arguments".to_string());
                 }
+                let result = self.compile_head_fallible_on_list_ptr(lp)?;
                 self.rc_free_intermediate(recv_val)?;
-                self.compile_head_fallible_on_list_ptr(lp).map(Some)
+                Ok(Some(result))
             }
             "tail" => {
                 if !args.is_empty() {
@@ -107,8 +108,9 @@ impl<'ctx> CodeGen<'ctx> {
                     TypedValue::Int(v) => v,
                     _ => return Err("list.get: index must be Int".to_string()),
                 };
+                let result = self.compile_list_get_fallible_on_ptr(lp, iv)?;
                 self.rc_free_intermediate(recv_val)?;
-                self.compile_list_get_fallible_on_ptr(lp, iv).map(Some)
+                Ok(Some(result))
             }
             "contains" => {
                 if args.len() != 1 {
@@ -148,8 +150,9 @@ impl<'ctx> CodeGen<'ctx> {
                 if !args.is_empty() {
                     return Err("list.last expects 0 arguments".to_string());
                 }
+                let result = self.compile_last_fallible_on_list_ptr(lp)?;
                 self.rc_free_intermediate(recv_val)?;
-                self.compile_last_fallible_on_list_ptr(lp).map(Some)
+                Ok(Some(result))
             }
             "reverse" => {
                 if !args.is_empty() {

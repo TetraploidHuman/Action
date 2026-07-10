@@ -5,6 +5,8 @@ mod expr_infer;
 mod fallibility;
 mod inference;
 
+use crate::fallibility_narrowing::NarrowingContext;
+
 pub use fallibility::FallibilityContext;
 
 pub use crate::type_registry::{EnumInfo, EnumVariantInfo, StructInfo, TypeRegistry};
@@ -24,6 +26,7 @@ pub struct TypeChecker {
     pub(crate) generic_funs: HashMap<String, Stmt>,
     pub(crate) mutable_vars: HashSet<String>,
     pub fallibility: FallibilityContext,
+    pub(crate) narrowing: NarrowingContext,
 }
 
 impl TypeChecker {
@@ -35,6 +38,7 @@ impl TypeChecker {
             generic_funs: HashMap::new(),
             mutable_vars: HashSet::new(),
             fallibility: FallibilityContext::new(),
+            narrowing: NarrowingContext::default(),
         }
     }
 
@@ -569,6 +573,62 @@ mod tests {
                 errors
             );
         }
+    }
+
+    #[test]
+    fn test_compile_time_safe_index_no_or() {
+        let errors = check_source("fun main() { println(List[1, 2, 3].get(0)) }");
+        assert!(
+            !errors
+                .iter()
+                .any(|e| matches!(
+                    e.code,
+                    Some(crate::error::DiagnosticCode::E006)
+                        | Some(crate::error::DiagnosticCode::E001)
+                )),
+            "compile-time safe get should not require or: {:?}",
+            errors
+        );
+    }
+
+    #[test]
+    fn test_narrowing_for_i_lt_len_no_or() {
+        let errors = check_source(
+            "fun f(lst: List[Int]) -> Int { var i = 0; for i < len(lst) { val x = lst.get(i); i = i + 1 }; 0 }",
+        );
+        assert!(
+            !errors
+                .iter()
+                .any(|e| e.code == Some(crate::error::DiagnosticCode::E006)),
+            "i < lst.len() should narrow lst.get(i): {:?}",
+            errors
+        );
+    }
+
+    #[test]
+    fn test_block_or_region_no_inner_or() {
+        let errors = check_source(
+            "fun f() -> Int { { val n = parseInt(\"42\"); return n } or { -1 } }",
+        );
+        assert!(
+            !errors
+                .iter()
+                .any(|e| e.code == Some(crate::error::DiagnosticCode::E001)),
+            "block or region should cover inner fallible calls: {:?}",
+            errors
+        );
+    }
+
+    #[test]
+    fn test_e006_still_required_for_dynamic_index() {
+        let errors = check_source("fun main() { val lst = List[1, 2]; val i = 0; println(lst[i]) }");
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.code == Some(crate::error::DiagnosticCode::E006)),
+            "dynamic index without or should still error: {:?}",
+            errors
+        );
     }
 
     #[test]

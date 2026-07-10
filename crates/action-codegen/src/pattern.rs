@@ -2,6 +2,7 @@
 
 use action_frontend::ast::*;
 use action_frontend::hir::{HirExprKind, HirPattern};
+use action_frontend::types::{collection_kind_from_type_name, CollectionKind};
 use inkwell::types::BasicTypeEnum;
 use inkwell::values::{IntValue, PointerValue};
 use inkwell::FloatPredicate;
@@ -253,7 +254,9 @@ impl<'ctx> CodeGen<'ctx> {
                     "Float" => matches!(val, TypedValue::Float(_)),
                     "Bool" => matches!(val, TypedValue::Bool(_)),
                     "String" => matches!(val, TypedValue::Str(_)),
-                    "list" => matches!(val, TypedValue::List(_)),
+                    name if collection_kind_from_type_name(name) == Some(CollectionKind::List) => {
+                        matches!(val, TypedValue::List(_))
+                    }
                     _ => false,
                 };
                 Ok(b1.const_int(if matches { 1 } else { 0 }, false))
@@ -704,7 +707,7 @@ impl<'ctx> CodeGen<'ctx> {
             .first()
             .map(|a| self.infer_hir_expr_type(&a.body))
             .unwrap_or_else(|| Type::Named("Int".into()));
-        let result_ty = self.ast_type_to_basic_type(&result_type);
+        let result_ty = self.ast_type_to_basic_type(&result_type)?;
 
         let entry = current_fn.get_first_basic_block().unwrap();
         let saved_pos = self.builder.get_insert_block();
@@ -843,7 +846,7 @@ impl<'ctx> CodeGen<'ctx> {
             .first()
             .map(|a| self.infer_hir_expr_type(&a.body))
             .unwrap_or_else(|| Type::Named("Int".into()));
-        let result_ty = self.ast_type_to_basic_type(&result_type);
+        let result_ty = self.ast_type_to_basic_type(&result_type)?;
 
         let entry = current_fn.get_first_basic_block().unwrap();
         let saved_pos = self.builder.get_insert_block();
@@ -981,7 +984,7 @@ impl<'ctx> CodeGen<'ctx> {
             Type::Named("Int".into())
         };
         let result_type = then_inferred.clone();
-        let result_ty: BasicTypeEnum = self.ast_type_to_basic_type(&result_type);
+        let result_ty: BasicTypeEnum = self.ast_type_to_basic_type(&result_type)?;
 
         let current_fn = self
             .builder

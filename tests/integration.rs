@@ -816,6 +816,12 @@ fn test_fallible_fn_or() {
 }
 
 #[test]
+fn test_fallible_block_or_and_narrowing() {
+    assert_eq!(run_example("test_fallible_block_or.ac"), "10\n99\n42\n-1\n");
+    assert_eq!(run_example("test_fallible_narrowing_for.ac"), "6\n");
+}
+
+#[test]
 fn test_fallible_readLine() {
     assert_eq!(run_example("test_fallible_readLine.ac"), "EOF\n");
 }

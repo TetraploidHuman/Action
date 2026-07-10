@@ -8,6 +8,8 @@ pub mod checked;
 pub mod config;
 pub mod error;
 pub mod exhaustive;
+pub mod fallibility_narrowing;
+pub mod fallible_safety;
 pub mod fmt;
 pub mod function_symbol;
 pub mod hir;

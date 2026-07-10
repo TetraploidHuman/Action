@@ -1,8 +1,8 @@
 // Stdlib fallible + or { }
 fun main() {
-    print((head(List[21]) or { 0 }) * 2)
+    print(head(List[21]) * 2)
     print(parseInt("nope") or { 99 })
-    print((head(List[21]) or { 0 }) + 10)
+    print(head(List[21]) + 10)
     print((parseInt("10") or { 0 }) * 5)
     print(parseInt("bad") or { 200 })
 }

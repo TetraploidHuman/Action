@@ -32,7 +32,7 @@ impl<'ctx> CodeGen<'ctx> {
                         let field_tys: Vec<BasicTypeEnum> = fields
                             .iter()
                             .map(|(_, ty)| self.ast_type_to_basic_type(ty))
-                            .collect();
+                            .collect::<Result<_, _>>()?;
                         let struct_ty = self.context.struct_type(&field_tys, false);
                         self.type_layout
                             .named_structs
@@ -103,7 +103,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let param_llvm_tys: Vec<BasicMetadataTypeEnum> = params
                     .iter()
                     .map(|p| self.ast_type_to_llvm(p.ty.as_ref()))
-                    .collect();
+                    .collect::<Result<_, _>>()?;
                 let ret_type = if name == "main" {
                     Some(Type::Named("Int".into()))
                 } else {
@@ -123,9 +123,9 @@ impl<'ctx> CodeGen<'ctx> {
                         .get(name)
                         .is_some_and(|s| s.is_fallible);
                 let fn_type = if is_propagating {
-                    self.build_fallible_fn_type(ret_type.as_ref().unwrap(), &param_llvm_tys)
+                    self.build_fallible_fn_type(ret_type.as_ref().unwrap(), &param_llvm_tys)?
                 } else {
-                    self.build_fn_type(ret_type.as_ref(), &mangled, &param_llvm_tys)
+                    self.build_fn_type(ret_type.as_ref(), &mangled, &param_llvm_tys)?
                 };
                 self.module.add_function(&mangled, fn_type, None);
                 if is_propagating {
@@ -161,7 +161,7 @@ impl<'ctx> CodeGen<'ctx> {
                         let param_llvm_tys: Vec<BasicMetadataTypeEnum> = params
                             .iter()
                             .map(|p| self.ast_type_to_llvm(p.ty.as_ref()))
-                            .collect();
+                            .collect::<Result<_, _>>()?;
                         let ret_type = return_type.clone().or_else(|| {
                             if params.iter().all(|p| p.ty.is_some()) {
                                 Some(self.infer_hir_expr_type(fn_body))
@@ -175,9 +175,9 @@ impl<'ctx> CodeGen<'ctx> {
                             .get(&mangled)
                             .is_some_and(|s| s.is_fallible);
                         let fn_type = if is_propagating {
-                            self.build_fallible_fn_type(ret_type.as_ref().unwrap(), &param_llvm_tys)
+                            self.build_fallible_fn_type(ret_type.as_ref().unwrap(), &param_llvm_tys)?
                         } else {
-                            self.build_fn_type(ret_type.as_ref(), &mangled, &param_llvm_tys)
+                            self.build_fn_type(ret_type.as_ref(), &mangled, &param_llvm_tys)?
                         };
                         self.module.add_function(&mangled, fn_type, None);
                         if is_propagating {
@@ -208,7 +208,7 @@ impl<'ctx> CodeGen<'ctx> {
                         let param_llvm_tys: Vec<BasicMetadataTypeEnum> = params
                             .iter()
                             .map(|p| self.ast_type_to_llvm(p.ty.as_ref()))
-                            .collect();
+                            .collect::<Result<_, _>>()?;
                         let ret_type = return_type.clone().or_else(|| {
                             if params.iter().all(|p| p.ty.is_some()) {
                                 Some(self.infer_hir_expr_type(body))
@@ -217,7 +217,7 @@ impl<'ctx> CodeGen<'ctx> {
                             }
                         });
                         let fn_type =
-                            self.build_fn_type(ret_type.as_ref(), &fn_name, &param_llvm_tys);
+                            self.build_fn_type(ret_type.as_ref(), &fn_name, &param_llvm_tys)?;
                         self.module.add_function(&fn_name, fn_type, None);
                         if let Some(rt) = ret_type {
                             self.mono_cache.fun_return_types.insert(fn_name, rt);
@@ -296,14 +296,14 @@ impl<'ctx> CodeGen<'ctx> {
                 let hir_ty = &value.ty;
                 let (ty, kind, ast_type) = if let Some(ann) = type_ann {
                     (
-                        self.ast_type_to_basic_type(ann),
-                        self.param_val_kind(Some(ann)),
+                        self.ast_type_to_basic_type(ann)?,
+                        self.param_val_kind(Some(ann))?,
                         Some(ann.clone()),
                     )
                 } else {
                     (
-                        self.ast_type_to_basic_type(hir_ty),
-                        self.param_val_kind(Some(hir_ty)),
+                        self.ast_type_to_basic_type(hir_ty)?,
+                        self.param_val_kind(Some(hir_ty))?,
                         Some(hir_ty.clone()),
                     )
                 };
@@ -462,7 +462,19 @@ impl<'ctx> CodeGen<'ctx> {
                         return self.unwrap_fallible_value(v);
                     }
                 }
-                self.compile_hir_call(func, args, trailing_lambda.as_ref())
+                if action_frontend::fallibility_narrowing::hir_call_is_proven_safe(
+                    func,
+                    args,
+                    &self.narrowing,
+                ) {
+                    if let Some(v) = self.try_compile_fallible_expr(expr)? {
+                        return self.unwrap_fallible_value(v);
+                    }
+                    let v = self.compile_hir_call(func, args, trailing_lambda.as_ref())?;
+                    return self.unwrap_fallible_value(v);
+                }
+                let v = self.compile_hir_call(func, args, trailing_lambda.as_ref())?;
+                self.unwrap_if_compile_time_safe_call(func, args, v)
             }
             HirExprKind::When(w) => self.compile_hir_when(w),
             HirExprKind::For(f) => self.compile_hir_for(f),

@@ -413,7 +413,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?;
                 let field_types = st.get_field_types();
                 if (index as usize) < field_types.len() {
-                    let fk = self.struct_field_val_kind(st, index);
+                    let fk = self.struct_field_val_kind(st, index)?;
                     self.rc_dec_field_val(field_ptr, field_types[index as usize], fk)?;
                 }
                 if let Some(bv) = elem.to_bv() {
@@ -513,7 +513,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?;
                 let field_types = st.get_field_types();
                 if (idx as usize) < field_types.len() {
-                    let fk = self.struct_field_val_kind(&st, idx);
+                    let fk = self.struct_field_val_kind(&st, idx)?;
                     self.rc_dec_field_val(field_ptr, field_types[idx as usize], fk)?;
                 }
                 if let Some(bv) = v.to_bv() {

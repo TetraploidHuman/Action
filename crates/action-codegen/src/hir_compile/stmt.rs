@@ -20,8 +20,8 @@ impl<'ctx> CodeGen<'ctx> {
         let raw_val = self.compile_hir_expr(value)?;
         let (ty, kind) = if let Some(ann) = type_ann {
             (
-                self.ast_type_to_basic_type(ann),
-                self.param_val_kind(Some(ann)),
+                self.ast_type_to_basic_type(ann)?,
+                self.param_val_kind(Some(ann))?,
             )
         } else {
             (raw_val.get_type_for_alloca(self), raw_val.val_kind())
@@ -147,15 +147,15 @@ impl<'ctx> CodeGen<'ctx> {
         let param_types: Vec<inkwell::types::BasicMetadataTypeEnum<'ctx>> = params
             .iter()
             .map(|p| {
-                let bt = self.ast_type_to_basic_type(
+                self.ast_type_to_basic_type(
                     p.ty.as_ref().unwrap_or(&Type::Named("Int".to_string())),
-                );
-                bt.into()
+                )
+                .map(|bt| bt.into())
             })
-            .collect();
+            .collect::<Result<_, _>>()?;
         let fn_type = match return_type {
             Some(rt) => {
-                let ret_bt = self.ast_type_to_basic_type(rt);
+                let ret_bt = self.ast_type_to_basic_type(rt)?;
                 ret_bt.fn_type(&param_types, false)
             }
             None => self.void_ty().fn_type(&param_types, false),

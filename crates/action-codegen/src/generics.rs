@@ -171,7 +171,7 @@ impl<'ctx> CodeGen<'ctx> {
         let param_llvm_tys: Vec<BasicMetadataTypeEnum> = resolved_params
             .iter()
             .map(|p| self.ast_type_to_llvm(p.ty.as_ref()))
-            .collect();
+            .collect::<Result<_, _>>()?;
         let is_propagating = fn_or_fallback.is_none()
             && resolved_return.is_some()
             && self
@@ -180,9 +180,9 @@ impl<'ctx> CodeGen<'ctx> {
                 .get(orig_name)
                 .is_some_and(|s| s.is_fallible);
         let fn_type = if is_propagating {
-            self.build_fallible_fn_type(resolved_return.as_ref().unwrap(), &param_llvm_tys)
+            self.build_fallible_fn_type(resolved_return.as_ref().unwrap(), &param_llvm_tys)?
         } else {
-            self.build_fn_type(resolved_return.as_ref(), mangled_name, &param_llvm_tys)
+            self.build_fn_type(resolved_return.as_ref(), mangled_name, &param_llvm_tys)?
         };
         self.module.add_function(mangled_name, fn_type, None);
         if is_propagating {

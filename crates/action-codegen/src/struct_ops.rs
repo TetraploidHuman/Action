@@ -33,7 +33,11 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// ValKind for a struct field from the type registry (List vs Map vs Set).
-    pub(super) fn struct_field_val_kind(&self, st: &StructType<'ctx>, field_idx: u32) -> ValKind {
+    pub(super) fn struct_field_val_kind(
+        &self,
+        st: &StructType<'ctx>,
+        field_idx: u32,
+    ) -> Result<ValKind, String> {
         for (name, named_st) in &self.type_layout.named_structs {
             if named_st == st {
                 if let Some(si) = self.registry.structs.get(name) {
@@ -44,7 +48,9 @@ impl<'ctx> CodeGen<'ctx> {
                 break;
             }
         }
-        ValKind::List
+        Err(format!(
+            "codegen: unknown struct field type at index {field_idx}"
+        ))
     }
 
     /// Extract a field value from a TypedValue::Struct at the given index.
