@@ -864,6 +864,67 @@ mod tests {
     }
 
     #[test]
+    fn test_captured_lambda_acc_loop_fused() {
+        let ir = compile_program(
+            "fun main() {\n\
+             var sum = 0; var i = 0\n\
+             for i < 10 { val f = { x -> x + i }; sum = sum + f(i); i = i + 1 }\n\
+             println(sum)\n\
+             }",
+        );
+        let main = function_ir(&ir, "main");
+        assert!(
+            main.contains("capacc_term") && main.contains("add i64"),
+            "@main should fuse captured lambda acc: {main}"
+        );
+        assert!(
+            !main.contains(".lambda_"),
+            "fused captured acc must not allocate per-iter lambdas: {main}"
+        );
+    }
+
+    #[test]
+    fn test_captured_apply_lambda_acc_loop_fused() {
+        let ir = compile_program(
+            "fun apply(f: (Int) -> Int, x: Int) -> Int { f(x) }\n\
+             fun main() {\n\
+             var total = 0; var i = 0\n\
+             for i < 10 { total = total + apply({ x -> x + i }, i); i = i + 1 }\n\
+             println(total)\n\
+             }",
+        );
+        let main = function_ir(&ir, "main");
+        assert!(
+            main.contains("capacc_term"),
+            "@main should fuse captured apply+lambda acc: {main}"
+        );
+        assert!(
+            !main.contains("call i64 @apply"),
+            "fused captured apply must not call user apply: {main}"
+        );
+    }
+
+    #[test]
+    fn test_captured_lambda_append_loop_fused() {
+        let ir = compile_program(
+            "fun main() {\n\
+             var results = List[]; var i = 0\n\
+             for i < 10 { val closure = { x -> x + i }; results = results.append(closure(10)); i = i + 1 }\n\
+             println(results.len())\n\
+             }",
+        );
+        let main = function_ir(&ir, "main");
+        assert!(
+            main.contains("capapp_elem") && main.contains("action_list_push"),
+            "@main should fuse captured lambda append: {main}"
+        );
+        assert!(
+            !main.contains(".lambda_"),
+            "fused captured append must not allocate per-iter lambdas: {main}"
+        );
+    }
+
+    #[test]
     fn test_range_int_sum_loop_fused() {
         let ir = compile_program(
             "fun main() {\n\

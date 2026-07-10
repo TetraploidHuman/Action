@@ -34,6 +34,16 @@ impl<'ctx> CodeGen<'ctx> {
                 {
                     return Ok(result);
                 }
+                if let Some(result) =
+                    self.try_compile_for_captured_lambda_acc_hir(condition, body)?
+                {
+                    return Ok(result);
+                }
+                if let Some(result) =
+                    self.try_compile_for_captured_lambda_append_hir(condition, body)?
+                {
+                    return Ok(result);
+                }
                 if let Some(result) = self.try_compile_for_map_insert_build_hir(condition, body)? {
                     return Ok(result);
                 }
@@ -1719,6 +1729,384 @@ impl<'ctx> CodeGen<'ctx> {
 
     pub(super) const RANGE_INT_SUM_FUSION_MIN_ITERS: u64 = 8;
     pub(super) const LAMBDA_ACC_FUSION_MIN_ITERS: u64 = 8;
+
+    pub(crate) fn try_compile_for_captured_lambda_acc_hir(
+        &mut self,
+        condition: &HirExpr,
+        body: &HirExpr,
+    ) -> Result<Option<TypedValue<'ctx>>, String> {
+        use crate::ValKind;
+        use action_frontend::ast::BinaryOp;
+        use action_frontend::hir::HirExprKind;
+
+        let (idx_var, end_hir) = match &condition.kind {
+            HirExprKind::Binary(lhs, BinaryOp::Lt, rhs) => match &lhs.kind {
+                HirExprKind::Ident(v) => (v.clone(), rhs.as_ref().clone()),
+                _ => return Ok(None),
+            },
+            _ => return Ok(None),
+        };
+        let (sum_var, term) =
+            match Self::extract_captured_lambda_acc_loop_body(body, &idx_var) {
+                Some(v) => v,
+                None => match Self::extract_captured_apply_lambda_acc_loop_body(body, &idx_var) {
+                    Some(v) => v,
+                    None => return Ok(None),
+                },
+            };
+
+        let end_val = self.compile_hir_expr(&end_hir)?;
+        let end_bound = match end_val {
+            TypedValue::Int(v) => v,
+            _ => return Ok(None),
+        };
+        if let Some(n) = end_bound.get_zero_extended_constant() {
+            if n < Self::LAMBDA_ACC_FUSION_MIN_ITERS {
+                return Ok(None);
+            }
+        }
+
+        let sum_scope = match self.scope.get(&sum_var) {
+            Some(v) if v.kind == ValKind::Int && v.mutable => v,
+            _ => return Ok(None),
+        };
+        let idx_scope = match self.scope.get(&idx_var) {
+            Some(v) if v.kind == ValKind::Int => v,
+            _ => return Ok(None),
+        };
+
+        self.compile_captured_lambda_acc_loop(sum_scope.ptr, idx_scope.ptr, end_bound, term)
+            .map(Some)
+    }
+
+    pub(crate) fn try_compile_for_captured_lambda_append_hir(
+        &mut self,
+        condition: &HirExpr,
+        body: &HirExpr,
+    ) -> Result<Option<TypedValue<'ctx>>, String> {
+        use crate::ValKind;
+        use action_frontend::ast::BinaryOp;
+        use action_frontend::hir::HirExprKind;
+
+        let (idx_var, end_hir) = match &condition.kind {
+            HirExprKind::Binary(lhs, BinaryOp::Lt, rhs) => match &lhs.kind {
+                HirExprKind::Ident(v) => (v.clone(), rhs.as_ref().clone()),
+                _ => return Ok(None),
+            },
+            _ => return Ok(None),
+        };
+        let (list_var, const_arg) =
+            match Self::extract_captured_lambda_append_loop_body(body, &idx_var) {
+                Some(v) => v,
+                None => return Ok(None),
+            };
+
+        let end_val = self.compile_hir_expr(&end_hir)?;
+        let end_bound = match end_val {
+            TypedValue::Int(v) => v,
+            _ => return Ok(None),
+        };
+        if let Some(n) = end_bound.get_zero_extended_constant() {
+            if n < Self::LAMBDA_ACC_FUSION_MIN_ITERS {
+                return Ok(None);
+            }
+        }
+
+        let list_scope = match self.scope.get(&list_var) {
+            Some(v) if v.kind == ValKind::List && v.mutable => v,
+            _ => return Ok(None),
+        };
+        let idx_scope = match self.scope.get(&idx_var) {
+            Some(v) if v.kind == ValKind::Int => v,
+            _ => return Ok(None),
+        };
+
+        self.compile_captured_lambda_append_loop(
+            list_scope.ptr,
+            idx_scope.ptr,
+            end_bound,
+            const_arg,
+        )
+        .map(Some)
+    }
+
+    fn is_param_plus_var_hir(expr: &HirExpr, param: &str, var: &str) -> bool {
+        use action_frontend::ast::BinaryOp;
+        use action_frontend::hir::HirExprKind;
+        let HirExprKind::Binary(lhs, BinaryOp::Add, rhs) = &expr.kind else {
+            return false;
+        };
+        match (&lhs.kind, &rhs.kind) {
+            (HirExprKind::Ident(p), HirExprKind::Ident(v)) if p == param && v == var => true,
+            (HirExprKind::Ident(v), HirExprKind::Ident(p)) if p == param && v == var => true,
+            _ => false,
+        }
+    }
+
+    fn extract_captured_idx_add_lambda_hir(lam_expr: &HirExpr, idx_var: &str) -> Option<()> {
+        use crate::expr::collect_free_vars_hir;
+        use action_frontend::hir::HirExprKind;
+        let HirExprKind::Lambda {
+            params,
+            body,
+            ..
+        } = &lam_expr.kind
+        else {
+            return None;
+        };
+        if params.len() != 1 {
+            return None;
+        }
+        let param = &params[0];
+        let mut bound = Vec::new();
+        let mut free = Vec::new();
+        collect_free_vars_hir(body, params, &mut bound, &mut free);
+        if free.len() != 1 || free[0] != idx_var {
+            return None;
+        }
+        if !Self::is_param_plus_var_hir(body, param, idx_var) {
+            return None;
+        }
+        Some(())
+    }
+
+    fn captured_call_arg_term(call_arg: &HirExpr, idx_var: &str) -> Option<super::CapturedIdxAddTerm> {
+        use action_frontend::ast::Literal;
+        use action_frontend::hir::HirExprKind;
+        match &call_arg.kind {
+            HirExprKind::Ident(v) if v == idx_var => Some(super::CapturedIdxAddTerm::IdxPlusIdx),
+            HirExprKind::Literal(Literal::Int(k)) if *k >= 0 => {
+                Some(super::CapturedIdxAddTerm::ConstPlusIdx(*k as u64))
+            }
+            _ => None,
+        }
+    }
+
+    pub(crate) fn extract_captured_lambda_acc_loop_body(
+        body: &HirExpr,
+        idx_var: &str,
+    ) -> Option<(String, super::CapturedIdxAddTerm)> {
+        use action_frontend::ast::BinaryOp;
+        use action_frontend::hir::{HirExprKind, HirStmt};
+        let stmts = match &body.kind {
+            HirExprKind::Block(stmts) if stmts.len() == 3 => stmts,
+            _ => return None,
+        };
+        let lam_expr = match &stmts[0] {
+            HirStmt::Let { name, value, .. } if !name.is_empty() => value,
+            _ => return None,
+        };
+        let lam_name = match &stmts[0] {
+            HirStmt::Let { name, .. } => name.clone(),
+            _ => return None,
+        };
+        Self::extract_captured_idx_add_lambda_hir(lam_expr, idx_var)?;
+
+        let acc_expr = match &stmts[1] {
+            HirStmt::Let { value, .. } | HirStmt::Expr { expr: value, .. } => value,
+            _ => return None,
+        };
+        let HirExprKind::Assign { target, value } = &acc_expr.kind else {
+            return None;
+        };
+        let HirExprKind::Ident(sum_var) = &target.kind else {
+            return None;
+        };
+        let HirExprKind::Binary(lhs, BinaryOp::Add, rhs) = &value.kind else {
+            return None;
+        };
+        let call_side = match (&lhs.kind, &rhs.kind) {
+            (HirExprKind::Ident(s), _) if s == sum_var => rhs.as_ref(),
+            (_, HirExprKind::Ident(s)) if s == sum_var => lhs.as_ref(),
+            _ => return None,
+        };
+        let HirExprKind::Call { func, args, trailing_lambda } = &call_side.kind else {
+            return None;
+        };
+        if trailing_lambda.is_some() || args.len() != 1 {
+            return None;
+        }
+        let HirExprKind::Ident(recv) = &func.kind else {
+            return None;
+        };
+        if recv != &lam_name {
+            return None;
+        }
+        let term = Self::captured_call_arg_term(&args[0], idx_var)?;
+        if !Self::hir_stmt_is_increment_expr(
+            match &stmts[2] {
+                HirStmt::Let { value, .. } | HirStmt::Expr { expr: value, .. } => value,
+                _ => return None,
+            },
+            idx_var,
+        ) {
+            return None;
+        }
+        Some((sum_var.clone(), term))
+    }
+
+    pub(crate) fn extract_captured_apply_lambda_acc_loop_body(
+        body: &HirExpr,
+        idx_var: &str,
+    ) -> Option<(String, super::CapturedIdxAddTerm)> {
+        use action_frontend::ast::BinaryOp;
+        use action_frontend::hir::{HirExprKind, HirStmt};
+        let stmts = match &body.kind {
+            HirExprKind::Block(stmts) if stmts.len() == 2 => stmts,
+            _ => return None,
+        };
+        let acc_expr = match &stmts[0] {
+            HirStmt::Let { value, .. } | HirStmt::Expr { expr: value, .. } => value,
+            _ => return None,
+        };
+        let HirExprKind::Assign { target, value } = &acc_expr.kind else {
+            return None;
+        };
+        let HirExprKind::Ident(acc_var) = &target.kind else {
+            return None;
+        };
+        let HirExprKind::Binary(lhs, BinaryOp::Add, rhs) = &value.kind else {
+            return None;
+        };
+        let matches_acc = |e: &HirExpr| matches!(&e.kind, HirExprKind::Ident(v) if v == acc_var);
+        let call_side = if matches_acc(lhs) {
+            rhs.as_ref()
+        } else if matches_acc(rhs) {
+            lhs.as_ref()
+        } else {
+            return None;
+        };
+        let term = Self::extract_captured_apply_lambda_add_hir(call_side, idx_var)?;
+        let inc_expr = match &stmts[1] {
+            HirStmt::Let { value, .. } | HirStmt::Expr { expr: value, .. } => value,
+            _ => return None,
+        };
+        if !Self::hir_stmt_is_increment_expr(inc_expr, idx_var) {
+            return None;
+        }
+        Some((acc_var.clone(), term))
+    }
+
+    fn extract_captured_apply_lambda_add_hir(
+        call: &HirExpr,
+        idx_var: &str,
+    ) -> Option<super::CapturedIdxAddTerm> {
+        use action_frontend::hir::HirExprKind;
+        let HirExprKind::Call {
+            func,
+            args,
+            trailing_lambda,
+        } = &call.kind
+        else {
+            return None;
+        };
+        if trailing_lambda.is_some() || args.len() != 2 {
+            return None;
+        }
+        let is_apply = match &func.kind {
+            HirExprKind::Ident(name) | HirExprKind::FunctionRef(name) => name == "apply",
+            _ => false,
+        };
+        if !is_apply {
+            return None;
+        }
+        Self::extract_captured_idx_add_lambda_hir(&args[0], idx_var)?;
+        Self::captured_call_arg_term(&args[1], idx_var)
+    }
+
+    pub(crate) fn extract_captured_lambda_append_loop_body(
+        body: &HirExpr,
+        idx_var: &str,
+    ) -> Option<(String, u64)> {
+        use action_frontend::ast::Literal;
+        use action_frontend::hir::{HirExprKind, HirStmt};
+        let stmts = match &body.kind {
+            HirExprKind::Block(stmts) if stmts.len() == 3 => stmts,
+            _ => return None,
+        };
+        let lam_expr = match &stmts[0] {
+            HirStmt::Let { name, value, .. } if !name.is_empty() => value,
+            _ => return None,
+        };
+        let lam_name = match &stmts[0] {
+            HirStmt::Let { name, .. } => name.clone(),
+            _ => return None,
+        };
+        Self::extract_captured_idx_add_lambda_hir(lam_expr, idx_var)?;
+
+        let append_expr = match &stmts[1] {
+            HirStmt::Let { value, .. } | HirStmt::Expr { expr: value, .. } => value,
+            _ => return None,
+        };
+        let (list_var, elem_expr) = Self::extract_self_append_assign_hir(append_expr)?;
+        let HirExprKind::Call {
+            func,
+            args,
+            trailing_lambda,
+        } = &elem_expr.kind
+        else {
+            return None;
+        };
+        if trailing_lambda.is_some() || args.len() != 1 {
+            return None;
+        }
+        let HirExprKind::Ident(recv) = &func.kind else {
+            return None;
+        };
+        if recv != &lam_name {
+            return None;
+        }
+        let const_arg = match &args[0].kind {
+            HirExprKind::Literal(Literal::Int(k)) if *k >= 0 => *k as u64,
+            _ => return None,
+        };
+        if !Self::hir_stmt_is_increment_expr(
+            match &stmts[2] {
+                HirStmt::Let { value, .. } | HirStmt::Expr { expr: value, .. } => value,
+                _ => return None,
+            },
+            idx_var,
+        ) {
+            return None;
+        }
+        Some((list_var, const_arg))
+    }
+
+    fn extract_self_append_assign_hir(
+        expr: &HirExpr,
+    ) -> Option<(String, action_frontend::hir::HirExpr)> {
+        use action_frontend::hir::HirExprKind;
+        let HirExprKind::Assign { target, value } = &expr.kind else {
+            return None;
+        };
+        let HirExprKind::Ident(list_var) = &target.kind else {
+            return None;
+        };
+        let HirExprKind::Call {
+            func,
+            args,
+            trailing_lambda,
+        } = &value.kind
+        else {
+            return None;
+        };
+        if trailing_lambda.is_some() || args.len() != 1 {
+            return None;
+        }
+        let HirExprKind::FieldAccess(obj, method) = &func.kind else {
+            return None;
+        };
+        if method != "append" {
+            return None;
+        }
+        let HirExprKind::Ident(recv) = &obj.kind else {
+            return None;
+        };
+        if recv != list_var {
+            return None;
+        }
+        Some((list_var.clone(), args[0].clone()))
+    }
 
     pub(crate) fn try_compile_for_sequential_list_get_hir(
         &mut self,

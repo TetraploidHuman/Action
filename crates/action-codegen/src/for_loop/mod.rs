@@ -12,6 +12,14 @@ pub(super) enum ForExprSrc<'a> {
     Hir(&'a HirExpr),
 }
 
+/// Fused term for `{ x -> x + i }(arg)` when the sole capture is the loop index.
+pub(super) enum CapturedIdxAddTerm {
+    /// `{ x -> x + i }(i)` → `i + i`
+    IdxPlusIdx,
+    /// `{ x -> x + i }(K)` → `K + i`
+    ConstPlusIdx(u64),
+}
+
 impl<'a> ForExprSrc<'a> {
     fn compile<'ctx>(&self, gen: &mut CodeGen<'ctx>) -> Result<TypedValue<'ctx>, String> {
         match self {

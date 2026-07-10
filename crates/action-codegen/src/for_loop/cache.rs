@@ -187,6 +187,168 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::Unit)
     }
 
+    /// `for i < end { sum += { x -> x + i }(arg); i++ }` without per-iter closure alloc.
+    pub(crate) fn compile_captured_lambda_acc_loop(
+        &mut self,
+        sum_ptr: PointerValue<'ctx>,
+        idx_ptr: PointerValue<'ctx>,
+        end_bound: IntValue<'ctx>,
+        term: super::CapturedIdxAddTerm,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("Cannot compile for outside function")?;
+        let i64 = self.i64_ty();
+        let one = i64.const_int(1, false);
+
+        let header = self.context.append_basic_block(current_fn, "capacc_hdr");
+        let body_bb = self.context.append_basic_block(current_fn, "capacc_body");
+        let exit = self.context.append_basic_block(current_fn, "capacc_exit");
+
+        let saved_continue = self.loop_control.continue_target;
+        let saved_break = self.loop_control.break_target;
+        self.loop_control.continue_target = Some(header);
+        self.loop_control.break_target = Some(exit);
+
+        self.builder
+            .build_unconditional_branch(header)
+            .map_err(llvm_err)?;
+        self.builder.position_at_end(header);
+        let cur = self
+            .builder
+            .build_load(i64, idx_ptr, "capacc_i")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let cond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, cur, end_bound, "capacc_cond")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_conditional_branch(cond, body_bb, exit)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(body_bb);
+        let term_val = match term {
+            super::CapturedIdxAddTerm::IdxPlusIdx => self
+                .builder
+                .build_int_add(cur, cur, "capacc_term")
+                .map_err(llvm_err)?,
+            super::CapturedIdxAddTerm::ConstPlusIdx(k) => {
+                let k_val = i64.const_int(k, false);
+                self.builder
+                    .build_int_add(k_val, cur, "capacc_term")
+                    .map_err(llvm_err)?
+            }
+        };
+        let sum_cur = self
+            .builder
+            .build_load(i64, sum_ptr, "capacc_sum")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let sum_new = self
+            .builder
+            .build_int_add(sum_cur, term_val, "capacc_sum_new")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(sum_ptr, sum_new)
+            .map_err(llvm_err)?;
+        let next = self
+            .builder
+            .build_int_add(cur, one, "capacc_next")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(idx_ptr, next)
+            .map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(header)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(exit);
+        self.loop_control.continue_target = saved_continue;
+        self.loop_control.break_target = saved_break;
+        Ok(TypedValue::Unit)
+    }
+
+    /// `for i < end { lst = lst.append({ x -> x + i }(K)); i++ }` → push `K + i` each iter.
+    pub(crate) fn compile_captured_lambda_append_loop(
+        &mut self,
+        list_ptr: PointerValue<'ctx>,
+        idx_ptr: PointerValue<'ctx>,
+        end_bound: IntValue<'ctx>,
+        const_arg: u64,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("Cannot compile for outside function")?;
+        let i64 = self.i64_ty();
+        let one = i64.const_int(1, false);
+        let k = i64.const_int(const_arg, false);
+
+        let header = self.context.append_basic_block(current_fn, "capapp_hdr");
+        let body_bb = self.context.append_basic_block(current_fn, "capapp_body");
+        let exit = self.context.append_basic_block(current_fn, "capapp_exit");
+
+        let saved_continue = self.loop_control.continue_target;
+        let saved_break = self.loop_control.break_target;
+        self.loop_control.continue_target = Some(header);
+        self.loop_control.break_target = Some(exit);
+
+        self.builder
+            .build_unconditional_branch(header)
+            .map_err(llvm_err)?;
+        self.builder.position_at_end(header);
+        let cur = self
+            .builder
+            .build_load(i64, idx_ptr, "capapp_i")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let cond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, cur, end_bound, "capapp_cond")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_conditional_branch(cond, body_bb, exit)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(body_bb);
+        let elem = self
+            .builder
+            .build_int_add(k, cur, "capapp_elem")
+            .map_err(llvm_err)?;
+        let elem_fat = self.make_int_fat(elem)?;
+        let list_loaded = self.load_list(list_ptr)?;
+        let cc = self.call_rt(
+            "action_list_push",
+            &[list_loaded.into(), elem_fat.into()],
+        )?;
+        let new_list = cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("captured lambda append fusion push failed")?;
+        self.builder
+            .build_store(list_ptr, new_list)
+            .map_err(llvm_err)?;
+        let next = self
+            .builder
+            .build_int_add(cur, one, "capapp_next")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(idx_ptr, next)
+            .map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(header)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(exit);
+        self.loop_control.continue_target = saved_continue;
+        self.loop_control.break_target = saved_break;
+        Ok(TypedValue::Unit)
+    }
+
     /// `for idx < end { lst = lst.remove(0); idx = idx + 1 }` → single `drop(end)`.
     pub(crate) fn compile_remove_front_loop(
         &mut self,
