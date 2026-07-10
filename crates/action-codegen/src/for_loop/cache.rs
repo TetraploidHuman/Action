@@ -340,6 +340,192 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(TypedValue::Unit)
     }
 
+    fn captured_idx_add_term_val(
+        &mut self,
+        cur: IntValue<'ctx>,
+        term: super::CapturedIdxAddTerm,
+        suffix: &str,
+    ) -> Result<IntValue<'ctx>, String> {
+        let i64 = self.i64_ty();
+        match term {
+            super::CapturedIdxAddTerm::IdxPlusIdx => self
+                .builder
+                .build_int_add(cur, cur, &format!("{suffix}_term"))
+                .map_err(llvm_err),
+            super::CapturedIdxAddTerm::ConstPlusIdx(k) => {
+                let k_val = i64.const_int(k, false);
+                self.builder
+                    .build_int_add(k_val, cur, &format!("{suffix}_term"))
+                    .map_err(llvm_err)
+            }
+        }
+    }
+
+    /// `for i in start..end { sum += { x -> x + i }(arg) }` without per-iter closure alloc.
+    pub(crate) fn compile_iterate_captured_lambda_acc_range(
+        &mut self,
+        sum_ptr: PointerValue<'ctx>,
+        start: IntValue<'ctx>,
+        end: IntValue<'ctx>,
+        term: super::CapturedIdxAddTerm,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("Cannot compile for outside function")?;
+        let i64 = self.i64_ty();
+        let one = i64.const_int(1, false);
+
+        let idx_alloca = self
+            .builder
+            .build_alloca(i64, "itercap_idx")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(idx_alloca, start)
+            .map_err(llvm_err)?;
+
+        let header = self.context.append_basic_block(current_fn, "itercap_hdr");
+        let body_bb = self.context.append_basic_block(current_fn, "itercap_body");
+        let exit = self.context.append_basic_block(current_fn, "itercap_exit");
+
+        let saved_continue = self.loop_control.continue_target;
+        let saved_break = self.loop_control.break_target;
+        self.loop_control.continue_target = Some(header);
+        self.loop_control.break_target = Some(exit);
+
+        self.builder
+            .build_unconditional_branch(header)
+            .map_err(llvm_err)?;
+        self.builder.position_at_end(header);
+        let cur = self
+            .builder
+            .build_load(i64, idx_alloca, "itercap_i")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let cond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, cur, end, "itercap_cond")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_conditional_branch(cond, body_bb, exit)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(body_bb);
+        let term_val = self.captured_idx_add_term_val(cur, term, "itercap")?;
+        let sum_cur = self
+            .builder
+            .build_load(i64, sum_ptr, "itercap_sum")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let sum_new = self
+            .builder
+            .build_int_add(sum_cur, term_val, "itercap_sum_new")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(sum_ptr, sum_new)
+            .map_err(llvm_err)?;
+        let next = self
+            .builder
+            .build_int_add(cur, one, "itercap_next")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(idx_alloca, next)
+            .map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(header)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(exit);
+        self.loop_control.continue_target = saved_continue;
+        self.loop_control.break_target = saved_break;
+        Ok(TypedValue::Unit)
+    }
+
+    /// `for i in list { sum += { x -> x + i }(arg) }` walking list elements directly.
+    pub(crate) fn compile_iterate_captured_lambda_acc_list(
+        &mut self,
+        sum_ptr: PointerValue<'ctx>,
+        list_ptr: PointerValue<'ctx>,
+        len: IntValue<'ctx>,
+        term: super::CapturedIdxAddTerm,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("Cannot compile for outside function")?;
+        let i64 = self.i64_ty();
+        let one = i64.const_int(1, false);
+        let zero = i64.const_int(0, false);
+
+        let idx_alloca = self
+            .builder
+            .build_alloca(i64, "itercap_idx")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(idx_alloca, zero)
+            .map_err(llvm_err)?;
+        let cache = self.alloc_list_get_cache()?;
+
+        let header = self.context.append_basic_block(current_fn, "itercap_hdr");
+        let body_bb = self.context.append_basic_block(current_fn, "itercap_body");
+        let exit = self.context.append_basic_block(current_fn, "itercap_exit");
+
+        let saved_continue = self.loop_control.continue_target;
+        let saved_break = self.loop_control.break_target;
+        self.loop_control.continue_target = Some(header);
+        self.loop_control.break_target = Some(exit);
+
+        self.builder
+            .build_unconditional_branch(header)
+            .map_err(llvm_err)?;
+        self.builder.position_at_end(header);
+        let cur_idx = self
+            .builder
+            .build_load(i64, idx_alloca, "itercap_i")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let cond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, cur_idx, len, "itercap_cond")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_conditional_branch(cond, body_bb, exit)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(body_bb);
+        let elem = self.list_get_cached_tag(list_ptr, cur_idx, cache)?;
+        let term_val = self.captured_idx_add_term_val(elem, term, "itercap")?;
+        let sum_cur = self
+            .builder
+            .build_load(i64, sum_ptr, "itercap_sum")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let sum_new = self
+            .builder
+            .build_int_add(sum_cur, term_val, "itercap_sum_new")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(sum_ptr, sum_new)
+            .map_err(llvm_err)?;
+        let next = self
+            .builder
+            .build_int_add(cur_idx, one, "itercap_next")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(idx_alloca, next)
+            .map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(header)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(exit);
+        self.loop_control.continue_target = saved_continue;
+        self.loop_control.break_target = saved_break;
+        Ok(TypedValue::Unit)
+    }
+
     /// `for idx < end { lst = lst.remove(0); idx = idx + 1 }` → single `drop(end)`.
     pub(crate) fn compile_remove_front_loop(
         &mut self,

@@ -925,6 +925,51 @@ mod tests {
     }
 
     #[test]
+    fn test_iterate_captured_lambda_acc_list_fused() {
+        let ir = compile_program(
+            "fun main() {\n\
+             var sum = 0\n\
+             for i in List[1, 2, 3, 4, 5] { val f = { x -> x + i }; sum = sum + f(0) }\n\
+             println(sum)\n\
+             }",
+        );
+        let main = function_ir(&ir, "main");
+        assert!(
+            main.contains("itercap_term") && main.contains("action_list_get_cached"),
+            "@main should fuse iterate captured lambda acc on list: {main}"
+        );
+        assert!(
+            !main.contains(".lambda_"),
+            "fused iterate capture must not allocate per-iter lambdas: {main}"
+        );
+        assert!(
+            !main.contains("for_header"),
+            "fused iterate capture must not emit generic for loop: {main}"
+        );
+    }
+
+    #[test]
+    fn test_iterate_captured_apply_lambda_acc_range_fused() {
+        let ir = compile_program(
+            "fun apply(f: (Int) -> Int, x: Int) -> Int { f(x) }\n\
+             fun main() {\n\
+             var sum = 0\n\
+             for i in 0..10 { sum = sum + apply({ x -> x + i }, 0) }\n\
+             println(sum)\n\
+             }",
+        );
+        let main = function_ir(&ir, "main");
+        assert!(
+            main.contains("rs_new") || main.contains("itercap_term"),
+            "@main should fuse iterate captured apply acc on range: {main}"
+        );
+        assert!(
+            !main.contains("call i64 @apply"),
+            "fused iterate apply must not call user apply: {main}"
+        );
+    }
+
+    #[test]
     fn test_range_int_sum_loop_fused() {
         let ir = compile_program(
             "fun main() {\n\
