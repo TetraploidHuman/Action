@@ -579,13 +579,10 @@ mod tests {
     fn test_compile_time_safe_index_no_or() {
         let errors = check_source("fun main() { println(List[1, 2, 3].get(0)) }");
         assert!(
-            !errors
-                .iter()
-                .any(|e| matches!(
-                    e.code,
-                    Some(crate::error::DiagnosticCode::E006)
-                        | Some(crate::error::DiagnosticCode::E001)
-                )),
+            !errors.iter().any(|e| matches!(
+                e.code,
+                Some(crate::error::DiagnosticCode::E006) | Some(crate::error::DiagnosticCode::E001)
+            )),
             "compile-time safe get should not require or: {:?}",
             errors
         );
@@ -607,9 +604,8 @@ mod tests {
 
     #[test]
     fn test_block_or_region_no_inner_or() {
-        let errors = check_source(
-            "fun f() -> Int { { val n = parseInt(\"42\"); return n } or { -1 } }",
-        );
+        let errors =
+            check_source("fun f() -> Int { { val n = parseInt(\"42\"); return n } or { -1 } }");
         assert!(
             !errors
                 .iter()
@@ -621,7 +617,8 @@ mod tests {
 
     #[test]
     fn test_e006_still_required_for_dynamic_index() {
-        let errors = check_source("fun main() { val lst = List[1, 2]; val i = 0; println(lst[i]) }");
+        let errors =
+            check_source("fun main() { val lst = List[1, 2]; val i = 0; println(lst[i]) }");
         assert!(
             errors
                 .iter()

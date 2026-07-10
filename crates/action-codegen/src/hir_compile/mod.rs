@@ -175,7 +175,10 @@ impl<'ctx> CodeGen<'ctx> {
                             .get(&mangled)
                             .is_some_and(|s| s.is_fallible);
                         let fn_type = if is_propagating {
-                            self.build_fallible_fn_type(ret_type.as_ref().unwrap(), &param_llvm_tys)?
+                            self.build_fallible_fn_type(
+                                ret_type.as_ref().unwrap(),
+                                &param_llvm_tys,
+                            )?
                         } else {
                             self.build_fn_type(ret_type.as_ref(), &mangled, &param_llvm_tys)?
                         };

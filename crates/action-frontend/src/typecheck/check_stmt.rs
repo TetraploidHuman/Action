@@ -1,5 +1,7 @@
 use super::*;
-use crate::fallibility_narrowing::{call_is_proven_safe, index_access_is_proven_safe, NarrowingContext};
+use crate::fallibility_narrowing::{
+    call_is_proven_safe, index_access_is_proven_safe, NarrowingContext,
+};
 use crate::types::{infer_type_args, mangle_name, types_compatible};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -71,14 +73,17 @@ impl TypeChecker {
     fn expr_contains_fallible(&self, expr: &Expr) -> bool {
         match &expr.kind {
             ExprKind::Call { func, args, .. } => {
-                self.fallibility.call_expr_is_fallible(func) && !self.call_is_proven_safe(func, args)
+                self.fallibility.call_expr_is_fallible(func)
+                    && !self.call_is_proven_safe(func, args)
             }
             ExprKind::Index(obj, idx) => {
                 self.collection_index_receiver_kind(obj).is_some()
                     && !self.index_access_is_proven_safe(obj, idx)
             }
             ExprKind::Block(stmts) => stmts.iter().any(|s| self.stmt_contains_fallible(s)),
-            ExprKind::Binary(l, _, r) => self.expr_contains_fallible(l) || self.expr_contains_fallible(r),
+            ExprKind::Binary(l, _, r) => {
+                self.expr_contains_fallible(l) || self.expr_contains_fallible(r)
+            }
             ExprKind::Unary(_, inner) => self.expr_contains_fallible(inner),
             ExprKind::When(w) => self.when_contains_fallible(w),
             ExprKind::For(f) => self.for_contains_fallible(f),
@@ -88,22 +93,26 @@ impl TypeChecker {
             }
             ExprKind::Lambda { body, .. } => self.expr_contains_fallible(body),
             ExprKind::Copy(inner) | ExprKind::Unsafe(inner) => self.expr_contains_fallible(inner),
-            ExprKind::StructLiteral(fields) => fields.iter().any(|(_, e)| self.expr_contains_fallible(e)),
+            ExprKind::StructLiteral(fields) => {
+                fields.iter().any(|(_, e)| self.expr_contains_fallible(e))
+            }
             ExprKind::MapLiteral(entries) => entries
                 .iter()
                 .any(|(k, v)| self.expr_contains_fallible(k) || self.expr_contains_fallible(v)),
             ExprKind::SetLiteral(elems) => elems.iter().any(|e| self.expr_contains_fallible(e)),
             ExprKind::Tuple(items) => items.iter().any(|(_, e)| self.expr_contains_fallible(e)),
-            ExprKind::StringInterpolate(parts) => parts.iter().any(|p| {
-                matches!(p, crate::ast::StringPart::Expr(e) if self.expr_contains_fallible(e))
-            }),
+            ExprKind::StringInterpolate(parts) => parts.iter().any(
+                |p| matches!(p, crate::ast::StringPart::Expr(e) if self.expr_contains_fallible(e)),
+            ),
             _ => false,
         }
     }
 
     fn stmt_contains_fallible(&self, stmt: &Stmt) -> bool {
         match stmt {
-            Stmt::Let { value, .. } | Stmt::Expr { expr: value, .. } => self.expr_contains_fallible(value),
+            Stmt::Let { value, .. } | Stmt::Expr { expr: value, .. } => {
+                self.expr_contains_fallible(value)
+            }
             Stmt::Return { value: Some(v), .. } => self.expr_contains_fallible(v),
             _ => false,
         }
@@ -112,7 +121,11 @@ impl TypeChecker {
     fn when_contains_fallible(&self, w: &When) -> bool {
         use crate::ast::WhenKind;
         match &w.kind {
-            WhenKind::OneLine { condition, then_expr, else_expr } => {
+            WhenKind::OneLine {
+                condition,
+                then_expr,
+                else_expr,
+            } => {
                 self.expr_contains_fallible(condition)
                     || self.expr_contains_fallible(then_expr)
                     || self.expr_contains_fallible(else_expr)

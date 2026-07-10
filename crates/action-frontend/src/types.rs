@@ -258,10 +258,7 @@ mod tests {
         );
         assert!(types_compatible(&plain, &generic));
         // Legacy lowercase internal spelling still compatible.
-        assert!(types_compatible(
-            &Type::Named("list".into()),
-            &generic
-        ));
+        assert!(types_compatible(&Type::Named("list".into()), &generic));
     }
 
     #[test]

@@ -5,8 +5,8 @@ use action_frontend::types::collection_kind_from_type;
 use inkwell::types::BasicTypeEnum;
 use inkwell::values::BasicValueEnum;
 
-use crate::type_helpers::val_kind_for_collection;
 use super::{llvm_err, CodeGen, InnerType, TypedValue, ValKind};
+use crate::type_helpers::val_kind_for_collection;
 
 impl<'ctx> CodeGen<'ctx> {
     pub(crate) fn unpack_fat_return(

@@ -235,10 +235,7 @@ mod tests {
     fn head_on_nonempty_list_literal_is_safe() {
         let lst = list(vec![int(1)]);
         let func = ExprKind::Ident("head".to_string()).into();
-        assert!(call_is_compile_time_safe(
-            &func,
-            std::slice::from_ref(&lst)
-        ));
+        assert!(call_is_compile_time_safe(&func, std::slice::from_ref(&lst)));
         assert!(!call_is_compile_time_safe(
             &func,
             std::slice::from_ref(&list(vec![]))

@@ -5,7 +5,9 @@
 
 use action_frontend::ast::*;
 use action_frontend::hir::{HirExpr, HirExprKind};
-use action_frontend::types::{collection_kind_from_type, collection_kind_from_type_name, normalize_type_name, CollectionKind};
+use action_frontend::types::{
+    collection_kind_from_type, collection_kind_from_type_name, normalize_type_name, CollectionKind,
+};
 use inkwell::types::{BasicType, BasicTypeEnum, StructType};
 use inkwell::values::{BasicValue, BasicValueEnum};
 
@@ -35,27 +37,25 @@ impl<'ctx> CodeGen<'ctx> {
             return Ok(self.collection_layout_type());
         }
         match ty {
-            Type::Named(n) => {
-                match normalize_type_name(n) {
-                    "Int" | "Char" | "Unit" => Ok(self.i64_ty().into()),
-                    "Float" => Ok(self.f64_ty().into()),
-                    "Bool" => Ok(self.bool_ty().into()),
-                    "String" => Ok(self.string_type.into()),
-                    "LazyList" => Ok(self.lazylist_type.into()),
-                    "Task" => Ok(self.task_type.into()),
-                    "Stream" => Ok(self.ptr_ty().into()),
-                    "Ptr" | "CString" | "FileHandle" => Ok(self.ptr_ty().into()),
-                    name => {
-                        if let Some(st) = self.type_layout.named_structs.get(name) {
-                            Ok((*st).into())
-                        } else if let Some(et) = self.type_layout.enum_types.get(name) {
-                            Ok((*et).into())
-                        } else {
-                            Err(codegen_unsupported_type(ty))
-                        }
+            Type::Named(n) => match normalize_type_name(n) {
+                "Int" | "Char" | "Unit" => Ok(self.i64_ty().into()),
+                "Float" => Ok(self.f64_ty().into()),
+                "Bool" => Ok(self.bool_ty().into()),
+                "String" => Ok(self.string_type.into()),
+                "LazyList" => Ok(self.lazylist_type.into()),
+                "Task" => Ok(self.task_type.into()),
+                "Stream" => Ok(self.ptr_ty().into()),
+                "Ptr" | "CString" | "FileHandle" => Ok(self.ptr_ty().into()),
+                name => {
+                    if let Some(st) = self.type_layout.named_structs.get(name) {
+                        Ok((*st).into())
+                    } else if let Some(et) = self.type_layout.enum_types.get(name) {
+                        Ok((*et).into())
+                    } else {
+                        Err(codegen_unsupported_type(ty))
                     }
                 }
-            }
+            },
             Type::Struct(fields) => {
                 let field_tys: Vec<BasicTypeEnum> = fields
                     .iter()
@@ -150,11 +150,9 @@ impl<'ctx> CodeGen<'ctx> {
                     "Stream" => Ok(ValKind::Stream),
                     "LazyList" => Ok(ValKind::LazyList),
                     "Ptr" => Ok(ValKind::Ptr),
-                    name if collection_kind_from_type_name(name).is_some() => {
-                        Ok(val_kind_for_collection(
-                            collection_kind_from_type_name(name).unwrap(),
-                        ))
-                    }
+                    name if collection_kind_from_type_name(name).is_some() => Ok(
+                        val_kind_for_collection(collection_kind_from_type_name(name).unwrap()),
+                    ),
                     _ => Err(codegen_unsupported_type(ty)),
                 },
                 _ => Err(codegen_unsupported_type(ty)),

@@ -2,7 +2,9 @@
 
 use action_frontend::ast::{Literal, Type};
 use action_frontend::builtin;
-use action_frontend::fallible_safety::{hir_call_is_compile_time_safe, hir_index_access_is_compile_time_safe};
+use action_frontend::fallible_safety::{
+    hir_call_is_compile_time_safe, hir_index_access_is_compile_time_safe,
+};
 use action_frontend::hir::{HirExpr, HirExprKind};
 use inkwell::basic_block::BasicBlock;
 use inkwell::types::BasicTypeEnum;
@@ -1160,14 +1162,10 @@ impl<'ctx> CodeGen<'ctx> {
         expr: &HirExpr,
     ) -> Result<Option<TypedValue<'ctx>>, String> {
         match &expr.kind {
-            HirExprKind::Index(obj, idx)
-                if hir_index_access_is_compile_time_safe(obj, idx) =>
-            {
+            HirExprKind::Index(obj, idx) if hir_index_access_is_compile_time_safe(obj, idx) => {
                 return Ok(None);
             }
-            HirExprKind::Call { func, args, .. }
-                if hir_call_is_compile_time_safe(func, args) =>
-            {
+            HirExprKind::Call { func, args, .. } if hir_call_is_compile_time_safe(func, args) => {
                 return Ok(None);
             }
             _ => {}
@@ -1672,7 +1670,9 @@ impl<'ctx> CodeGen<'ctx> {
             .get_insert_block()
             .and_then(|b| b.get_parent())
             .ok_or("or-block region: no function")?;
-        let fail_bb = self.context.append_basic_block(current_fn, "orblk_region_fail");
+        let fail_bb = self
+            .context
+            .append_basic_block(current_fn, "orblk_region_fail");
 
         self.or_block_depth += 1;
         self.push_fallible_fail_bb(fail_bb);
@@ -1698,7 +1698,9 @@ impl<'ctx> CodeGen<'ctx> {
             return Ok(TypedValue::Unit);
         }
 
-        let merge_bb = self.context.append_basic_block(current_fn, "orblk_region_merge");
+        let merge_bb = self
+            .context
+            .append_basic_block(current_fn, "orblk_region_merge");
         self.builder
             .build_unconditional_branch(merge_bb)
             .map_err(llvm_err)?;
