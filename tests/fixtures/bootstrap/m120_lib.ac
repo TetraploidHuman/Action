@@ -1,0 +1,4 @@
+// M120: open-graph helper (not on flat allowlist → `m120_lib_` prefix).
+fun add1(x: Int) -> Int {
+    return x + 1
+}
