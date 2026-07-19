@@ -22,6 +22,8 @@ fun slotSet() -> Int { return 9 }
 fun slotFields() -> Int { return 10 }
 fun slotArgsSave(d: Int) -> Int { return 11 + d }
 fun slotHirOut() -> Int { return 19 }
+// M125: multi-stmt brace lambda / block body accumulator
+fun slotBlockStmts() -> Int { return 44 }
 // M48 short string session mailboxes
 fun slotRecv() -> Int { return 20 }
 fun slotPat() -> Int { return 21 }
@@ -139,12 +141,23 @@ fun exprWrap(tag: Int, kind: String) -> String {
 fun exprAsBlock(tag: Int, inner: String) -> String {
     typeenv.lastExprTySet(tag)
     val span: String = parser.spanJson()
-    val stmt: String = when {
+    return "{\"ty\": " + tyJson(tag) + ", \"span\": " + span + ", \"kind\": {\"Block\": [" + exprAsStmt(inner) + "]}}"
+}
+
+// M125: multi-stmt Block from pre-built stmt JSON list (comma-separated).
+fun stmtsAsBlock(tag: Int, stmts: String) -> String {
+    typeenv.lastExprTySet(tag)
+    val span: String = parser.spanJson()
+    return "{\"ty\": " + tyJson(tag) + ", \"span\": " + span + ", \"kind\": {\"Block\": [" + stmts + "]}}"
+}
+
+fun exprAsStmt(inner: String) -> String {
+    val span: String = parser.spanJson()
+    return when {
         isKindBreak(inner) -> "{\"Break\": {\"span\": " + span + "}}"
         isKindContinue(inner) -> "{\"Continue\": {\"span\": " + span + "}}"
         else -> "{\"Expr\": {\"expr\": " + inner + ", \"span\": " + span + "}}"
     }
-    return "{\"ty\": " + tyJson(tag) + ", \"span\": " + span + ", \"kind\": {\"Block\": [" + stmt + "]}}"
 }
 
 fun isKindBreak(j: String) -> Bool {

@@ -1350,6 +1350,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "lambda_block_ok { 21 * 2 }() should return 42",
     ),
     (
+        "lambda_stmts_ok",
+        42,
+        "lambda_stmts_ok { 21; 21 * 2 }() should return 42",
+    ),
+    (
         "lambda_multi_ok",
         42,
         "lambda_multi_ok { x, y -> x + y }(20, 22) should return 42",
@@ -1417,6 +1422,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "lambda_it_ok",
     "lambda_block_ok",
     "lambda_multi_ok",
+    "lambda_stmts_ok",
     "let_point_ok",
     "list_string",
     "logical_not",
@@ -3382,6 +3388,34 @@ fn test_bootstrap_m124_allowlisted_import_fixtures_ok() {
     assert!(
         fixtures_root().join("bootstrap/m124_lib.ac").is_file(),
         "m124_lib.ac must exist under tests/fixtures/bootstrap/"
+    );
+}
+
+/// M125: multi-stmt lambda body type error rejected.
+#[test]
+fn test_bootstrap_m125_rejects_bad_lambda_stmts_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_lambda_stmts_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_lambda_stmts_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M125: `{ 21; 21 * 2 }()` accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m125_allowlisted_lambda_stmts_ok() {
+    let path = fixtures_root().join("bootstrap/lambda_stmts_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept lambda_stmts_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"lambda_stmts_ok"),
+        "lambda_stmts_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 

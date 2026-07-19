@@ -28,6 +28,11 @@ def main() -> None:
         raise SystemExit(f"{COMPILER}: use `import emit` with emit.fn() calls")
     if "fun jOut(" in COMPILER.read_text():
         raise SystemExit(f"{COMPILER}: jOut should live in emit.ac, not compiler.ac")
+    emit = EMIT.read_text()
+    if "fun stmtsAsBlock(" not in emit:
+        raise SystemExit(f"{EMIT}: expected stmtsAsBlock (M125)")
+    if "fun slotBlockStmts(" not in emit:
+        raise SystemExit(f"{EMIT}: expected slotBlockStmts (M125)")
     print("=== bootstrap emit check OK ===")
 
 

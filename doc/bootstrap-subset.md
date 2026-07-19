@@ -168,8 +168,9 @@
 | M122 | trailing lambda | ✅ `map(List[21]) { it * 2 }[0] or { 0 }` →42；`bad_trailing_lambda_ty`；allowlist 64 |
 | M123 | 无参 `{ expr }` lambda | ✅ `{ 21 * 2 }()` →42；`bad_lambda_block_ty`；allowlist 65 |
 | M124 | 更广搜索根 | ✅ `bootstrap/`→`tests/fixtures/bootstrap/`；`import_fixtures_ok`→42；allowlist 66 |
+| M125 | 多语句 `{ expr; … }` lambda | ✅ `{ 21; 21 * 2 }()`→42；`bad_lambda_stmts_ty`；allowlist 67 |
 
-**M72+ 执行计划**：[bootstrap-m72-plan.md](bootstrap-m72-plan.md)（M72–M124 ✅）。
+**M72+ 执行计划**：[bootstrap-m72-plan.md](bootstrap-m72-plan.md)（M72–M125 ✅）。
 
 CI 维护：`scripts/check_bootstrap_goldens.sh`（`ci-linux.sh core` 内执行，防 golden drift）；`check_bootstrap_{prelude,parser,emit}.py` 校验模块 import 与 fixture 同步。
 

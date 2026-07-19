@@ -184,20 +184,38 @@ fun parseLambdaArrow(s: String, pos: Int) -> Int {
     return p
 }
 
-// M123: `{ expr }` — no-param lambda (params=[], body=Block, implicit_it=false).
+// M123/M125: `{ expr }` / `{ expr; expr }` — no-param lambda (params=[], body=Block).
 fun parseLambdaBlock(s: String, pos: Int) -> Int {
     parser.spanMarkBegin(s, pos)
     var p: Int = parser.advance(s, pos)
     val snap: String = typeenv.envLocalSnapshot()
-    p = parseExpr(s, p)
-    val inner: String = emit.getExpr()
+    emit.accReset(emit.slotBlockStmts())
+    p = parseLambdaBlockStmt(s, p, 0)
+    p = parseLambdaBlockStmts(s, p, 1)
     val bodyTag: Int = typeenv.lastExprTyTag()
+    val stmts: String = emit.accGet(emit.slotBlockStmts())
     p = parser.expect(s, p, parser.closeBrace())
     typeenv.envLocalRestore(snap)
     parser.spanMarkEnd(s, p)
-    val block: String = emit.exprAsBlock(bodyTag, inner)
+    val block: String = emit.stmtsAsBlock(bodyTag, stmts)
     emit.setExpr(emit.exprWrap(bodyTag, "{\"Lambda\": {\"params\": [], \"body\": " + block + ", \"implicit_it\": false}}"))
     return p
+}
+
+fun parseLambdaBlockStmts(s: String, pos: Int, sep: Int) -> Int {
+    return if parser.isTok(s, pos, parser.closeBrace()) {
+        pos
+    } else {
+        parseLambdaBlockStmt(s, pos, sep)
+    }
+}
+
+fun parseLambdaBlockStmt(s: String, pos: Int, sep: Int) -> Int {
+    var p: Int = parseExpr(s, pos)
+    val inner: String = emit.getExpr()
+    emit.accAdd(emit.slotBlockStmts(), emit.exprAsStmt(inner), sep)
+    p = skipOptionalSemi(s, p)
+    return parseLambdaBlockStmts(s, p, 1)
 }
 
 // M119/M122/M123: brace lambda (no postfix); used by trailing-lambda attach.
