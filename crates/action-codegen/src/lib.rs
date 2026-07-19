@@ -317,14 +317,32 @@ impl<'ctx> CodeGen<'ctx> {
     pub fn needs_host_rt_link(&self) -> bool {
         self.host_rt_used.get()
             || self.module.get_function("action_host_file_write").is_some()
-            || self.module.get_function("action_host_file_append").is_some()
+            || self
+                .module
+                .get_function("action_host_file_append")
+                .is_some()
             || self.module.get_function("action_host_file_read").is_some()
-            || self.module.get_function("action_host_file_exists").is_some()
-            || self.module.get_function("action_host_file_delete").is_some()
-            || self.module.get_function("action_host_file_io_barrier").is_some()
+            || self
+                .module
+                .get_function("action_host_file_exists")
+                .is_some()
+            || self
+                .module
+                .get_function("action_host_file_delete")
+                .is_some()
+            || self
+                .module
+                .get_function("action_host_file_io_barrier")
+                .is_some()
             || self.module.get_function("action_host_file_open").is_some()
-            || self.module.get_function("action_host_bs_buf_clear").is_some()
-            || self.module.get_function("action_host_bs_buf_append").is_some()
+            || self
+                .module
+                .get_function("action_host_bs_buf_clear")
+                .is_some()
+            || self
+                .module
+                .get_function("action_host_bs_buf_append")
+                .is_some()
             || self.module.get_function("action_host_bs_buf_set").is_some()
             || self.module.get_function("action_host_bs_buf_get").is_some()
             || self.module.get_function("action_host_bs_int_set").is_some()

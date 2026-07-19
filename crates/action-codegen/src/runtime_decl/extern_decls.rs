@@ -309,18 +309,12 @@ impl<'ctx> CodeGen<'ctx> {
         // Host-side file IO (crates/host-rt/runtime_file.rs) — (ptr,len) after string_data
         let _host_file_write_fn = self.module.add_function(
             "action_host_file_write",
-            i8.fn_type(
-                &[ptr.into(), i64.into(), ptr.into(), i64.into()],
-                false,
-            ),
+            i8.fn_type(&[ptr.into(), i64.into(), ptr.into(), i64.into()], false),
             None,
         );
         let _host_file_append_fn = self.module.add_function(
             "action_host_file_append",
-            i8.fn_type(
-                &[ptr.into(), i64.into(), ptr.into(), i64.into()],
-                false,
-            ),
+            i8.fn_type(&[ptr.into(), i64.into(), ptr.into(), i64.into()], false),
             None,
         );
         let _host_file_read_fn = self.module.add_function(
@@ -345,10 +339,7 @@ impl<'ctx> CodeGen<'ctx> {
         );
         let _host_file_open_fn = self.module.add_function(
             "action_host_file_open",
-            ptr.fn_type(
-                &[ptr.into(), i64.into(), ptr.into(), i64.into()],
-                false,
-            ),
+            ptr.fn_type(&[ptr.into(), i64.into(), ptr.into(), i64.into()], false),
             None,
         );
         // Bootstrap in-memory session buffers (M42) — slot + (ptr,len) append / String get

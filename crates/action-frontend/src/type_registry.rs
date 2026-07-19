@@ -255,9 +255,7 @@ mod tests {
             reg.find_struct_by_fields(&reverse).map(|s| s.name.as_str()),
             Some("Point")
         );
-        assert!(reg
-            .find_struct_by_fields(&["x".into()])
-            .is_none());
+        assert!(reg.find_struct_by_fields(&["x".into()]).is_none());
     }
 
     #[test]

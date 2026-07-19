@@ -5,9 +5,9 @@ use inkwell::values::{IntValue, PointerValue};
 use inkwell::IntPredicate;
 
 use super::ForExprSrc;
-use super::{ForIterable, llvm_err, CodeGen, TypedValue, ValKind};
-use action_frontend::hir::{HirExpr, HirExprKind, HirForKind, HirStmt};
+use super::{llvm_err, CodeGen, ForIterable, TypedValue, ValKind};
 use crate::Scope;
+use action_frontend::hir::{HirExpr, HirExprKind, HirForKind, HirStmt};
 
 impl<'ctx> CodeGen<'ctx> {
     pub(crate) fn compile_for_iterate(
@@ -24,31 +24,15 @@ impl<'ctx> CodeGen<'ctx> {
             ForIterable::Map { data_ptr, cap } => {
                 let use_key = body.iterate_use_map_keys(variable);
                 return self.compile_for_iterate_hash(
-                    variable,
-                    data_ptr,
-                    cap,
-                    use_key,
-                    use_key,
-                    body,
-                    collect,
+                    variable, data_ptr, cap, use_key, use_key, body, collect,
                 );
             }
             ForIterable::Set { data_ptr, cap } => {
-                return self.compile_for_iterate_hash(
-                    variable, data_ptr, cap, true, false, body, collect,
-                );
+                return self
+                    .compile_for_iterate_hash(variable, data_ptr, cap, true, false, body, collect);
             }
-            ForIterable::Range { start, end } => {
-                self.compile_for_iterate_range_list(
-                    variable,
-                    start,
-                    end,
-                    None,
-                    body,
-                    collect,
-                    false,
-                )
-            }
+            ForIterable::Range { start, end } => self
+                .compile_for_iterate_range_list(variable, start, end, None, body, collect, false),
             ForIterable::List { list_ptr, len } => {
                 // M75: List[String] elements — same `len(var)` cue Map keys use for ValKind::Str.
                 let bind_str = body.iterate_bind_str(variable);
@@ -495,14 +479,12 @@ impl<'ctx> CodeGen<'ctx> {
         let iterable = iterator.classify_iterable(self)?;
         match iterable {
             ForIterable::Map { data_ptr, cap } => {
-                return self.compile_for_with_index_hash(
-                    index_var, item_var, data_ptr, cap, false, body,
-                );
+                return self
+                    .compile_for_with_index_hash(index_var, item_var, data_ptr, cap, false, body);
             }
             ForIterable::Set { data_ptr, cap } => {
-                return self.compile_for_with_index_hash(
-                    index_var, item_var, data_ptr, cap, true, body,
-                );
+                return self
+                    .compile_for_with_index_hash(index_var, item_var, data_ptr, cap, true, body);
             }
             _ => {}
         }
@@ -717,11 +699,21 @@ impl<'ctx> CodeGen<'ctx> {
             .build_alloca(i64, "for_map_item")
             .map_err(llvm_err)?;
 
-        let loop_header = self.context.append_basic_block(current_fn, "for_map_idx_hdr");
-        let loop_chk = self.context.append_basic_block(current_fn, "for_map_idx_chk");
-        let loop_body = self.context.append_basic_block(current_fn, "for_map_idx_body");
-        let loop_next = self.context.append_basic_block(current_fn, "for_map_idx_nxt");
-        let loop_exit = self.context.append_basic_block(current_fn, "for_map_idx_ext");
+        let loop_header = self
+            .context
+            .append_basic_block(current_fn, "for_map_idx_hdr");
+        let loop_chk = self
+            .context
+            .append_basic_block(current_fn, "for_map_idx_chk");
+        let loop_body = self
+            .context
+            .append_basic_block(current_fn, "for_map_idx_body");
+        let loop_next = self
+            .context
+            .append_basic_block(current_fn, "for_map_idx_nxt");
+        let loop_exit = self
+            .context
+            .append_basic_block(current_fn, "for_map_idx_ext");
 
         let saved_continue_target = self.loop_control.continue_target;
         let saved_break_target = self.loop_control.break_target;
@@ -1034,12 +1026,13 @@ fn hir_body_uses_len_on_var(expr: &HirExpr, var: &str) -> bool {
         HirExprKind::FieldAccess(obj, method) if method == "len" => {
             matches!(&obj.kind, HirExprKind::Ident(n) if n == var)
         }
-        HirExprKind::Block(stmts) => stmts
-            .iter()
-            .any(|s| hir_stmt_uses_len_on_var(s, var)),
-        HirExprKind::Binary(lhs, _, rhs) | HirExprKind::Assign { target: lhs, value: rhs, .. } => {
-            hir_body_uses_len_on_var(lhs, var) || hir_body_uses_len_on_var(rhs, var)
-        }
+        HirExprKind::Block(stmts) => stmts.iter().any(|s| hir_stmt_uses_len_on_var(s, var)),
+        HirExprKind::Binary(lhs, _, rhs)
+        | HirExprKind::Assign {
+            target: lhs,
+            value: rhs,
+            ..
+        } => hir_body_uses_len_on_var(lhs, var) || hir_body_uses_len_on_var(rhs, var),
         HirExprKind::Unary(_, inner) => hir_body_uses_len_on_var(inner, var),
         HirExprKind::When(w) => hir_when_uses_len_on_var(w, var),
         HirExprKind::For(f) => hir_for_uses_len_on_var(f, var),
@@ -1047,17 +1040,17 @@ fn hir_body_uses_len_on_var(expr: &HirExpr, var: &str) -> bool {
             hir_body_uses_len_on_var(fallible, var) || hir_body_uses_len_on_var(fallback, var)
         }
         HirExprKind::Lambda { body, .. } => hir_body_uses_len_on_var(body, var),
-        HirExprKind::Copy(inner) | HirExprKind::Unsafe(inner) => hir_body_uses_len_on_var(inner, var),
-        HirExprKind::StructLiteral(fields) => fields
+        HirExprKind::Copy(inner) | HirExprKind::Unsafe(inner) => {
+            hir_body_uses_len_on_var(inner, var)
+        }
+        HirExprKind::StructLiteral(fields) => {
+            fields.iter().any(|(_, e)| hir_body_uses_len_on_var(e, var))
+        }
+        HirExprKind::MapLiteral(entries) => entries
             .iter()
-            .any(|(_, e)| hir_body_uses_len_on_var(e, var)),
-        HirExprKind::MapLiteral(entries) => entries.iter().any(|(k, v)| {
-            hir_body_uses_len_on_var(k, var) || hir_body_uses_len_on_var(v, var)
-        }),
+            .any(|(k, v)| hir_body_uses_len_on_var(k, var) || hir_body_uses_len_on_var(v, var)),
         HirExprKind::SetLiteral(items) => items.iter().any(|i| hir_body_uses_len_on_var(i, var)),
-        HirExprKind::Tuple(items) => items
-            .iter()
-            .any(|(_, v)| hir_body_uses_len_on_var(v, var)),
+        HirExprKind::Tuple(items) => items.iter().any(|(_, v)| hir_body_uses_len_on_var(v, var)),
         HirExprKind::Index(obj, idx) => {
             hir_body_uses_len_on_var(obj, var) || hir_body_uses_len_on_var(idx, var)
         }
@@ -1091,10 +1084,7 @@ fn hir_when_uses_len_on_var(w: &action_frontend::hir::HirWhen, var: &str) -> boo
             then_expr,
             else_expr,
             ..
-        } => {
-            hir_body_uses_len_on_var(then_expr, var)
-                || hir_body_uses_len_on_var(else_expr, var)
-        }
+        } => hir_body_uses_len_on_var(then_expr, var) || hir_body_uses_len_on_var(else_expr, var),
         HirWhenKind::ValueMatch { value, arms } => {
             hir_body_uses_len_on_var(value, var)
                 || arms.iter().any(|arm| {
@@ -1126,7 +1116,9 @@ fn hir_for_uses_len_on_var(f: &action_frontend::hir::HirFor, var: &str) -> bool 
         }
         HirForKind::Infinite { body } => hir_body_uses_len_on_var(body, var),
         HirForKind::NestedIterate { bindings, body, .. } => {
-            bindings.iter().any(|(_, e)| hir_body_uses_len_on_var(e, var))
+            bindings
+                .iter()
+                .any(|(_, e)| hir_body_uses_len_on_var(e, var))
                 || hir_body_uses_len_on_var(body, var)
         }
     }

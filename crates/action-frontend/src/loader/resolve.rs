@@ -398,9 +398,7 @@ pub fn transform_module_access(program: &mut Program) {
                 }
             }
             Pattern::Constructor {
-                args,
-                named_fields,
-                ..
+                args, named_fields, ..
             } => {
                 for p in args.iter_mut() {
                     transform_pattern(p, flat, prefixed);
@@ -414,18 +412,12 @@ pub fn transform_module_access(program: &mut Program) {
                     transform_pattern(p, flat, prefixed);
                 }
             }
-            Pattern::Wildcard
-            | Pattern::Literal(_)
-            | Pattern::Variable(_)
-            | Pattern::IsType(_) => {}
+            Pattern::Wildcard | Pattern::Literal(_) | Pattern::Variable(_) | Pattern::IsType(_) => {
+            }
         }
     }
 
-    fn transform_expr(
-        expr: &mut Expr,
-        flat: &HashSet<String>,
-        prefixed: &HashSet<String>,
-    ) {
+    fn transform_expr(expr: &mut Expr, flat: &HashSet<String>, prefixed: &HashSet<String>) {
         // Handle module prefix transformation: Module.func -> Module_func (or bare func)
         // Check separately to avoid borrow conflicts with the mutable match below
         let replacement = match &expr.kind {
@@ -581,11 +573,7 @@ pub fn transform_module_access(program: &mut Program) {
         }
     }
 
-    fn transform_stmt(
-        stmt: &mut Stmt,
-        flat: &HashSet<String>,
-        prefixed: &HashSet<String>,
-    ) {
+    fn transform_stmt(stmt: &mut Stmt, flat: &HashSet<String>, prefixed: &HashSet<String>) {
         match stmt {
             Stmt::Fun { body, .. } => {
                 transform_expr(body, flat, prefixed);

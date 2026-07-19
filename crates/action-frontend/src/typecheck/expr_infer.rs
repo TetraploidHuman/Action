@@ -516,7 +516,9 @@ impl TypeChecker {
                             return Ok(struct_info.fields[*index].1.clone());
                         }
                         return Err(crate::error::e013_unknown_struct_field(
-                            struct_name, field, expr.span,
+                            struct_name,
+                            field,
+                            expr.span,
                         ));
                     }
                 }

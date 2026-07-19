@@ -43,9 +43,7 @@ impl<'a> Lowerer<'a> {
                 span,
             } => {
                 let value_hir = self.lower_expr(value);
-                let bind_ty = type_ann
-                    .clone()
-                    .unwrap_or_else(|| value_hir.ty.clone());
+                let bind_ty = type_ann.clone().unwrap_or_else(|| value_hir.ty.clone());
                 self.locals.insert(name.clone(), bind_ty);
                 HirStmt::Let {
                     mutable: *mutable,

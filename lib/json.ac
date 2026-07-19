@@ -91,7 +91,7 @@ fun jsonEscape(s: String) -> String = {
     var i = 0
     for i < len(s) {
         val ch = substring(s, i, 1)
-        val esc = when ch == "\"" { "\\\"" else when ch == "\\" { "\\\\" else when ch == "\n" { "\\n" else when ch == "\r" { "\\r" else when ch == "\t" { "\\t" else ch } } } } }
+        val esc = if ch == "\"" { "\\\"" } else { if ch == "\\" { "\\\\" } else { if ch == "\n" { "\\n" } else { if ch == "\r" { "\\r" } else { if ch == "\t" { "\\t" } else { ch } } } } }
         r = r + esc
         i = i + 1
     }

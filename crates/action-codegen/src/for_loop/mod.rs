@@ -144,9 +144,9 @@ impl<'a> ForExprSrc<'a> {
                 "compile_list_iterable called on Map/Set — use hash-table iteration path"
                     .to_string(),
             ),
-            ForIterable::Range { .. } => Err(
-                "compile_list_iterable called on Range — use range_start_end".to_string(),
-            ),
+            ForIterable::Range { .. } => {
+                Err("compile_list_iterable called on Range — use range_start_end".to_string())
+            }
         }
     }
 }

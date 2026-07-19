@@ -36,12 +36,7 @@ impl<'ctx> CodeGen<'ctx> {
                 iterable,
                 body,
                 collect,
-            } => self.compile_for_iterate_hir(
-                var,
-                iterable,
-                body,
-                *collect && !force_no_collect,
-            ),
+            } => self.compile_for_iterate_hir(var, iterable, body, *collect && !force_no_collect),
             HirForKind::Condition { condition, body } => {
                 if let Some(result) =
                     self.try_compile_for_sequential_list_get_hir(condition, body)?
@@ -115,11 +110,7 @@ impl<'ctx> CodeGen<'ctx> {
                 bindings,
                 body,
                 collect,
-            } => self.compile_for_nested_iterate_hir(
-                bindings,
-                body,
-                *collect && !force_no_collect,
-            ),
+            } => self.compile_for_nested_iterate_hir(bindings, body, *collect && !force_no_collect),
         }
     }
 

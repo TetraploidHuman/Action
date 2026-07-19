@@ -53,7 +53,8 @@ impl<'ctx> CodeGen<'ctx> {
                 match (&slot, &content) {
                     (TypedValue::Int(sv), TypedValue::Str(cp)) => {
                         let cv = self.load_string(*cp)?;
-                        let cc = self.call_rt("action_bs_buf_append", &[(*sv).into(), cv.into()])?;
+                        let cc =
+                            self.call_rt("action_bs_buf_append", &[(*sv).into(), cv.into()])?;
                         let result = cc
                             .try_as_basic_value()
                             .basic()
@@ -112,7 +113,8 @@ impl<'ctx> CodeGen<'ctx> {
                 let value = self.compile_call_arg(args[1])?;
                 match (&slot, &value) {
                     (TypedValue::Int(sv), TypedValue::Int(vv)) => {
-                        let cc = self.call_rt("action_bs_int_set", &[(*sv).into(), (*vv).into()])?;
+                        let cc =
+                            self.call_rt("action_bs_int_set", &[(*sv).into(), (*vv).into()])?;
                         let result = cc
                             .try_as_basic_value()
                             .basic()

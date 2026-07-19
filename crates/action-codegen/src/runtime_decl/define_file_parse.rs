@@ -1111,22 +1111,16 @@ impl<'ctx> CodeGen<'ctx> {
         let bi_s_val = bs_int_set_fn.get_nth_param(1).unwrap().into_int_value();
         let bi_s_ret = self
             .builder
-            .build_call(
-                host_bs_int_set,
-                &[bi_s_slot.into(), bi_s_val.into()],
-                "is",
-            )
+            .build_call(host_bs_int_set, &[bi_s_slot.into(), bi_s_val.into()], "is")
             .map_err(llvm_err)?
             .try_as_basic_value()
             .unwrap_basic()
             .into_int_value();
         let _ = self.builder.build_return(Some(&bi_s_ret));
 
-        let bs_int_get_fn = self.module.add_function(
-            "action_bs_int_get",
-            i64.fn_type(&[i64.into()], false),
-            None,
-        );
+        let bs_int_get_fn =
+            self.module
+                .add_function("action_bs_int_get", i64.fn_type(&[i64.into()], false), None);
         let entry = self.context.append_basic_block(bs_int_get_fn, "entry");
         self.builder.position_at_end(entry);
         let bi_g_slot = bs_int_get_fn.get_first_param().unwrap().into_int_value();

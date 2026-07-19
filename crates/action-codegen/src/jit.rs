@@ -358,18 +358,8 @@ fn map_host_symbols(cg: &CodeGen, engine: &inkwell::execution_engine::ExecutionE
         data: *mut u8,
     }
     extern "C" {
-        fn action_host_file_write(
-            _: *const u8,
-            _: i64,
-            _: *const u8,
-            _: i64,
-        ) -> i8;
-        fn action_host_file_append(
-            _: *const u8,
-            _: i64,
-            _: *const u8,
-            _: i64,
-        ) -> i8;
+        fn action_host_file_write(_: *const u8, _: i64, _: *const u8, _: i64) -> i8;
+        fn action_host_file_append(_: *const u8, _: i64, _: *const u8, _: i64) -> i8;
         fn action_host_file_read(_: *const u8, _: i64) -> HostFileStr;
         fn action_host_file_exists(_: *const u8, _: i64) -> i8;
         fn action_host_file_delete(_: *const u8, _: i64) -> i8;
@@ -465,9 +455,7 @@ fn map_host_symbols(cg: &CodeGen, engine: &inkwell::execution_engine::ExecutionE
                 "action_host_file_read" => action_host_file_read as *const () as usize,
                 "action_host_file_exists" => action_host_file_exists as *const () as usize,
                 "action_host_file_delete" => action_host_file_delete as *const () as usize,
-                "action_host_file_io_barrier" => {
-                    action_host_file_io_barrier as *const () as usize
-                }
+                "action_host_file_io_barrier" => action_host_file_io_barrier as *const () as usize,
                 "action_host_file_open" => action_host_file_open as *const () as usize,
                 "action_host_bs_buf_clear" => action_host_bs_buf_clear as *const () as usize,
                 "action_host_bs_buf_append" => action_host_bs_buf_append as *const () as usize,

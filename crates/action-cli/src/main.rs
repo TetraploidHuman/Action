@@ -187,7 +187,8 @@ fn main() {
             emit,
             frontend,
         } => {
-            if let Err(code) = check_with_frontend(&file, explain, &format, emit.as_deref(), &frontend)
+            if let Err(code) =
+                check_with_frontend(&file, explain, &format, emit.as_deref(), &frontend)
             {
                 std::process::exit(code);
             }
@@ -271,9 +272,7 @@ fn check_with_rust_frontend(
                         return Err(1);
                     }
                 } else {
-                    eprintln!(
-                        "Unknown emit format: {fmt}. Supported for check: hir, diagnostics"
-                    );
+                    eprintln!("Unknown emit format: {fmt}. Supported for check: hir, diagnostics");
                     return Err(1);
                 }
             }
@@ -317,11 +316,7 @@ fn check_with_rust_frontend(
     }
 }
 
-fn check_with_bootstrap_frontend(
-    file: &Path,
-    format: &str,
-    emit: Option<&str>,
-) -> Result<(), i32> {
+fn check_with_bootstrap_frontend(file: &Path, format: &str, emit: Option<&str>) -> Result<(), i32> {
     if format == "json" {
         eprintln!("--frontend bootstrap does not support --format json yet");
         return Err(1);
@@ -349,9 +344,7 @@ fn check_with_bootstrap_frontend(
                 return Err(1);
             }
         } else {
-            eprintln!(
-                "Unknown emit format for --frontend bootstrap: {fmt}. Supported: hir"
-            );
+            eprintln!("Unknown emit format for --frontend bootstrap: {fmt}. Supported: hir");
             return Err(1);
         }
     }
