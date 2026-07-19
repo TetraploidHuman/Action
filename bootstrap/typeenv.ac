@@ -1082,6 +1082,9 @@ fun envSeedBuiltins() -> Int {
     envAddGlobal("toString", 5)
     // M118: fallible builtin (ret Int; OrBlock unwraps at codegen).
     envAddGlobal("parseInt", 1)
+    // M122: `map(list) { … }` trailing-lambda pilot (ret tag Int is unused for List;
+    // Path B codegen uses builtin_map; Index after bind uses coll tags / Int).
+    envAddGlobal("map", 1)
     envAddGlobal("println", 0)
     envAddGlobal("print", 0)
     structFieldAdd("Point", "x", "Int")

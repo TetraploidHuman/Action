@@ -1,0 +1,4 @@
+// M122: trailing lambda body type error (`it` is Int; `and` needs Bool).
+fun main() -> Int {
+    return map(List[1]) { it and true }[0]
+}

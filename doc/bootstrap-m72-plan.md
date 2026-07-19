@@ -119,17 +119,18 @@ Phase AR M116 external funSig            ← ✅
 | **M119** | lambda / `it` 试点 | `{` 消歧：`x=`→struct，`x->`/`it …`→`Lambda`；立即调用跳过 funSig；locals snapshot | `lambda_it_ok` →42；`bad_lambda_it_ty` → exit 1；allowlist 61；struct lit 仍绿 | M | M76 | ✅ |
 | **M120** | 开放 import 图（窄） | path-safe 名；visiting DFS 环拒；缺文件拒；非白名单可加载（`mod_` 前缀）；flat allowlist 仍控制 bare 名 | `import_graph_ok` →42；`bad_import_{cycle,unknown}` → exit 1；allowlist 62；self-host 绿 | M | M115 | ✅ |
 | **M121** | 多参 lambda | `{ x, y -> … }`（`,` 消歧）；params 全绑 Int；立即调用 | `lambda_multi_ok` →42；`bad_lambda_multi_ty` → exit 1；allowlist 63；`lambda_it_ok` 仍绿 | S | M119 | ✅ |
+| **M122** | trailing lambda | `f(args) { it…}`；种子 `map`；HIR `trailing_lambda`；`[0] or { 0 }` | `trailing_lambda_ok` →42；`bad_trailing_lambda_ty` → exit 1；allowlist 64 | M | M119/M121 | ✅ |
 
 ### 后续批次（规划）
 
 | ID | 目标 | 依赖 |
 |----|------|------|
-| **M122+** | trailing lambda / `{ stmts }` 无参块 / 更广搜索根 | M119–M121 |
+| **M123+** | `{ stmts }` 无参块 / 更广搜索根 | M120–M122 |
 
 ### 刻意延后（非本批次）
 
 - 任意目录 import / canonicalize 逃逸层（仍固定 `bootstrap/{name}.ac`）
-- trailing lambda / `{ stmts }` 无参块 / 更广搜索根 — 见 M122+
+- `{ stmts }` 无参块 / 更广搜索根 — 见 M123+
 - lazy / **复杂** UFCS 方法链（子集仍禁止；M117 仅 nullary）
 - Action 实现 codegen（L3，不做）
 
@@ -253,9 +254,10 @@ bash scripts/check_bootstrap_goldens.sh
 - [x] nullary UFCS / `or {}` / lambda `it`（M117–M119）
 - [x] 开放 import 图 path-safe + cycle（M120）
 - [x] 多参 `{ x, y -> }` lambda（M121）
+- [x] trailing `f(){…}` + 种子 `map`（M122）
 - [ ] Path B `compile_hir` 仍仅 Rust；无语义回归
 - [ ] 文档数字与标题与仓库一致
-- [ ] trailing lambda / 无参块 / 更广搜索根（M122+）
+- [ ] `{ stmts }` 无参块 / 更广搜索根（M123+）
 
 ## 8. 与既有文档关系
 

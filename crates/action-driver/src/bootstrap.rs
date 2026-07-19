@@ -70,6 +70,7 @@ pub const BOOTSTRAP_FRONTEND_ALLOWLIST: &[&str] = &[
     "string_index_ok",
     "struct_when",
     "tokenize_keywords",
+    "trailing_lambda_ok",
     "ufcs_len_ok",
     "unary_neg_ok",
     "unary_plus",

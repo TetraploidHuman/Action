@@ -30,6 +30,9 @@ def main() -> None:
     for fn in ("lookupTag", "tyAnnTag", "envClear", "typeErrorMark"):
         if f"fun {fn}(" in text:
             raise SystemExit(f"{COMPILER}: {fn} should live in typeenv.ac")
+    te = TYPEENV.read_text()
+    if 'envAddGlobal("map"' not in te:
+        raise SystemExit(f"{TYPEENV}: expected map builtin seed (M122)")
     print("=== bootstrap typeenv check OK ===")
 
 

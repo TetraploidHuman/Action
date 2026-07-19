@@ -134,21 +134,6 @@ fun parseStructLit(s: String, pos: Int) -> Int {
     return p
 }
 
-// M119/M121: `{` — struct (`x = …`) vs lambda (`it …` / `x -> …` / `x, y -> …`).
-fun parseBraceExpr(s: String, pos: Int) -> Int {
-    val p1: Int = parser.advance(s, pos)
-    val first: String = parser.cur(s, p1)
-    val second: String = parser.cur(s, parser.advance(s, p1))
-    return when {
-        second == "=" -> parseStructLit(s, pos)
-        second == "->" -> parseLambdaArrow(s, pos)
-        // M121: `{ x, y -> … }` (subset has no `{x, y}` struct shorthand).
-        second == "," -> parseLambdaArrow(s, pos)
-        first == "it" -> parseLambdaIt(s, pos)
-        else -> parseStructLit(s, pos)
-    }
-}
-
 // M119: `{ it * 2 }` — implicit-it lambda (HIR params=["it"], implicit_it=true).
 fun parseLambdaIt(s: String, pos: Int) -> Int {
     parser.spanMarkBegin(s, pos)
@@ -162,7 +147,7 @@ fun parseLambdaIt(s: String, pos: Int) -> Int {
     typeenv.envLocalRestore(snap)
     parser.spanMarkEnd(s, p)
     emit.setExpr(emit.exprWrap(bodyTag, "{\"Lambda\": {\"params\": [\"it\"], \"body\": " + body + ", \"implicit_it\": true}}"))
-    return parsePostfix(s, p)
+    return p
 }
 
 // M121: bind `ident (, ident)*` into locals; accumulate JSON names on slotFields (saved/restored).
@@ -196,7 +181,34 @@ fun parseLambdaArrow(s: String, pos: Int) -> Int {
     typeenv.envLocalRestore(snap)
     parser.spanMarkEnd(s, p)
     emit.setExpr(emit.exprWrap(bodyTag, "{\"Lambda\": {\"params\": [" + params + "], \"body\": " + body + ", \"implicit_it\": false}}"))
-    return parsePostfix(s, p)
+    return p
+}
+
+// M119/M121: brace lambda (no postfix); used by trailing-lambda attach (M122).
+fun parseBraceLambda(s: String, pos: Int) -> Int {
+    val p1: Int = parser.advance(s, pos)
+    val first: String = parser.cur(s, p1)
+    val second: String = parser.cur(s, parser.advance(s, p1))
+    return when {
+        second == "->" -> parseLambdaArrow(s, pos)
+        second == "," -> parseLambdaArrow(s, pos)
+        first == "it" -> parseLambdaIt(s, pos)
+        else -> parseLambdaIt(s, pos)
+    }
+}
+
+// M119/M121: `{` — struct (`x = …`) vs lambda (`it …` / `x -> …` / `x, y -> …`).
+fun parseBraceExpr(s: String, pos: Int) -> Int {
+    val p1: Int = parser.advance(s, pos)
+    val first: String = parser.cur(s, p1)
+    val second: String = parser.cur(s, parser.advance(s, p1))
+    return when {
+        second == "=" -> parseStructLit(s, pos)
+        second == "->" -> parsePostfix(s, parseLambdaArrow(s, pos))
+        second == "," -> parsePostfix(s, parseLambdaArrow(s, pos))
+        first == "it" -> parsePostfix(s, parseLambdaIt(s, pos))
+        else -> parseStructLit(s, pos)
+    }
 }
 
 fun parseStructFields(s: String, pos: Int, sep: Int) -> Int {
@@ -301,7 +313,45 @@ fun parseCall(s: String, pos: Int) -> Int {
     p = parser.expect(s, p, ")")
     val args: String = emit.accGet(emit.slotArgs())
     emit.accReset(emit.slotArgs())
+    // M122: `f(args) { … }` trailing lambda (lambda-like brace only).
+    val p2: Int = if isLam == false {
+        if parseCallTrailingOk(s, p) { parseCallTrailing(s, p, fn, args, retTag) } else { parseCallNoTrailing(fn, args, retTag, p) }
+    } else {
+        parseCallNoTrailing(fn, args, retTag, p)
+    }
+    // Allow `f()[i]` / `map(xs){…}[0]` postfix after call.
+    return parsePostfix(s, p2)
+}
+
+fun parseCallTrailingOk(s: String, pos: Int) -> Bool {
+    return if parser.cur(s, pos) != "{" {
+        false
+    } else {
+        parseCallTrailingLook(s, parser.advance(s, pos))
+    }
+}
+
+fun parseCallTrailingLook(s: String, p1: Int) -> Bool {
+    val first: String = parser.cur(s, p1)
+    val second: String = parser.cur(s, parser.advance(s, p1))
+    return when {
+        second == "->" -> true
+        second == "," -> true
+        first == "it" -> true
+        else -> false
+    }
+}
+
+fun parseCallNoTrailing(fn: String, args: String, retTag: Int, pos: Int) -> Int {
     emit.setExpr(emit.exprWrap(retTag, "{\"Call\": {\"func\": " + fn + ", \"args\": [" + args + "], \"trailing_lambda\": null}}"))
+    parseCallPopArgs()
+    return pos
+}
+
+fun parseCallTrailing(s: String, pos: Int, fn: String, args: String, retTag: Int) -> Int {
+    val p: Int = parseBraceLambda(s, pos)
+    val lam: String = emit.getExpr()
+    emit.setExpr(emit.exprWrap(retTag, "{\"Call\": {\"func\": " + fn + ", \"args\": [" + args + "], \"trailing_lambda\": " + lam + "}}"))
     parseCallPopArgs()
     return p
 }
