@@ -1,0 +1,4 @@
+// M126: multi-stmt if then/else PlainBlock — `{ 21; 21 * 2 }` → 42.
+fun main() -> Int {
+    return if true { 21; 21 * 2 } else { 0 }
+}

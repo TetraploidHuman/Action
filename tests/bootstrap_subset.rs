@@ -1355,6 +1355,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "lambda_stmts_ok { 21; 21 * 2 }() should return 42",
     ),
     (
+        "if_stmts_ok",
+        42,
+        "if_stmts_ok if true { 21; 21 * 2 } else { 0 } should return 42",
+    ),
+    (
         "lambda_multi_ok",
         42,
         "lambda_multi_ok { x, y -> x + y }(20, 22) should return 42",
@@ -1409,6 +1414,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "for_range",
     "for_range_exclusive",
     "for_string",
+    "if_stmts_ok",
     "infinite_for",
     "infinite_for_return",
     "import_call_ok",
@@ -3416,6 +3422,34 @@ fn test_bootstrap_m125_allowlisted_lambda_stmts_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"lambda_stmts_ok"),
         "lambda_stmts_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M126: multi-stmt if arm type error rejected.
+#[test]
+fn test_bootstrap_m126_rejects_bad_if_stmts_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_if_stmts_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_if_stmts_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M126: multi-stmt if then/else PlainBlock accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m126_allowlisted_if_stmts_ok() {
+    let path = fixtures_root().join("bootstrap/if_stmts_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept if_stmts_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"if_stmts_ok"),
+        "if_stmts_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 

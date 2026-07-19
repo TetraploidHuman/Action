@@ -38,6 +38,7 @@ pub const BOOTSTRAP_FRONTEND_ALLOWLIST: &[&str] = &[
     "for_range",
     "for_range_exclusive",
     "for_string",
+    "if_stmts_ok",
     "infinite_for",
     "infinite_for_return",
     "import_call_ok",

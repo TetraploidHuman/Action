@@ -1,0 +1,4 @@
+// M126: multi-stmt if then arm type error (dual frontend).
+fun main() -> Int {
+    return if true { 21; 1 and true } else { 0 }
+}

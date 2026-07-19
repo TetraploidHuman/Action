@@ -169,8 +169,9 @@
 | M123 | 无参 `{ expr }` lambda | ✅ `{ 21 * 2 }()` →42；`bad_lambda_block_ty`；allowlist 65 |
 | M124 | 更广搜索根 | ✅ `bootstrap/`→`tests/fixtures/bootstrap/`；`import_fixtures_ok`→42；allowlist 66 |
 | M125 | 多语句 `{ expr; … }` lambda | ✅ `{ 21; 21 * 2 }()`→42；`bad_lambda_stmts_ty`；allowlist 67 |
+| M126 | `if`/`or {}` 多语句 PlainBlock | ✅ `if true { 21; 21 * 2 } else { 0 }`→42；`bad_if_stmts_ty`；allowlist 68 |
 
-**M72+ 执行计划**：[bootstrap-m72-plan.md](bootstrap-m72-plan.md)（M72–M125 ✅）。
+**M72+ 执行计划**：[bootstrap-m72-plan.md](bootstrap-m72-plan.md)（M72–M126 ✅）。
 
 CI 维护：`scripts/check_bootstrap_goldens.sh`（`ci-linux.sh core` 内执行，防 golden drift）；`check_bootstrap_{prelude,parser,emit}.py` 校验模块 import 与 fixture 同步。
 

@@ -189,11 +189,13 @@ fun parseLambdaBlock(s: String, pos: Int) -> Int {
     parser.spanMarkBegin(s, pos)
     var p: Int = parser.advance(s, pos)
     val snap: String = typeenv.envLocalSnapshot()
+    val saved: String = emit.accGet(emit.slotBlockStmts())
     emit.accReset(emit.slotBlockStmts())
     p = parseLambdaBlockStmt(s, p, 0)
     p = parseLambdaBlockStmts(s, p, 1)
     val bodyTag: Int = typeenv.lastExprTyTag()
     val stmts: String = emit.accGet(emit.slotBlockStmts())
+    emit.accSet(emit.slotBlockStmts(), saved)
     p = parser.expect(s, p, parser.closeBrace())
     typeenv.envLocalRestore(snap)
     parser.spanMarkEnd(s, p)
@@ -216,6 +218,20 @@ fun parseLambdaBlockStmt(s: String, pos: Int, sep: Int) -> Int {
     emit.accAdd(emit.slotBlockStmts(), emit.exprAsStmt(inner), sep)
     p = skipOptionalSemi(s, p)
     return parseLambdaBlockStmts(s, p, 1)
+}
+
+// M126: after `{` consumed — multi-stmt PlainBlock (HIR Block, not Lambda).
+fun parsePlainBlockBody(s: String, pos: Int) -> Int {
+    val saved: String = emit.accGet(emit.slotBlockStmts())
+    emit.accReset(emit.slotBlockStmts())
+    var p: Int = parseLambdaBlockStmt(s, pos, 0)
+    p = parseLambdaBlockStmts(s, p, 1)
+    val tag: Int = typeenv.lastExprTyTag()
+    val stmts: String = emit.accGet(emit.slotBlockStmts())
+    emit.accSet(emit.slotBlockStmts(), saved)
+    p = parser.expect(s, p, parser.closeBrace())
+    emit.setExpr(emit.stmtsAsBlock(tag, stmts))
+    return p
 }
 
 // M119/M122/M123: brace lambda (no postfix); used by trailing-lambda attach.
@@ -546,20 +562,14 @@ fun parseIfElseBody(s: String, pos: Int) -> Int {
 
 fun parseIfElseBlock(s: String, pos: Int) -> Int {
     var p: Int = parser.expect(s, pos, parser.openBrace())
-    p = parseExpr(s, p)
-    val inner: String = emit.getExpr()
-    val tag: Int = typeenv.lastExprTyTag()
-    p = parser.expect(s, p, parser.closeBrace())
-    emit.setExpr(emit.exprAsBlock(tag, inner))
-    return p
+    return parsePlainBlockBody(s, p)
 }
 
 fun parseIfOneLine(s: String, pos: Int, cond: String) -> Int {
-    var p: Int = parseExpr(s, pos)
-    val thenInner: String = emit.getExpr()
+    // M126: `{` already consumed; multi-stmt then arm as PlainBlock.
+    var p: Int = parsePlainBlockBody(s, pos)
+    val thenE: String = emit.getExpr()
     val thenTag: Int = typeenv.lastExprTyTag()
-    val thenE: String = emit.exprAsBlock(thenTag, thenInner)
-    p = parser.expect(s, p, parser.closeBrace())
     return if parser.cur(s, p) == "else" {
         parseIfAfterElse(s, p, cond, thenE, thenTag)
     } else {
@@ -901,12 +911,11 @@ fun parseOrAfterKw(s: String, pos: Int, left: String) -> Int {
 fun parseOrBlock(s: String, pos: Int, left: String) -> Int {
     val leftTag: Int = typeenv.lastExprTyTag()
     var p: Int = parser.expect(s, pos, parser.openBrace())
-    p = parseExpr(s, p)
-    val fbInner: String = emit.getExpr()
+    // M126: multi-stmt fallback PlainBlock.
+    p = parsePlainBlockBody(s, p)
     val fbTag: Int = typeenv.lastExprTyTag()
-    p = parser.expect(s, p, parser.closeBrace())
     typeenv.tyCheckOrBlock(leftTag, fbTag)
-    val fb: String = emit.exprAsBlock(fbTag, fbInner)
+    val fb: String = emit.getExpr()
     emit.setExpr(emit.exprWrap(leftTag, "{\"OrBlock\": {\"fallible\": " + left + ", \"fallback\": " + fb + "}}"))
     return parseOrLoop(s, p, emit.getExpr())
 }
