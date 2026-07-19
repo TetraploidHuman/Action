@@ -39,14 +39,14 @@ impl BsInts {
         Self {
             slots: [
                 0, 0, 1, 1, 0, 0, 1, 1, 0, 1, 1, 1, 1, // 0–12 span + nest
-                0, 0, 0, 0, 0, 0, 0, 0,                 // 13–20 M47
-                0, 0, 8,                                 // 21–23 M49
-                0, 0, 0,                                 // 24–26 M52 lexer tok
-                0, 0,                                    // 27–28 M73 call/fun sig
-                0,                                       // 29 M73 funSig import depth
-                0,                                       // 30 M73 funSig saw import
-                0, 0,                                    // 31–32 M75 collection tags
-                0, 0,                                    // 33–34 M77 when exhaustiveness
+                0, 0, 0, 0, 0, 0, 0, 0, // 13–20 M47
+                0, 0, 8, // 21–23 M49
+                0, 0, 0, // 24–26 M52 lexer tok
+                0, 0, // 27–28 M73 call/fun sig
+                0, // 29 M73 funSig import depth
+                0, // 30 M73 funSig saw import
+                0, 0, // 31–32 M75 collection tags
+                0, 0, // 33–34 M77 when exhaustiveness
             ],
         }
     }

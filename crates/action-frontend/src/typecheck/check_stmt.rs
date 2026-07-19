@@ -117,9 +117,7 @@ impl TypeChecker {
         let expected = match &obj_ty {
             Type::Map(_, _) => Some(Type::Named("String".into())),
             Type::Named(n) if n == "Map" => Some(Type::Named("String".into())),
-            Type::Generic(base, _)
-                if matches!(base.as_ref(), Type::Named(n) if n == "List") =>
-            {
+            Type::Generic(base, _) if matches!(base.as_ref(), Type::Named(n) if n == "List") => {
                 Some(Type::Named("Int".into()))
             }
             Type::LazyList(_) => Some(Type::Named("Int".into())),
@@ -133,10 +131,8 @@ impl TypeChecker {
         };
         if !types_compatible(&expected, &idx_ty) {
             errors.push(
-                CompilerError::new(format!(
-                    "Index key expects '{expected}' but got '{idx_ty}'"
-                ))
-                .with_span(idx.span),
+                CompilerError::new(format!("Index key expects '{expected}' but got '{idx_ty}'"))
+                    .with_span(idx.span),
             );
         }
     }
@@ -255,21 +251,23 @@ impl TypeChecker {
             ExprKind::FieldAccess(obj, method) if method == "len" => {
                 matches!(&obj.kind, ExprKind::Ident(n) if n == var)
             }
-            ExprKind::Block(stmts) => stmts
-                .iter()
-                .any(|s| self.stmt_uses_len_on_var(s, var)),
-            ExprKind::Binary(l, _, r) | ExprKind::Assign { target: l, value: r, .. } => {
-                self.expr_uses_len_on_var(l, var) || self.expr_uses_len_on_var(r, var)
-            }
+            ExprKind::Block(stmts) => stmts.iter().any(|s| self.stmt_uses_len_on_var(s, var)),
+            ExprKind::Binary(l, _, r)
+            | ExprKind::Assign {
+                target: l,
+                value: r,
+                ..
+            } => self.expr_uses_len_on_var(l, var) || self.expr_uses_len_on_var(r, var),
             ExprKind::Unary(_, inner) => self.expr_uses_len_on_var(inner, var),
             ExprKind::When(w) => self.when_uses_len_on_var(w, var),
             ExprKind::For(f) => self.for_uses_len_on_var(f, var),
             ExprKind::OrBlock { fallible, fallback } => {
-                self.expr_uses_len_on_var(fallible, var)
-                    || self.expr_uses_len_on_var(fallback, var)
+                self.expr_uses_len_on_var(fallible, var) || self.expr_uses_len_on_var(fallback, var)
             }
             ExprKind::Lambda { body, .. } => self.expr_uses_len_on_var(body, var),
-            ExprKind::Copy(inner) | ExprKind::Unsafe(inner) => self.expr_uses_len_on_var(inner, var),
+            ExprKind::Copy(inner) | ExprKind::Unsafe(inner) => {
+                self.expr_uses_len_on_var(inner, var)
+            }
             ExprKind::StructLiteral(fields) => fields
                 .iter()
                 .any(|(_, e)| self.expr_uses_len_on_var(e, var)),
@@ -277,9 +275,7 @@ impl TypeChecker {
                 self.expr_uses_len_on_var(k, var) || self.expr_uses_len_on_var(v, var)
             }),
             ExprKind::SetLiteral(items) => items.iter().any(|e| self.expr_uses_len_on_var(e, var)),
-            ExprKind::Tuple(items) => items
-                .iter()
-                .any(|(_, e)| self.expr_uses_len_on_var(e, var)),
+            ExprKind::Tuple(items) => items.iter().any(|(_, e)| self.expr_uses_len_on_var(e, var)),
             ExprKind::Index(obj, idx) => {
                 self.expr_uses_len_on_var(obj, var) || self.expr_uses_len_on_var(idx, var)
             }
@@ -342,12 +338,13 @@ impl TypeChecker {
                 self.expr_uses_len_on_var(iterable, var) || self.expr_uses_len_on_var(body, var)
             }
             ForKind::Condition { condition, body } => {
-                self.expr_uses_len_on_var(condition, var)
-                    || self.expr_uses_len_on_var(body, var)
+                self.expr_uses_len_on_var(condition, var) || self.expr_uses_len_on_var(body, var)
             }
             ForKind::Infinite { body } => self.expr_uses_len_on_var(body, var),
             ForKind::NestedIterate { bindings, body, .. } => {
-                bindings.iter().any(|(_, e)| self.expr_uses_len_on_var(e, var))
+                bindings
+                    .iter()
+                    .any(|(_, e)| self.expr_uses_len_on_var(e, var))
                     || self.expr_uses_len_on_var(body, var)
             }
         }
@@ -1484,8 +1481,7 @@ impl TypeChecker {
         let Some(info) = self.registry.structs.get(struct_name) else {
             return;
         };
-        let lit: std::collections::HashSet<&str> =
-            fields.iter().map(|(n, _)| n.as_str()).collect();
+        let lit: std::collections::HashSet<&str> = fields.iter().map(|(n, _)| n.as_str()).collect();
         let decl: std::collections::HashSet<&str> =
             info.fields.iter().map(|(n, _)| n.as_str()).collect();
         for name in &lit {

@@ -740,8 +740,7 @@ mod tests {
             }"#,
         );
         assert!(
-            !ok
-                .iter()
+            !ok.iter()
                 .any(|e| e.code == Some(crate::error::DiagnosticCode::E004)),
             "known UFCS must not E004: {:?}",
             ok
@@ -795,7 +794,8 @@ mod tests {
         assert!(
             !errors.iter().any(|e| matches!(
                 e.code,
-                Some(crate::error::DiagnosticCode::E004) | Some(crate::error::DiagnosticCode::E001)
+                Some(crate::error::DiagnosticCode::E004)
+                    | Some(crate::error::DiagnosticCode::E001)
                     | Some(crate::error::DiagnosticCode::E007)
             )),
             "datetime APIs must typecheck with or{{}} on fallible forms: {:?}",
@@ -832,8 +832,7 @@ mod tests {
             }"#,
         );
         assert!(
-            bare
-                .iter()
+            bare.iter()
                 .any(|e| e.code == Some(crate::error::DiagnosticCode::E006)),
             "nested list index without or should E006: {:?}",
             bare
@@ -935,7 +934,9 @@ mod tests {
             }"#,
         );
         assert!(
-            !ok_parts.iter().any(|e| e.code == Some(crate::error::DiagnosticCode::E005)),
+            !ok_parts
+                .iter()
+                .any(|e| e.code == Some(crate::error::DiagnosticCode::E005)),
             "in-bounds pair index must stay valid: {:?}",
             ok_parts
         );
@@ -969,7 +970,8 @@ mod tests {
             "#,
         );
         assert!(
-            !ok.iter().any(|e| e.code == Some(crate::error::DiagnosticCode::E013)),
+            !ok.iter()
+                .any(|e| e.code == Some(crate::error::DiagnosticCode::E013)),
             "known fields must stay valid: {:?}",
             ok
         );
@@ -988,8 +990,7 @@ mod tests {
         assert!(
             !ufcs.iter().any(|e| matches!(
                 e.code,
-                Some(crate::error::DiagnosticCode::E013)
-                    | Some(crate::error::DiagnosticCode::E004)
+                Some(crate::error::DiagnosticCode::E013) | Some(crate::error::DiagnosticCode::E004)
             )),
             "struct UFCS method call should typecheck: {:?}",
             ufcs
@@ -1042,8 +1043,7 @@ mod tests {
         assert!(
             !ok.iter().any(|e| matches!(
                 e.code,
-                Some(crate::error::DiagnosticCode::E013)
-                    | Some(crate::error::DiagnosticCode::E015)
+                Some(crate::error::DiagnosticCode::E013) | Some(crate::error::DiagnosticCode::E015)
             )),
             "order-independent complete literal should be OK: {:?}",
             ok
@@ -1145,8 +1145,7 @@ mod tests {
         assert!(
             !ok.iter().any(|e| matches!(
                 e.code,
-                Some(crate::error::DiagnosticCode::E013)
-                    | Some(crate::error::DiagnosticCode::E015)
+                Some(crate::error::DiagnosticCode::E013) | Some(crate::error::DiagnosticCode::E015)
             )),
             "complete reorder/return/assign should stay clean: {:?}",
             ok
@@ -1195,10 +1194,7 @@ mod tests {
             errors[0].message
         );
         let errors = check_source("val x = 1 + true");
-        assert!(
-            !errors.is_empty(),
-            "Expected type error for Bool Add"
-        );
+        assert!(!errors.is_empty(), "Expected type error for Bool Add");
         let msg = errors[0].message.to_lowercase();
         assert!(
             msg.contains("bool") && (msg.contains("arithmetic") || msg.contains("+")),
@@ -1225,7 +1221,8 @@ mod tests {
         assert!(!errors.is_empty(), "Expected type error for not Int");
         let msg = errors[0].message.to_lowercase();
         assert!(
-            msg.contains("bool") && (msg.contains("!") || msg.contains("not") || msg.contains("unary")),
+            msg.contains("bool")
+                && (msg.contains("!") || msg.contains("not") || msg.contains("unary")),
             "Expected unary-not Bool error, got: {}",
             errors[0].message
         );
@@ -1237,7 +1234,8 @@ mod tests {
         assert!(!errors.is_empty(), "Expected type error for -Bool");
         let msg = errors[0].message.to_lowercase();
         assert!(
-            msg.contains("bool") && (msg.contains("-") || msg.contains("unary") || msg.contains("supported")),
+            msg.contains("bool")
+                && (msg.contains("-") || msg.contains("unary") || msg.contains("supported")),
             "Expected unary-neg Bool error, got: {}",
             errors[0].message
         );
@@ -1245,7 +1243,8 @@ mod tests {
         assert!(!errors.is_empty(), "Expected type error for -String");
         let msg = errors[0].message.to_lowercase();
         assert!(
-            msg.contains("string") && (msg.contains("-") || msg.contains("unary") || msg.contains("supported")),
+            msg.contains("string")
+                && (msg.contains("-") || msg.contains("unary") || msg.contains("supported")),
             "Expected unary-neg String error, got: {}",
             errors[0].message
         );
@@ -1257,7 +1256,8 @@ mod tests {
         assert!(!errors.is_empty(), "Expected type error for +Bool");
         let msg = errors[0].message.to_lowercase();
         assert!(
-            msg.contains("bool") && (msg.contains("+") || msg.contains("unary") || msg.contains("supported")),
+            msg.contains("bool")
+                && (msg.contains("+") || msg.contains("unary") || msg.contains("supported")),
             "Expected unary-pos Bool error, got: {}",
             errors[0].message
         );
@@ -1265,7 +1265,8 @@ mod tests {
         assert!(!errors.is_empty(), "Expected type error for +String");
         let msg = errors[0].message.to_lowercase();
         assert!(
-            msg.contains("string") && (msg.contains("+") || msg.contains("unary") || msg.contains("supported")),
+            msg.contains("string")
+                && (msg.contains("+") || msg.contains("unary") || msg.contains("supported")),
             "Expected unary-pos String error, got: {}",
             errors[0].message
         );
@@ -1283,10 +1284,7 @@ mod tests {
             }
             "#,
         );
-        assert!(
-            !errors.is_empty(),
-            "Expected immutable field-assign error"
-        );
+        assert!(!errors.is_empty(), "Expected immutable field-assign error");
         assert!(
             errors[0].message.to_lowercase().contains("immutable"),
             "Expected immutable message, got: {}",
@@ -1301,10 +1299,7 @@ mod tests {
             }
             "#,
         );
-        assert!(
-            !errors.is_empty(),
-            "Expected immutable index-assign error"
-        );
+        assert!(!errors.is_empty(), "Expected immutable index-assign error");
         assert!(
             errors[0].message.to_lowercase().contains("immutable"),
             "Expected immutable message, got: {}",
@@ -1335,7 +1330,10 @@ mod tests {
                  return s\n\
              }",
         );
-        assert!(!errors.is_empty(), "Expected type error for String range start");
+        assert!(
+            !errors.is_empty(),
+            "Expected type error for String range start"
+        );
         let msg = errors[0].message.to_lowercase();
         assert!(
             msg.contains("range") && msg.contains("int"),
@@ -1347,7 +1345,10 @@ mod tests {
     #[test]
     fn test_when_condition_must_be_bool() {
         let errors = check_source("fun main() -> Int { return if 1 { 0 } else { 1 } }");
-        assert!(!errors.is_empty(), "Expected type error for Int if condition");
+        assert!(
+            !errors.is_empty(),
+            "Expected type error for Int if condition"
+        );
         assert!(
             errors
                 .iter()
@@ -1369,7 +1370,10 @@ mod tests {
                  }\n\
              }",
         );
-        assert!(!errors.is_empty(), "Expected type error for Int when-chain condition");
+        assert!(
+            !errors.is_empty(),
+            "Expected type error for Int when-chain condition"
+        );
         let msg = errors[0].message.to_lowercase();
         assert!(
             msg.contains("when") && msg.contains("bool") && msg.contains("condition"),
@@ -1388,7 +1392,10 @@ mod tests {
                  return s\n\
              }",
         );
-        assert!(!errors.is_empty(), "Expected type error for Int for-condition");
+        assert!(
+            !errors.is_empty(),
+            "Expected type error for Int for-condition"
+        );
         let msg = errors[0].message.to_lowercase();
         assert!(
             msg.contains("for") && msg.contains("bool") && msg.contains("condition"),
@@ -1407,7 +1414,10 @@ mod tests {
                  return code\n\
              }",
         );
-        assert!(!errors.is_empty(), "Expected type error for non-Bool when guard");
+        assert!(
+            !errors.is_empty(),
+            "Expected type error for non-Bool when guard"
+        );
         let msg = errors[0].message.to_lowercase();
         assert!(
             msg.contains("guard") && msg.contains("bool"),
@@ -1444,7 +1454,10 @@ mod tests {
                  return 0\n\
              }",
         );
-        assert!(!errors.is_empty(), "Expected type error for Point = Int assign");
+        assert!(
+            !errors.is_empty(),
+            "Expected type error for Point = Int assign"
+        );
         let msg = errors[0].message.to_lowercase();
         assert!(
             msg.contains("assign") || (msg.contains("point") && msg.contains("int")),
@@ -1482,7 +1495,10 @@ mod tests {
                  return 0\n\
              }",
         );
-        assert!(!errors.is_empty(), "Expected type error for unknown field z");
+        assert!(
+            !errors.is_empty(),
+            "Expected type error for unknown field z"
+        );
         let msg = errors[0].message.to_lowercase();
         assert!(
             msg.contains("z") || msg.contains("unknown") || msg.contains("field"),
@@ -1494,10 +1510,15 @@ mod tests {
     #[test]
     fn test_list_mixed_element_types() {
         let errors = check_source("fun main() -> Int { val xs: List = List[1, \"a\"]; return 0 }");
-        assert!(!errors.is_empty(), "Expected type error for mixed List elems");
+        assert!(
+            !errors.is_empty(),
+            "Expected type error for mixed List elems"
+        );
         let msg = errors[0].message.to_lowercase();
         assert!(
-            msg.contains("list") || msg.contains("element") || (msg.contains("int") && msg.contains("string")),
+            msg.contains("list")
+                || msg.contains("element")
+                || (msg.contains("int") && msg.contains("string")),
             "Expected list homogeneity error, got: {}",
             errors[0].message
         );
@@ -1505,13 +1526,17 @@ mod tests {
 
     #[test]
     fn test_map_mixed_value_types() {
-        let errors = check_source(
-            "fun main() -> Int { val m: Map = Map[\"a\": 1, \"b\": true]; return 0 }",
+        let errors =
+            check_source("fun main() -> Int { val m: Map = Map[\"a\": 1, \"b\": true]; return 0 }");
+        assert!(
+            !errors.is_empty(),
+            "Expected type error for mixed Map values"
         );
-        assert!(!errors.is_empty(), "Expected type error for mixed Map values");
         let msg = errors[0].message.to_lowercase();
         assert!(
-            msg.contains("map") || msg.contains("entry") || (msg.contains("int") && msg.contains("bool")),
+            msg.contains("map")
+                || msg.contains("entry")
+                || (msg.contains("int") && msg.contains("bool")),
             "Expected map homogeneity error, got: {}",
             errors[0].message
         );
@@ -1742,7 +1767,9 @@ mod tests {
             with_real
         );
         assert!(
-            !with_real.iter().any(|e| e.message.to_lowercase().contains("non-exhaustive")),
+            !with_real
+                .iter()
+                .any(|e| e.message.to_lowercase().contains("non-exhaustive")),
             "Red+Blue+Fake must not look incomplete: {:?}",
             with_real
         );
@@ -1751,7 +1778,8 @@ mod tests {
             "enum Color { Red, Blue } fun f(c: Color) -> Int { when c { Red -> 1; Blue -> 2 } }",
         );
         assert!(
-            !ok.iter().any(|e| e.code == Some(crate::error::DiagnosticCode::E014)),
+            !ok.iter()
+                .any(|e| e.code == Some(crate::error::DiagnosticCode::E014)),
             "exhaustive known variants must stay clean: {:?}",
             ok
         );
@@ -1921,7 +1949,8 @@ mod tests {
             "#,
         );
         assert!(
-            !ok.iter().any(|e| e.code == Some(crate::error::DiagnosticCode::E016)),
+            !ok.iter()
+                .any(|e| e.code == Some(crate::error::DiagnosticCode::E016)),
             "matching field value types must stay clean: {:?}",
             ok
         );
@@ -1955,7 +1984,8 @@ mod tests {
             "#,
         );
         assert!(
-            !ok.iter().any(|e| e.code == Some(crate::error::DiagnosticCode::E016)),
+            !ok.iter()
+                .any(|e| e.code == Some(crate::error::DiagnosticCode::E016)),
             "untyped complete matching literal must stay clean: {:?}",
             ok
         );
