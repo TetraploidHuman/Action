@@ -1,4 +1,4 @@
-// M123: no-param lambda body is Bool; main expects Int → type error.
+// M123: no-param lambda body uses `and` with Int → type error (dual frontend).
 fun main() -> Int {
-    return { true }()
+    return { 1 and true }()
 }
