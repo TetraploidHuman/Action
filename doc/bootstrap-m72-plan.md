@@ -120,7 +120,7 @@ Phase AR M116 external funSig            ← ✅
 | **M120** | 开放 import 图（窄） | path-safe 名；visiting DFS 环拒；缺文件拒；非白名单可加载（`mod_` 前缀）；flat allowlist 仍控制 bare 名 | `import_graph_ok` →42；`bad_import_{cycle,unknown}` → exit 1；allowlist 62；self-host 绿 | M | M115 | ✅ |
 | **M121** | 多参 lambda | `{ x, y -> … }`（`,` 消歧）；params 全绑 Int；立即调用 | `lambda_multi_ok` →42；`bad_lambda_multi_ty` → exit 1；allowlist 63；`lambda_it_ok` 仍绿 | S | M119 | ✅ |
 | **M122** | trailing lambda | `f(args) { it…}`；种子 `map`；HIR `trailing_lambda`；`[0] or { 0 }` | `trailing_lambda_ok` →42；`bad_trailing_lambda_ty` → exit 1；allowlist 64 | M | M119/M121 | ✅ |
-| **M123** | 无参 `{ expr }` lambda | `{ 21 * 2 }()` → `Lambda` params=[] + Block body；非 `x=`/`it`/`->` 消歧 | `lambda_block_ok` →42；`bad_lambda_block_ty` → exit 1；allowlist 65；struct/`or {}` 仍绿 | S | M119 | ✅ |
+| **M123** | 无参 `{ expr }` lambda | `{ 21 * 2 }()` → `Lambda` params=[] + Block body；非 `x=`/`it`/`->` 消歧 | `lambda_block_ok` →42；`bad_lambda_block_ty`（`1 and true`）→ exit 1；allowlist 65；struct/`or {}`/`if f(){}` 仍绿 | S | M119 | ✅ |
 
 ### 后续批次（规划）
 
