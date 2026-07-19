@@ -134,7 +134,7 @@ fun parseStructLit(s: String, pos: Int) -> Int {
     return p
 }
 
-// M119: `{` — struct (`x = …`) vs lambda (`it …` / `x -> …`).
+// M119/M121: `{` — struct (`x = …`) vs lambda (`it …` / `x -> …` / `x, y -> …`).
 fun parseBraceExpr(s: String, pos: Int) -> Int {
     val p1: Int = parser.advance(s, pos)
     val first: String = parser.cur(s, p1)
@@ -142,6 +142,8 @@ fun parseBraceExpr(s: String, pos: Int) -> Int {
     return when {
         second == "=" -> parseStructLit(s, pos)
         second == "->" -> parseLambdaArrow(s, pos)
+        // M121: `{ x, y -> … }` (subset has no `{x, y}` struct shorthand).
+        second == "," -> parseLambdaArrow(s, pos)
         first == "it" -> parseLambdaIt(s, pos)
         else -> parseStructLit(s, pos)
     }
@@ -163,22 +165,37 @@ fun parseLambdaIt(s: String, pos: Int) -> Int {
     return parsePostfix(s, p)
 }
 
-// M119: `{ x -> body }` — single explicit param (pilot).
+// M121: bind `ident (, ident)*` into locals; accumulate JSON names on slotFields (saved/restored).
+fun parseLambdaParamNames(s: String, pos: Int, sep: Int) -> Int {
+    val pname: String = parser.cur(s, pos)
+    typeenv.envAddLocal(pname, 1, 0)
+    emit.accAdd(emit.slotFields(), "\"" + pname + "\"", sep)
+    var p: Int = parser.advance(s, pos)
+    return if parser.cur(s, p) == "," {
+        parseLambdaParamNames(s, parser.advance(s, p), 1)
+    } else {
+        p
+    }
+}
+
+// M119/M121: `{ x -> body }` / `{ x, y -> body }` — explicit params (pilot: all Int).
 fun parseLambdaArrow(s: String, pos: Int) -> Int {
     parser.spanMarkBegin(s, pos)
     var p: Int = parser.advance(s, pos)
-    val pname: String = parser.cur(s, p)
-    p = parser.advance(s, p)
-    p = parser.expect(s, p, "->")
     val snap: String = typeenv.envLocalSnapshot()
-    typeenv.envAddLocal(pname, 1, 0)
+    val fieldsSave: String = emit.accGet(emit.slotFields())
+    emit.accReset(emit.slotFields())
+    p = parseLambdaParamNames(s, p, 0)
+    val params: String = emit.accGet(emit.slotFields())
+    emit.accSet(emit.slotFields(), fieldsSave)
+    p = parser.expect(s, p, "->")
     p = parseExpr(s, p)
     val body: String = emit.getExpr()
     val bodyTag: Int = typeenv.lastExprTyTag()
     p = parser.expect(s, p, parser.closeBrace())
     typeenv.envLocalRestore(snap)
     parser.spanMarkEnd(s, p)
-    emit.setExpr(emit.exprWrap(bodyTag, "{\"Lambda\": {\"params\": [\"" + pname + "\"], \"body\": " + body + ", \"implicit_it\": false}}"))
+    emit.setExpr(emit.exprWrap(bodyTag, "{\"Lambda\": {\"params\": [" + params + "], \"body\": " + body + ", \"implicit_it\": false}}"))
     return parsePostfix(s, p)
 }
 

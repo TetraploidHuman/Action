@@ -45,6 +45,8 @@ def main() -> None:
         raise SystemExit(f"{PEXPR}: expected import modload")
     if "import compiler" in pexpr:
         raise SystemExit(f"{PEXPR}: must not import compiler")
+    if "fun parseLambdaParamNames(" not in pexpr:
+        raise SystemExit(f"{PEXPR}: expected parseLambdaParamNames (M121)")
     if '"pexpr" -> true' not in MODLOAD.read_text():
         raise SystemExit(f"{MODLOAD}: importAllowed must allow pexpr")
     print("=== bootstrap pexpr check OK ===")

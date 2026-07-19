@@ -1,0 +1,4 @@
+// M121: lambda params are Int; `and` requires Bool → type error.
+fun main() -> Int {
+    return { x, y -> x and y }(1, 2)
+}

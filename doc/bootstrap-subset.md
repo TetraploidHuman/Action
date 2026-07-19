@@ -9,7 +9,7 @@
 | 绑定 | `val` / `var` / `fun` |
 | 类型 | 基本类型、`struct` / `enum`、显式类型标注 |
 | 控制流 | `when`（…）、`for`（含 `for v in map` 值、`for k in map` 键（`len(k)` 启发式）、`for x in set`、`for k, v in map`、**break** / **continue**）、`return` |
-| 表达式 | 二元 `+ - * / %`、逻辑 **`and` / `or`**、一元 `+ - not`、下标 `m["k"]`、字段 `.x`（可链式）、**nullary UFCS**（`x.len()` / `x.isEmpty()`，M117）、fallible **`or { … }`**（M118）、**lambda / `it`**（`{ it * 2 }(21)` / `{ x -> … }`，M119） |
+| 表达式 | 二元 `+ - * / %`、逻辑 **`and` / `or`**、一元 `+ - not`、下标 `m["k"]`、字段 `.x`（可链式）、**nullary UFCS**（`x.len()` / `x.isEmpty()`，M117）、fallible **`or { … }`**（M118）、**lambda / `it` / 多参**（`{ it * 2 }(21)` / `{ x -> … }` / `{ x, y -> … }`，M119–M121） |
 | 集合 | `List` / `Map` / `Set` / `String` |
 | 模块 | 单文件；flat 自举模块（`prelude`…`pscan`）裸名；**M120** 起亦可 `import` 其它 path-safe 的 `bootstrap/{name}.ac`（非 flat → `mod.fn()` / `mod_` 前缀）；环与缺文件拒绝 |
 | 输出 | `print` / `println`（bootstrap 编译器均已实现） |
@@ -164,8 +164,9 @@
 | M118 | fallible `or {}` | ✅ `or {` → HIR `OrBlock`；`or_block_ok`→0；`bad_or_block_ty`；allowlist 60 |
 | M119 | lambda / `it` | ✅ `{ it * 2 }(21)` → HIR `Lambda`+Call；`lambda_it_ok`→42；`bad_lambda_it_ty`；allowlist 61 |
 | M120 | 开放 import 图（窄） | ✅ path-safe + cycle + 缺文件拒；`import_graph_ok`→42；`bad_import_{cycle,unknown}`；allowlist 62 |
+| M121 | 多参 lambda | ✅ `{ x, y -> x + y }(20, 22)` →42；`bad_lambda_multi_ty`；allowlist 63 |
 
-**M72+ 执行计划**：[bootstrap-m72-plan.md](bootstrap-m72-plan.md)（M72–M120 ✅）。
+**M72+ 执行计划**：[bootstrap-m72-plan.md](bootstrap-m72-plan.md)（M72–M121 ✅）。
 
 CI 维护：`scripts/check_bootstrap_goldens.sh`（`ci-linux.sh core` 内执行，防 golden drift）；`check_bootstrap_{prelude,parser,emit}.py` 校验模块 import 与 fixture 同步。
 

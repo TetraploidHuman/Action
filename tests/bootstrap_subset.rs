@@ -1345,13 +1345,18 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "lambda_it_ok { it * 2 }(21) should return 42",
     ),
     (
+        "lambda_multi_ok",
+        42,
+        "lambda_multi_ok { x, y -> x + y }(20, 22) should return 42",
+    ),
+    (
         "import_graph_ok",
         42,
         "import_graph_ok m120_lib.add1(41) should return 42",
     ),
 ];
 
-/// Bootstrap allowed fixtures with golden HIR + main oracle (62 stems).
+/// Bootstrap allowed fixtures with golden HIR + main oracle (63 stems).
 /// `env_scope_leak.ac` is TC3-negative only (no golden).
 /// Fixtures where bootstrap import loader emits the full module but Rust uses selective import.
 const BOOTSTRAP_SKIP_RUST_FUN_NAME_ORACLE: &[&str] =
@@ -1390,6 +1395,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "jit_smoke",
     "keywords_subset",
     "lambda_it_ok",
+    "lambda_multi_ok",
     "let_point_ok",
     "list_string",
     "logical_not",
@@ -3246,6 +3252,34 @@ fn test_bootstrap_m120_allowlisted_import_graph_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"import_graph_ok"),
         "import_graph_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M121: multi-param lambda body type error rejected.
+#[test]
+fn test_bootstrap_m121_rejects_bad_lambda_multi_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_lambda_multi_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_lambda_multi_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M121: `{ x, y -> x + y }(20, 22)` accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m121_allowlisted_lambda_multi_ok() {
+    let path = fixtures_root().join("bootstrap/lambda_multi_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept lambda_multi_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"lambda_multi_ok"),
+        "lambda_multi_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 
