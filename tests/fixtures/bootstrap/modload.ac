@@ -213,8 +213,29 @@ fun parseImportApplyPrefix(modName: String) -> Int {
     }
 }
 
-fun importModulePath(name: String) -> String {
+external fun exists(path: String) -> Bool
+
+// M124: fixed roots only — bootstrap/ then tests/fixtures/bootstrap/ (no escape).
+fun importModulePathBootstrap(name: String) -> String {
     return "bootstrap/" + name + ".ac"
+}
+
+fun importModulePathFixtures(name: String) -> String {
+    return "tests/fixtures/bootstrap/" + name + ".ac"
+}
+
+fun importModulePath(name: String) -> String {
+    val p0: String = importModulePathBootstrap(name)
+    return if exists(p0) {
+        p0
+    } else {
+        importModulePathPickFixtures(name)
+    }
+}
+
+fun importModulePathPickFixtures(name: String) -> String {
+    val p1: String = importModulePathFixtures(name)
+    return if exists(p1) { p1 } else { "" }
 }
 
 fun parseImportReject(sep: Int) -> Int {

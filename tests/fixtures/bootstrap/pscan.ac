@@ -168,7 +168,16 @@ fun preScanImportLoadModule(modName: String) -> Int {
 }
 
 fun preScanImportLoadModuleBody(modName: String) -> Int {
-    val modSrc: String = readFile(modload.importModulePath(modName))
+    val modPath: String = modload.importModulePath(modName)
+    return if modPath == "" {
+        typeenv.typeErrorMark()
+    } else {
+        preScanImportLoadModuleRead(modName, modPath)
+    }
+}
+
+fun preScanImportLoadModuleRead(modName: String, modPath: String) -> Int {
+    val modSrc: String = readFile(modPath)
     return if len(modSrc) == 0 {
         typeenv.typeErrorMark()
     } else {

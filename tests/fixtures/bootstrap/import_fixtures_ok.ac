@@ -1,0 +1,6 @@
+// M124: import resolves via tests/fixtures/bootstrap/ when absent from bootstrap/.
+import m124_lib
+
+fun main() -> Int {
+    return m124_lib.add1(41)
+}

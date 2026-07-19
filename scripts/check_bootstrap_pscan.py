@@ -33,6 +33,7 @@ EXPECTED_FUNS = {
     "preScanTypeAlias",
     "preScanImportLoadModule",
     "preScanImportLoadModuleBody",
+    "preScanImportLoadModuleRead",
     "preScanImportLoadModuleGo",
     "preScanImportLoad",
     "preScanImport",

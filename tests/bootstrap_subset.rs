@@ -1364,13 +1364,22 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         42,
         "import_graph_ok m120_lib.add1(41) should return 42",
     ),
+    (
+        "import_fixtures_ok",
+        42,
+        "import_fixtures_ok m124_lib.add1(41) via fixtures root should return 42",
+    ),
 ];
 
 /// Bootstrap allowed fixtures with golden HIR + main oracle (65 stems).
 /// `env_scope_leak.ac` is TC3-negative only (no golden).
 /// Fixtures where bootstrap import loader emits the full module but Rust uses selective import.
-const BOOTSTRAP_SKIP_RUST_FUN_NAME_ORACLE: &[&str] =
-    &["import_call_ok", "import_graph_ok", "import_prelude"];
+const BOOTSTRAP_SKIP_RUST_FUN_NAME_ORACLE: &[&str] = &[
+    "import_call_ok",
+    "import_fixtures_ok",
+    "import_graph_ok",
+    "import_prelude",
+];
 
 const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "arith_add_string_ok",
@@ -1398,6 +1407,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "infinite_for",
     "infinite_for_return",
     "import_call_ok",
+    "import_fixtures_ok",
     "import_graph_ok",
     "import_prelude",
     "index_assign_ok",
@@ -3348,6 +3358,30 @@ fn test_bootstrap_m123_allowlisted_lambda_block_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"lambda_block_ok"),
         "lambda_block_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M124: fixtures-root import accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m124_allowlisted_import_fixtures_ok() {
+    let path = fixtures_root().join("bootstrap/import_fixtures_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept import_fixtures_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"import_fixtures_ok"),
+        "import_fixtures_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+    assert!(
+        !bootstrap_dir().join("m124_lib.ac").is_file(),
+        "m124_lib.ac must not live under bootstrap/ (fixtures-root proof)"
+    );
+    assert!(
+        fixtures_root().join("bootstrap/m124_lib.ac").is_file(),
+        "m124_lib.ac must exist under tests/fixtures/bootstrap/"
     );
 }
 

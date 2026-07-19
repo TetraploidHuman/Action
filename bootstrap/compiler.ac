@@ -41,8 +41,16 @@ fun keywordKindOpsTail(text: String) -> String {
 fun parseImportLoadModule(modName: String, sep: Int) -> Int {
     modload.parseImportApplyPrefix(modName)
     val modPath: String = modload.importModulePath(modName)
+    // M120/M124: no root hit → "" ; empty read → reject.
+    return if modPath == "" {
+        modload.parseImportReject(sep)
+    } else {
+        parseImportLoadModuleRead(modName, sep, modPath)
+    }
+}
+
+fun parseImportLoadModuleRead(modName: String, sep: Int, modPath: String) -> Int {
     val modSrc: String = readFile(modPath)
-    // M120: missing module → empty read → reject (open graph beyond allowlist).
     return if len(modSrc) == 0 {
         modload.parseImportReject(sep)
     } else {

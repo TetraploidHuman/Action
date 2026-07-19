@@ -121,17 +121,18 @@ Phase AR M116 external funSig            ← ✅
 | **M121** | 多参 lambda | `{ x, y -> … }`（`,` 消歧）；params 全绑 Int；立即调用 | `lambda_multi_ok` →42；`bad_lambda_multi_ty` → exit 1；allowlist 63；`lambda_it_ok` 仍绿 | S | M119 | ✅ |
 | **M122** | trailing lambda | `f(args) { it…}`；种子 `map`；HIR `trailing_lambda`；`[0] or { 0 }` | `trailing_lambda_ok` →42；`bad_trailing_lambda_ty` → exit 1；allowlist 64 | M | M119/M121 | ✅ |
 | **M123** | 无参 `{ expr }` lambda | `{ 21 * 2 }()` → `Lambda` params=[] + Block body；非 `x=`/`it`/`->` 消歧 | `lambda_block_ok` →42；`bad_lambda_block_ty`（`1 and true`）→ exit 1；allowlist 65；struct/`or {}`/`if f(){}` 仍绿 | S | M119 | ✅ |
+| **M124** | 更广搜索根 | `bootstrap/` → `tests/fixtures/bootstrap/`（`exists`）；无 canonicalize 逃逸 | `import_fixtures_ok` →42（`m124_lib` 仅 fixtures）；`bad_import_unknown` 仍拒；allowlist 66 | S | M120 | ✅ |
 
 ### 后续批次（规划）
 
 | ID | 目标 | 依赖 |
 |----|------|------|
-| **M124+** | 更广搜索根 / `{ val …; stmts }` 多语句块 | M120/M123 |
+| **M125+** | `{ val …; stmts }` 多语句块 | M123 |
 
 ### 刻意延后（非本批次）
 
-- 任意目录 import / canonicalize 逃逸层（仍固定 `bootstrap/{name}.ac` + 可选 fixtures 根见 M124）
-- `{ val …; stmts }` 多语句块 / 更广搜索根 — 见 M124+
+- 任意目录 import / canonicalize 逃逸层（仍固定双根：`bootstrap/` + `tests/fixtures/bootstrap/`，见 M124）
+- `{ val …; stmts }` 多语句块 — 见 M125+
 - lazy / **复杂** UFCS 方法链（子集仍禁止；M117 仅 nullary）
 - Action 实现 codegen（L3，不做）
 
@@ -259,7 +260,8 @@ bash scripts/check_bootstrap_goldens.sh
 - [x] 无参 `{ expr }()` lambda（M123）
 - [ ] Path B `compile_hir` 仍仅 Rust；无语义回归
 - [ ] 文档数字与标题与仓库一致
-- [ ] 更广搜索根 / 多语句 `{ val…; }` 块（M124+）
+- [x] 更广搜索根 `bootstrap/` + `tests/fixtures/bootstrap/`（M124）
+- [ ] 多语句 `{ val…; }` 块（M125+）
 
 ## 8. 与既有文档关系
 

@@ -1,0 +1,4 @@
+// M124: fixtures-root-only helper (not under bootstrap/ — proves second search root).
+fun add1(x: Int) -> Int {
+    return x + 1
+}

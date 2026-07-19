@@ -49,6 +49,10 @@ def main() -> None:
         raise SystemExit(f"{MODLOAD}: expected importNamePathSafe (M120)")
     if "fun importIsVisiting(" not in mod:
         raise SystemExit(f"{MODLOAD}: expected importIsVisiting (M120)")
+    if "fun importModulePathFixtures(" not in mod:
+        raise SystemExit(f"{MODLOAD}: expected importModulePathFixtures (M124)")
+    if 'tests/fixtures/bootstrap/' not in mod:
+        raise SystemExit(f"{MODLOAD}: expected fixtures search root (M124)")
     print("=== bootstrap modload check OK ===")
 
 
