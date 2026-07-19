@@ -143,7 +143,10 @@ fn build_host_runtime_staticlib() {
         manifest_dir.join("crates/host-rt/http_runtime.rs"),
         manifest_dir.join("crates/host-rt/runtime_threading.rs"),
     ];
-    if lib_path.exists() && !host_rt_sources_changed(&lib_path, &sources) {
+    if lib_path.exists()
+        && !host_rt_sources_changed(&lib_path, &sources)
+        && host_rt_lib_has_required_symbols(&lib_path)
+    {
         return;
     }
 
@@ -183,6 +186,22 @@ fn emit_host_rt_link(host_rt_target: &Path, profile: &str) {
     println!("cargo:rustc-link-search=native={}", lib_dir.display());
     // AOT `--emit exe` links libaction_host_rt.a explicitly in main.rs; search path only here.
     let _ = profile;
+}
+
+/// Stale CI caches may keep an old archive without file/bs host symbols.
+fn host_rt_lib_has_required_symbols(lib: &Path) -> bool {
+    let output = Command::new("nm")
+        .args(["-g", "--defined-only"])
+        .arg(lib)
+        .output();
+    let Ok(output) = output else {
+        return true;
+    };
+    if !output.status.success() {
+        return false;
+    }
+    let syms = String::from_utf8_lossy(&output.stdout);
+    syms.contains("action_host_file_read") && syms.contains("action_host_bs_buf_get")
 }
 
 fn host_rt_sources_changed(lib: &Path, sources: &[PathBuf]) -> bool {

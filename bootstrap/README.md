@@ -199,7 +199,7 @@ python3 scripts/gen_bootstrap_hir_golden.py <stem>  # 单夹具
 python3 scripts/gen_bootstrap_hir_golden.py --all   # 全部夹具
 ```
 
-`bootstrap_subset`：**161 passed / 17 ignored**（含 M4–M20、TC1–TC10、M72–M117、AOT/JIT 子进程隔离；allowlist 59 stems）。
+`bootstrap_subset`：**163+ passed / 17 ignored**（含 M4–M20、TC1–TC10、M72–M118、AOT/JIT 子进程隔离；allowlist 60 stems）。
 
 覆盖：
 
@@ -208,7 +208,7 @@ python3 scripts/gen_bootstrap_hir_golden.py --all   # 全部夹具
 - M5：主夹具 `.bootstrap_hir.json` golden（含 `print_stmt`、`return_point_make`、`logical_ops`、`many_structs`、`list_string`、`for_string`）
 - M9：JIT 返回值（`logical_ops`=0，`map_keys`=3，`list_string`=3，`for_string`=6，`many_structs`=9，…）
 - M10/M11/M12/M13/M14/M15/M16/M17/M18/M19/M20：见上表（M20：Path B 文档 + TC 正向 verify）
-- **M72+**：见 `doc/bootstrap-m72-plan.md`（M72–M117 ✅；含 nullary UFCS `x.len()` + import/external funSig）
+- **M72+**：见 `doc/bootstrap-m72-plan.md`（M72–M118 ✅；含 nullary UFCS、`or {}`、import/external funSig）
 
 ## 对接
 

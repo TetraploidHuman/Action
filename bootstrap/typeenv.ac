@@ -98,6 +98,11 @@ fun tyCheckLogical(leftTag: Int, rightTag: Int) -> Int {
     }
 }
 
+// M118: fallible `or { fallback }` — payload type must match fallback expr.
+fun tyCheckOrBlock(leftTag: Int, fbTag: Int) -> Int {
+    return tyCheckBind(leftTag, fbTag)
+}
+
 // M93/M106: Sub/Mul/Div/Mod reject Bool/String; Add rejects Bool but keeps string-concat.
 // Use cond-if (not value-match on `op`) — string arms with `-> 0` emit empty HIR arm.
 fun tyCheckArith(op: String, leftTag: Int, rightTag: Int) -> Int { return when {
@@ -1065,6 +1070,8 @@ fun envSeedBuiltins() -> Int {
     envAddGlobal("charAt", 5)
     envAddGlobal("substring", 5)
     envAddGlobal("toString", 5)
+    // M118: fallible builtin (ret Int; OrBlock unwraps at codegen).
+    envAddGlobal("parseInt", 1)
     envAddGlobal("println", 0)
     envAddGlobal("print", 0)
     structFieldAdd("Point", "x", "Int")

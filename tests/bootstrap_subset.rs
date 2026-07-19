@@ -963,9 +963,32 @@ fn run_bootstrap_hir_jit(source: &Path, label: &str) -> i64 {
         .unwrap_or_else(|e| panic!("run_jit failed for bootstrap {label}: {e}"))
 }
 
+/// CI may keep a stale `host_rt_build/release/libaction_host_rt.a` that predates
+/// `action_host_file_*` / `action_host_bs_*`. Reject archives missing those symbols.
+fn host_rt_staticlib_has_required_symbols(path: &Path) -> bool {
+    let output = Command::new("nm")
+        .args(["-g", "--defined-only"])
+        .arg(path)
+        .output();
+    let Ok(output) = output else {
+        // Windows / missing nm: accept by path existence only.
+        return true;
+    };
+    if !output.status.success() {
+        return false;
+    }
+    let syms = String::from_utf8_lossy(&output.stdout);
+    syms.contains("action_host_file_read") && syms.contains("action_host_bs_buf_get")
+}
+
 fn find_aot_host_staticlib() -> Option<PathBuf> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let profiles = ["release", "debug"];
+    // Prefer the profile cargo test is using (debug) before a cached release archive.
+    let profiles = if cfg!(debug_assertions) {
+        ["debug", "release"]
+    } else {
+        ["release", "debug"]
+    };
     let mut candidates = Vec::new();
     // Nested `cargo build` of host-rt may land under host_rt_build/{triple}/{profile}/
     // when CI sets TARGET / --target.
@@ -1012,7 +1035,9 @@ fn find_aot_host_staticlib() -> Option<PathBuf> {
         }
     }
 
-    candidates.into_iter().find(|p| p.is_file())
+    candidates
+        .into_iter()
+        .find(|p| p.is_file() && host_rt_staticlib_has_required_symbols(p))
 }
 
 fn link_bootstrap_aot_executable(
@@ -1309,9 +1334,14 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         3,
         "ufcs_len_ok List[1,2,3].len() should return 3",
     ),
+    (
+        "or_block_ok",
+        0,
+        "or_block_ok parseInt(\"x\") or { 0 } should return 0",
+    ),
 ];
 
-/// Bootstrap allowed fixtures with golden HIR + main oracle (59 stems).
+/// Bootstrap allowed fixtures with golden HIR + main oracle (60 stems).
 /// `env_scope_leak.ac` is TC3-negative only (no golden).
 /// Fixtures where bootstrap import loader emits the full module but Rust uses selective import.
 const BOOTSTRAP_SKIP_RUST_FUN_NAME_ORACLE: &[&str] = &["import_call_ok", "import_prelude"];
@@ -1357,6 +1387,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "map_literal",
     "map_values",
     "nested_for",
+    "or_block_ok",
     "print_stmt",
     "range_ok",
     "return_bool_cmp",
@@ -3106,6 +3137,34 @@ fn test_bootstrap_m117_allowlisted_ufcs_len_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"ufcs_len_ok"),
         "ufcs_len_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M118: fallible `or {}` type mismatch rejected.
+#[test]
+fn test_bootstrap_m118_rejects_bad_or_block_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_or_block_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_or_block_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M118: `parseInt(\"x\") or { 0 }` accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m118_allowlisted_or_block_ok() {
+    let path = fixtures_root().join("bootstrap/or_block_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept or_block_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"or_block_ok"),
+        "or_block_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 

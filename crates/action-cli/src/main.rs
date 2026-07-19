@@ -727,9 +727,28 @@ fn emit_output(
     Ok(())
 }
 
+fn host_rt_staticlib_has_required_symbols(path: &Path) -> bool {
+    let output = std::process::Command::new("nm")
+        .args(["-g", "--defined-only"])
+        .arg(path)
+        .output();
+    let Ok(output) = output else {
+        return true;
+    };
+    if !output.status.success() {
+        return false;
+    }
+    let syms = String::from_utf8_lossy(&output.stdout);
+    syms.contains("action_host_file_read") && syms.contains("action_host_bs_buf_get")
+}
+
 fn find_aot_host_staticlib() -> Option<String> {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let profiles = ["release", "debug"];
+    let profiles = if cfg!(debug_assertions) {
+        ["debug", "release"]
+    } else {
+        ["release", "debug"]
+    };
     let lib_names: &[&str] = if cfg!(windows) {
         &["action_host_rt.lib", "libaction_host_rt.a"]
     } else {
@@ -769,7 +788,7 @@ fn find_aot_host_staticlib() -> Option<String> {
     push_candidates(&manifest.join("target"));
 
     for path in candidates {
-        if path.exists() {
+        if path.exists() && host_rt_staticlib_has_required_symbols(&path) {
             return Some(path.to_string_lossy().into_owned());
         }
     }

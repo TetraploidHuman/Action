@@ -717,7 +717,29 @@ fun parseAnd(s: String, pos: Int) -> Int {
 }
 
 fun parseOrLoop(s: String, pos: Int, left: String) -> Int {
-    return if parser.cur(s, pos) == "or" { parseOrStep(s, parser.advance(s, pos), left) } else { pos }
+    return if parser.cur(s, pos) == "or" { parseOrAfterKw(s, parser.advance(s, pos), left) } else { pos }
+}
+
+// M118: `or { ... }` is fallible OrBlock; otherwise logical Or (M80).
+fun parseOrAfterKw(s: String, pos: Int, left: String) -> Int {
+    return if parser.cur(s, pos) == parser.openBrace() {
+        parseOrBlock(s, pos, left)
+    } else {
+        parseOrStep(s, pos, left)
+    }
+}
+
+fun parseOrBlock(s: String, pos: Int, left: String) -> Int {
+    val leftTag: Int = typeenv.lastExprTyTag()
+    var p: Int = parser.expect(s, pos, parser.openBrace())
+    p = parseExpr(s, p)
+    val fbInner: String = emit.getExpr()
+    val fbTag: Int = typeenv.lastExprTyTag()
+    p = parser.expect(s, p, parser.closeBrace())
+    typeenv.tyCheckOrBlock(leftTag, fbTag)
+    val fb: String = emit.exprAsBlock(fbTag, fbInner)
+    emit.setExpr(emit.exprWrap(leftTag, "{\"OrBlock\": {\"fallible\": " + left + ", \"fallback\": " + fb + "}}"))
+    return parseOrLoop(s, p, emit.getExpr())
 }
 
 fun parseOrStep(s: String, pos: Int, left: String) -> Int {
