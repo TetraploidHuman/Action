@@ -63,6 +63,46 @@ mod tests {
         assert_eq!(hir.to_program(), program);
     }
 
+    /// Fun params must be re-seeded at lower so `if b { wrap(s) } else { … }` keeps String.
+    #[test]
+    fn hir_fun_params_seed_when_call_string_ty() {
+        let src = r#"
+fun wrap(s: String) -> String { return s }
+fun pick(s: String, b: Bool) -> String {
+  return if b { wrap(s) } else { "x" }
+}
+"#;
+        let (_, hir) = check_and_lower(src);
+        let pick = hir
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                HirStmt::Fun { name, body, .. } if name == "pick" => Some(body),
+                _ => None,
+            })
+            .expect("pick");
+        let HirExprKind::Block(stmts) = &pick.kind else {
+            panic!("pick body block");
+        };
+        let HirStmt::Return {
+            value: Some(ret), ..
+        } = &stmts[0]
+        else {
+            panic!("return if");
+        };
+        let HirExprKind::When(w) = &ret.kind else {
+            panic!("if");
+        };
+        let HirWhenKind::OneLine { then_expr, .. } = &w.kind else {
+            panic!("one-line");
+        };
+        assert_eq!(
+            then_expr.ty,
+            crate::ast::Type::Named("String".into()),
+            "Call in when arm must not collapse to Unit"
+        );
+    }
+
     #[test]
     fn hir_round_trip_examples() {
         let workspace = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");

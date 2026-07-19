@@ -10,7 +10,7 @@ fun main() {
     // Infinite loop with break
     var j = 10
     for {
-        when j == 12 { break else print(j) }
+        if j == 12 { break } else { print(j) }
         j = j + 1
     }
 }

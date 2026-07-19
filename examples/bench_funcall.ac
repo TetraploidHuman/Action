@@ -1,6 +1,6 @@
 // Function call: recursion, TCO, higher-order
-fun fib(n: Int) -> Int { when n <= 1 { n else fib(n - 1) + fib(n - 2) } }
-fun fact(n: Int, acc: Int) -> Int { when n <= 1 { acc else fact(n - 1, acc * n) } }
+fun fib(n: Int) -> Int { if n <= 1 { n } else { fib(n - 1) + fib(n - 2) } }
+fun fact(n: Int, acc: Int) -> Int { if n <= 1 { acc } else { fact(n - 1, acc * n) } }
 fun apply(f: (Int) -> Int, x: Int) -> Int { f(x) }
 fun double(n: Int) -> Int { n * 2 }
 fun main() {

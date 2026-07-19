@@ -2,7 +2,7 @@
 # CI helpers executed inside nix-shell (LLVM + nix Rust on PATH).
 # Usage: nix-shell --run "bash scripts/ci-linux.sh <command>"
 #
-# Semantic authority: 204 integration tests (tests/integration.rs) — must stay green.
+# Semantic authority: 212 integration tests (tests/integration.rs) — must stay green.
 #
 # Optional: CARGO_TARGET_DIR (persistent self-hosted cache) overrides ./target.
 set -euo pipefail
@@ -70,6 +70,17 @@ run_test() {
     run_lsp_smoke
     run_crate_unit_tests
     run_all_integration_tests
+    bash scripts/check_bootstrap_goldens.sh
+    python3 scripts/check_bootstrap_prelude.py
+    python3 scripts/check_bootstrap_parser.py
+    python3 scripts/check_bootstrap_emit.py
+    python3 scripts/check_bootstrap_typeenv.py
+    python3 scripts/check_bootstrap_whenty.py
+    python3 scripts/check_bootstrap_modload.py
+    python3 scripts/check_bootstrap_pexpr.py
+    python3 scripts/check_bootstrap_pstmt.py
+    python3 scripts/check_bootstrap_pdecl.py
+    python3 scripts/check_bootstrap_pscan.py
 }
 
 run_frontend() {

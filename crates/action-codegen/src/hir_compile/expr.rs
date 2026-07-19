@@ -224,10 +224,33 @@ impl<'ctx> CodeGen<'ctx> {
                         i += 1;
                         continue;
                     }
+                    if let action_frontend::hir::HirExprKind::For(f) = &expr.kind {
+                        let is_last = i + 1 >= stmts.len();
+                        self.rc_discard_value(&last)?;
+                        if is_last {
+                            // Block value may be a collecting `for` expression.
+                            last = self.compile_hir_for(f)?;
+                        } else {
+                            // Intermediate statement `for`: must not collect-and-discard.
+                            self.compile_hir_for_stmt(f)?;
+                            last = TypedValue::Unit;
+                        }
+                        i += 1;
+                        continue;
+                    }
                     self.rc_discard_value(&last)?;
                     last = self.compile_hir_expr(expr)?;
                 }
-                _ => self.compile_hir_stmt(s)?,
+                _ => {
+                    self.compile_hir_stmt(s)?;
+                    if self
+                        .builder
+                        .get_insert_block()
+                        .is_some_and(|bb| bb.get_terminator().is_some())
+                    {
+                        break;
+                    }
+                }
             }
             i += 1;
         }

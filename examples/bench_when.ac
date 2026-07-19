@@ -7,6 +7,6 @@ fun main() {
     }
     println(sum)
     i = 0; var total = 0
-    for i < 1000 { val v = when i % 2 == 0 { 10 else 20 }; total = total + v; i = i + 1 }
+    for i < 1000 { val v = if i % 2 == 0 { 10 } else { 20 }; total = total + v; i = i + 1 }
     println(total)
 }

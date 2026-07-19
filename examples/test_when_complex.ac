@@ -36,7 +36,7 @@ fun main() {
 
     // Test 5: Condition chain (expression-based when)
     val w = -5
-    val r3 = when w < 0 { -1 else when w == 0 { 0 else 1 } }
+    val r3 = if w < 0 { -1 } else { if w == 0 { 0 } else { 1 } }
     print(r3)
 
     // Test 6: Destructuring with variable binding in when arm

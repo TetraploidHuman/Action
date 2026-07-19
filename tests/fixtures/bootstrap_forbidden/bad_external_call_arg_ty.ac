@@ -1,0 +1,5 @@
+external fun echo(x: Int) -> Int
+
+fun main() -> Int {
+    return echo(true)
+}

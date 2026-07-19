@@ -5,7 +5,8 @@ use inkwell::values::{IntValue, PointerValue};
 use inkwell::IntPredicate;
 
 use super::ForExprSrc;
-use super::{llvm_err, CodeGen, TypedValue, ValKind};
+use super::{ForIterable, llvm_err, CodeGen, TypedValue, ValKind};
+use action_frontend::hir::{HirExpr, HirExprKind, HirForKind, HirStmt};
 use crate::Scope;
 
 impl<'ctx> CodeGen<'ctx> {
@@ -16,6 +17,64 @@ impl<'ctx> CodeGen<'ctx> {
         body: ForExprSrc<'_>,
         collect: bool,
     ) -> Result<TypedValue<'ctx>, String> {
+        let i64 = self.i64_ty();
+        let zero = i64.const_int(0, false);
+
+        match iterator.classify_iterable(self)? {
+            ForIterable::Map { data_ptr, cap } => {
+                let use_key = body.iterate_use_map_keys(variable);
+                return self.compile_for_iterate_hash(
+                    variable,
+                    data_ptr,
+                    cap,
+                    use_key,
+                    use_key,
+                    body,
+                    collect,
+                );
+            }
+            ForIterable::Set { data_ptr, cap } => {
+                return self.compile_for_iterate_hash(
+                    variable, data_ptr, cap, true, false, body, collect,
+                );
+            }
+            ForIterable::Range { start, end } => {
+                self.compile_for_iterate_range_list(
+                    variable,
+                    start,
+                    end,
+                    None,
+                    body,
+                    collect,
+                    false,
+                )
+            }
+            ForIterable::List { list_ptr, len } => {
+                // M75: List[String] elements — same `len(var)` cue Map keys use for ValKind::Str.
+                let bind_str = body.iterate_bind_str(variable);
+                self.compile_for_iterate_range_list(
+                    variable,
+                    zero,
+                    len,
+                    Some(list_ptr),
+                    body,
+                    collect,
+                    bind_str,
+                )
+            }
+        }
+    }
+
+    fn compile_for_iterate_hash(
+        &mut self,
+        variable: &str,
+        data_ptr: PointerValue<'ctx>,
+        cap: IntValue<'ctx>,
+        use_key: bool,
+        bind_str: bool,
+        body: ForExprSrc<'_>,
+        collect: bool,
+    ) -> Result<TypedValue<'ctx>, String> {
         let current_fn = self
             .builder
             .get_insert_block()
@@ -23,15 +82,195 @@ impl<'ctx> CodeGen<'ctx> {
             .ok_or("Cannot compile for outside function".to_string())?;
 
         let i64 = self.i64_ty();
+        let zero = i64.const_int(0, false);
 
-        // Determine iteration kind: range or list
-        let (start_val, end_val, input_list_ptr) =
-            if let Some((s, e)) = iterator.range_start_end(self)? {
-                (s, e, None)
-            } else {
-                let (zero, len, list_ptr) = iterator.compile_list_iterable(self)?;
-                (zero, len, Some(list_ptr))
-            };
+        let result_list = if collect {
+            let list_cc = self.call_rt("action_list_create", &[cap.into()])?;
+            let list_bv = list_cc
+                .try_as_basic_value()
+                .basic()
+                .ok_or("list_create failed")?;
+            let result_alloca = self
+                .builder
+                .build_alloca(self.list_type, "collect_result")
+                .map_err(llvm_err)?;
+            self.builder
+                .build_store(result_alloca, list_bv)
+                .map_err(llvm_err)?;
+            Some(result_alloca)
+        } else {
+            None
+        };
+
+        let slot_alloca = self
+            .builder
+            .build_alloca(i64, "for_map_slot")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(slot_alloca, zero)
+            .map_err(llvm_err)?;
+
+        let val_alloca = if bind_str {
+            None
+        } else {
+            Some(
+                self.builder
+                    .build_alloca(i64, "for_map_val")
+                    .map_err(llvm_err)?,
+            )
+        };
+        let str_alloca = if bind_str {
+            Some(
+                self.builder
+                    .build_alloca(self.string_type, "for_map_str")
+                    .map_err(llvm_err)?,
+            )
+        } else {
+            None
+        };
+
+        let loop_header = self.context.append_basic_block(current_fn, "for_map_hdr");
+        let loop_chk = self.context.append_basic_block(current_fn, "for_map_chk");
+        let loop_body = self.context.append_basic_block(current_fn, "for_map_body");
+        let loop_next = self.context.append_basic_block(current_fn, "for_map_nxt");
+        let loop_exit = self.context.append_basic_block(current_fn, "for_map_ext");
+
+        let saved_continue_target = self.loop_control.continue_target;
+        let saved_break_target = self.loop_control.break_target;
+        self.loop_control.continue_target = Some(loop_next);
+        self.loop_control.break_target = Some(loop_exit);
+
+        self.builder
+            .build_unconditional_branch(loop_header)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(loop_header);
+        let slot = self
+            .builder
+            .build_load(i64, slot_alloca, "slot_val")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let cond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, slot, cap, "for_map_cond")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_conditional_branch(cond, loop_chk, loop_exit)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(loop_chk);
+        self.ht_branch_if_slot_active(data_ptr, slot, loop_body, loop_next)?;
+
+        self.builder.position_at_end(loop_body);
+        let item_fat = if use_key {
+            self.ht_key_fat_at(data_ptr, slot)?
+        } else {
+            self.ht_val_fat_at(data_ptr, slot)?
+        };
+        if let Some(str_a) = str_alloca {
+            self.builder
+                .build_store(str_a, item_fat)
+                .map_err(llvm_err)?;
+        } else if let Some(val_a) = val_alloca {
+            let item_tag = self
+                .builder
+                .build_extract_value(item_fat.into_struct_value(), 0, "hash_item_tag")
+                .map_err(llvm_err)?
+                .into_int_value();
+            self.builder
+                .build_store(val_a, item_tag)
+                .map_err(llvm_err)?;
+        }
+
+        let mut saved_scope = Scope::new();
+        std::mem::swap(&mut self.scope, &mut saved_scope);
+        self.scope = Scope::with_parent(saved_scope);
+        if let Some(str_a) = str_alloca {
+            self.scope.set(
+                variable.to_string(),
+                str_a,
+                self.string_type.into(),
+                ValKind::Str,
+            );
+        } else if let Some(val_a) = val_alloca {
+            self.scope
+                .set(variable.to_string(), val_a, i64.into(), ValKind::Int);
+        }
+
+        let body_val = body.compile(self)?;
+
+        if let Some(list_ptr) = result_list {
+            let list_loaded = self.load_list(list_ptr)?;
+            let elem_fat = self.to_fat_struct(&body_val)?;
+            let push_cc =
+                self.call_rt("action_list_push", &[list_loaded.into(), elem_fat.into()])?;
+            let pushed = push_cc
+                .try_as_basic_value()
+                .basic()
+                .ok_or("list_push failed")?;
+            self.builder
+                .build_store(list_ptr, pushed)
+                .map_err(llvm_err)?;
+        } else {
+            self.rc_discard_value(&body_val)?;
+        }
+
+        self.builder
+            .build_unconditional_branch(loop_next)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(loop_next);
+        let mut parent = Scope::new();
+        std::mem::swap(&mut self.scope, &mut parent);
+        if let Some(p) = parent.parent {
+            self.scope = *p;
+        }
+
+        let next_slot = self
+            .builder
+            .build_load(i64, slot_alloca, "slot_next")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let one = i64.const_int(1, false);
+        let inc = self
+            .builder
+            .build_int_add(next_slot, one, "slot_inc")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(slot_alloca, inc)
+            .map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(loop_header)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(loop_exit);
+        self.loop_control.continue_target = saved_continue_target;
+        self.loop_control.break_target = saved_break_target;
+
+        if let Some(list_ptr) = result_list {
+            Ok(TypedValue::List(list_ptr))
+        } else {
+            Ok(TypedValue::Unit)
+        }
+    }
+
+    fn compile_for_iterate_range_list(
+        &mut self,
+        variable: &str,
+        start_val: IntValue<'ctx>,
+        end_val: IntValue<'ctx>,
+        input_list_ptr: Option<PointerValue<'ctx>>,
+        body: ForExprSrc<'_>,
+        collect: bool,
+        bind_str: bool,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("Cannot compile for outside function".to_string())?;
+
+        let i64 = self.i64_ty();
 
         // Create result list if collecting
         let result_list = if collect {
@@ -87,11 +326,20 @@ impl<'ctx> CodeGen<'ctx> {
             None
         };
 
-        // For list iteration, allocate separate element value storage (fat struct {i64, ptr})
-        let val_alloca = if input_list_ptr.is_some() {
+        // For list iteration, allocate element storage (i64 tag or full String fat).
+        let val_alloca = if input_list_ptr.is_some() && !bind_str {
             Some(
                 self.builder
                     .build_alloca(i64, "for_val")
+                    .map_err(llvm_err)?,
+            )
+        } else {
+            None
+        };
+        let str_alloca = if input_list_ptr.is_some() && bind_str {
+            Some(
+                self.builder
+                    .build_alloca(self.string_type, "for_str")
                     .map_err(llvm_err)?,
             )
         } else {
@@ -132,18 +380,28 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(loop_body);
 
         // For list iteration: load element via cached sequential walk (O(1) within leaf)
-        if let (Some(va), Some(list_ptr), Some(cache)) =
-            (val_alloca, input_list_ptr, list_get_cache)
-        {
-            let tag = self.list_get_cached_tag(list_ptr, current, cache)?;
-            self.builder.build_store(va, tag).map_err(llvm_err)?;
+        if let (Some(list_ptr), Some(cache)) = (input_list_ptr, list_get_cache) {
+            if let Some(str_a) = str_alloca {
+                let fat = self.list_get_cached_fat(list_ptr, current, cache)?;
+                self.builder.build_store(str_a, fat).map_err(llvm_err)?;
+            } else if let Some(va) = val_alloca {
+                let tag = self.list_get_cached_tag(list_ptr, current, cache)?;
+                self.builder.build_store(va, tag).map_err(llvm_err)?;
+            }
         }
 
         // Add loop variable to scope
         let mut saved_scope = Scope::new();
         std::mem::swap(&mut self.scope, &mut saved_scope);
         self.scope = Scope::with_parent(saved_scope);
-        if let Some(va) = val_alloca {
+        if let Some(str_a) = str_alloca {
+            self.scope.set(
+                variable.to_string(),
+                str_a,
+                self.string_type.into(),
+                ValKind::Str,
+            );
+        } else if let Some(va) = val_alloca {
             self.scope
                 .set(variable.to_string(), va, i64.into(), ValKind::Int);
         } else {
@@ -231,14 +489,29 @@ impl<'ctx> CodeGen<'ctx> {
         let index_var = &vars[0];
         let item_var = &vars[1];
 
+        let i64 = self.i64_ty();
+        let zero = i64.const_int(0, false);
+
+        let iterable = iterator.classify_iterable(self)?;
+        match iterable {
+            ForIterable::Map { data_ptr, cap } => {
+                return self.compile_for_with_index_hash(
+                    index_var, item_var, data_ptr, cap, false, body,
+                );
+            }
+            ForIterable::Set { data_ptr, cap } => {
+                return self.compile_for_with_index_hash(
+                    index_var, item_var, data_ptr, cap, true, body,
+                );
+            }
+            _ => {}
+        }
+
         let current_fn = self
             .builder
             .get_insert_block()
             .and_then(|b| b.get_parent())
             .ok_or("Cannot compile for outside function".to_string())?;
-
-        let i64 = self.i64_ty();
-        let zero = i64.const_int(0, false);
 
         enum IterMode<'a> {
             Range {
@@ -251,15 +524,18 @@ impl<'ctx> CodeGen<'ctx> {
             },
         }
 
-        let mode = if let Some((start, end)) = iterator.range_start_end(self)? {
-            let count = self
-                .builder
-                .build_int_sub(end, start, "range_count")
-                .map_err(llvm_err)?;
-            IterMode::Range { start, count }
-        } else {
-            let (_, len, list_ptr) = iterator.compile_list_iterable(self)?;
-            IterMode::List { list_ptr, len }
+        let mode = match iterable {
+            ForIterable::Range { start, end } => {
+                let count = self
+                    .builder
+                    .build_int_sub(end, start, "range_count")
+                    .map_err(llvm_err)?;
+                IterMode::Range { start, count }
+            }
+            ForIterable::List { list_ptr, len } => IterMode::List { list_ptr, len },
+            ForIterable::Map { .. } | ForIterable::Set { .. } => {
+                unreachable!("handled above")
+            }
         };
 
         let idx_alloca = self
@@ -279,6 +555,16 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_alloca(i64, "for_idx_item")
             .map_err(llvm_err)?;
+        let bind_item_str = body.iterate_bind_str(item_var);
+        let item_str_alloca = if bind_item_str {
+            Some(
+                self.builder
+                    .build_alloca(self.string_type, "for_idx_str")
+                    .map_err(llvm_err)?,
+            )
+        } else {
+            None
+        };
 
         let loop_header = self.context.append_basic_block(current_fn, "for_idx_hdr");
         let loop_body = self.context.append_basic_block(current_fn, "for_idx_body");
@@ -325,10 +611,15 @@ impl<'ctx> CodeGen<'ctx> {
             }
             IterMode::List { list_ptr, .. } => {
                 let cache = list_get_cache.expect("list for-with-index always has get cache");
-                let tag = self.list_get_cached_tag(*list_ptr, current_idx, cache)?;
-                self.builder
-                    .build_store(item_alloca, tag)
-                    .map_err(llvm_err)?;
+                if let Some(str_a) = item_str_alloca {
+                    let fat = self.list_get_cached_fat(*list_ptr, current_idx, cache)?;
+                    self.builder.build_store(str_a, fat).map_err(llvm_err)?;
+                } else {
+                    let tag = self.list_get_cached_tag(*list_ptr, current_idx, cache)?;
+                    self.builder
+                        .build_store(item_alloca, tag)
+                        .map_err(llvm_err)?;
+                }
             }
         }
 
@@ -337,8 +628,17 @@ impl<'ctx> CodeGen<'ctx> {
         self.scope = Scope::with_parent(saved_scope);
         self.scope
             .set(index_var.clone(), idx_alloca, i64.into(), ValKind::Int);
-        self.scope
-            .set(item_var.clone(), item_alloca, i64.into(), ValKind::Int);
+        if let Some(str_a) = item_str_alloca {
+            self.scope.set(
+                item_var.clone(),
+                str_a,
+                self.string_type.into(),
+                ValKind::Str,
+            );
+        } else {
+            self.scope
+                .set(item_var.clone(), item_alloca, i64.into(), ValKind::Int);
+        }
 
         let body_val = body.compile(self)?;
         self.rc_discard_value(&body_val)?;
@@ -366,6 +666,151 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         self.builder
             .build_store(idx_alloca, inc)
+            .map_err(llvm_err)?;
+        self.builder
+            .build_unconditional_branch(loop_header)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(loop_exit);
+        self.loop_control.continue_target = saved_continue_target;
+        self.loop_control.break_target = saved_break_target;
+
+        Ok(TypedValue::Unit)
+    }
+
+    fn compile_for_with_index_hash(
+        &mut self,
+        index_var: &str,
+        item_var: &str,
+        data_ptr: PointerValue<'ctx>,
+        cap: IntValue<'ctx>,
+        use_key: bool,
+        body: ForExprSrc<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let current_fn = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .ok_or("Cannot compile for outside function".to_string())?;
+
+        let i64 = self.i64_ty();
+        let zero = i64.const_int(0, false);
+
+        let idx_alloca = self
+            .builder
+            .build_alloca(i64, "for_map_idx")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(idx_alloca, zero)
+            .map_err(llvm_err)?;
+
+        let slot_alloca = self
+            .builder
+            .build_alloca(i64, "for_map_slot")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(slot_alloca, zero)
+            .map_err(llvm_err)?;
+
+        let item_alloca = self
+            .builder
+            .build_alloca(i64, "for_map_item")
+            .map_err(llvm_err)?;
+
+        let loop_header = self.context.append_basic_block(current_fn, "for_map_idx_hdr");
+        let loop_chk = self.context.append_basic_block(current_fn, "for_map_idx_chk");
+        let loop_body = self.context.append_basic_block(current_fn, "for_map_idx_body");
+        let loop_next = self.context.append_basic_block(current_fn, "for_map_idx_nxt");
+        let loop_exit = self.context.append_basic_block(current_fn, "for_map_idx_ext");
+
+        let saved_continue_target = self.loop_control.continue_target;
+        let saved_break_target = self.loop_control.break_target;
+        self.loop_control.continue_target = Some(loop_next);
+        self.loop_control.break_target = Some(loop_exit);
+
+        self.builder
+            .build_unconditional_branch(loop_header)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(loop_header);
+        let slot = self
+            .builder
+            .build_load(i64, slot_alloca, "slot_val")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let cond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, slot, cap, "for_map_idx_cond")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_conditional_branch(cond, loop_chk, loop_exit)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(loop_chk);
+        self.ht_branch_if_slot_active(data_ptr, slot, loop_body, loop_next)?;
+
+        self.builder.position_at_end(loop_body);
+        let item_fat = if use_key {
+            self.ht_key_fat_at(data_ptr, slot)?
+        } else {
+            self.ht_val_fat_at(data_ptr, slot)?
+        };
+        let item_tag = self
+            .builder
+            .build_extract_value(item_fat.into_struct_value(), 0, "hash_item_tag")
+            .map_err(llvm_err)?
+            .into_int_value();
+        self.builder
+            .build_store(item_alloca, item_tag)
+            .map_err(llvm_err)?;
+
+        let mut saved_scope = Scope::new();
+        std::mem::swap(&mut self.scope, &mut saved_scope);
+        self.scope = Scope::with_parent(saved_scope);
+        self.scope
+            .set(index_var.to_string(), idx_alloca, i64.into(), ValKind::Int);
+        self.scope
+            .set(item_var.to_string(), item_alloca, i64.into(), ValKind::Int);
+
+        let body_val = body.compile(self)?;
+        self.rc_discard_value(&body_val)?;
+
+        let next_idx = self
+            .builder
+            .build_load(i64, idx_alloca, "idx_next")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let one = i64.const_int(1, false);
+        let idx_inc = self
+            .builder
+            .build_int_add(next_idx, one, "idx_inc")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(idx_alloca, idx_inc)
+            .map_err(llvm_err)?;
+
+        self.builder
+            .build_unconditional_branch(loop_next)
+            .map_err(llvm_err)?;
+
+        self.builder.position_at_end(loop_next);
+        let mut parent = Scope::new();
+        std::mem::swap(&mut self.scope, &mut parent);
+        if let Some(p) = parent.parent {
+            self.scope = *p;
+        }
+
+        let next_slot = self
+            .builder
+            .build_load(i64, slot_alloca, "slot_next")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let slot_inc = self
+            .builder
+            .build_int_add(next_slot, one, "slot_inc")
+            .map_err(llvm_err)?;
+        self.builder
+            .build_store(slot_alloca, slot_inc)
             .map_err(llvm_err)?;
         self.builder
             .build_unconditional_branch(loop_header)
@@ -558,6 +1003,131 @@ impl<'ctx> CodeGen<'ctx> {
             Ok(TypedValue::List(list_ptr))
         } else {
             Ok(TypedValue::Unit)
+        }
+    }
+}
+
+impl<'a> ForExprSrc<'a> {
+    fn iterate_use_map_keys(&self, var: &str) -> bool {
+        self.iterate_bind_str(var)
+    }
+
+    /// Bind loop var as `ValKind::Str` when body uses `len(var)` (Map keys / List[String]).
+    fn iterate_bind_str(&self, var: &str) -> bool {
+        match self {
+            ForExprSrc::Hir(h) => hir_body_uses_len_on_var(h, var),
+        }
+    }
+}
+
+fn hir_body_uses_len_on_var(expr: &HirExpr, var: &str) -> bool {
+    match &expr.kind {
+        HirExprKind::Call { func, args, .. } => {
+            if matches!(&func.kind, HirExprKind::Ident(n) if n == "len") {
+                args.first()
+                    .is_some_and(|a| matches!(&a.kind, HirExprKind::Ident(n) if n == var))
+            } else {
+                args.iter().any(|a| hir_body_uses_len_on_var(a, var))
+                    || hir_body_uses_len_on_var(func, var)
+            }
+        }
+        HirExprKind::FieldAccess(obj, method) if method == "len" => {
+            matches!(&obj.kind, HirExprKind::Ident(n) if n == var)
+        }
+        HirExprKind::Block(stmts) => stmts
+            .iter()
+            .any(|s| hir_stmt_uses_len_on_var(s, var)),
+        HirExprKind::Binary(lhs, _, rhs) | HirExprKind::Assign { target: lhs, value: rhs, .. } => {
+            hir_body_uses_len_on_var(lhs, var) || hir_body_uses_len_on_var(rhs, var)
+        }
+        HirExprKind::Unary(_, inner) => hir_body_uses_len_on_var(inner, var),
+        HirExprKind::When(w) => hir_when_uses_len_on_var(w, var),
+        HirExprKind::For(f) => hir_for_uses_len_on_var(f, var),
+        HirExprKind::OrBlock { fallible, fallback } => {
+            hir_body_uses_len_on_var(fallible, var) || hir_body_uses_len_on_var(fallback, var)
+        }
+        HirExprKind::Lambda { body, .. } => hir_body_uses_len_on_var(body, var),
+        HirExprKind::Copy(inner) | HirExprKind::Unsafe(inner) => hir_body_uses_len_on_var(inner, var),
+        HirExprKind::StructLiteral(fields) => fields
+            .iter()
+            .any(|(_, e)| hir_body_uses_len_on_var(e, var)),
+        HirExprKind::MapLiteral(entries) => entries.iter().any(|(k, v)| {
+            hir_body_uses_len_on_var(k, var) || hir_body_uses_len_on_var(v, var)
+        }),
+        HirExprKind::SetLiteral(items) => items.iter().any(|i| hir_body_uses_len_on_var(i, var)),
+        HirExprKind::Tuple(items) => items
+            .iter()
+            .any(|(_, v)| hir_body_uses_len_on_var(v, var)),
+        HirExprKind::Index(obj, idx) => {
+            hir_body_uses_len_on_var(obj, var) || hir_body_uses_len_on_var(idx, var)
+        }
+        HirExprKind::FieldAccess(obj, _) => hir_body_uses_len_on_var(obj, var),
+        HirExprKind::Range(start, end) => {
+            hir_body_uses_len_on_var(start, var) || hir_body_uses_len_on_var(end, var)
+        }
+        HirExprKind::StringInterpolate(parts) => parts.iter().any(|p| match p {
+            action_frontend::hir::HirStringPart::Expr(e) => hir_body_uses_len_on_var(e, var),
+            _ => false,
+        }),
+        HirExprKind::Ident(_) | HirExprKind::Literal(_) => false,
+        _ => false,
+    }
+}
+
+fn hir_stmt_uses_len_on_var(stmt: &HirStmt, var: &str) -> bool {
+    match stmt {
+        HirStmt::Expr { expr, .. } => hir_body_uses_len_on_var(expr, var),
+        HirStmt::Let { value, .. } => hir_body_uses_len_on_var(value, var),
+        HirStmt::Return { value: Some(v), .. } => hir_body_uses_len_on_var(v, var),
+        HirStmt::Return { value: None, .. } => false,
+        _ => false,
+    }
+}
+
+fn hir_when_uses_len_on_var(w: &action_frontend::hir::HirWhen, var: &str) -> bool {
+    use action_frontend::hir::HirWhenKind;
+    match &w.kind {
+        HirWhenKind::OneLine {
+            then_expr,
+            else_expr,
+            ..
+        } => {
+            hir_body_uses_len_on_var(then_expr, var)
+                || hir_body_uses_len_on_var(else_expr, var)
+        }
+        HirWhenKind::ValueMatch { value, arms } => {
+            hir_body_uses_len_on_var(value, var)
+                || arms.iter().any(|arm| {
+                    arm.guard
+                        .as_ref()
+                        .is_some_and(|g| hir_body_uses_len_on_var(g, var))
+                        || hir_body_uses_len_on_var(&arm.body, var)
+                })
+        }
+        HirWhenKind::ConditionChain { arms } => arms.iter().any(|arm| {
+            arm.guard
+                .as_ref()
+                .is_some_and(|g| hir_body_uses_len_on_var(g, var))
+                || hir_body_uses_len_on_var(&arm.body, var)
+        }),
+    }
+}
+
+fn hir_for_uses_len_on_var(f: &action_frontend::hir::HirFor, var: &str) -> bool {
+    match &f.kind {
+        HirForKind::Iterate { iterable, body, .. } => {
+            hir_body_uses_len_on_var(iterable, var) || hir_body_uses_len_on_var(body, var)
+        }
+        HirForKind::IterateWithIndex { iterable, body, .. } => {
+            hir_body_uses_len_on_var(iterable, var) || hir_body_uses_len_on_var(body, var)
+        }
+        HirForKind::Condition { condition, body } => {
+            hir_body_uses_len_on_var(condition, var) || hir_body_uses_len_on_var(body, var)
+        }
+        HirForKind::Infinite { body } => hir_body_uses_len_on_var(body, var),
+        HirForKind::NestedIterate { bindings, body, .. } => {
+            bindings.iter().any(|(_, e)| hir_body_uses_len_on_var(e, var))
+                || hir_body_uses_len_on_var(body, var)
         }
     }
 }

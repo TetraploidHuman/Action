@@ -351,6 +351,42 @@ fn map_host_symbols(cg: &CodeGen, engine: &inkwell::execution_engine::ExecutionE
         fn action_json_as_bool(_: *mut std::ffi::c_void) -> i64;
         fn action_json_len(_: *mut std::ffi::c_void) -> i64;
     }
+    // Host file IO (crates/host-rt/runtime_file.rs) — matches HostStr ABI.
+    #[repr(C)]
+    struct HostFileStr {
+        len: i64,
+        data: *mut u8,
+    }
+    extern "C" {
+        fn action_host_file_write(
+            _: *const u8,
+            _: i64,
+            _: *const u8,
+            _: i64,
+        ) -> i8;
+        fn action_host_file_append(
+            _: *const u8,
+            _: i64,
+            _: *const u8,
+            _: i64,
+        ) -> i8;
+        fn action_host_file_read(_: *const u8, _: i64) -> HostFileStr;
+        fn action_host_file_exists(_: *const u8, _: i64) -> i8;
+        fn action_host_file_delete(_: *const u8, _: i64) -> i8;
+        fn action_host_file_io_barrier(_: *const u8, _: i64);
+        fn action_host_file_open(
+            _: *const u8,
+            _: i64,
+            _: *const u8,
+            _: i64,
+        ) -> *mut std::ffi::c_void;
+        fn action_host_bs_buf_clear(_: i64) -> i64;
+        fn action_host_bs_buf_append(_: i64, _: *const u8, _: i64) -> i64;
+        fn action_host_bs_buf_set(_: i64, _: *const u8, _: i64) -> i64;
+        fn action_host_bs_buf_get(_: i64) -> HostFileStr;
+        fn action_host_bs_int_set(_: i64, _: i64) -> i64;
+        fn action_host_bs_int_get(_: i64) -> i64;
+    }
     for name in [
         "action_http_request",
         "action_http_free",
@@ -380,6 +416,19 @@ fn map_host_symbols(cg: &CodeGen, engine: &inkwell::execution_engine::ExecutionE
         "action_json_as_float",
         "action_json_as_bool",
         "action_json_len",
+        "action_host_file_write",
+        "action_host_file_append",
+        "action_host_file_read",
+        "action_host_file_exists",
+        "action_host_file_delete",
+        "action_host_file_io_barrier",
+        "action_host_file_open",
+        "action_host_bs_buf_clear",
+        "action_host_bs_buf_append",
+        "action_host_bs_buf_set",
+        "action_host_bs_buf_get",
+        "action_host_bs_int_set",
+        "action_host_bs_int_get",
     ] {
         if let Some(func) = cg.module.get_function(name) {
             let addr = match name {
@@ -411,6 +460,21 @@ fn map_host_symbols(cg: &CodeGen, engine: &inkwell::execution_engine::ExecutionE
                 "action_json_as_float" => action_json_as_float as *const () as usize,
                 "action_json_as_bool" => action_json_as_bool as *const () as usize,
                 "action_json_len" => action_json_len as *const () as usize,
+                "action_host_file_write" => action_host_file_write as *const () as usize,
+                "action_host_file_append" => action_host_file_append as *const () as usize,
+                "action_host_file_read" => action_host_file_read as *const () as usize,
+                "action_host_file_exists" => action_host_file_exists as *const () as usize,
+                "action_host_file_delete" => action_host_file_delete as *const () as usize,
+                "action_host_file_io_barrier" => {
+                    action_host_file_io_barrier as *const () as usize
+                }
+                "action_host_file_open" => action_host_file_open as *const () as usize,
+                "action_host_bs_buf_clear" => action_host_bs_buf_clear as *const () as usize,
+                "action_host_bs_buf_append" => action_host_bs_buf_append as *const () as usize,
+                "action_host_bs_buf_set" => action_host_bs_buf_set as *const () as usize,
+                "action_host_bs_buf_get" => action_host_bs_buf_get as *const () as usize,
+                "action_host_bs_int_set" => action_host_bs_int_set as *const () as usize,
+                "action_host_bs_int_get" => action_host_bs_int_get as *const () as usize,
                 _ => continue,
             };
             engine.add_global_mapping(&func, addr);

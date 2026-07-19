@@ -1,7 +1,5 @@
-// Fallible flow: or {}, when, findIndex
-fun pred(x: Int) -> Bool { x == 2 }
-
-fun main() {
+// Fallible flow: or {}, if , findIndex
+fun pred(x: Int) -> Bool { x == 2 }fun main() {
     val maybe = 42
     val n = maybe
     print(n)

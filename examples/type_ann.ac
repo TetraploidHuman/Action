@@ -10,7 +10,7 @@ fun main() {
     val b: Bool = true
     print(1)
 
-    // Type annotation with coercion: Int literal -> Float variable
-    val f: Float = 42
+    // Float binding uses a Float literal (Int→Float coercion is not performed).
+    val f: Float = 42.0
     print(2)
 }

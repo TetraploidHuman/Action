@@ -109,6 +109,9 @@ fn build_host_runtime_staticlib() {
     }
 
     println!("cargo:rerun-if-changed=crates/host-rt/");
+    println!("cargo:rerun-if-changed=crates/host-rt/runtime_file.rs");
+    println!("cargo:rerun-if-changed=crates/host-rt/runtime_bs_buf.rs");
+    println!("cargo:rerun-if-changed=crates/host-rt/runtime_bs_int.rs");
     println!("cargo:rerun-if-changed=crates/host-rt/runtime_json.rs");
     println!("cargo:rerun-if-changed=crates/host-rt/http_runtime.rs");
     println!("cargo:rerun-if-changed=crates/host-rt/runtime_threading.rs");
@@ -132,6 +135,10 @@ fn build_host_runtime_staticlib() {
     emit_host_rt_link(&host_rt_target, profile);
     let sources = [
         host_rt_manifest.clone(),
+        manifest_dir.join("crates/host-rt/lib.rs"),
+        manifest_dir.join("crates/host-rt/runtime_file.rs"),
+        manifest_dir.join("crates/host-rt/runtime_bs_buf.rs"),
+        manifest_dir.join("crates/host-rt/runtime_bs_int.rs"),
         manifest_dir.join("crates/host-rt/runtime_json.rs"),
         manifest_dir.join("crates/host-rt/http_runtime.rs"),
         manifest_dir.join("crates/host-rt/runtime_threading.rs"),

@@ -1,0 +1,322 @@
+// M31 bootstrap statement/block parser (let/for/return/print/assign/block).
+
+import prelude
+
+import parser
+
+import emit
+
+import typeenv
+
+import whenty
+
+import modload
+
+import pexpr
+
+fun emitLetHdr(sep: Int, mut: Bool) -> Int {
+    emit.jComma(sep)
+    emit.jOut("{\"Let\": {\"mutable\": ")
+    emitLetMut(mut)
+    emit.jOut(", \"lazy_init\": false, \"name\": \"")
+    return 0
+}
+
+fun emitLetMut(mut: Bool) -> Int {
+    return emit.jOutBool(mut)
+}
+
+fun finishLet() -> Int {
+    val n: String = emit.sessGet(emit.slotBindName())
+    val ty: String = emit.sessGet(emit.slotBindTy())
+    val v: String = emit.getExpr()
+    emit.jOut(n)
+    emit.jOut("\", \"type_ann\": ")
+    emit.jTyNamed(ty)
+    emit.jOut(", \"value\": ")
+    emit.jOut(v)
+    emit.jOut(", \"span\": ")
+    emit.jSpan()
+    emit.jOut("}}")
+    return 0
+}
+
+fun parseLet(s: String, pos: Int, sep: Int, mut: Bool) -> Int {
+    parser.spanMarkBegin(s, pos)
+    var p: Int = parser.advance(s, pos)
+    emit.sessSet(emit.slotBindName(), parser.cur(s, p))
+    p = parser.advance(s, p)
+    p = parser.expect(s, p, ":")
+    emit.sessSet(emit.slotBindTy(), parser.cur(s, p))
+    emitLetHdr(sep, mut)
+    p = parser.advance(s, p)
+    p = parser.expect(s, p, "=")
+    typeenv.setLitTy(emit.sessGet(emit.slotBindTy()))
+    p = pexpr.parseExpr(s, p)
+    typeenv.tyCheckBind(typeenv.tyAnnTag(emit.sessGet(emit.slotBindTy())), typeenv.lastExprTyTag())
+    parser.spanMarkEnd(s, p)
+    finishLet()
+    val n: String = emit.sessGet(emit.slotBindName())
+    val ty: String = emit.sessGet(emit.slotBindTy())
+    typeenv.envAddLocal(n, typeenv.tyAnnTag(ty), if mut { 1 } else { 0 })
+    typeenv.collEnvBind(n)
+    return parseStmts(s, pexpr.skipOptionalSemi(s, p), 1)
+}
+
+fun emitBlockTy(retTag: Int) -> Int {
+    return if retTag == 0 { emit.jOut("\"Unit\"") } else { emit.jTyNamed(emit.sessGet(emit.slotFnRetTy())) }
+}
+
+fun parseBlock(s: String, pos: Int, retTag: Int) -> Int {
+    var p: Int = parser.expect(s, pos, parser.openBrace())
+    emit.jOut("{\"ty\": ")
+    emitBlockTy(retTag)
+    emit.jOut(", \"span\": ")
+    emit.jSpan()
+    emit.jOut(", \"kind\": {\"Block\": [")
+    p = parseStmts(s, p, 0)
+    emit.jOut("]}")
+    emit.jOut("}")
+    return parser.expect(s, p, parser.closeBrace())
+}
+
+fun parseReturn(s: String, pos: Int, sep: Int) -> Int {
+    parser.spanMarkBegin(s, pos)
+    emit.jComma(sep)
+    var p: Int = parser.advance(s, pos)
+    typeenv.markUndefIdentClear()
+    typeenv.setLitTy(emit.sessGet(emit.slotFnRetTy()))
+    p = pexpr.parseExpr(s, p)
+    typeenv.markUndefReturn()
+    typeenv.tyCheckReturn(typeenv.tyAnnTag(emit.sessGet(emit.slotFnRetTy())))
+    parser.spanMarkEnd(s, p)
+    emit.jOut("{\"Return\": {\"value\": ")
+    emit.jOut(emit.getExpr())
+    emit.jOut(", \"span\": ")
+    emit.jSpan()
+    emit.jOut("}}")
+    return parseStmts(s, pexpr.skipOptionalSemi(s, p), 1)
+}
+
+fun parseForCond(s: String, pos: Int, vname: String) -> Int {
+    typeenv.envAddLocal(vname, 1, 0)
+    emit.setExprIdent(vname, typeenv.lookupTag(vname))
+    var p: Int = pexpr.parseCmpLoop(s, pos, emit.getExpr())
+    // M103: for-condition must be Bool (reuse tyCheckGuard).
+    typeenv.tyCheckGuard()
+    val cond: String = emit.getExpr()
+    emit.jOut("{\"Condition\": {\"condition\": ")
+    emit.jOut(cond)
+    emit.jOut(", \"body\": ")
+    p = parseBlock(s, p, 1)
+    emit.jOut("}}")
+    return pexpr.skipOptionalSemi(s, p)
+}
+
+fun forBodyUsesLenAfterLen(s: String, pos: Int, vname: String, depth: Int) -> Bool {
+    return when {
+        parser.cur(s, pos) != "(" -> forBodyUsesLenScan(s, pos, vname, depth)
+        parser.cur(s, parser.advance(s, pos)) == vname -> true
+        else -> forBodyUsesLenScan(s, pos, vname, depth)
+    }
+}
+
+fun forBodyUsesLenScan(s: String, pos: Int, vname: String, depth: Int) -> Bool {
+    val tok: String = parser.cur(s, pos)
+    return when {
+        depth <= 0 -> false
+        tok == "" -> false
+        tok == parser.openBrace() -> forBodyUsesLenScan(s, parser.advance(s, pos), vname, depth + 1)
+        tok == parser.closeBrace() -> forBodyUsesLenScan(s, parser.advance(s, pos), vname, depth - 1)
+        tok == "len" -> forBodyUsesLenAfterLen(s, parser.advance(s, pos), vname, depth)
+        else -> forBodyUsesLenScan(s, parser.advance(s, pos), vname, depth)
+    }
+}
+
+// M85/M75: Map `for v in m` — value by default; key if body uses `len(v)` (Rust parity).
+fun forBodyUsesLen(s: String, bracePos: Int, vname: String) -> Bool {
+    return if parser.cur(s, bracePos) != parser.openBrace() { false } else { forBodyUsesLenScan(s, parser.advance(s, bracePos), vname, 1) }
+}
+
+fun forInBindTag(s: String, bracePos: Int, vname: String) -> Int {
+    return if typeenv.lastExprTyTag() == 7 {
+        if forBodyUsesLen(s, bracePos, vname) { typeenv.collForTagOrInt() } else { typeenv.collIndexTagOrInt() }
+    } else {
+        typeenv.collForTagOrInt()
+    }
+}
+
+fun forWithIndexBindMap(v0: String, v1: String) -> Int {
+    typeenv.envAddLocal(v0, typeenv.collForTagOrInt(), 0)
+    typeenv.envAddLocal(v1, typeenv.collIndexTagOrInt(), 0)
+    return 0
+}
+
+fun forWithIndexBindList(v0: String, v1: String) -> Int {
+    typeenv.envAddLocal(v0, 1, 0)
+    typeenv.envAddLocal(v1, typeenv.collForTagOrInt(), 0)
+    return 0
+}
+
+fun forWithIndexBind(v0: String, v1: String) -> Int {
+    return if typeenv.lastExprTyTag() == 7 { forWithIndexBindMap(v0, v1) } else { forWithIndexBindList(v0, v1) }
+}
+
+fun parseForIn(s: String, pos: Int, vname: String) -> Int {
+    var p: Int = parser.expect(s, pos, "in")
+    emit.jOut("{\"Iterate\": {\"var\": \"")
+    emit.jOut(vname)
+    emit.jOut("\", \"iterable\": ")
+    p = pexpr.parseExpr(s, p)
+    emit.jOut(emit.getExpr())
+    typeenv.envAddLocal(vname, forInBindTag(s, p, vname), 0)
+    emit.jOut(", \"body\": ")
+    p = parser.expect(s, p, parser.openBrace())
+    emit.jOut("{\"ty\": \"Unit\", \"span\": ")
+    emit.jSpan()
+    emit.jOut(", \"kind\": {\"Block\": [")
+    p = parseStmts(s, p, 0)
+    emit.jOut("]}}")
+    p = parser.expect(s, p, parser.closeBrace())
+    emit.jOut(", \"collect\": true}}")
+    return pexpr.skipOptionalSemi(s, p)
+}
+
+fun parseForInfinite(s: String, pos: Int) -> Int {
+    emit.jOut("{\"Infinite\": {\"body\": ")
+    var p: Int = parser.expect(s, pos, parser.openBrace())
+    emit.jOut("{\"ty\": \"Unit\", \"span\": ")
+    emit.jSpan()
+    emit.jOut(", \"kind\": {\"Block\": [")
+    p = parseStmts(s, p, 0)
+    emit.jOut("]}}")
+    p = parser.expect(s, p, parser.closeBrace())
+    emit.jOut("}}")
+    return pexpr.skipOptionalSemi(s, p)
+}
+
+fun parseForWithIndex(s: String, pos: Int, v0: String) -> Int {
+    var p: Int = parser.advance(s, pos)
+    val v1: String = parser.cur(s, p)
+    p = parser.advance(s, p)
+    p = parser.expect(s, p, "in")
+    emit.jOut("{\"IterateWithIndex\": {\"vars\": [\"")
+    emit.jOut(v0)
+    emit.jOut("\", \"")
+    emit.jOut(v1)
+    emit.jOut("\"], \"iterable\": ")
+    p = pexpr.parseExpr(s, p)
+    emit.jOut(emit.getExpr())
+    forWithIndexBind(v0, v1)
+    emit.jOut(", \"body\": ")
+    p = parser.expect(s, p, parser.openBrace())
+    emit.jOut("{\"ty\": \"Unit\", \"span\": ")
+    emit.jSpan()
+    emit.jOut(", \"kind\": {\"Block\": [")
+    p = parseStmts(s, p, 0)
+    emit.jOut("]}}")
+    p = parser.expect(s, p, parser.closeBrace())
+    emit.jOut("}}")
+    return pexpr.skipOptionalSemi(s, p)
+}
+
+fun parseForWithVar(s: String, pos: Int) -> Int {
+    val vname: String = parser.cur(s, pos)
+    var p: Int = parser.advance(s, pos)
+    val tok: String = parser.cur(s, p)
+    return when tok {
+        "," -> parseForWithIndex(s, p, vname)
+        "in" -> parseForIn(s, p, vname)
+        else -> parseForCond(s, p, vname)
+    }
+}
+
+fun parseFor(s: String, pos: Int, sep: Int) -> Int {
+    emit.jComma(sep)
+    emit.jOut("{\"Expr\": {\"expr\": {\"ty\": \"Unit\", \"span\": ")
+    emit.jSpan()
+    emit.jOut(", \"kind\": {\"For\": {\"kind\": ")
+    var p: Int = parser.advance(s, pos)
+    p = when {
+        parser.cur(s, p) == parser.openBrace() -> parseForInfinite(s, p)
+        else -> parseForWithVar(s, p)
+    }
+    emit.jOut("}}}, \"span\": ")
+    emit.jSpan()
+    emit.jOut("}}")
+    return parseStmts(s, pexpr.skipOptionalSemi(s, p), 1)
+}
+
+fun parseBuiltinPrint(s: String, pos: Int, sep: Int, builtin: String) -> Int {
+    emit.jComma(sep)
+    var p: Int = parser.advance(s, pos)
+    p = parser.expect(s, p, "(")
+    p = pexpr.parseExpr(s, p)
+    p = parser.expect(s, p, ")")
+    emit.jOut("{\"Expr\": {\"expr\": ")
+    emit.jOut(emit.exprWrap(0, "{\"Call\": {\"func\": " + emit.exprWrap(0, "{\"Ident\": \"" + builtin + "\"}") + ", \"args\": [" + emit.getExpr() + "], \"trailing_lambda\": null}}"))
+    emit.jOut(", \"span\": ")
+    emit.jSpan()
+    emit.jOut("}}")
+    return parseStmts(s, pexpr.skipOptionalSemi(s, p), 1)
+}
+
+fun parseExprStmt(s: String, pos: Int, sep: Int) -> Int {
+    emit.jComma(sep)
+    var p: Int = pexpr.parseExpr(s, pos)
+    emit.jOut("{\"Expr\": {\"expr\": ")
+    emit.jOut(emit.getExpr())
+    emit.jOut(", \"span\": ")
+    emit.jSpan()
+    emit.jOut("}}")
+    return parseStmts(s, pexpr.skipOptionalSemi(s, p), 1)
+}
+
+fun isAssignStmt(s: String, pos: Int) -> Bool {
+    return parser.cur(s, parser.advance(s, pos)) == "="
+}
+
+fun parseAssignStmt(s: String, pos: Int, sep: Int) -> Int {
+    emit.jComma(sep)
+    val tgt: String = parser.cur(s, pos)
+    val tag: Int = typeenv.lookupTag(tgt)
+    // M109: Ident assign requires var.
+    typeenv.tyCheckAssignIdent(tgt)
+    emit.setExprIdent(tgt, tag)
+    val tgtJson: String = emit.getExpr()
+    var p: Int = parser.advance(s, pos)
+    p = parser.expect(s, p, "=")
+    p = pexpr.parseExpr(s, p)
+    typeenv.tyCheckBind(tag, typeenv.lastExprTyTag())
+    val valJson: String = emit.getExpr()
+    emit.jOut("{\"Expr\": {\"expr\": ")
+    emit.jOut(emit.exprWrap(tag, "{\"Assign\": {\"target\": " + tgtJson + ", \"value\": " + valJson + "}}"))
+    emit.jOut(", \"span\": ")
+    emit.jSpan()
+    emit.jOut("}}")
+    return parseStmts(s, pexpr.skipOptionalSemi(s, p), 1)
+}
+
+fun parseStmtFallback(s: String, pos: Int, sep: Int) -> Int {
+    return when {
+        isAssignStmt(s, pos) -> parseAssignStmt(s, pos, sep)
+        else -> parseExprStmt(s, pos, sep)
+    }
+}
+
+fun parseStmt(s: String, pos: Int, sep: Int) -> Int {
+    val k: String = parser.cur(s, pos)
+    return when k {
+        "val" -> parseLet(s, pos, sep, false)
+        "var" -> parseLet(s, pos, sep, true)
+        "return" -> parseReturn(s, pos, sep)
+        "for" -> parseFor(s, pos, sep)
+        "println" -> parseBuiltinPrint(s, pos, sep, "println")
+        "print" -> parseBuiltinPrint(s, pos, sep, "print")
+        else -> parseStmtFallback(s, pos, sep)
+    }
+}
+
+fun parseStmts(s: String, pos: Int, sep: Int) -> Int {
+    return if parser.isTok(s, pos, parser.closeBrace()) { pos } else { parseStmt(s, pos, sep) }
+}

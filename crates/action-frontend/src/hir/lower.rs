@@ -41,14 +41,21 @@ impl<'a> Lowerer<'a> {
                 type_ann,
                 value,
                 span,
-            } => HirStmt::Let {
-                mutable: *mutable,
-                lazy_init: *lazy_init,
-                name: name.clone(),
-                type_ann: type_ann.clone(),
-                value: self.lower_expr(value),
-                span: *span,
-            },
+            } => {
+                let value_hir = self.lower_expr(value);
+                let bind_ty = type_ann
+                    .clone()
+                    .unwrap_or_else(|| value_hir.ty.clone());
+                self.locals.insert(name.clone(), bind_ty);
+                HirStmt::Let {
+                    mutable: *mutable,
+                    lazy_init: *lazy_init,
+                    name: name.clone(),
+                    type_ann: type_ann.clone(),
+                    value: value_hir,
+                    span: *span,
+                }
+            }
             Stmt::Destructure {
                 mutable,
                 names,
@@ -78,17 +85,29 @@ impl<'a> Lowerer<'a> {
                 is_test,
                 fn_or_fallback,
                 span,
-            } => HirStmt::Fun {
-                name: name.clone(),
-                params: params.clone(),
-                return_type: return_type.clone(),
-                body: self.lower_expr(body),
-                type_params: type_params.clone(),
-                is_single_expr: *is_single_expr,
-                is_test: *is_test,
-                fn_or_fallback: fn_or_fallback.as_ref().map(|e| self.lower_expr(e)),
-                span: *span,
-            },
+            } => {
+                // Typecheck removes params from type_env before lower; re-seed locals
+                // so body Call/Ident inference (e.g. when { wrap(s) else … }) keeps String.
+                let saved = self.locals.clone();
+                for p in params {
+                    let param_ty = p.ty.clone().unwrap_or_else(|| Type::Named("Int".into()));
+                    self.locals.insert(p.name.clone(), param_ty);
+                }
+                let body_hir = self.lower_expr(body);
+                let fn_or_hir = fn_or_fallback.as_ref().map(|e| self.lower_expr(e));
+                self.locals = saved;
+                HirStmt::Fun {
+                    name: name.clone(),
+                    params: params.clone(),
+                    return_type: return_type.clone(),
+                    body: body_hir,
+                    type_params: type_params.clone(),
+                    is_single_expr: *is_single_expr,
+                    is_test: *is_test,
+                    fn_or_fallback: fn_or_hir,
+                    span: *span,
+                }
+            }
             Stmt::Expr { expr, span } => HirStmt::Expr {
                 expr: self.lower_expr(expr),
                 span: *span,
@@ -237,7 +256,12 @@ impl<'a> Lowerer<'a> {
             ExprKind::Lambda { .. } => unreachable!("handled above"),
             ExprKind::When(w) => HirExprKind::When(Box::new(self.lower_when(w))),
             ExprKind::For(f) => HirExprKind::For(Box::new(self.lower_for(f))),
-            ExprKind::Block(stmts) => HirExprKind::Block(self.lower_stmts(stmts)),
+            ExprKind::Block(stmts) => {
+                let saved = self.locals.clone();
+                let block = HirExprKind::Block(self.lower_stmts(stmts));
+                self.locals = saved;
+                block
+            }
             ExprKind::StructLiteral(fields) => HirExprKind::StructLiteral(
                 fields
                     .iter()

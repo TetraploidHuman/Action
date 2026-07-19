@@ -1,0 +1,208 @@
+// M33/M34 bootstrap pre-scan (forward/mutual recursion sigs + nested import).
+// M34: loop drivers use local vars (no _sbd/_psfp/_psp session files).
+
+import prelude
+
+import parser
+
+import emit
+
+import typeenv
+
+import whenty
+
+import modload
+
+import pexpr
+
+import pstmt
+
+import pdecl
+
+external fun readFile(path: String) -> String
+
+fun skipBraceDepthDelta(tok: String) -> Int {
+    return when tok {
+        "{" -> 1
+        "}" -> -1
+        else -> 0
+    }
+}
+
+// Pack (pos, depth) into one Int so the for-loop can update both without a session file.
+// Depth is low for real Action sources; scale 65536 leaves room for multi-MB inputs.
+fun skipBracePack(pos: Int, depth: Int) -> Int {
+    return pos * 65536 + depth
+}
+
+fun skipBraceUnpackPos(packed: Int) -> Int {
+    return packed / 65536
+}
+
+fun skipBraceUnpackDepth(packed: Int) -> Int {
+    return packed - (packed / 65536) * 65536
+}
+
+fun skipBraceDepthStep(s: String, pos: Int, depth: Int) -> Int {
+    val tok: String = parser.cur(s, pos)
+    return skipBracePack(parser.advance(s, pos), depth + skipBraceDepthDelta(tok))
+}
+
+fun skipBraceDepth(s: String, pos: Int, depth: Int) -> Int {
+    var p: Int = pos
+    var d: Int = depth
+    var st: Int = 0
+    val end: Int = len(s) + 1
+    for n in 0..end {
+        if d == 0 { break } else { st = skipBraceDepthStep(s, p, d) }
+        if d == 0 { continue } else { p = skipBraceUnpackPos(st) }
+        if d == 0 { continue } else { d = skipBraceUnpackDepth(st) }
+    }
+    return p
+}
+
+fun skipBalancedBlock(s: String, pos: Int) -> Int {
+    var p: Int = parser.expect(s, pos, parser.openBrace())
+    return skipBraceDepth(s, p, 1)
+}
+
+fun preScanFunParams(s: String, pos: Int) -> Int {
+    return if parser.cur(s, pos) == ")" { pos } else { preScanFunParamRest(s, pos) }
+}
+
+fun preScanFunParamRest(s: String, pos: Int) -> Int {
+    var p: Int = parser.advance(s, pos)
+    p = parser.expect(s, p, ":")
+    val tyName: String = parser.cur(s, p)
+    typeenv.funSigParamAdd(typeenv.tyAnnTag(tyName))
+    p = parser.advance(s, p)
+    return preScanFunParams(s, parser.advanceIfComma(s, p))
+}
+
+fun preScanFun(s: String, pos: Int) -> Int {
+    var p: Int = parser.advance(s, pos)
+    val fname: String = parser.cur(s, p)
+    val qname: String = modload.importQualifiedName(fname)
+    p = parser.advance(s, p)
+    p = parser.expect(s, p, "(")
+    typeenv.funSigBegin()
+    p = preScanFunParams(s, p)
+    typeenv.funSigCommit(qname)
+    p = parser.expect(s, p, ")")
+    p = parser.expect(s, p, "->")
+    val retTy: String = parser.cur(s, p)
+    typeenv.envAddGlobal(qname, typeenv.tyAnnTag(retTy))
+    p = parser.advance(s, p)
+    p = skipBalancedBlock(s, p)
+    return p
+}
+
+// M116: record external funSig (arity + param tags) like preScanFun, so M115
+// call checks apply when a signature is known. Still no HIR emission.
+fun preScanExternal(s: String, pos: Int) -> Int {
+    var p: Int = parser.advance(s, pos)
+    p = parser.advance(s, p)
+    val fname: String = parser.cur(s, p)
+    val qname: String = modload.importQualifiedName(fname)
+    p = parser.advance(s, p)
+    p = parser.expect(s, p, "(")
+    typeenv.funSigBegin()
+    p = preScanFunParams(s, p)
+    typeenv.funSigCommit(qname)
+    p = parser.expect(s, p, ")")
+    p = parser.expect(s, p, "->")
+    val retTy: String = parser.cur(s, p)
+    typeenv.envAddGlobal(qname, typeenv.tyAnnTag(retTy))
+    p = parser.advance(s, p)
+    return p
+}
+
+fun preScanSkipUnknown(s: String, pos: Int) -> Int {
+    return parser.advance(s, pos)
+}
+
+fun preScanEnum(s: String, pos: Int) -> Int {
+    var p: Int = parser.advance(s, pos)
+    val name: String = parser.cur(s, p)
+    p = parser.advance(s, p)
+    typeenv.structTypeRegister(name)
+    p = parser.expect(s, p, parser.openBrace())
+    return preScanEnumVars(s, p, name, "", 0)
+}
+
+fun preScanEnumVars(s: String, pos: Int, name: String, csv: String, sep: Int) -> Int {
+    return if parser.isTok(s, pos, parser.closeBrace()) { preScanEnumDone(s, pos, name, csv) } else { preScanEnumVarOne(s, pos, name, csv, sep) }
+}
+
+fun preScanEnumDone(s: String, pos: Int, name: String, csv: String) -> Int {
+    typeenv.enumRegister(name, csv)
+    return parser.advance(s, pos)
+}
+
+fun preScanEnumVarOne(s: String, pos: Int, name: String, csv: String, sep: Int) -> Int {
+    val v: String = parser.cur(s, pos)
+    val nextCsv: String = when sep {
+        0 -> v
+        else -> csv + "," + v
+    }
+    var p: Int = parser.advance(s, pos)
+    p = parser.advanceIfComma(s, p)
+    return preScanEnumVars(s, p, name, nextCsv, 1)
+}
+
+fun preScanTypeAlias(s: String, pos: Int) -> Int {
+    var p: Int = parser.advance(s, pos)
+    val name: String = parser.cur(s, p)
+    p = parser.advance(s, p)
+    typeenv.structTypeRegister(name)
+    p = parser.expect(s, p, "=")
+    p = skipBalancedBlock(s, p)
+    return p
+}
+
+fun preScanImportLoadModule(modName: String) -> Int {
+    modload.importMarkPrescanned(modName)
+    modload.parseImportApplyPrefix(modName)
+    val modSrc: String = readFile(modload.importModulePath(modName))
+    typeenv.funSigImportEnter()
+    preScanProgram(modSrc, 0)
+    typeenv.funSigImportLeave()
+    modload.importPrefixClear()
+    return 0
+}
+
+fun preScanImportLoad(modName: String) -> Int {
+    return if modload.importIsPrescanned(modName) { 0 } else { preScanImportLoadModule(modName) }
+}
+
+fun preScanImport(s: String, pos: Int) -> Int {
+    modload.importSelectiveClear()
+    var p: Int = parser.advance(s, pos)
+    val modName: String = parser.cur(s, p)
+    p = parser.advance(s, p)
+    p = modload.parseImportSkipItems(s, p)
+    p = pexpr.skipOptionalSemi(s, p)
+    preScanImportLoad(modName)
+    return p
+}
+
+fun preScanTopLevel(s: String, pos: Int) -> Int {
+    val k: String = parser.cur(s, pos)
+    return when k {
+        "import" -> preScanImport(s, pos)
+        "enum" -> preScanEnum(s, pos)
+        "type" -> preScanTypeAlias(s, pos)
+        "external" -> preScanExternal(s, pos)
+        "fun" -> preScanFun(s, pos)
+        else -> preScanSkipUnknown(s, pos)
+    }
+}
+
+fun preScanProgram(s: String, pos: Int) -> Int {
+    var p: Int = pos
+    var done: Int = 0
+    for n in 0..512 {
+        if done == 1 { break } else { if parser.cur(s, p) == "" { done = 1 } else { p = preScanTopLevel(s, p) } }
+    }
+    return p
+}

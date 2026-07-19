@@ -33,6 +33,9 @@ benchmark_results_*.txt
 # Dev bisect scratch (keep out of commits)
 examples/_dev/
 
+# Bootstrap host I/O scratch (compiler.ac / lexer.ac temp files)
+bootstrap/_*
+
 # Generated HIR dumps
 examples/**/*.hir.json
 lib/**/*.hir.json

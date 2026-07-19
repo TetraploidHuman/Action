@@ -13,18 +13,19 @@ fn tokenize(source: &str) -> Vec<TokenKind> {
 
 #[test]
 fn test_keywords() {
-    let tokens = tokenize("val var fun when else for in is break continue return");
+    let tokens = tokenize("val var fun when if else for in is break continue return");
     assert_eq!(tokens[0], TokenKind::Val);
     assert_eq!(tokens[1], TokenKind::Var);
     assert_eq!(tokens[2], TokenKind::Fun);
     assert_eq!(tokens[3], TokenKind::When);
-    assert_eq!(tokens[4], TokenKind::Else);
-    assert_eq!(tokens[5], TokenKind::For);
-    assert_eq!(tokens[6], TokenKind::In);
-    assert_eq!(tokens[7], TokenKind::Is);
-    assert_eq!(tokens[8], TokenKind::Break);
-    assert_eq!(tokens[9], TokenKind::Continue);
-    assert_eq!(tokens[10], TokenKind::Return);
+    assert_eq!(tokens[4], TokenKind::If);
+    assert_eq!(tokens[5], TokenKind::Else);
+    assert_eq!(tokens[6], TokenKind::For);
+    assert_eq!(tokens[7], TokenKind::In);
+    assert_eq!(tokens[8], TokenKind::Is);
+    assert_eq!(tokens[9], TokenKind::Break);
+    assert_eq!(tokens[10], TokenKind::Continue);
+    assert_eq!(tokens[11], TokenKind::Return);
 }
 
 #[test]

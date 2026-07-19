@@ -1,9 +1,7 @@
 // Test generic function with enum pattern matching
-// Verifies Option[T] monomorphization with when/is patterns
+// Verifies Option[T] monomorphization with if /is patterns
 
-enum Option { Some(Int), None }
-
-fun <T> unwrapOr(opt: Option, default: T) -> T {
+enum Option { Some(Int), None }fun <T> unwrapOr(opt: Option, default: T) -> T {
     when opt {
         Some(v) -> v
         None -> default

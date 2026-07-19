@@ -175,19 +175,23 @@ impl TypeRegistry {
         Ok(())
     }
 
-    /// Find the struct type whose field names match exactly. Returns the struct info if unique.
+    /// Find the struct type whose field names match exactly (order-independent).
+    /// Returns the struct info if exactly one registered struct has the same field-name set.
     pub fn find_struct_by_fields(&self, field_names: &[String]) -> Option<&StructInfo> {
+        use std::collections::HashSet;
+        let wanted: HashSet<&str> = field_names.iter().map(|s| s.as_str()).collect();
+        if wanted.len() != field_names.len() {
+            // Duplicate names in the literal — not a unique shape match.
+            return None;
+        }
         let matches: Vec<&StructInfo> = self
             .structs
             .values()
             .filter(|s| {
-                if s.fields.len() != field_names.len() {
+                if s.fields.len() != wanted.len() {
                     return false;
                 }
-                field_names
-                    .iter()
-                    .enumerate()
-                    .all(|(i, name)| s.fields[i].0 == *name)
+                s.fields.iter().all(|(n, _)| wanted.contains(n.as_str()))
             })
             .collect();
         if matches.len() == 1 {
@@ -212,5 +216,71 @@ impl TypeRegistry {
     /// Check that a set of when arms covers all variants of the enum they match on.
     pub fn check_when_exhaustive(&self, arms: &[WhenArm]) -> Result<(), String> {
         crate::exhaustive::check_when_exhaustive(self, arms)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn register_point(reg: &mut TypeRegistry) {
+        let fields = vec![
+            ("x".into(), Type::Named("Int".into())),
+            ("y".into(), Type::Named("Int".into())),
+        ];
+        let mut field_index = HashMap::new();
+        field_index.insert("x".into(), 0);
+        field_index.insert("y".into(), 1);
+        reg.structs.insert(
+            "Point".into(),
+            StructInfo {
+                name: "Point".into(),
+                fields,
+                field_index,
+            },
+        );
+    }
+
+    #[test]
+    fn find_struct_by_fields_is_order_independent() {
+        let mut reg = TypeRegistry::new();
+        register_point(&mut reg);
+        let forward = vec!["x".into(), "y".into()];
+        let reverse = vec!["y".into(), "x".into()];
+        assert_eq!(
+            reg.find_struct_by_fields(&forward).map(|s| s.name.as_str()),
+            Some("Point")
+        );
+        assert_eq!(
+            reg.find_struct_by_fields(&reverse).map(|s| s.name.as_str()),
+            Some("Point")
+        );
+        assert!(reg
+            .find_struct_by_fields(&["x".into()])
+            .is_none());
+    }
+
+    #[test]
+    fn find_struct_by_fields_ambiguous_same_set() {
+        let mut reg = TypeRegistry::new();
+        register_point(&mut reg);
+        let fields = vec![
+            ("x".into(), Type::Named("Int".into())),
+            ("y".into(), Type::Named("Int".into())),
+        ];
+        let mut field_index = HashMap::new();
+        field_index.insert("x".into(), 0);
+        field_index.insert("y".into(), 1);
+        reg.structs.insert(
+            "Vec2".into(),
+            StructInfo {
+                name: "Vec2".into(),
+                fields,
+                field_index,
+            },
+        );
+        assert!(reg
+            .find_struct_by_fields(&["y".into(), "x".into()])
+            .is_none());
     }
 }

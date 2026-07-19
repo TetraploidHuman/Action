@@ -165,20 +165,16 @@ impl Parser {
                     break;
                 }
                 self.advance();
-                let mut right = self.parse_pratt(prec.next())?;
-                loop {
-                    let next_kind = self.current_kind();
-                    if let Some(op2) = token_to_binary_op(&next_kind) {
-                        let prec2 = Precedence::of_binary(&op2);
-                        if prec2 == prec && is_left_associative(&op2) {
-                            self.advance();
-                            let r2 = self.parse_pratt(prec.next())?;
-                            right = ExprKind::Binary(Box::new(right), op2, Box::new(r2)).into();
-                            continue;
-                        }
-                    }
-                    break;
-                }
+                // Classic Pratt left-assoc: parse RHS at prec.next() so same-prec
+                // chains fold into `left` on the next outer iteration
+                // (`10 - 3 - 2` → `(10 - 3) - 2`). A former same-prec fold that
+                // nested into `right` inverted this into right-assoc (M41).
+                let rhs_min = if is_left_associative(&op) {
+                    prec.next()
+                } else {
+                    prec
+                };
+                let right = self.parse_pratt(rhs_min)?;
                 if op == BinaryOp::Assign {
                     left = ExprKind::Assign {
                         target: Box::new(left),

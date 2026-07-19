@@ -1,0 +1,10 @@
+enum Color { Red, Green, Blue }
+
+fun main() -> Int {
+    val c: Color = Red
+    val code: Int = when c {
+        Red -> 1
+        Green -> 2
+    }
+    return code
+}

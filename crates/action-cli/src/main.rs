@@ -92,6 +92,9 @@ enum Commands {
         /// Emit HIR JSON to `<file>.hir.json`
         #[arg(long, value_name = "FORMAT")]
         emit: Option<String>,
+        /// Frontend: `rust` (default) or `bootstrap` (Path B allowlist, M76)
+        #[arg(long, default_value = "rust", value_name = "NAME")]
+        frontend: String,
     },
     /// Format an Action source file (indentation)
     Fmt {
@@ -182,64 +185,13 @@ fn main() {
             explain,
             format,
             emit,
-        } => match driver::check_file(&file, explain) {
-            Ok(checked) => {
-                if let Some(ref fmt) = emit {
-                    if fmt == "hir" {
-                        if let Err(e) = driver::emit_hir(&checked, &file, false) {
-                            eprintln!("Error: {}", e);
-                            std::process::exit(1);
-                        }
-                    } else if fmt == "diagnostics" {
-                        if let Err(e) = driver::emit_diagnostics_json(&[], &file, explain, false) {
-                            eprintln!("Error: {}", e);
-                            std::process::exit(1);
-                        }
-                    } else {
-                        eprintln!(
-                            "Unknown emit format: {}. Supported for check: hir, diagnostics",
-                            fmt
-                        );
-                        std::process::exit(1);
-                    }
-                }
-                if format == "json" {
-                    println!(
-                        "{}",
-                        action_frontend::error::diagnostics_to_json_pretty(
-                            &[],
-                            &file.to_string_lossy(),
-                            explain
-                        )
-                        .unwrap_or_else(|_| "{\"version\":1,\"diagnostics\":[]}".to_string())
-                    );
-                } else {
-                    println!("Type checking passed. No errors found.");
-                }
+            frontend,
+        } => {
+            if let Err(code) = check_with_frontend(&file, explain, &format, emit.as_deref(), &frontend)
+            {
+                std::process::exit(code);
             }
-            Err(errors) => {
-                if format == "json" {
-                    match action_frontend::error::diagnostics_to_json_pretty(
-                        &errors,
-                        &file.to_string_lossy(),
-                        explain,
-                    ) {
-                        Ok(json) => print!("{}", json),
-                        Err(e) => {
-                            eprintln!("Error: {}", e);
-                            std::process::exit(1);
-                        }
-                    }
-                } else if let Ok(source) = fs::read_to_string(&file) {
-                    error::report_compiler_errors(&source, &file.to_string_lossy(), &errors);
-                } else {
-                    for e in &errors {
-                        eprintln!("Error: {}", e);
-                    }
-                }
-                std::process::exit(1);
-            }
-        },
+        }
         Commands::Fmt {
             file,
             check,
@@ -277,6 +229,134 @@ fn main() {
             }
         }
     }
+}
+
+/// `action check` with optional Path B (`--frontend bootstrap`, M76).
+fn check_with_frontend(
+    file: &Path,
+    explain: bool,
+    format: &str,
+    emit: Option<&str>,
+    frontend: &str,
+) -> Result<(), i32> {
+    match frontend {
+        "rust" => check_with_rust_frontend(file, explain, format, emit),
+        "bootstrap" => check_with_bootstrap_frontend(file, format, emit),
+        other => {
+            eprintln!(
+                "Unknown --frontend '{other}'. Supported: rust (default), bootstrap (M76 Path B allowlist)"
+            );
+            Err(1)
+        }
+    }
+}
+
+fn check_with_rust_frontend(
+    file: &Path,
+    explain: bool,
+    format: &str,
+    emit: Option<&str>,
+) -> Result<(), i32> {
+    match driver::check_file(file, explain) {
+        Ok(checked) => {
+            if let Some(fmt) = emit {
+                if fmt == "hir" {
+                    if let Err(e) = driver::emit_hir(&checked, file, false) {
+                        eprintln!("Error: {e}");
+                        return Err(1);
+                    }
+                } else if fmt == "diagnostics" {
+                    if let Err(e) = driver::emit_diagnostics_json(&[], file, explain, false) {
+                        eprintln!("Error: {e}");
+                        return Err(1);
+                    }
+                } else {
+                    eprintln!(
+                        "Unknown emit format: {fmt}. Supported for check: hir, diagnostics"
+                    );
+                    return Err(1);
+                }
+            }
+            if format == "json" {
+                println!(
+                    "{}",
+                    action_frontend::error::diagnostics_to_json_pretty(
+                        &[],
+                        &file.to_string_lossy(),
+                        explain
+                    )
+                    .unwrap_or_else(|_| "{\"version\":1,\"diagnostics\":[]}".to_string())
+                );
+            } else {
+                println!("Type checking passed. No errors found.");
+            }
+            Ok(())
+        }
+        Err(errors) => {
+            if format == "json" {
+                match action_frontend::error::diagnostics_to_json_pretty(
+                    &errors,
+                    &file.to_string_lossy(),
+                    explain,
+                ) {
+                    Ok(json) => print!("{json}"),
+                    Err(e) => {
+                        eprintln!("Error: {e}");
+                        return Err(1);
+                    }
+                }
+            } else if let Ok(source) = fs::read_to_string(file) {
+                error::report_compiler_errors(&source, &file.to_string_lossy(), &errors);
+            } else {
+                for e in &errors {
+                    eprintln!("Error: {e}");
+                }
+            }
+            Err(1)
+        }
+    }
+}
+
+fn check_with_bootstrap_frontend(
+    file: &Path,
+    format: &str,
+    emit: Option<&str>,
+) -> Result<(), i32> {
+    if format == "json" {
+        eprintln!("--frontend bootstrap does not support --format json yet");
+        return Err(1);
+    }
+    let action_bin = std::env::current_exe().map_err(|e| {
+        eprintln!("Error: cannot resolve action binary: {e}");
+        1
+    })?;
+    let result = driver::check_file_bootstrap(file, &action_bin).map_err(|e| {
+        eprintln!("Error: {e}");
+        1
+    })?;
+    let label = file
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("bootstrap");
+    if let Err(e) = driver::verify_bootstrap_hir(&result.hir, label) {
+        eprintln!("Error: bootstrap HIR compile_hir failed: {e}");
+        return Err(1);
+    }
+    if let Some(fmt) = emit {
+        if fmt == "hir" {
+            if let Err(e) = driver::emit_bootstrap_hir(&result.hir_json, file, false) {
+                eprintln!("Error: {e}");
+                return Err(1);
+            }
+        } else {
+            eprintln!(
+                "Unknown emit format for --frontend bootstrap: {fmt}. Supported: hir"
+            );
+            return Err(1);
+        }
+    }
+    println!("Bootstrap frontend check passed (Path B). No errors found.");
+    Ok(())
 }
 
 fn run_file(
@@ -665,9 +745,15 @@ fn find_aot_host_staticlib() -> Option<String> {
     let mut candidates = Vec::new();
 
     let mut push_candidates = |root: &Path| {
+        // Prefer `host_rt_build/{profile}` (build.rs nested target) before
+        // `{profile}/libaction_host_rt.a`, which can be a stale workspace copy.
         for profile in profiles {
             for name in lib_names {
                 candidates.push(root.join(format!("host_rt_build/{profile}/{name}")));
+            }
+        }
+        for profile in profiles {
+            for name in lib_names {
                 candidates.push(root.join(format!("{profile}/{name}")));
             }
         }

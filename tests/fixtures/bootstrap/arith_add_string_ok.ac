@@ -1,0 +1,4 @@
+fun main() -> Int {
+    val s: String = "a" + "b"
+    return len(s)
+}

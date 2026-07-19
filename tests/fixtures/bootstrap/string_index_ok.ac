@@ -1,0 +1,6 @@
+// M113: String[Int] accepted; result Int (char code).
+fun main() -> Int {
+    val s: String = "ab"
+    val c: Int = s[0]
+    return c - c
+}

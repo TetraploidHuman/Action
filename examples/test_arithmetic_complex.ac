@@ -8,15 +8,19 @@ fun main() {
     print(17 / 5)
     print(17 % 5)
 
-    // Test 3: Exponentiation (left-associative)
+    // Test 3: Subtraction / division chains (left-associative)
+    print(10 - 3 - 2)
+    print(24 / 4 / 2)
+
+    // Test 4: Exponentiation (left-associative)
     print(2 ** 3 ** 2)
     print((2 ** 3) ** 2)
 
-    // Test 4: Unary operators
+    // Test 5: Unary operators
     print(-5 + 10)
     print(-(3 + 4))
 
-    // Test 5: Compound assignment with expressions
+    // Test 6: Compound assignment with expressions
     var a = 10
     a += 2 * 3
     print(a)
@@ -29,7 +33,7 @@ fun main() {
     c *= 2 + 3
     print(c)
 
-    // Test 6: Combined arithmetic and bitwise
+    // Test 7: Combined arithmetic and bitwise
     print(2 * (3 + 4))
     print((5 & 3) * 10)
 }

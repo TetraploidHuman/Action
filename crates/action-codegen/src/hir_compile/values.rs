@@ -333,6 +333,8 @@ impl<'ctx> CodeGen<'ctx> {
                 )),
                 _ => Err("Cannot negate this type".to_string()),
             },
+            // M108: unary + is a typed no-op (Bool/String rejected in typecheck).
+            UnaryOp::Pos => Ok(val),
             UnaryOp::Not => match val {
                 TypedValue::Bool(v) => Ok(TypedValue::Bool(
                     self.builder.build_not(v, "not").map_err(llvm_err)?,

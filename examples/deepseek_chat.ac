@@ -16,8 +16,8 @@ fun main() {
     for running {
         print("You: ")
         val input = readLine() or { "quit" }
-        running = when input == "quit" { false else true }
-        messages = when running { handleChat(input, messages) else messages }
+        running = if input == "quit" { false } else { true }
+        messages = if running { handleChat(input, messages) } else { messages }
     }
     println("Goodbye!")
 }
@@ -31,7 +31,7 @@ fun handleChat(input: String, msgs: String) -> String = {
 
 fun chatOnce(input: String, msgs: String) -> String = {
     val userMsg = "{\"role\": \"user\", \"content\": \"" + jsonEscape(input) + "\"}"
-    val newMsgs = when msgs == "" { userMsg else msgs + ", " + userMsg }
+    val newMsgs = if msgs == "" { userMsg } else { msgs + ", " + userMsg }
     val body = "{\"model\": \"deepseek-chat\", \"messages\": [" + newMsgs + "]}"
     val headers = "Authorization: Bearer " + apiToken() + "\nContent-Type: application/json"
     val resp = httpRequest("POST", "https://api.deepseek.com/chat/completions", headers, body) or {
@@ -43,7 +43,7 @@ fun chatOnce(input: String, msgs: String) -> String = {
 fun storeMessages(input: String, content: String, msgs: String) -> String = {
     val userMsg = "{\"role\": \"user\", \"content\": \"" + jsonEscape(input) + "\"}"
     val assistantMsg = "{\"role\": \"assistant\", \"content\": \"" + jsonEscape(content) + "\"}"
-    when msgs == "" { userMsg + ", " + assistantMsg else msgs + ", " + userMsg + ", " + assistantMsg }
+    if msgs == "" { userMsg + ", " + assistantMsg } else { msgs + ", " + userMsg + ", " + assistantMsg }
 }
 
 // Parse DeepSeek API response using the JSON library

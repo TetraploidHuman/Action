@@ -29,7 +29,7 @@ fun main() {
     print("words count: ")
     print(len(words))
     print(" first: ")
-    print(words[0])
+    print(words[0] or { "" })
     println("")
 
     println("done")

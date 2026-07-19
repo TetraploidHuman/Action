@@ -10,3 +10,4 @@ path = "lib.rs"
 
 [dependencies]
 serde_json = "1.0"
+libc = "0.2"

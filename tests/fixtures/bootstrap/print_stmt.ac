@@ -1,0 +1,4 @@
+fun main() -> Int {
+    print("ok")
+    return 0
+}

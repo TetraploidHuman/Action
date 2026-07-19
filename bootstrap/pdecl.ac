@@ -1,0 +1,180 @@
+// M32 bootstrap top-level decl parsers (enum/type/fun/external).
+
+import prelude
+
+import parser
+
+import emit
+
+import typeenv
+
+import whenty
+
+import modload
+
+import pexpr
+
+import pstmt
+
+fun parseEnumVars(s: String, pos: Int, sep: Int) -> Int {
+    return if parser.isTok(s, pos, parser.closeBrace()) { parser.advance(s, pos) } else { parseEnumVar(s, pos, sep) }
+}
+
+fun parseEnumVar(s: String, pos: Int, sep: Int) -> Int {
+    emit.jComma(sep)
+    val v: String = parser.cur(s, pos)
+    emit.jOut("{\"name\": \"")
+    emit.jOut(v)
+    emit.jOut("\", \"params\": []"); emit.jOut("}")
+    var p: Int = parser.advance(s, pos)
+    return parseEnumVars(s, parser.advanceIfComma(s, p), 1)
+}
+
+fun parseEnum(s: String, pos: Int, sep: Int) -> Int {
+    parser.spanMarkBegin(s, pos)
+    emit.jCommaStmt(sep)
+    var p: Int = parser.advance(s, pos)
+    val name: String = parser.cur(s, p)
+    p = parser.advance(s, p)
+    p = parser.expect(s, p, parser.openBrace())
+    emit.jOut("{\"Enum\": {\"name\": \"")
+    emit.jOut(name)
+    emit.jOut("\", \"type_params\": [], \"variants\": [")
+    p = parseEnumVars(s, p, 0)
+    parser.spanMarkEnd(s, p)
+    emit.jOut("], \"span\": ")
+    emit.jSpan()
+    emit.jOut("}}")
+    return p
+}
+
+fun parseTypeFields(s: String, pos: Int, sep: Int) -> Int {
+    return if parser.isTok(s, pos, parser.closeBrace()) { parser.advance(s, pos) } else { parseTypeField(s, pos, sep) }
+}
+
+fun parseTypeField(s: String, pos: Int, sep: Int) -> Int {
+    emit.jComma(sep)
+    val fname: String = parser.cur(s, pos)
+    var p: Int = parser.advance(s, pos)
+    p = parser.expect(s, p, ":")
+    val fty: String = parser.cur(s, p)
+    typeenv.structFieldAdd(emit.sessGet(emit.slotStructName()), fname, fty)
+    emit.jOut("[\"")
+    emit.jOut(fname)
+    emit.jOut("\", ")
+    emit.jTyNamed(fty)
+    emit.jOut("]")
+    p = parser.advance(s, p)
+    return parseTypeFields(s, parser.advanceIfComma(s, p), 1)
+}
+
+fun parseTypeAlias(s: String, pos: Int, sep: Int) -> Int {
+    parser.spanMarkBegin(s, pos)
+    emit.jCommaStmt(sep)
+    var p: Int = parser.advance(s, pos)
+    val name: String = parser.cur(s, p)
+    emit.sessSet(emit.slotStructName(), name)
+    p = parser.advance(s, p)
+    p = parser.expect(s, p, "=")
+    p = parser.expect(s, p, parser.openBrace())
+    emit.jOut("{\"TypeAlias\": {\"name\": \"")
+    emit.jOut(name)
+    emit.jOut("\", \"type_params\": [], \"definition\": {\"Struct\": [")
+    p = parseTypeFields(s, p, 0)
+    parser.spanMarkEnd(s, p)
+    emit.jOut("]}, \"span\": ")
+    emit.jSpan()
+    emit.jOut("}}")
+    typeenv.structTypeRegister(name)
+    return p
+}
+
+fun parseBlockRet(s: String, pos: Int) -> Int {
+    var p: Int = parser.expect(s, pos, parser.openBrace())
+    emit.jOut("{\"ty\": ")
+    emit.jTyNamed(emit.sessGet(emit.slotFnRetTy()))
+    emit.jOut(", \"span\": ")
+    emit.jSpan()
+    emit.jOut(", \"kind\": {\"Block\": [")
+    p = pstmt.parseStmts(s, p, 0)
+    emit.jOut("]}")
+    emit.jOut("}")
+    return parser.expect(s, p, parser.closeBrace())
+}
+
+fun parseFunParam(s: String, pos: Int, sep: Int) -> Int {
+    emit.jComma(sep)
+    val pname: String = parser.cur(s, pos)
+    var p: Int = parser.advance(s, pos)
+    p = parser.expect(s, p, ":")
+    val pty: String = parser.cur(s, p)
+    emit.jOut("{\"name\": \"")
+    emit.jOut(pname)
+    emit.jOut("\", \"ty\": ")
+    emit.jTyNamed(pty)
+    emit.jOut("}")
+    typeenv.envAddLocal(pname, typeenv.tyAnnTag(pty), 0)
+    p = parser.advance(s, p)
+    return parseFunParams(s, parser.advanceIfComma(s, p), 1)
+}
+
+fun parseFunParams(s: String, pos: Int, sep: Int) -> Int {
+    return if parser.cur(s, pos) == ")" { pos } else { parseFunParam(s, pos, sep) }
+}
+
+fun parseFun(s: String, pos: Int, sep: Int) -> Int {
+    parser.spanMarkBegin(s, pos)
+    emit.jCommaStmt(sep)
+    typeenv.envLocalClear()
+    var p: Int = parser.advance(s, pos)
+    emit.sessSet(emit.slotFnName(), parser.cur(s, p))
+    p = parser.advance(s, p)
+    p = parser.expect(s, p, "(")
+    val qname: String = modload.importQualifiedName(emit.sessGet(emit.slotFnName()))
+    emit.jOut("{\"Fun\": {\"name\": \"")
+    emit.jOut(qname)
+    emit.jOut("\", \"params\": [")
+    p = parseFunParams(s, p, 0)
+    emit.jOut("], \"return_type\": ")
+    p = parser.expect(s, p, ")")
+    p = parser.expect(s, p, "->")
+    emit.sessSet(emit.slotFnRetTy(), parser.cur(s, p))
+    p = parser.advance(s, p)
+    val retTy: String = emit.sessGet(emit.slotFnRetTy())
+    typeenv.envAddGlobal(qname, typeenv.tyAnnTag(retTy))
+    emit.jTyNamed(retTy)
+    emit.jOut(", \"body\": ")
+    typeenv.setLitTy(retTy)
+    p = parseBlockRet(s, p)
+    parser.spanMarkEnd(s, p)
+    emit.jOut(", \"type_params\": [], \"is_single_expr\": false, \"is_test\": false, \"fn_or_fallback\": null, \"span\": ")
+    emit.jSpan()
+    emit.jOut("}}")
+    return p
+}
+
+fun skipExternalParams(s: String, pos: Int) -> Int {
+    return if parser.cur(s, pos) == ")" { pos } else { skipExternalParam(s, pos) }
+}
+
+fun skipExternalParam(s: String, pos: Int) -> Int {
+    var p: Int = parser.advance(s, pos)
+    p = parser.expect(s, p, ":")
+    p = parser.advance(s, p)
+    return skipExternalParams(s, parser.advanceIfComma(s, p))
+}
+
+fun parseExternal(s: String, pos: Int, sep: Int) -> Int {
+    var p: Int = parser.advance(s, pos)
+    p = parser.advance(s, p)
+    emit.sessSet(emit.slotFnName(), parser.cur(s, p))
+    p = parser.advance(s, p)
+    p = parser.expect(s, p, "(")
+    p = skipExternalParams(s, p)
+    p = parser.expect(s, p, ")")
+    p = parser.expect(s, p, "->")
+    emit.sessSet(emit.slotFnRetTy(), parser.cur(s, p))
+    typeenv.envAddGlobal(emit.sessGet(emit.slotFnName()), typeenv.tyAnnTag(emit.sessGet(emit.slotFnRetTy())))
+    p = parser.advance(s, p)
+    return p
+}

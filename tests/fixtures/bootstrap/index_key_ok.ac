@@ -1,0 +1,7 @@
+fun main() -> Int {
+    var xs: List = List[1, 2, 3]
+    xs[0] = 9
+    var m: Map = Map["a": 1]
+    m["a"] = 2
+    return 0
+}

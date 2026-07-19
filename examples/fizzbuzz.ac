@@ -1,6 +1,6 @@
 // FizzBuzz in Atomic (v7 syntax)
 fun fizzbuzz(n: Int) -> String {
-    when n % 3 == 0 and n % 5 == 0 { "FizzBuzz" else when n % 3 == 0 { "Fizz" else when n % 5 == 0 { "Buzz" else toString(n) } } }
+    if n % 3 == 0 and n % 5 == 0 { "FizzBuzz" } else { if n % 3 == 0 { "Fizz" } else { if n % 5 == 0 { "Buzz" } else { toString(n) } } }
 }
 
 fun toString(n: Int) -> String {

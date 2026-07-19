@@ -1,0 +1,4 @@
+fun main() -> Int {
+    val xs: List = List["a", "bb", "ccc"]
+    return len(xs)
+}

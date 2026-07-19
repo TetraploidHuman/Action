@@ -474,10 +474,12 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_extract_value(ss, 0, "slen")
                     .map_err(llvm_err)?
                     .into_int_value();
+                // Resolve slices: field1 may be a slice header, not char data.
                 let sdata = self
-                    .builder
-                    .build_extract_value(ss, 1, "sdata")
-                    .map_err(llvm_err)?
+                    .call_rt("action_string_data", &[ss.into()])?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("charAt: action_string_data failed")?
                     .into_pointer_value();
                 // Clamp negative index
                 let zero = self.i64_ty().const_int(0, false);

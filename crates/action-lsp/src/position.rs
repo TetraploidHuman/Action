@@ -98,6 +98,7 @@ pub fn find_node_at(tokens: &[Token], source: &str, pos: &Position) -> Option<Fo
         | TokenKind::Fun
         | TokenKind::Return
         | TokenKind::When
+        | TokenKind::If
         | TokenKind::Else
         | TokenKind::For
         | TokenKind::In

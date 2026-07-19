@@ -1,0 +1,8 @@
+fun main() -> Int {
+    val xs: List = List["a", "bb", "ccc"]
+    var n: Int = 0
+    for s in xs {
+        n = n + len(s)
+    }
+    return n
+}

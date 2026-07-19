@@ -309,9 +309,26 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    /// Whether AOT linking needs `action_host_rt` (JSON/HTTP/threading C ABI).
+    /// Whether AOT linking needs `action_host_rt` (JSON/HTTP/threading/file C ABI).
+    ///
+    /// File builtins (`readFile`/`writeFile`/`appendFile`) call host helpers that live
+    /// in `libaction_host_rt.a`. Those decls are part of the shared runtime module, so
+    /// AOT objects that include the file runtime must always link host-rt.
     pub fn needs_host_rt_link(&self) -> bool {
         self.host_rt_used.get()
+            || self.module.get_function("action_host_file_write").is_some()
+            || self.module.get_function("action_host_file_append").is_some()
+            || self.module.get_function("action_host_file_read").is_some()
+            || self.module.get_function("action_host_file_exists").is_some()
+            || self.module.get_function("action_host_file_delete").is_some()
+            || self.module.get_function("action_host_file_io_barrier").is_some()
+            || self.module.get_function("action_host_file_open").is_some()
+            || self.module.get_function("action_host_bs_buf_clear").is_some()
+            || self.module.get_function("action_host_bs_buf_append").is_some()
+            || self.module.get_function("action_host_bs_buf_set").is_some()
+            || self.module.get_function("action_host_bs_buf_get").is_some()
+            || self.module.get_function("action_host_bs_int_set").is_some()
+            || self.module.get_function("action_host_bs_int_get").is_some()
     }
 
     // Write LLVM bitcode to a file
@@ -699,7 +716,7 @@ mod tests {
     #[test]
     fn test_consteval_fib_literals_no_runtime_call() {
         let ir = compile_program(
-            "fun fib(n: Int) -> Int { when n <= 1 { n else fib(n - 1) + fib(n - 2) } }\n\
+            "fun fib(n: Int) -> Int { if n <= 1 { n } else { fib(n - 1) + fib(n - 2) } }\n\
              fun main() { val x = fib(30); val y = fib(5) }",
         );
         assert!(ir.contains("832040"), "fib(30) should fold to 832040");
@@ -713,7 +730,7 @@ mod tests {
     #[test]
     fn test_consteval_fib_function_ref_no_runtime_call() {
         let ir = compile_program(
-            "fun fib(n: Int) -> Int { when n <= 1 { n else fib(n - 1) + fib(n - 2) } }\n\
+            "fun fib(n: Int) -> Int { if n <= 1 { n } else { fib(n - 1) + fib(n - 2) } }\n\
              fun main() { val x = ::fib(30); val y = ::fib(5) }",
         );
         assert!(ir.contains("832040"), "fib(30) should fold to 832040");
@@ -808,7 +825,7 @@ mod tests {
     #[test]
     fn test_consteval_fact_literals_no_runtime_call() {
         let ir = compile_program(
-            "fun fact(n: Int, acc: Int) -> Int { when n <= 1 { acc else fact(n - 1, acc * n) } }\n\
+            "fun fact(n: Int, acc: Int) -> Int { if n <= 1 { acc } else { fact(n - 1, acc * n) } }\n\
              fun main() { val x = fact(20, 1) }",
         );
         assert!(

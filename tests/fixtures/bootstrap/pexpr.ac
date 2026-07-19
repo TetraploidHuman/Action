@@ -1,0 +1,809 @@
+// M30 bootstrap expression parser (literals / unary-binary / if / postfix).
+
+import prelude
+
+import parser
+
+import emit
+
+import typeenv
+
+import whenty
+
+import modload
+
+external fun bsIntSet(slot: Int, value: Int) -> Int
+external fun bsIntGet(slot: Int) -> Int
+
+fun parseIntLit(s: String, pos: Int) -> Int { parser.spanSeal(s, pos)
+    val k: String = parser.cur(s, pos)
+    emit.setExprLitInt(parser.atoi(k))
+    return parser.advance(s, pos) }fun noteCollElemTag() -> Int {
+    val got: Int = typeenv.lastExprTyTag()
+    return if typeenv.collForTagGet() == 0 { typeenv.collTagsSet(got, got) } else { typeenv.tyCheckBind(typeenv.collForTagGet(), got) }
+}
+
+// M87: subsequent Map values must match the first value's tag.
+fun noteMapValueTag() -> Int {
+    val got: Int = typeenv.lastExprTyTag()
+    return if typeenv.collIndexTagGet() == 0 { typeenv.collTagsSet(5, got) } else { typeenv.tyCheckBind(typeenv.collIndexTagGet(), got) }
+}
+
+fun collElemTyName() -> String {
+    return typeenv.tyTagName(typeenv.collForTagOrInt())
+}
+
+fun collIndexTyName() -> String {
+    return typeenv.tyTagName(typeenv.collIndexTagOrInt())
+}
+
+fun parseCollElems(s: String, pos: Int, sep: Int, slot: Int) -> Int {
+    return if parser.cur(s, pos) == "]" { pos } else { parseCollElem(s, pos, sep, slot) }
+}
+
+fun parseCollElem(s: String, pos: Int, sep: Int, slot: Int) -> Int {
+    var p: Int = parseExpr(s, pos)
+    noteCollElemTag()
+    emit.accAdd(slot, emit.getExpr(), sep)
+    val p2: Int = parser.advanceIfComma(s, p)
+    return if p2 == p { p } else { parseCollElems(s, p2, 1, slot) }
+}
+
+fun parseListLit(s: String, pos: Int) -> Int {
+    parser.spanMarkBegin(s, pos)
+    var p: Int = parser.advance(s, pos)
+    p = parser.expect(s, p, "[")
+    emit.accReset(emit.slotList())
+    typeenv.collTagsSet(0, 0)
+    p = parseCollElems(s, p, 0, emit.slotList())
+    p = parser.expect(s, p, "]")
+    parser.spanMarkEnd(s, p)
+    if typeenv.collForTagGet() == 0 { typeenv.collTagsSet(1, 1) } else { 0 }
+    val elems: String = emit.accGet(emit.slotList())
+    val et: String = collElemTyName()
+    val fn: String = emit.exprWrap(0, "{\"Ident\": \"__list\"" + "}")
+    emit.setExpr("{\"ty\": {\"Generic\": [{\"Named\": \"List\"}, [{\"Named\": \"" + et + "\"}]]}, \"span\": " + parser.spanJson() + ", \"kind\": {\"Call\": {\"func\": " + fn + ", \"args\": [" + elems + "], \"trailing_lambda\": null}}}")
+    return p
+}
+
+fun parseMapEntries(s: String, pos: Int, sep: Int) -> Int {
+    return if parser.cur(s, pos) == "]" { pos } else { parseMapEntry(s, pos, sep) }
+}
+
+fun parseMapEntry(s: String, pos: Int, sep: Int) -> Int {
+    var p: Int = parseStringLitExpr(s, pos)
+    val keyExpr: String = emit.getExpr()
+    p = parser.expect(s, p, ":")
+    p = parseExpr(s, p)
+    noteMapValueTag()
+    emit.accAdd(emit.slotMap(), "[" + keyExpr + ", " + emit.getExpr() + "]", sep)
+    val p2: Int = parser.advanceIfComma(s, p)
+    return if p2 == p { p } else { parseMapEntries(s, p2, 1) }
+}
+
+fun parseMapLit(s: String, pos: Int) -> Int {
+    parser.spanMarkBegin(s, pos)
+    var p: Int = parser.advance(s, pos)
+    p = parser.expect(s, p, "[")
+    emit.accReset(emit.slotMap())
+    typeenv.collTagsSet(0, 0)
+    p = parseMapEntries(s, p, 0)
+    p = parser.expect(s, p, "]")
+    parser.spanMarkEnd(s, p)
+    if typeenv.collIndexTagGet() == 0 { typeenv.collTagsSet(5, 1) } else { 0 }
+    val entries: String = emit.accGet(emit.slotMap())
+    val vt: String = collIndexTyName()
+    emit.setExpr("{\"ty\": {\"Generic\": [{\"Named\": \"Map\"}, [{\"Named\": \"String\"}, {\"Named\": \"" + vt + "\"}]]}, \"span\": " + parser.spanJson() + ", \"kind\": {\"MapLiteral\": [" + entries + "]}}")
+    typeenv.lastExprTySet(7)
+    return p
+}
+
+fun parseSetLit(s: String, pos: Int) -> Int {
+    parser.spanMarkBegin(s, pos)
+    var p: Int = parser.advance(s, pos)
+    p = parser.expect(s, p, "[")
+    emit.accReset(emit.slotSet())
+    typeenv.collTagsSet(0, 0)
+    p = parseCollElems(s, p, 0, emit.slotSet())
+    p = parser.expect(s, p, "]")
+    parser.spanMarkEnd(s, p)
+    if typeenv.collForTagGet() == 0 { typeenv.collTagsSet(1, 1) } else { 0 }
+    val elems: String = emit.accGet(emit.slotSet())
+    val et: String = collElemTyName()
+    emit.setExpr("{\"ty\": {\"Generic\": [{\"Named\": \"Set\"}, [{\"Named\": \"" + et + "\"}]]}, \"span\": " + parser.spanJson() + ", \"kind\": {\"SetLiteral\": [" + elems + "]}}")
+    return p
+}
+
+fun parseStructLit(s: String, pos: Int) -> Int {
+    parser.spanMarkBegin(s, pos)
+    var p: Int = parser.advance(s, pos)
+    typeenv.structLitNamesClear()
+    emit.accReset(emit.slotFields())
+    p = parseStructFields(s, p, 0)
+    p = parser.expect(s, p, parser.closeBrace())
+    parser.spanMarkEnd(s, p)
+    val fields: String = emit.accGet(emit.slotFields())
+    val litTy: String = typeenv.structLitTyResolve(typeenv.litTyName())
+    typeenv.structLitCheckAgainst(litTy)
+    val tag: Int = typeenv.tyAnnTag(litTy)
+    emit.setExpr("{\"ty\": {\"Named\": \"" + litTy + "\"}, \"span\": " + parser.spanJson() + ", \"kind\": {\"StructLiteral\": [" + fields + "]}}")
+    typeenv.lastExprTySet(tag)
+    return p
+}
+
+fun parseStructFields(s: String, pos: Int, sep: Int) -> Int {
+    return if parser.isTok(s, pos, parser.closeBrace()) { pos } else { parseStructField(s, pos, sep) }
+}
+
+fun parseStructField(s: String, pos: Int, sep: Int) -> Int {
+    val fname: String = parser.cur(s, pos)
+    typeenv.structLitNameAdd(fname)
+    var p: Int = parser.advance(s, pos)
+    p = parser.expect(s, p, "=")
+    p = parseExpr(s, p)
+    val ctx: String = typeenv.litTyName()
+    typeenv.structLitCheckFieldTy(ctx, fname, typeenv.lastExprTyTag())
+    emit.accAdd(emit.slotFields(), "[\"" + fname + "\", " + emit.getExpr() + "]", sep)
+    val p2: Int = parser.advanceIfComma(s, p)
+    return if p2 == p { p } else { parseStructFields(s, p2, 1) }
+}
+
+fun parseFieldStruct(s: String, pos: Int, field: String) -> Int {
+    val recv: String = emit.sessGet(emit.slotRecv())
+    val recvTag: Int = typeenv.lastExprTyTag()
+    val structName: String = typeenv.tyTagName(recvTag)
+    val fieldTag: Int = if structName == "" { 1 } else { typeenv.structFieldRequire(structName, field) }
+    emit.setExpr(emit.exprWrap(fieldTag, "{\"FieldAccess\": [" + recv + ", \"" + field + "\"" + "]}"))
+    return parsePostfix(s, pos)
+}
+
+fun parseFieldModule(modName: String, field: String, s: String, pos: Int) -> Int {
+    val qual: String = if modload.importAllowed(modName) { field } else { modName + "_" + field }
+    emit.sessSet(emit.slotLastIdent(), qual)
+    val tag: Int = typeenv.lookupTag(qual)
+    emit.setExprIdent(qual, tag)
+    return parsePostfix(s, pos)
+}
+
+fun parseField(s: String, pos: Int) -> Int {
+    val recv: String = emit.getExpr()
+    val recvTag: Int = typeenv.lastExprTyTag()
+    emit.sessSet(emit.slotRecv(), recv)
+    val recvName: String = emit.sessGet(emit.slotLastIdent())
+    var p: Int = parser.advance(s, pos)
+    val field: String = parser.cur(s, p)
+    p = parser.advance(s, p)
+    return if modload.importIsLoaded(recvName) { parseFieldModule(recvName, field, s, p) } else { parseFieldStruct(s, p, field) }
+}
+
+fun parseCallDepthRead() -> Int {
+    return bsIntGet(parser.slotCallDepth())
+}
+
+fun parseCallDepthWrite(d: Int) -> Int {
+    bsIntSet(parser.slotCallDepth(), d)
+    return 0
+}
+
+fun parseCallPushArgs() -> Int {
+    val d: Int = parseCallDepthRead()
+    emit.accSet(emit.slotArgsSave(d), emit.accGet(emit.slotArgs()))
+    parseCallDepthWrite(d + 1)
+    emit.accReset(emit.slotArgs())
+    return 0
+}
+
+fun parseCallPopArgs() -> Int {
+    val d: Int = parseCallDepthRead()
+    val nd: Int = d - 1
+    emit.accSet(emit.slotArgs(), emit.accGet(emit.slotArgsSave(nd)))
+    parseCallDepthWrite(nd)
+    return 0
+}
+
+fun callRetTag() -> Int {
+    return typeenv.lookupTag(emit.sessGet(emit.slotLastIdent()))
+}
+
+fun parseCall(s: String, pos: Int) -> Int {
+    val fn: String = emit.getExpr()
+    val fname: String = emit.sessGet(emit.slotLastIdent())
+    var p: Int = parser.advance(s, pos)
+    val retTag: Int = callRetTag()
+    typeenv.callCheckPush()
+    typeenv.callCheckSetName(fname)
+    typeenv.callCheckBegin(fname)
+    parseCallPushArgs()
+    p = parseCallArgs(s, p, 0)
+    p = parser.expect(s, p, ")")
+    typeenv.callCheckEnd()
+    val args: String = emit.accGet(emit.slotArgs())
+    emit.accReset(emit.slotArgs())
+    emit.setExpr(emit.exprWrap(retTag, "{\"Call\": {\"func\": " + fn + ", \"args\": [" + args + "], \"trailing_lambda\": null}}"))
+    parseCallPopArgs()
+    typeenv.callCheckPop()
+    return p
+}
+
+fun parseCallArgs(s: String, pos: Int, sep: Int) -> Int {
+    return if parser.cur(s, pos) == ")" { pos } else { parseCallArg(s, pos, sep) }
+}
+
+fun parseCallArg(s: String, pos: Int, sep: Int) -> Int {
+    val p: Int = parseExpr(s, pos)
+    typeenv.callCheckArg(typeenv.lastExprTyTag())
+    emit.accAdd(emit.slotArgs(), emit.getExpr(), sep)
+    val p2: Int = parser.advanceIfComma(s, p)
+    return parseCallArgs(s, p2, if p2 == p { 0 } else { 1 })
+}
+
+fun parseIndex(s: String, pos: Int) -> Int {
+    val recv: String = emit.getExpr()
+    val recvTag: Int = typeenv.lastExprTyTag()
+    val forTag: Int = typeenv.collForTagGet()
+    val indexTag: Int = typeenv.collIndexTagGet()
+    var p: Int = parser.advance(s, pos)
+    p = parseExpr(s, p)
+    val idxTag: Int = typeenv.lastExprTyTag()
+    typeenv.tyCheckIndexKey(recvTag, forTag, indexTag, idxTag)
+    val idx: String = emit.getExpr()
+    p = parser.expect(s, p, "]")
+    typeenv.collTagsSet(forTag, indexTag)
+    // M113: String[i] result is Int (char code); ignore leftover coll tags.
+    val outTag: Int = if recvTag == 5 { 1 } else { typeenv.collIndexTagOrInt() }
+    emit.setExpr(emit.exprWrap(outTag, "{\"Index\": [" + recv + ", " + idx + "]}"))
+    return parsePostfix(s, p)
+}
+
+fun parsePostfix(s: String, pos: Int) -> Int {
+    val tok: String = parser.cur(s, pos)
+    return when tok {
+        "." -> parseField(s, pos)
+        "(" -> parseCall(s, pos)
+        "[" -> parseIndex(s, pos)
+        else -> pos
+    }
+}
+
+fun whenGuardClear() -> Int {
+    emit.sessSet(emit.slotGuard(), "null")
+    return 0
+}
+
+fun whenGuardJson() -> String {
+    return emit.sessGet(emit.slotGuard())
+}
+
+fun parseWhenGuardAfter(s: String, pos: Int) -> Int {
+    val p: Int = parseExpr(s, pos)
+    typeenv.tyCheckGuard()
+    emit.sessSet(emit.slotGuard(), emit.getExpr())
+    return p
+}
+
+fun parseWhenGuardNone(s: String, pos: Int) -> Int {
+    whenGuardClear()
+    return pos
+}
+
+fun parseWhenGuardOpt(s: String, pos: Int) -> Int {
+    return when {
+        parser.cur(s, pos) == "and" -> parseWhenGuardAfter(s, parser.advance(s, pos))
+        else -> parseWhenGuardNone(s, pos)
+    }
+}
+
+fun parseWhenCondArmExpr(s: String, pos: Int, sep: Int) -> Int {
+    var p: Int = parseExpr(s, pos)
+    // M101: condition-chain arm expr must be Bool.
+    typeenv.tyCheckGuard()
+    val condE: String = emit.getExpr()
+    p = parseWhenGuardOpt(s, p)
+    val guardJ: String = whenGuardJson()
+    p = parser.expect(s, p, "->")
+    p = parseExpr(s, p)
+    whenty.whenChainTagSnap(sep)
+    emit.accAdd(emit.slotArms(), "{\"pattern\": {\"Expr\": " + condE + "}, \"guard\": " + guardJ + ", \"body\": " + emit.getExpr() + "}", sep)
+    return p
+}
+
+fun parseWhenCondArmThen(s: String, pos: Int, sep: Int) -> Int {
+    val p: Int = parseWhenCondArmExpr(s, pos, sep)
+    return parseWhenCondArms(s, skipOptionalSemi(s, p), 1)
+}
+
+fun parseWhenCondArms(s: String, pos: Int, sep: Int) -> Int {
+    return when {
+        parser.isTok(s, pos, parser.closeBrace()) -> pos
+        parser.cur(s, pos) == "else" -> parseWhenElseArm(s, pos, sep, false)
+        else -> parseWhenCondArmThen(s, pos, sep)
+    }
+}
+
+fun parseWhenConditionChain(s: String, pos: Int) -> Int {
+    emit.accReset(emit.slotArms())
+    bsIntSet(parser.slotWhenChainTag(), 1)
+    var p: Int = parser.advance(s, pos)
+    p = parseWhenCondArms(s, p, 0)
+    p = parser.expect(s, p, parser.closeBrace())
+    val arms: String = emit.accGet(emit.slotArms())
+    emit.accReset(emit.slotArms())
+    val tag: Int = bsIntGet(parser.slotWhenChainTag())
+    emit.setExpr(emit.exprWrap(tag, "{\"When\": {\"kind\": {\"ConditionChain\": {\"arms\": [" + arms + "]}}}}"))
+    return p
+}
+
+// M102: boolean ternary is `if cond { then } else { else }` (OneLine HIR).
+fun parseIfExpr(s: String, pos: Int) -> Int {
+    var p: Int = parser.advance(s, pos)
+    return parseIfCondOneLine(s, p)
+}
+
+fun parseIfCondOneLine(s: String, pos: Int) -> Int {
+    var p: Int = parseCmp(s, pos)
+    val cond: String = emit.getExpr()
+    p = parser.expect(s, p, parser.openBrace())
+    typeenv.tyCheckGuard()
+    return parseIfOneLine(s, p, cond)
+}
+
+fun parseIfElseBody(s: String, pos: Int) -> Int {
+    return when {
+        parser.cur(s, pos) == "if" -> parseIfExpr(s, pos)
+        parser.cur(s, pos) == parser.openBrace() -> parseIfElseBlock(s, pos)
+        else -> parseExpr(s, pos)
+    }
+}
+
+fun parseIfElseBlock(s: String, pos: Int) -> Int {
+    var p: Int = parser.expect(s, pos, parser.openBrace())
+    p = parseExpr(s, p)
+    val inner: String = emit.getExpr()
+    val tag: Int = typeenv.lastExprTyTag()
+    p = parser.expect(s, p, parser.closeBrace())
+    emit.setExpr(emit.exprAsBlock(tag, inner))
+    return p
+}
+
+fun parseIfOneLine(s: String, pos: Int, cond: String) -> Int {
+    var p: Int = parseExpr(s, pos)
+    val thenInner: String = emit.getExpr()
+    val thenTag: Int = typeenv.lastExprTyTag()
+    val thenE: String = emit.exprAsBlock(thenTag, thenInner)
+    p = parser.expect(s, p, parser.closeBrace())
+    return if parser.cur(s, p) == "else" {
+        parseIfAfterElse(s, p, cond, thenE, thenTag)
+    } else {
+        parseIfNoElse(s, p, cond, thenE, thenTag)
+    }
+}
+
+fun parseIfNoElse(s: String, pos: Int, cond: String, thenE: String, thenTag: Int) -> Int {
+    val elseE: String = emit.exprWrap(0, "{\"Literal\": \"Unit\"}")
+    emit.setExpr(emit.exprWrap(thenTag, "{\"When\": {\"kind\": {\"OneLine\": {\"condition\": " + cond + ", \"then_expr\": " + thenE + ", \"else_expr\": " + elseE + "}}}}"))
+    return pos
+}
+
+fun parseIfAfterElse(s: String, pos: Int, cond: String, thenE: String, thenTag: Int) -> Int {
+    var p: Int = parser.expect(s, pos, "else")
+    p = parseIfElseBody(s, p)
+    val elseE: String = emit.getExpr()
+    val elseTag: Int = typeenv.lastExprTyTag()
+    val tag: Int = whenty.whenTagUnify(thenTag, elseTag)
+    emit.setExpr(emit.exprWrap(tag, "{\"When\": {\"kind\": {\"OneLine\": {\"condition\": " + cond + ", \"then_expr\": " + thenE + ", \"else_expr\": " + elseE + "}}}}"))
+    return p
+}
+
+fun parseWhenCondOrMatch(s: String, pos: Int) -> Int {
+    var p: Int = parseCmp(s, pos)
+    val cond: String = emit.getExpr()
+    p = parser.expect(s, p, parser.openBrace())
+    return when {
+        isValueMatchArm(s, p) -> parseWhenValue(s, p, cond)
+        else -> parseWhenTernaryRejected(s, p)
+    }
+}
+
+fun parseWhenTernaryRejected(s: String, pos: Int) -> Int {
+    typeenv.typeErrorMark()
+    return pos
+}
+
+fun isValueMatchArm(s: String, pos: Int) -> Bool {
+    return if parser.isTok(s, pos, parser.closeBrace()) { false } else { isValueMatchArmAfterTok(s, pos) }
+}
+
+fun isValueMatchArmAfterTok(s: String, pos: Int) -> Bool {
+    return if parser.cur(s, pos) == "else" { false } else { isValueMatchArmAfterPat(s, pos) }
+}
+
+fun isValueMatchArmAfterPat(s: String, pos: Int) -> Bool {
+    val next: String = parser.cur(s, parser.advance(s, pos))
+    return when {
+        next == "->" -> true
+        next == "and" -> true
+        else -> false
+    }
+}
+
+fun parseWhenArm(s: String, pos: Int, sep: Int) -> Int {
+    val pat: String = parser.cur(s, pos)
+    typeenv.whenExhNotePat(pat)
+    val patJ: String = whenty.patJson(pat)
+    var p: Int = parser.advance(s, pos)
+    p = parseWhenGuardOpt(s, p)
+    val guardJ: String = whenGuardJson()
+    p = parser.expect(s, p, "->")
+    p = parseExpr(s, p)
+    whenty.whenMatchTagSnap(sep)
+    emit.accAdd(emit.slotArms(), "{\"pattern\": " + patJ + ", \"guard\": " + guardJ + ", \"body\": " + emit.getExpr() + "}", sep)
+    return p
+}
+
+fun parseWhenElseArm(s: String, pos: Int, sep: Int, useMatchSnap: Bool) -> Int {
+    var p: Int = parser.advance(s, pos)
+    p = parser.expect(s, p, "->")
+    p = parseExpr(s, p)
+    if useMatchSnap { typeenv.whenExhNoteElse() } else { 0 }
+    if useMatchSnap { whenty.whenMatchTagSnap(sep) } else { whenty.whenChainTagSnap(sep) }
+    emit.accAdd(emit.slotArms(), "{\"pattern\": \"Wildcard\", \"guard\": null, \"body\": " + emit.getExpr() + "}", sep)
+    return p
+}
+
+fun parseWhenArms(s: String, pos: Int, sep: Int) -> Int {
+    return when {
+        parser.isTok(s, pos, parser.closeBrace()) -> pos
+        parser.cur(s, pos) == "else" -> parseWhenElseArm(s, pos, sep, true)
+        else -> parseWhenArmThen(s, pos, sep)
+    }
+}
+
+fun parseWhenArmThen(s: String, pos: Int, sep: Int) -> Int {
+    val p: Int = parseWhenArm(s, pos, sep)
+    return parseWhenArms(s, p, 1)
+}
+
+fun parseWhenValue(s: String, pos: Int, scr: String) -> Int {
+    emit.accReset(emit.slotArms())
+    bsIntSet(parser.slotWhenMatchTag(), 1)
+    typeenv.whenExhBegin(typeenv.lastExprTyTag())
+    var p: Int = parseWhenArms(s, pos, 0)
+    typeenv.whenExhFinish()
+    p = parser.expect(s, p, parser.closeBrace())
+    val arms: String = emit.accGet(emit.slotArms())
+    emit.accReset(emit.slotArms())
+    val tag: Int = bsIntGet(parser.slotWhenMatchTag())
+    emit.setExpr(emit.exprWrap(tag, "{\"When\": {\"kind\": {\"ValueMatch\": {\"value\": " + scr + ", \"arms\": [" + arms + "]}}}}"))
+    return p
+}
+
+fun parseWhenExpr(s: String, pos: Int) -> Int {
+    var p: Int = parser.advance(s, pos)
+    return when {
+        parser.cur(s, p) == parser.openBrace() -> parseWhenConditionChain(s, p)
+        else -> parseWhenCondOrMatch(s, p)
+    }
+}
+
+fun parseIdentExpr(s: String, pos: Int) -> Int {
+    parser.spanSeal(s, pos)
+    val name: String = parser.cur(s, pos)
+    emit.sessSet(emit.slotLastIdent(), name)
+    val tag: Int = typeenv.lookupTag(name)
+    typeenv.markUndefIdentUse(name, tag)
+    typeenv.collEnvRestore(name)
+    emit.setExprIdent(name, typeenv.tagForExpr(tag))
+    return parsePostfix(s, parser.advance(s, pos))
+}
+
+fun parseBoolLit(s: String, pos: Int, b: Bool) -> Int {
+    parser.spanSeal(s, pos)
+    emit.setExprBool(b)
+    return parser.advance(s, pos)
+}
+
+fun parseStringLitExpr(s: String, pos: Int) -> Int {
+    parser.spanSeal(s, pos)
+    val k: String = parser.cur(s, pos)
+    emit.setExpr(emit.exprWrap(5, "{\"Literal\": {\"String\": " + emit.jQuotedString(k) + "}}"))
+    return parser.advance(s, pos)
+}
+
+fun parseBreakExpr(s: String, pos: Int) -> Int {
+    parser.spanSeal(s, pos)
+    emit.setExpr(emit.exprWrap(0, "\"Break\""))
+    return parser.advance(s, pos)
+}
+
+fun parseContinueExpr(s: String, pos: Int) -> Int {
+    parser.spanSeal(s, pos)
+    emit.setExpr(emit.exprWrap(0, "\"Continue\""))
+    return parser.advance(s, pos)
+}
+
+fun parsePrimaryKw(s: String, pos: Int, k: String) -> Int {
+    return when k {
+        "List" -> parseListLit(s, pos)
+        "Map" -> parseMapLit(s, pos)
+        "Set" -> parseSetLit(s, pos)
+        "break" -> parseBreakExpr(s, pos)
+        "continue" -> parseContinueExpr(s, pos)
+        "when" -> parseWhenExpr(s, pos)
+        "if" -> parseIfExpr(s, pos)
+        "(" -> parseParen(s, pos)
+        else -> parseIdentExpr(s, pos)
+    }
+}
+
+fun parsePrimary(s: String, pos: Int) -> Int {
+    val k: String = parser.cur(s, pos)
+    return when {
+        k == "true" -> parseBoolLit(s, pos, true)
+        k == "false" -> parseBoolLit(s, pos, false)
+        whenty.isStringLit(k) -> parseStringLitExpr(s, pos)
+        prelude.isDigit(prelude.charAtSafe(k, 0)) -> parseIntLit(s, pos)
+        parser.isBraceOpen(k) -> parseStructLit(s, pos)
+        else -> parsePrimaryKw(s, pos, k)
+    }
+}
+
+fun parseParen(s: String, pos: Int) -> Int {
+    var p: Int = parser.advance(s, pos)
+    p = parseExpr(s, p)
+    return parser.expect(s, p, ")")
+}
+
+fun parseUnary(s: String, pos: Int) -> Int {
+    val tok: String = parser.cur(s, pos)
+    return when tok {
+        "not" -> parseUnaryNot(s, pos)
+        "-" -> parseUnaryNeg(s, pos)
+        "+" -> parseUnaryPos(s, parser.advance(s, pos))
+        else -> parsePrimary(s, pos)
+    }
+}
+
+fun parseUnaryPos(s: String, pos: Int) -> Int {
+    // M108: unary + rejects Bool/String; emit Unary Pos for Rust HIR oracle parity.
+    val p: Int = parseUnary(s, pos)
+    val tag: Int = typeenv.lastExprTyTag()
+    val inner: String = emit.getExpr()
+    typeenv.tyCheckPos()
+    emit.setExpr(emit.exprWrap(tag, " { \"Unary\": [\"Pos\", " + inner + "]}"))
+    return p }fun parseUnaryNeg(s: String, pos: Int) -> Int {
+    val p: Int = parseUnary(s, parser.advance(s, pos))
+    typeenv.tyCheckNeg()
+    emit.setExpr(emit.exprWrap(1, "{\"Unary\": [\"Neg\", " + emit.getExpr() + "]}"))
+    return p
+}
+
+fun parseUnaryNot(s: String, pos: Int) -> Int {
+    val p: Int = parseUnary(s, parser.advance(s, pos))
+    typeenv.tyCheckGuard()
+    emit.setExpr(emit.exprWrap(2, "{\"Unary\": [\"Not\", " + emit.getExpr() + "]}"))
+    return p
+}
+
+fun parseMulLoop(s: String, pos: Int, left: String) -> Int {
+    val tok: String = parser.cur(s, pos)
+    return when tok {
+        "*" -> parseMulStep(s, parser.advance(s, pos), left, "Mul")
+        "/" -> parseMulStep(s, parser.advance(s, pos), left, "Div")
+        "%" -> parseMulStep(s, parser.advance(s, pos), left, "Mod")
+        else -> pos
+    }
+}
+
+fun parseMulStep(s: String, pos: Int, left: String, op: String) -> Int {
+    val leftTag: Int = typeenv.lastExprTyTag()
+    val p: Int = parseUnary(s, pos)
+    typeenv.tyCheckArith(op, leftTag, typeenv.lastExprTyTag())
+    emit.setExprBinary(op, left, emit.getExpr(), 1)
+    return parseMulLoop(s, p, emit.getExpr())
+}
+
+fun parseMul(s: String, pos: Int) -> Int {
+    val p: Int = parseUnary(s, pos)
+    return parseMulLoop(s, p, emit.getExpr())
+}
+
+fun parseAddLoop(s: String, pos: Int, left: String) -> Int {
+    val tok: String = parser.cur(s, pos)
+    return when tok {
+        "+" -> parseAddStep(s, parser.advance(s, pos), left, "Add")
+        "-" -> parseAddStep(s, parser.advance(s, pos), left, "Sub")
+        else -> pos
+    }
+}
+
+fun parseAddStep(s: String, pos: Int, left: String, op: String) -> Int {
+    bsIntSet(parser.slotAddLeftTy(), typeenv.lastExprTyTag())
+    val p: Int = parseMul(s, pos)
+    val leftTag: Int = bsIntGet(parser.slotAddLeftTy())
+    val rightTag: Int = typeenv.lastExprTyTag()
+    typeenv.tyCheckArith(op, leftTag, rightTag)
+    emit.setExprBinary(op, left, emit.getExpr(), typeenv.inferAddTag(op, leftTag, rightTag))
+    return parseAddLoop(s, p, emit.getExpr())
+}
+
+fun parseAdd(s: String, pos: Int) -> Int {
+    val p: Int = parseMul(s, pos)
+    return parseAddLoop(s, p, emit.getExpr())
+}
+
+fun parseRangeLoop(s: String, pos: Int, left: String) -> Int {
+    val tok: String = parser.cur(s, pos)
+    return when tok {
+        "..<" -> parseRangeStep(s, parser.advance(s, pos), left, "RangeExclusive")
+        ".." -> parseRangeStep(s, parser.advance(s, pos), left, "Range")
+        else -> pos
+    }
+}
+
+fun parseRangeStep(s: String, pos: Int, left: String, op: String) -> Int {
+    val leftTag: Int = typeenv.lastExprTyTag()
+    val p: Int = parseAdd(s, pos)
+    typeenv.tyCheckRange(leftTag, typeenv.lastExprTyTag())
+    emit.setExprBinary(op, left, emit.getExpr(), 1)
+    return parseRangeLoop(s, p, emit.getExpr())
+}
+
+fun parseRange(s: String, pos: Int) -> Int {
+    val p: Int = parseAdd(s, pos)
+    return parseRangeLoop(s, p, emit.getExpr())
+}
+
+fun parseCmpLoop(s: String, pos: Int, left: String) -> Int {
+    val tok: String = parser.cur(s, pos)
+    return when tok {
+        "==" -> parseCmpStep(s, parser.advance(s, pos), left, "Eq")
+        "!=" -> parseCmpStep(s, parser.advance(s, pos), left, "Neq")
+        "<=" -> parseCmpStep(s, parser.advance(s, pos), left, "Lte")
+        ">=" -> parseCmpStep(s, parser.advance(s, pos), left, "Gte")
+        "<" -> parseCmpStep(s, parser.advance(s, pos), left, "Lt")
+        ">" -> parseCmpStep(s, parser.advance(s, pos), left, "Gt")
+        else -> pos
+    }
+}
+
+fun parseCmpStep(s: String, pos: Int, left: String, op: String) -> Int {
+    val leftTag: Int = typeenv.lastExprTyTag()
+    val p: Int = parseRange(s, pos)
+    typeenv.tyCheckCmp(op, leftTag, typeenv.lastExprTyTag())
+    emit.setExprBinary(op, left, emit.getExpr(), 2)
+    return parseCmpLoop(s, p, emit.getExpr())
+}
+
+fun parseCmp(s: String, pos: Int) -> Int {
+    val p: Int = parseRange(s, pos)
+    return parseCmpLoop(s, p, emit.getExpr())
+}
+
+fun parseAndLoop(s: String, pos: Int, left: String) -> Int {
+    return if parser.cur(s, pos) == "and" { parseAndStep(s, parser.advance(s, pos), left) } else { pos }
+}
+
+fun parseAndStep(s: String, pos: Int, left: String) -> Int {
+    val leftTag: Int = typeenv.lastExprTyTag()
+    val p: Int = parseCmp(s, pos)
+    typeenv.tyCheckLogical(leftTag, typeenv.lastExprTyTag())
+    emit.setExprBinary("And", left, emit.getExpr(), 2)
+    return parseAndLoop(s, p, emit.getExpr())
+}
+
+fun parseAnd(s: String, pos: Int) -> Int {
+    val p: Int = parseCmp(s, pos)
+    return parseAndLoop(s, p, emit.getExpr())
+}
+
+fun parseOrLoop(s: String, pos: Int, left: String) -> Int {
+    return if parser.cur(s, pos) == "or" { parseOrStep(s, parser.advance(s, pos), left) } else { pos }
+}
+
+fun parseOrStep(s: String, pos: Int, left: String) -> Int {
+    val leftTag: Int = typeenv.lastExprTyTag()
+    val p: Int = parseAnd(s, pos)
+    typeenv.tyCheckLogical(leftTag, typeenv.lastExprTyTag())
+    emit.setExprBinary("Or", left, emit.getExpr(), 2)
+    return parseOrLoop(s, p, emit.getExpr())
+}
+
+fun parseOr(s: String, pos: Int) -> Int {
+    val p: Int = parseAnd(s, pos)
+    return parseOrLoop(s, p, emit.getExpr())
+}
+
+fun jsonHasFrom(hay: String, needle: String, i: Int) -> Bool {
+    return when {
+        i + len(needle) > len(hay) -> false
+        substring(hay, i, len(needle)) == needle -> true
+        else -> jsonHasFrom(hay, needle, i + 1)
+    }
+}
+
+fun jsonHas(hay: String, needle: String) -> Bool {
+    return jsonHasFrom(hay, needle, 0)
+}
+
+// Bare Ident lvalue (not FieldAccess/Index/Call/…).
+fun jsonIsBareIdent(j: String) -> Bool {
+    return when {
+        jsonHas(j, "\"FieldAccess\"") -> false
+        jsonHas(j, "\"Index\"") -> false
+        jsonHas(j, "\"Binary\"") -> false
+        jsonHas(j, "\"Call\"") -> false
+        jsonHas(j, "\"Unary\"") -> false
+        jsonHas(j, "\"Literal\"") -> false
+        jsonHas(j, "\"Ident\"") -> true
+        else -> false
+    }
+}
+
+fun jsonIdentKey() -> String {
+    return "\"Ident\": \""
+}
+
+fun jsonReadIdentName(hay: String, pos: Int) -> String {
+    val ch: String = prelude.charAtSafe(hay, pos)
+    return when {
+        ch == "" -> ""
+        ch == "\"" -> ""
+        else -> ch + jsonReadIdentName(hay, pos + 1)
+    }
+}
+
+fun jsonFirstIdentFrom(hay: String, i: Int) -> String {
+    val key: String = jsonIdentKey()
+    return when {
+        i + len(key) > len(hay) -> ""
+        substring(hay, i, len(key)) == key -> jsonReadIdentName(hay, i + len(key))
+        else -> jsonFirstIdentFrom(hay, i + 1)
+    }
+}
+
+// Leftmost Ident in lvalue JSON (`p` in `p.x` / `a` in `a[i]`).
+fun jsonFirstIdentName(j: String) -> String {
+    return jsonFirstIdentFrom(j, 0)
+}
+
+fun jsonIsFieldOrIndexLvalue(j: String) -> Bool {
+    return when {
+        jsonHas(j, "\"FieldAccess\"") -> true
+        jsonHas(j, "\"Index\"") -> true
+        else -> false
+    }
+}
+
+// M86: expr assign (incl. `p.x = …`) checks rhs against lhs tag; Assign HIR ty stays Unit
+// so `when { break else x = … }` arms remain compatible (both tag 0).
+fun parseAssignExprRhs(s: String, pos: Int, tgt: String) -> Int {
+    val expected: Int = typeenv.lastExprTyTag()
+    val p: Int = parseAssignExpr(s, pos)
+    typeenv.tyCheckBind(expected, typeenv.lastExprTyTag())
+    emit.setExpr(emit.exprWrap(0, "{\"Assign\": {\"target\": " + tgt + ", \"value\": " + emit.getExpr() + "}}"))
+    return p
+}
+
+fun parseAssignExpr(s: String, pos: Int) -> Int {
+    val p: Int = parseOr(s, pos)
+    val lhs: String = emit.getExpr()
+    return if parser.cur(s, p) == "=" { parseAssignExprChecked(s, parser.advance(s, p), lhs) } else { p }
+}
+
+fun parseAssignExprChecked(s: String, pos: Int, lhs: String) -> Int {
+    // M109/M110: Ident / FieldAccess / Index assign requires mutable root.
+    val root: String = jsonFirstIdentName(lhs)
+    val ignored: Int = when {
+        root == "" -> 0
+        jsonIsBareIdent(lhs) -> typeenv.tyCheckAssignIdent(root)
+        jsonIsFieldOrIndexLvalue(lhs) -> typeenv.tyCheckAssignIdent(root)
+        else -> 0
+    }
+    return parseAssignExprRhs(s, pos, lhs)
+}
+
+fun parseExpr(s: String, pos: Int) -> Int { return parseAssignExpr(s, pos) }
+
+fun skipOptionalSemi(s: String, pos: Int) -> Int {
+    return if parser.isTok(s, pos, ";") { parser.advance(s, pos) } else { pos }
+}

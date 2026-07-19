@@ -88,6 +88,12 @@ impl Parser {
                 }
                 Ok(ExprKind::FunctionRef(path).into())
             }
+            TokenKind::Plus => {
+                self.advance();
+                let expr = self.parse_pratt(Precedence::Unary)?;
+                // M108: keep Unary Pos in AST so Bool/String operands can be rejected.
+                Ok(Expr::unary(UnaryOp::Pos, expr))
+            }
             TokenKind::Minus => {
                 self.advance();
                 let expr = self.parse_pratt(Precedence::Unary)?;
@@ -112,6 +118,7 @@ impl Parser {
                 Ok(ExprKind::Break.into())
             }
             TokenKind::When => self.parse_when(),
+            TokenKind::If => self.parse_if(),
             TokenKind::For => self.parse_for(),
             TokenKind::Copy => {
                 self.advance();

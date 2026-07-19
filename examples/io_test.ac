@@ -25,9 +25,52 @@ fun main() {
     print(exists("examples/_io_append_tmp.txt"))
     println("")
 
+    // writeFile must accept substring slices (M38 host string_data fix)
+    val payload = "slice-payload"
+    print("write slice: ")
+    print(writeFile("examples/_io_write_tmp.txt", payload.substring(0, 5)))
+    println("")
+    print("read slice: ")
+    println(readFile("examples/_io_write_tmp.txt"))
+
+    // M40: path arguments may be substring slices
+    val pathBag = "xxexamples/_io_write_tmp.txtyy"
+    val pathSlice = pathBag.substring(2, 26)
+    print("exists path slice: ")
+    print(exists(pathSlice))
+    println("")
+    print("read path slice: ")
+    println(readFile(pathSlice))
+    print("parseInt slice: ")
+    println(parseInt("xx42yy".substring(2, 2)) or { -1 })
+
+    // Streaming: openFile path slices + fileReadLine fallible EOF
+    writeFile("examples/_io_stream_tmp.txt", "line-a\nline-b\n")
+    val streamBag = "xxexamples/_io_stream_tmp.txtyy"
+    val streamSlice = streamBag.substring(2, 27)
+    val f = openFile(streamSlice, "r")
+    print("stream line1: ")
+    println(fileReadLine(f) or { "EOF" })
+    print("stream line2: ")
+    println(fileReadLine(f) or { "EOF" })
+    print("stream eof: ")
+    println(fileReadLine(f) or { "EOF" })
+    print("close stream: ")
+    print(closeFile(f))
+    println("")
+
     // Cleanup
     print("delete test: ")
     print(deleteFile("examples/_io_append_tmp.txt"))
+    println("")
+    print("delete write: ")
+    print(deleteFile(pathSlice))
+    println("")
+    print("delete stream: ")
+    print(deleteFile(streamSlice))
+    println("")
+    print("exists after delete: ")
+    print(exists(pathSlice))
     println("")
 
     println("done")

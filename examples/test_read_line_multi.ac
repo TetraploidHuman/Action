@@ -3,8 +3,7 @@ fun main() {
     var running = true
     for running {
         val input = readLine() or { "quit" }
-        running = when input == "quit" { false else true }
-        when running { println("Hello, " + input) }
-    }
+        running = if input == "quit" { false } else { true }
+        if running { println("Hello, " + input) }}
     print("Goodbye!")
 }

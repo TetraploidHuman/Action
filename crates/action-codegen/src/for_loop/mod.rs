@@ -12,6 +12,26 @@ pub(super) enum ForExprSrc<'a> {
     Hir(&'a HirExpr),
 }
 
+/// Classified iterable for `for` loop codegen.
+pub(super) enum ForIterable<'ctx> {
+    Range {
+        start: IntValue<'ctx>,
+        end: IntValue<'ctx>,
+    },
+    List {
+        list_ptr: PointerValue<'ctx>,
+        len: IntValue<'ctx>,
+    },
+    Map {
+        data_ptr: PointerValue<'ctx>,
+        cap: IntValue<'ctx>,
+    },
+    Set {
+        data_ptr: PointerValue<'ctx>,
+        cap: IntValue<'ctx>,
+    },
+}
+
 /// Fused term for `{ x -> x + i }(arg)` when the sole capture is the loop index.
 pub(super) enum CapturedIdxAddTerm {
     /// `{ x -> x + i }(i)` → `i + i`
@@ -48,40 +68,86 @@ impl<'a> ForExprSrc<'a> {
         }
     }
 
+    fn classify_iterable<'ctx>(
+        &self,
+        gen: &mut CodeGen<'ctx>,
+    ) -> Result<ForIterable<'ctx>, String> {
+        if let Some((start, end)) = self.range_start_end(gen)? {
+            return Ok(ForIterable::Range { start, end });
+        }
+
+        let val = self.compile(gen)?;
+        match val {
+            TypedValue::Map(map_ptr) => {
+                let loaded = gen.load_list(map_ptr)?;
+                let data_ptr = gen.list_data_ptr(loaded)?;
+                let cap = gen
+                    .builder
+                    .build_extract_value(loaded, 2, "map_cap")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                Ok(ForIterable::Map { data_ptr, cap })
+            }
+            TypedValue::Set(set_ptr) => {
+                let loaded = gen.load_list(set_ptr)?;
+                let data_ptr = gen.list_data_ptr(loaded)?;
+                let cap = gen
+                    .builder
+                    .build_extract_value(loaded, 2, "set_cap")
+                    .map_err(llvm_err)?
+                    .into_int_value();
+                Ok(ForIterable::Set { data_ptr, cap })
+            }
+            TypedValue::List(list_ptr) => {
+                let loaded = gen.load_list(list_ptr)?;
+                let len = gen.list_len_val(loaded)?;
+                Ok(ForIterable::List { list_ptr, len })
+            }
+            TypedValue::Stream(stream_ptr) => {
+                let list_ptr = gen
+                    .builder
+                    .build_struct_gep(gen.stream_type, stream_ptr, 1, "for_sl")
+                    .map_err(llvm_err)?;
+                let loaded = gen.load_list(list_ptr)?;
+                let len = gen.list_len_val(loaded)?;
+                Ok(ForIterable::List { list_ptr, len })
+            }
+            TypedValue::LazyList(_) => {
+                let converted = gen.convert_lazylist_to_list(&val)?;
+                let list_ptr = gen
+                    .builder
+                    .build_alloca(gen.list_type, "ll_to_list")
+                    .map_err(llvm_err)?;
+                gen.builder
+                    .build_store(list_ptr, converted)
+                    .map_err(llvm_err)?;
+                let loaded = gen.load_list(list_ptr)?;
+                let len = gen.list_len_val(loaded)?;
+                Ok(ForIterable::List { list_ptr, len })
+            }
+            _ => Err(
+                "Only range iterators (1..10), lists, sets, maps, streams and lazy lists are supported for for expressions"
+                    .to_string(),
+            ),
+        }
+    }
+
     fn compile_list_iterable<'ctx>(
         &self,
         gen: &mut CodeGen<'ctx>,
     ) -> Result<(IntValue<'ctx>, IntValue<'ctx>, PointerValue<'ctx>), String> {
         let i64 = gen.i64_ty();
-        let list_val = self.compile(gen)?;
-        let list_ptr = match &list_val {
-            TypedValue::List(p) | TypedValue::Set(p) | TypedValue::Map(p) => *p,
-            TypedValue::Stream(p) => gen
-                .builder
-                .build_struct_gep(gen.stream_type, *p, 1, "for_sl")
-                .map_err(llvm_err)?,
-            TypedValue::LazyList(_) => {
-                let converted = gen.convert_lazylist_to_list(&list_val)?;
-                let alloca = gen
-                    .builder
-                    .build_alloca(gen.list_type, "ll_to_list")
-                    .map_err(llvm_err)?;
-                gen.builder
-                    .build_store(alloca, converted)
-                    .map_err(llvm_err)?;
-                alloca
-            }
-            _ => {
-                return Err(
-                    "Only range iterators (1..10), lists, sets, maps, streams and lazy lists are supported for for expressions"
-                        .to_string(),
-                );
-            }
-        };
-        let loaded = gen.load_list(list_ptr)?;
-        let len = gen.list_len_val(loaded)?;
         let zero = i64.const_int(0, false);
-        Ok((zero, len, list_ptr))
+        match self.classify_iterable(gen)? {
+            ForIterable::List { list_ptr, len } => Ok((zero, len, list_ptr)),
+            ForIterable::Map { .. } | ForIterable::Set { .. } => Err(
+                "compile_list_iterable called on Map/Set — use hash-table iteration path"
+                    .to_string(),
+            ),
+            ForIterable::Range { .. } => Err(
+                "compile_list_iterable called on Range — use range_start_end".to_string(),
+            ),
+        }
     }
 }
 

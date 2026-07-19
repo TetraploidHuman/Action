@@ -1,0 +1,11 @@
+fun main() -> Int {
+    var sum: Int = 0
+    for n in List[1, 2, 3, 4] {
+        sum = sum + when n {
+            1 -> 10
+            2 -> 20
+            else -> n
+        }
+    }
+    return sum
+}

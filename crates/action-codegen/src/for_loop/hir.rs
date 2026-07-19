@@ -10,6 +10,25 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         f: &action_frontend::hir::HirFor,
     ) -> Result<TypedValue<'ctx>, String> {
+        self.compile_hir_for_with_collect(f, /*force_no_collect=*/ false)
+    }
+
+    /// Statement-shaped `for` must not collect body values into a temporary List
+    /// that is then discarded: heap payloads (esp. String) shared with outer
+    /// `var` bindings would be freed while still live (`acc = acc + "x"` in a loop).
+    pub(crate) fn compile_hir_for_stmt(
+        &mut self,
+        f: &action_frontend::hir::HirFor,
+    ) -> Result<(), String> {
+        let _ = self.compile_hir_for_with_collect(f, /*force_no_collect=*/ true)?;
+        Ok(())
+    }
+
+    fn compile_hir_for_with_collect(
+        &mut self,
+        f: &action_frontend::hir::HirFor,
+        force_no_collect: bool,
+    ) -> Result<TypedValue<'ctx>, String> {
         use action_frontend::hir::HirForKind;
         match &f.kind {
             HirForKind::Iterate {
@@ -17,7 +36,12 @@ impl<'ctx> CodeGen<'ctx> {
                 iterable,
                 body,
                 collect,
-            } => self.compile_for_iterate_hir(var, iterable, body, *collect),
+            } => self.compile_for_iterate_hir(
+                var,
+                iterable,
+                body,
+                *collect && !force_no_collect,
+            ),
             HirForKind::Condition { condition, body } => {
                 if let Some(result) =
                     self.try_compile_for_sequential_list_get_hir(condition, body)?
@@ -91,7 +115,11 @@ impl<'ctx> CodeGen<'ctx> {
                 bindings,
                 body,
                 collect,
-            } => self.compile_for_nested_iterate_hir(bindings, body, *collect),
+            } => self.compile_for_nested_iterate_hir(
+                bindings,
+                body,
+                *collect && !force_no_collect,
+            ),
         }
     }
 
@@ -161,7 +189,13 @@ impl<'ctx> CodeGen<'ctx> {
         let body_val = self.compile_hir_expr(body)?;
         self.narrowing = saved_narrowing;
         self.rc_discard_value(&body_val)?;
-        let _ = self.builder.build_unconditional_branch(header);
+        if self
+            .builder
+            .get_insert_block()
+            .is_none_or(|bb| bb.get_terminator().is_none())
+        {
+            let _ = self.builder.build_unconditional_branch(header);
+        }
 
         self.builder.position_at_end(exit);
         self.loop_control.continue_target = saved_continue;
@@ -193,7 +227,13 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(body_block);
         let body_val = self.compile_hir_expr(body)?;
         self.rc_discard_value(&body_val)?;
-        let _ = self.builder.build_unconditional_branch(body_block);
+        if self
+            .builder
+            .get_insert_block()
+            .is_none_or(|bb| bb.get_terminator().is_none())
+        {
+            let _ = self.builder.build_unconditional_branch(body_block);
+        }
 
         self.builder.position_at_end(exit);
         self.loop_control.continue_target = saved_continue;

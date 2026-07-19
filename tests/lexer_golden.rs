@@ -53,6 +53,35 @@ fn test_lexer_golden_operators() {
 }
 
 #[test]
+#[ignore = "refresh golden: cargo test --test lexer_golden write_ranges_golden_fixture -- --ignored --exact"]
+fn write_ranges_golden_fixture() {
+    let dir = fixtures_dir();
+    let source = fs::read_to_string(dir.join("ranges.ac")).expect("read ranges.ac");
+    let json = tokenize_json(&source.replace("\r\n", "\n"));
+    fs::write(dir.join("ranges.tokens.json"), json).expect("write ranges.tokens.json");
+}
+
+#[test]
+fn test_lexer_golden_ranges() {
+    assert_lexer_golden("ranges");
+}
+
+#[test]
+#[ignore = "refresh golden: cargo test --test lexer_golden write_bootstrap_keywords_golden_fixture -- --ignored --exact"]
+fn write_bootstrap_keywords_golden_fixture() {
+    let dir = fixtures_dir();
+    let source =
+        fs::read_to_string(dir.join("bootstrap_keywords.ac")).expect("read bootstrap_keywords.ac");
+    let json = tokenize_json(&source.replace("\r\n", "\n"));
+    fs::write(dir.join("bootstrap_keywords.tokens.json"), json).expect("write bootstrap_keywords.tokens.json");
+}
+
+#[test]
+fn test_lexer_golden_bootstrap_keywords() {
+    assert_lexer_golden("bootstrap_keywords");
+}
+
+#[test]
 fn test_lexer_golden_all_fixtures() {
     let dir = fixtures_dir();
     for entry in fs::read_dir(&dir).expect("read lexer fixtures dir") {

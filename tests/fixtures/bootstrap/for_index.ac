@@ -1,0 +1,7 @@
+fun main() -> Int {
+    var sum: Int = 0
+    for idx, n in List[1, 2, 3] {
+        sum = sum + n
+    }
+    return sum
+}

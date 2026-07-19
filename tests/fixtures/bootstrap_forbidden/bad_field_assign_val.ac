@@ -1,0 +1,8 @@
+// M110: cannot field-assign through val root.
+type Point = {x: Int, y: Int}
+
+fun main() -> Int {
+    val p: Point = {x = 0, y = 0}
+    p.x = 1
+    return p.x
+}

@@ -1,0 +1,5 @@
+// M113: String index key must be Int (not Bool).
+fun main() -> Int {
+    val s: String = "ab"
+    return s[true]
+}

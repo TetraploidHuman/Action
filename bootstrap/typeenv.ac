@@ -1,0 +1,1373 @@
+// M27 bootstrap type environment + tag model.
+
+import prelude
+
+import parser
+
+// M42: host-rt in-memory buffers (0=global env, 1=local env, 2=struct fields).
+external fun bsBufClear(slot: Int) -> Int
+external fun bsBufAppend(slot: Int, content: String) -> Int
+external fun bsBufSet(slot: Int, content: String) -> Int
+external fun bsBufGet(slot: Int) -> String
+external fun bsIntSet(slot: Int, value: Int) -> Int
+external fun bsIntGet(slot: Int) -> Int
+// bsBuf: 0–2 env/struct_fields; 3–4 expr/lastTy; 5–18 accumulators; 19 hirOut
+// bsInt: 13 type_error (see parser.slotTypeError)
+
+fun typeErrorMark() -> Int {
+    bsIntSet(parser.slotTypeError(), 1)
+    return 0
+}
+
+fun typeErrorClear() -> Int {
+    bsIntSet(parser.slotTypeError(), 0)
+    return 0
+}
+
+fun typeErrorActive() -> Bool {
+    return bsIntGet(parser.slotTypeError()) != 0
+}
+
+// M72: sentinels above custom type tags (custom starts at 8).
+fun tagMissLocal() -> Int { return 1000 }
+
+fun tagUndef() -> Int { return 1001 }
+
+fun isPrimitiveTag(tag: Int) -> Bool {
+    return when tag {
+        1 -> true
+        2 -> true
+        5 -> true
+        else -> false
+    }
+}
+
+// M72: Named = builtins 3/4/6/7 + custom tags [8, tagMissLocal).
+fun isNamedTag(tag: Int) -> Bool {
+    return when {
+        tag < 3 -> false
+        tag == 5 -> false
+        tag >= tagMissLocal() -> false
+        else -> true
+    }
+}
+
+fun lastExprTySet(tag: Int) -> Int {
+    bsBufSet(4, toString(tag))
+    return 0
+}
+
+fun lastExprTyGet() -> String {
+    return bsBufGet(4)
+}
+
+fun lastExprTyTag() -> Int {
+    return parser.atoi(bsBufGet(4))
+}
+
+// M105: return check = bind check (structFieldTyOk); drops duplicate NamedDistinct path.
+fun tyCheckReturn(expected: Int) -> Int {
+    return tyCheckBind(expected, lastExprTyTag())
+}
+
+// M79+: Bool-required sites (if guard/cond, for-cond, unary not).
+fun tyCheckGuard() -> Int { return if lastExprTyTag() == 2 { 0 } else { typeErrorMark() } }
+
+// M85: let init + var assign reuse structFieldTyOk (same as M74/M84).
+fun tyCheckBind(expected: Int, got: Int) -> Int {
+    return if structFieldTyOk(expected, got) { 0 } else { typeErrorMark() }
+}
+
+// M91/M113: Index key — Map (7)→String; List/Set coll→Int; String recv (5)→Int.
+fun tyCheckIndexKey(recvTag: Int, forTag: Int, indexTag: Int, idxTag: Int) -> Int {
+    return when {
+        recvTag == 7 -> tyCheckBind(5, idxTag)
+        recvTag == 5 -> tyCheckBind(1, idxTag)
+        forTag != 0 -> tyCheckBind(1, idxTag)
+        indexTag != 0 -> tyCheckBind(1, idxTag)
+        else -> 0
+    }
+}
+
+// M80: `and` / `or` operands must both be Bool.
+fun tyCheckLogical(leftTag: Int, rightTag: Int) -> Int {
+    return when {
+        leftTag != 2 -> typeErrorMark()
+        rightTag != 2 -> typeErrorMark()
+        else -> 0
+    }
+}
+
+// M93/M106: Sub/Mul/Div/Mod reject Bool/String; Add rejects Bool but keeps string-concat.
+// Use cond-if (not value-match on `op`) — string arms with `-> 0` emit empty HIR arm.
+fun tyCheckArith(op: String, leftTag: Int, rightTag: Int) -> Int { return when {
+        leftTag == 2 -> typeErrorMark()
+        rightTag == 2 -> typeErrorMark()
+        op == "Add" -> 0
+        leftTag == 5 -> typeErrorMark()
+        rightTag == 5 -> typeErrorMark()
+        else -> 0
+    } }// M95: ordered compare rejects mixed Bool/non-Bool; Eq/Neq stay soft (align Rust).
+fun tyCheckCmp(op: String, leftTag: Int, rightTag: Int) -> Int {
+    return when {
+        op == "Eq" -> 0
+        op == "Neq" -> 0
+        leftTag == 2 && rightTag != 2 -> typeErrorMark()
+        rightTag == 2 && leftTag != 2 -> typeErrorMark()
+        else -> 0
+    }
+}
+
+// M97/M108: unary Neg/Pos reject Bool (2) and String (5).
+fun tyCheckNumericUnary() -> Int {
+    val t: Int = lastExprTyTag()
+    return when {
+        t == 2 -> typeErrorMark()
+        t == 5 -> typeErrorMark()
+        else -> 0
+    }
+}
+
+fun tyCheckNeg() -> Int {
+    return tyCheckNumericUnary()
+}
+
+fun tyCheckPos() -> Int {
+    return tyCheckNumericUnary()
+}
+
+// M99: `..` / `..<` endpoints must be Int (tag 1); soft via tyCheckBind (undef/0 ok).
+fun tyCheckRange(leftTag: Int, rightTag: Int) -> Int {
+    tyCheckBind(1, leftTag)
+    return tyCheckBind(1, rightTag)
+}
+
+fun inferAddTag(op: String, leftTag: Int, rightTag: Int) -> Int {
+    return when op {
+        "Add" -> when {
+            leftTag == 5 || rightTag == 5 -> 5
+            else -> 1
+        }
+        else -> 1
+    }
+}
+
+fun envGlobalClear() -> Int { bsBufClear(0); return 0 }
+
+fun envLocalClear() -> Int { bsBufClear(1); return 0 }
+
+fun envClear() -> Int { envGlobalClear(); envLocalClear(); return 0 }
+
+fun envAppend(slot: Int, name: String, tag: Int) -> Int {
+    bsBufAppend(slot, name + ":" + toString(tag) + "|")
+    return 0
+}
+
+// M109: locals/globals carry mut flag (0=val/immutable, 1=var/mutable): name:tag:mut|
+fun envAppendMut(slot: Int, name: String, tag: Int, mut: Int) -> Int {
+    bsBufAppend(slot, name + ":" + toString(tag) + ":" + toString(mut) + "|")
+    return 0
+}
+
+fun envAddGlobal(name: String, tag: Int) -> Int {
+    return envAppendMut(0, name, tag, 0)
+}
+
+fun envAddLocal(name: String, tag: Int, mut: Int) -> Int {
+    return envAppendMut(1, name, tag, mut)
+}
+
+fun structFieldsClear() -> Int {
+    bsBufClear(2)
+    return 0
+}
+
+fun structFieldAdd(structName: String, field: String, tyName: String) -> Int {
+    return envAppend(2, structName + ":" + field, tyAnnTag(tyName))
+}
+
+// M72/M109: read decimal tag digits until '|' or ':' (mut field follows ':' ).
+fun readTagAtAcc(buf: String, pos: Int, acc: Int) -> Int {
+    val ch: String = prelude.charAtSafe(buf, pos)
+    return when {
+        ch == "|" -> acc
+        ch == ":" -> acc
+        ch == "" -> acc
+        else -> readTagAtAcc(buf, pos + 1, acc * 10 + parser.digitVal(ch))
+    }
+}
+
+fun readTagAt(buf: String, pos: Int) -> Int {
+    return readTagAtAcc(buf, pos, 0)
+}
+
+fun skipTagDigits(buf: String, pos: Int) -> Int {
+    val ch: String = prelude.charAtSafe(buf, pos)
+    return when {
+        ch == "" -> pos
+        ch == "|" -> pos
+        ch == ":" -> pos
+        else -> skipTagDigits(buf, pos + 1)
+    }
+}
+
+// After name: — read mut flag (default 1 if entry has no :mut field).
+fun readMutAt(buf: String, tagPos: Int) -> Int {
+    val end: Int = skipTagDigits(buf, tagPos)
+    val ch: String = prelude.charAtSafe(buf, end)
+    return when ch {
+        ":" -> parser.digitVal(prelude.charAtSafe(buf, end + 1))
+        else -> 1
+    }
+}
+
+fun envMutMiss() -> Int { return 2 }
+
+fun envMutTryAt(buf: String, name: String, pos: Int) -> Int {
+    return when {
+        envEntryStart(buf, pos) == false -> -1
+        nameEqAt(buf, name, pos) == false -> -1
+        else -> readMutAt(buf, pos + len(name) + 1)
+    }
+}
+
+fun envMutScanBuf(buf: String, name: String, miss: Int) -> Int {
+    var pos: Int = 0
+    var hit: Int = miss
+    var done: Int = 0
+    var t: Int = -1
+    val end: Int = len(buf)
+    for n in 0..end {
+        if done == 1 { break } else { if pos >= end { done = 1 } else { t = envMutTryAt(buf, name, pos) } }
+        if done == 1 { continue } else { if t < 0 { pos = pos + 1 } else { hit = t } }
+        if done == 1 { continue } else { if t < 0 { continue } else { done = 1 } }
+    }
+    return hit
+}
+
+fun lookupMut(name: String) -> Int {
+    val local: Int = envMutScanBuf(bsBufGet(1), name, envMutMiss())
+    return if local == envMutMiss() { envMutScanBuf(bsBufGet(0), name, envMutMiss()) } else { local }
+}
+
+// M109: Ident assign target must be var (mut=1); miss stays soft (align Rust).
+fun tyCheckAssignIdent(name: String) -> Int {
+    val m: Int = lookupMut(name)
+    return when {
+        m == 0 -> typeErrorMark()
+        else -> 0
+    }
+}
+
+// M36/M72: iterative scan returns tag (default miss=1 for unknown struct fields).
+fun structFieldTryAt(buf: String, key: String, pos: Int) -> Int {
+    return when {
+        envEntryStart(buf, pos) == false -> -1
+        nameEqAt(buf, key, pos) == false -> -1
+        else -> readTagAt(buf, pos + len(key) + 1)
+    }
+}
+
+// M36/M74: miss → tagUndef (was Int=1, which hid unknown fields).
+fun structFieldScan(buf: String, key: String) -> Int {
+    var pos: Int = 0
+    var hit: Int = tagUndef()
+    var done: Int = 0
+    var t: Int = -1
+    val end: Int = len(buf)
+    for n in 0..end {
+        if done == 1 { break } else { if pos >= end { done = 1 } else { t = structFieldTryAt(buf, key, pos) } }
+        if done == 1 { continue } else { if t < 0 { pos = pos + 1 } else { hit = t } }
+        if done == 1 { continue } else { if t < 0 { continue } else { done = 1 } }
+    }
+    return hit
+}
+
+fun structFieldTag(structName: String, field: String) -> Int {
+    val key: String = structName + ":" + field
+    return structFieldScan(bsBufGet(2), key)
+}
+
+// M74/E013: unknown field access → typeErrorMark; still return Int fallback for HIR.
+fun structFieldRequireMiss() -> Int {
+    typeErrorMark()
+    return 1
+}
+
+fun structFieldRequire(structName: String, field: String) -> Int {
+    val t: Int = structFieldTag(structName, field)
+    return when {
+        structHygieneActive() == false -> if t == tagUndef() { 1 } else { t }
+        t == tagUndef() -> structFieldRequireMiss()
+        else -> t
+    }
+}
+
+// M74/E016: field value tag vs declared field tag.
+fun structLitCheckFieldTy(structName: String, field: String, got: Int) -> Int {
+    return if structHygieneActive() == false { 0 } else { structLitCheckFieldTyDo(structName, field, got) }
+}
+
+fun structLitCheckFieldTyDo(structName: String, field: String, got: Int) -> Int {
+    val expected: Int = structFieldTag(structName, field)
+    return if structFieldTyOk(expected, got) { 0 } else { typeErrorMark() }
+}
+
+fun slotStructTypes() -> Int { return 34 }
+
+fun slotStructLitNames() -> Int { return 35 }
+
+fun slotStructTypeNext() -> Int { return 23 }
+
+fun structTypesClear() -> Int {
+    bsBufClear(slotStructTypes())
+    bsIntSet(slotStructTypeNext(), 8)
+    return 0
+}
+
+fun structTypeBuiltinNamed(name: String) -> Int {
+    return when name {
+        "Color" -> 1
+        "Point" -> 1
+        "Token" -> 1
+        "Map" -> 1
+        else -> 0
+    }
+}
+
+fun structTypeNextTag() -> Int {
+    val cur: Int = bsIntGet(slotStructTypeNext())
+    bsIntSet(slotStructTypeNext(), cur + 1)
+    return cur
+}
+
+fun structTypeRegisterCustom(name: String) -> Int {
+    val tag: Int = structTypeNextTag()
+    envAddGlobal(name, tag)
+    bsBufAppend(slotStructTypes(), name + ":" + toString(tag) + "|")
+    return 0
+}
+
+fun structTypeAlready(name: String) -> Bool {
+    return envScan(bsBufGet(slotStructTypes()), name) != tagUndef()
+}
+
+fun structTypeRegister(name: String) -> Int {
+    return when {
+        structTypeBuiltinNamed(name) == 1 -> 0
+        structTypeAlready(name) -> 0
+        else -> structTypeRegisterCustom(name)
+    }
+}
+
+fun structLitNamesClear() -> Int {
+    bsBufClear(slotStructLitNames())
+    return 0
+}
+
+fun structLitNameAdd(name: String) -> Int {
+    bsBufAppend(slotStructLitNames(), "|" + name)
+    return 0
+}
+
+fun structLitNameEnd(buf: String, name: String, pos: Int) -> Bool {
+    val k: String = prelude.charAtSafe(buf, pos + len(name))
+    return when k {
+        "|" -> true
+        "" -> true
+        else -> false
+    }
+}
+
+fun structLitNameEqAt(buf: String, name: String, pos: Int) -> Bool {
+    return if nameEqStep(buf, name, pos, 0) == false { false } else { structLitNameEnd(buf, name, pos) }
+}
+
+fun structLitHasFieldScan(buf: String, field: String, i: Int) -> Int {
+    return if i >= len(buf) { 0 } else { structLitHasFieldScanStep(buf, field, i) }
+}
+
+fun structLitHasFieldScanStep(buf: String, field: String, i: Int) -> Int {
+    return when {
+        prelude.charAtSafe(buf, i) == "|" -> structLitHasFieldAt(buf, field, i + 1)
+        else -> structLitHasFieldScan(buf, field, i + 1)
+    }
+}
+
+fun structLitHasFieldAt(buf: String, field: String, i: Int) -> Int {
+    return when {
+        structLitNameEqAt(buf, field, i) -> 1
+        else -> structLitHasFieldScan(buf, field, i + 1)
+    }
+}
+
+fun structLitHasField(field: String) -> Int {
+    return structLitHasFieldScan(bsBufGet(slotStructLitNames()), field, 0)
+}
+
+fun structLitNameCount(buf: String, i: Int, n: Int) -> Int {
+    return if i >= len(buf) { n } else { structLitNameCountStep(buf, i, n) }
+}
+
+fun structLitNameCountStep(buf: String, i: Int, n: Int) -> Int {
+    return when {
+        prelude.charAtSafe(buf, i) == "|" -> structLitNameCountAfterPipe(buf, i, n)
+        else -> structLitNameCount(buf, i + 1, n)
+    }
+}
+
+fun structLitNameCountAfterPipe(buf: String, i: Int, n: Int) -> Int {
+    return if i + 1 >= len(buf) { n } else { structLitNameCount(buf, i + 1, n + 1) }
+}
+
+fun structLitFieldCount() -> Int {
+    return structLitNameCount(bsBufGet(slotStructLitNames()), 0, 0)
+}
+
+fun structLitSigPoint() -> Int {
+    return when {
+        structLitFieldCount() != 2 -> 0
+        structLitHasField("x") == 0 -> 0
+        structLitHasField("y") == 0 -> 0
+        else -> 1
+    }
+}
+
+fun structLitSigToken() -> Int {
+    return when {
+        structLitFieldCount() != 5 -> 0
+        structLitHasField("kind") == 0 -> 0
+        structLitHasField("start") == 0 -> 0
+        structLitHasField("end") == 0 -> 0
+        structLitHasField("line") == 0 -> 0
+        structLitHasField("col") == 0 -> 0
+        else -> 1
+    }
+}
+
+fun structInferLitTyPoint() -> String {
+    return if structLitSigPoint() == 1 { "Point" } else { "Int" }
+}
+
+fun structInferLitTy() -> String {
+    return if structLitSigToken() == 1 { "Token" } else { structInferLitTyPoint() }
+}
+
+fun isNamedTypeName(name: String) -> Bool {
+    return isNamedTag(tyAnnTag(name))
+}
+
+fun structLitTyResolve(contextTy: String) -> String {
+    return if isNamedTypeName(contextTy) == false { structInferLitTy() } else { contextTy }
+}
+
+// M74: lit field not in decl → E013.
+fun structLitCheckExtraOne(structName: String, field: String) -> Int {
+    return if structFieldTag(structName, field) == tagUndef() { typeErrorMark() } else { 0 }
+}
+
+fun structLitCheckExtraScan(structName: String, buf: String, i: Int) -> Int {
+    return if i >= len(buf) { 0 } else { structLitCheckExtraStep(structName, buf, i) }
+}
+
+fun structLitCheckExtraStep(structName: String, buf: String, i: Int) -> Int {
+    return when {
+        prelude.charAtSafe(buf, i) == "|" -> structLitCheckExtraAt(structName, buf, i + 1)
+        else -> structLitCheckExtraScan(structName, buf, i + 1)
+    }
+}
+
+fun structLitCheckExtraAt(structName: String, buf: String, i: Int) -> Int {
+    return if i >= len(buf) { 0 } else { structLitCheckExtraAtField(structName, buf, i) }
+}
+
+fun structLitCheckExtraAtField(structName: String, buf: String, i: Int) -> Int {
+    val end: Int = structLitNameEndPos(buf, i)
+    val field: String = substring(buf, i, end - i)
+    structLitCheckExtraOne(structName, field)
+    return structLitCheckExtraScan(structName, buf, end)
+}
+
+fun structLitNameEndPos(buf: String, i: Int) -> Int {
+    val ch: String = prelude.charAtSafe(buf, i)
+    return when {
+        ch == "" -> i
+        ch == "|" -> i
+        else -> structLitNameEndPos(buf, i + 1)
+    }
+}
+
+// M74: decl field missing from lit → E015.
+fun structDeclPrefixLen(structName: String) -> Int {
+    return len(structName) + 1
+}
+
+fun structDeclKeyIs(structName: String, buf: String, pos: Int) -> Bool {
+    return when {
+        envEntryStart(buf, pos) == false -> false
+        nameEqStep(buf, structName, pos, 0) == false -> false
+        prelude.charAtSafe(buf, pos + len(structName)) != ":" -> false
+        else -> true
+    }
+}
+
+fun structDeclFieldNameAt(buf: String, pos: Int, structName: String) -> String {
+    val start: Int = pos + structDeclPrefixLen(structName)
+    val end: Int = findCharFrom(buf, ":", start)
+    return if end < 0 { "" } else { substring(buf, start, end - start) }
+}
+
+fun structLitCheckMissingOne(field: String) -> Int {
+    return when {
+        field == "" -> 0
+        structLitHasField(field) == 0 -> typeErrorMark()
+        else -> 0
+    }
+}
+
+fun structLitCheckMissingScan(structName: String, buf: String, pos: Int) -> Int {
+    var p: Int = 0
+    var done: Int = 0
+    val end: Int = len(buf)
+    for n in 0..end {
+        if done == 1 { break } else { if p >= end { done = 1 } else { structLitCheckMissingAt(structName, buf, p) } }
+        if done == 1 { continue } else { p = p + 1 }
+    }
+    return 0
+}
+
+fun structLitCheckMissingAt(structName: String, buf: String, pos: Int) -> Int {
+    return if structDeclKeyIs(structName, buf, pos) == false { 0 } else { structLitCheckMissingOne(structDeclFieldNameAt(buf, pos, structName)) }
+}
+
+fun structFieldTyOk(expected: Int, got: Int) -> Bool {
+    return when {
+        expected == tagUndef() -> true
+        expected == got -> true
+        got == 0 -> true
+        expected == 0 -> true
+        isPrimitiveTag(expected) && isPrimitiveTag(got) && expected != got -> false
+        isPrimitiveTag(expected) && isNamedTag(got) -> false
+        isNamedTag(expected) && isPrimitiveTag(got) -> false
+        isNamedTag(expected) && isNamedTag(got) && expected != got -> false
+        else -> true
+    }
+}
+
+fun structHasDeclFields(structName: String) -> Bool {
+    val buf: String = bsBufGet(2)
+    return structHasDeclFieldsScan(structName, buf, 0, len(buf))
+}
+
+fun structHasDeclFieldsScan(structName: String, buf: String, pos: Int, end: Int) -> Bool {
+    return when {
+        pos >= end -> false
+        structDeclKeyIs(structName, buf, pos) -> true
+        else -> structHasDeclFieldsScan(structName, buf, pos + 1, end)
+    }
+}
+
+// M74: full lit hygiene under Named context with known decl fields.
+// Skip while import nesting disables if -unify (same session flag).
+fun structHygieneActive() -> Bool { return bsIntGet(parser.slotWhenUnifyOff()) == 0 }fun structLitCheckAgainst(structName: String) -> Int {
+    return when {
+        structHygieneActive() == false -> 0
+        isNamedTypeName(structName) == false -> 0
+        structHasDeclFields(structName) == false -> 0
+        else -> structLitCheckAgainstDo(structName)
+    }
+}
+
+fun structLitCheckAgainstDo(structName: String) -> Int {
+    structLitCheckExtraScan(structName, bsBufGet(slotStructLitNames()), 0)
+    structLitCheckMissingScan(structName, bsBufGet(2), 0)
+    return 0
+}
+
+fun litTag(name: String) -> Int {
+    return when name {
+        "true" -> 2
+        "false" -> 2
+        else -> 0
+    }
+}
+
+fun envEntryStart(buf: String, pos: Int) -> Bool {
+    return if pos == 0 { true } else { prelude.charAtSafe(buf, pos - 1) == "|" }
+}
+
+fun nameEqAt(buf: String, name: String, pos: Int) -> Bool {
+    return when {
+        envEntryStart(buf, pos) == false -> false
+        prelude.charAtSafe(buf, pos + len(name)) != ":" -> false
+        else -> nameEqStep(buf, name, pos, 0)
+    }
+}
+
+fun nameEqStep(buf: String, name: String, pos: Int, i: Int) -> Bool {
+    return when {
+        i == len(name) -> true
+        charAt(name, i) == charAt(buf, pos + i) -> nameEqStep(buf, name, pos, i + 1)
+        else -> false
+    }
+}
+
+fun envScanMiss(name: String) -> Int {
+    val lit: Int = litTag(name)
+    return if lit != 0 { lit } else { tagUndef() }
+}
+
+// M36/M72: iterative env scan (multi-digit tags until '|').
+fun envScanTryAt(buf: String, name: String, pos: Int) -> Int {
+    return when {
+        envEntryStart(buf, pos) == false -> -1
+        nameEqAt(buf, name, pos) == false -> -1
+        else -> readTagAt(buf, pos + len(name) + 1)
+    }
+}
+
+fun envScanBuf(buf: String, name: String, miss: Int) -> Int {
+    var pos: Int = 0
+    var hit: Int = miss
+    var done: Int = 0
+    var t: Int = -1
+    val end: Int = len(buf)
+    for n in 0..end {
+        if done == 1 { break } else { if pos >= end { done = 1 } else { t = envScanTryAt(buf, name, pos) } }
+        if done == 1 { continue } else { if t < 0 { pos = pos + 1 } else { hit = t } }
+        if done == 1 { continue } else { if t < 0 { continue } else { done = 1 } }
+    }
+    return hit
+}
+
+fun envScan(buf: String, name: String) -> Int {
+    return envScanBuf(buf, name, envScanMiss(name))
+}
+
+fun envScanFound(buf: String, name: String) -> Int {
+    return envScanBuf(buf, name, tagMissLocal())
+}
+
+fun tagForExpr(tag: Int) -> Int {
+    return if tag == tagUndef() { 0 } else { tag }
+}
+
+fun lookupTag(name: String) -> Int {
+    val local: Int = envScanFound(bsBufGet(1), name)
+    return if local == tagMissLocal() { envScan(bsBufGet(0), name) } else { local }
+}
+
+fun tyAnnTagFallback(name: String) -> Int {
+    val t: Int = envScan(bsBufGet(0), name)
+    return if t == tagUndef() { 1 } else { t }
+}
+
+fun tyAnnTag(name: String) -> Int {
+    return when name {
+        "Int" -> 1
+        "Bool" -> 2
+        "Color" -> 3
+        "Point" -> 4
+        "String" -> 5
+        "Token" -> 6
+        "Map" -> 7
+        else -> tyAnnTagFallback(name)
+    }
+}
+
+fun findCharFrom(buf: String, ch: String, pos: Int) -> Int {
+    val c: String = prelude.charAtSafe(buf, pos)
+    return when {
+        c == "" -> -1
+        c == ch -> pos
+        else -> findCharFrom(buf, ch, pos + 1)
+    }
+}
+
+fun tyTagNameCustomFrom(buf: String, want: Int, pos: Int) -> String {
+    return when {
+        pos >= len(buf) -> ""
+        else -> tyTagNameCustomStep(buf, want, pos)
+    }
+}
+
+fun tyTagNameCustomStep(buf: String, want: Int, pos: Int) -> String {
+    val colon: Int = findCharFrom(buf, ":", pos)
+    return when {
+        colon < 0 -> ""
+        else -> tyTagNameCustomAtColon(buf, want, pos, colon)
+    }
+}
+
+fun tyTagNameCustomAtColon(buf: String, want: Int, pos: Int, colon: Int) -> String {
+    val tag: Int = readTagAt(buf, colon + 1)
+    val pipe: Int = findCharFrom(buf, "|", colon + 1)
+    return when {
+        tag == want -> substring(buf, pos, colon - pos)
+        pipe < 0 -> ""
+        else -> tyTagNameCustomFrom(buf, want, pipe + 1)
+    }
+}
+
+fun tyTagNameCustom(tag: Int) -> String {
+    return tyTagNameCustomFrom(bsBufGet(slotStructTypes()), tag, 0)
+}
+
+// M72: builtins + reverse lookup in struct_types for custom tags.
+fun tyTagName(tag: Int) -> String {
+    return when tag {
+        1 -> "Int"
+        2 -> "Bool"
+        3 -> "Color"
+        4 -> "Point"
+        5 -> "String"
+        6 -> "Token"
+        7 -> "Map"
+        else -> tyTagNameCustom(tag)
+    }
+}
+
+fun slotLitTy() -> Int { return 24 }
+
+fun slotUndefIdent() -> Int { return 25 }
+
+fun litTyName() -> String {
+    val ty: String = bsBufGet(slotLitTy())
+    return if ty == "" { "Point" } else { ty }
+}
+
+fun setLitTy(name: String) -> Int {
+    bsBufSet(slotLitTy(), name)
+    return 0
+}
+
+fun markUndefIdentSet(name: String) -> Int {
+    bsBufSet(slotUndefIdent(), name)
+    return 0
+}
+
+fun markUndefIdentClear() -> Int {
+    bsBufClear(slotUndefIdent())
+    return 0
+}
+
+fun markUndefIdentUse(name: String, tag: Int) -> Int {
+    // M112: single-file undef Ident is a hard error at use (bind/arg/arith/…).
+    // Import programs keep soft record only (M73 self-host); return path still
+    // uses markUndefReturn for bare `return leaked`.
+    return when {
+        tag != tagUndef() -> 0
+        bsIntGet(slotFunSigSawImport()) == 1 -> markUndefIdentSet(name)
+        else -> typeErrorMark()
+    }
+}
+
+fun shouldRejectUndefReturn() -> Bool {
+    val u: String = bsBufGet(slotUndefIdent())
+    return if u == "" { false } else { lastExprTyTag() == 0 }
+}
+
+fun markUndefReturn() -> Int {
+    return if shouldRejectUndefReturn() { typeErrorMark() } else { 0 }
+}
+
+// M73: fun sigs `name:arity:t0,t1,...|` in bsBuf 37; CSV/name scratch 38; nest stack 39.
+fun slotFunSigs() -> Int { return 37 }
+
+fun slotFunParamTags() -> Int { return 38 }
+
+fun slotCallCheckStack() -> Int { return 39 }
+
+fun slotFunParamArity() -> Int { return 27 }
+
+fun slotCallArgIndex() -> Int { return 28 }
+
+fun slotFunSigImportDepth() -> Int { return 29 }
+
+// Saw-import flag (single-file call checks only). Must not collide with emit/lexer slots.
+fun slotFunSigSawImport() -> Int { return 30 }
+
+fun funSigClear() -> Int {
+    bsBufClear(slotFunSigs())
+    bsBufClear(slotFunParamTags())
+    bsBufClear(slotCallCheckStack())
+    bsIntSet(slotFunParamArity(), 0)
+    bsIntSet(slotCallArgIndex(), 0)
+    bsIntSet(slotFunSigImportDepth(), 0)
+    bsIntSet(slotFunSigSawImport(), 0)
+    return 0
+}
+
+fun funSigImportEnter() -> Int {
+    bsIntSet(slotFunSigSawImport(), 1)
+    bsIntSet(slotFunSigImportDepth(), bsIntGet(slotFunSigImportDepth()) + 1)
+    return 0
+}
+
+fun funSigImportLeave() -> Int {
+    val d: Int = bsIntGet(slotFunSigImportDepth())
+    val nd: Int = if d <= 0 { 0 } else { d - 1 }
+    bsIntSet(slotFunSigImportDepth(), nd)
+    return 0
+}
+
+fun funSigBegin() -> Int {
+    bsBufClear(slotFunParamTags())
+    bsIntSet(slotFunParamArity(), 0)
+    return 0
+}
+
+fun funSigParamAdd(tag: Int) -> Int {
+    val n: Int = bsIntGet(slotFunParamArity())
+    val sep: String = if n == 0 { "" } else { "," }
+    bsBufAppend(slotFunParamTags(), sep + toString(tag))
+    bsIntSet(slotFunParamArity(), n + 1)
+    return 0
+}
+
+// M115: always commit funSig — including funs prescanned from whitelist imports.
+// (M73 skipped importDepth>0 so modular Path B never saw imported arities.)
+fun funSigCommit(name: String) -> Int {
+    return funSigCommitRoot(name)
+}
+
+fun funSigCommitRoot(name: String) -> Int {
+    val arity: Int = bsIntGet(slotFunParamArity())
+    val tags: String = bsBufGet(slotFunParamTags())
+    bsBufAppend(slotFunSigs(), name + ":" + toString(arity) + ":" + tags + "|")
+    return 0
+}
+
+fun funSigEntryStart(buf: String, pos: Int) -> Bool {
+    return if pos == 0 { true } else { prelude.charAtSafe(buf, pos - 1) == "|" }
+}
+
+fun funSigNameEqAt(buf: String, name: String, pos: Int) -> Bool {
+    return when {
+        funSigEntryStart(buf, pos) == false -> false
+        prelude.charAtSafe(buf, pos + len(name)) != ":" -> false
+        else -> nameEqStep(buf, name, pos, 0)
+    }
+}
+
+fun funSigTryAt(buf: String, name: String, pos: Int) -> Int {
+    return when {
+        funSigNameEqAt(buf, name, pos) == false -> -1
+        else -> pos + len(name) + 1
+    }
+}
+
+fun funSigFindPos(name: String) -> Int {
+    val buf: String = bsBufGet(slotFunSigs())
+    var pos: Int = 0
+    var hit: Int = -1
+    var done: Int = 0
+    var t: Int = -1
+    val end: Int = len(buf)
+    for n in 0..end {
+        if done == 1 { break } else { if pos >= end { done = 1 } else { t = funSigTryAt(buf, name, pos) } }
+        if done == 1 { continue } else { if t < 0 { pos = pos + 1 } else { hit = t } }
+        if done == 1 { continue } else { if t < 0 { continue } else { done = 1 } }
+    }
+    return hit
+}
+
+fun funSigPayloadPos(name: String) -> Int {
+    return funSigFindPos(name)
+}
+
+fun readArityAtAcc(buf: String, pos: Int, acc: Int) -> Int {
+    val ch: String = prelude.charAtSafe(buf, pos)
+    return when {
+        ch == ":" -> acc
+        ch == "|" -> acc
+        ch == "" -> acc
+        else -> readArityAtAcc(buf, pos + 1, acc * 10 + parser.digitVal(ch))
+    }
+}
+
+fun readArityAt(buf: String, pos: Int) -> Int {
+    return readArityAtAcc(buf, pos, 0)
+}
+
+fun funSigArityOf(name: String) -> Int {
+    val p: Int = funSigPayloadPos(name)
+    return if p < 0 { -1 } else { readArityAt(bsBufGet(slotFunSigs()), p) }
+}
+
+fun funSigTagsStart(name: String) -> Int {
+    val p: Int = funSigPayloadPos(name)
+    return when {
+        p < 0 -> -1
+        else -> findCharFrom(bsBufGet(slotFunSigs()), ":", p) + 1
+    }
+}
+
+fun funSigSkipCommas(buf: String, pos: Int, left: Int) -> Int {
+    return when {
+        left <= 0 -> pos
+        else -> funSigSkipCommasStep(buf, pos, left)
+    }
+}
+
+fun funSigSkipCommasStep(buf: String, pos: Int, left: Int) -> Int {
+    val ch: String = prelude.charAtSafe(buf, pos)
+    return when {
+        ch == "" -> pos
+        ch == "|" -> pos
+        ch == "," -> funSigSkipCommas(buf, pos + 1, left - 1)
+        else -> funSigSkipCommasStep(buf, pos + 1, left)
+    }
+}
+
+fun funSigParamTag(name: String, idx: Int) -> Int {
+    val start: Int = funSigTagsStart(name)
+    return when {
+        start < 0 -> -1
+        else -> funSigParamTagAt(bsBufGet(slotFunSigs()), start, idx)
+    }
+}
+
+fun funSigParamTagAt(buf: String, start: Int, idx: Int) -> Int {
+    val p: Int = funSigSkipCommas(buf, start, idx)
+    val ch: String = prelude.charAtSafe(buf, p)
+    return when {
+        ch == "" -> -1
+        ch == "|" -> -1
+        ch == "," -> -1
+        else -> readTagAtCommaOrPipe(buf, p, 0)
+    }
+}
+
+fun readTagAtCommaOrPipe(buf: String, pos: Int, acc: Int) -> Int {
+    val ch: String = prelude.charAtSafe(buf, pos)
+    return when {
+        ch == "|" -> acc
+        ch == "," -> acc
+        ch == "" -> acc
+        else -> readTagAtCommaOrPipe(buf, pos + 1, acc * 10 + parser.digitVal(ch))
+    }
+}
+
+fun funSigArityMissing() -> Int { return 1002 }
+
+// M111: single-file Call of unknown callee (no funSig + env miss) → type error.
+// Builtins are env-seeded without funSig.
+// M115: import programs still soft-skip *undef* callee (builtins / external /
+// missing sig); arity/arg checks run whenever funSigArityOf finds a sig.
+fun callCheckUndefCallee(name: String, sawImport: Int, sigArity: Int) -> Int {
+    return when {
+        sawImport == 1 -> 0
+        sigArity >= 0 -> 0
+        lookupTag(name) == tagUndef() -> typeErrorMark()
+        else -> 0
+    }
+}
+
+fun callCheckBegin(name: String) -> Int {
+    bsIntSet(slotCallArgIndex(), 0)
+    // M115: look up funSig even when sawImport=1; soft-skip only if arity unknown.
+    val sawImport: Int = bsIntGet(slotFunSigSawImport())
+    val a: Int = funSigArityOf(name)
+    val arity: Int = if a < 0 { funSigArityMissing() } else { a }
+    bsIntSet(slotFunParamArity(), arity)
+    callCheckUndefCallee(name, sawImport, a)
+    return 0
+}
+
+fun callCheckArg(got: Int) -> Int {
+    val expectedArity: Int = bsIntGet(slotFunParamArity())
+    return when {
+        expectedArity < 0 -> 0
+        expectedArity >= funSigArityMissing() -> 0
+        else -> callCheckArgKnown(got, expectedArity)
+    }
+}
+
+fun callCheckArgKnown(got: Int, expectedArity: Int) -> Int {
+    val idx: Int = bsIntGet(slotCallArgIndex())
+    return when {
+        idx >= expectedArity -> typeErrorMark()
+        else -> callCheckArgTy(got, idx)
+    }
+}
+
+fun callCheckArgTy(got: Int, idx: Int) -> Int {
+    val name: String = bsBufGet(slotFunParamTags())
+    val expected: Int = funSigParamTag(name, idx)
+    bsIntSet(slotCallArgIndex(), idx + 1)
+    // M84: Named/primitive call args use the same rules as struct field values (M74).
+    return when {
+        expected < 0 -> 0
+        structFieldTyOk(expected, got) -> 0
+        else -> typeErrorMark()
+    }
+}
+
+fun callCheckEnd() -> Int {
+    val expectedArity: Int = bsIntGet(slotFunParamArity())
+    val got: Int = bsIntGet(slotCallArgIndex())
+    return when {
+        expectedArity < 0 -> 0
+        expectedArity >= funSigArityMissing() -> 0
+        got == expectedArity -> 0
+        else -> typeErrorMark()
+    }
+}
+
+fun callCheckSetName(name: String) -> Int {
+    bsBufSet(slotFunParamTags(), name)
+    return 0
+}
+
+fun callCheckPush() -> Int {
+    val name: String = bsBufGet(slotFunParamTags())
+    val arity: Int = bsIntGet(slotFunParamArity())
+    val idx: Int = bsIntGet(slotCallArgIndex())
+    bsBufAppend(slotCallCheckStack(), name + ":" + toString(arity) + ":" + toString(idx) + "|")
+    return 0
+}
+
+fun rfindPipeFrom(buf: String, pos: Int) -> Int {
+    return when {
+        pos < 0 -> -1
+        prelude.charAtSafe(buf, pos) == "|" -> pos
+        else -> rfindPipeFrom(buf, pos - 1)
+    }
+}
+
+fun callCheckPop() -> Int {
+    val stack: String = bsBufGet(slotCallCheckStack())
+    return if stack == "" { 0 } else { callCheckPopNonEmpty(stack) }
+}
+
+fun callCheckPopNonEmpty(stack: String) -> Int {
+    val endPipe: Int = rfindPipeFrom(stack, len(stack) - 1)
+    val prevPipe: Int = if endPipe <= 0 { -1 } else { rfindPipeFrom(stack, endPipe - 1) }
+    val start: Int = prevPipe + 1
+    val colon1: Int = findCharFrom(stack, ":", start)
+    val colon2: Int = findCharFrom(stack, ":", colon1 + 1)
+    val name: String = substring(stack, start, colon1 - start)
+    val arity: Int = readArityAt(stack, colon1 + 1)
+    val idx: Int = readTagAt(stack, colon2 + 1)
+    val rest: String = if prevPipe < 0 { "" } else { substring(stack, 0, prevPipe + 1) }
+    bsBufSet(slotFunParamTags(), name)
+    bsIntSet(slotFunParamArity(), arity)
+    bsIntSet(slotCallArgIndex(), idx)
+    bsBufSet(slotCallCheckStack(), rest)
+    return 0
+}
+
+fun envSeedBuiltins() -> Int {
+    envAddGlobal("len", 1)
+    envAddGlobal("charAt", 5)
+    envAddGlobal("substring", 5)
+    envAddGlobal("toString", 5)
+    envAddGlobal("println", 0)
+    envAddGlobal("print", 0)
+    structFieldAdd("Point", "x", "Int")
+    structFieldAdd("Point", "y", "Int")
+    structFieldAdd("Token", "kind", "String")
+    structFieldAdd("Token", "start", "Int")
+    structFieldAdd("Token", "end", "Int")
+    structFieldAdd("Token", "line", "Int")
+    structFieldAdd("Token", "col", "Int")
+    enumRegister("Color", "Red,Green,Blue")
+    return 0
+}
+
+// M75: collection element tags for for-in / index (side channel + name env).
+fun slotCollForTag() -> Int { return 31 }
+
+fun slotCollIndexTag() -> Int { return 32 }
+
+fun slotCollEnv() -> Int { return 40 }
+
+fun collTagsClear() -> Int {
+    bsIntSet(slotCollForTag(), 0)
+    bsIntSet(slotCollIndexTag(), 0)
+    bsBufClear(slotCollEnv())
+    return 0
+}
+
+fun collTagsSet(forTag: Int, indexTag: Int) -> Int {
+    bsIntSet(slotCollForTag(), forTag)
+    bsIntSet(slotCollIndexTag(), indexTag)
+    return 0
+}
+
+fun collForTagGet() -> Int {
+    return bsIntGet(slotCollForTag())
+}
+
+fun collIndexTagGet() -> Int {
+    return bsIntGet(slotCollIndexTag())
+}
+
+fun collEnvBind(name: String) -> Int {
+    val ft: Int = collForTagGet()
+    val it: Int = collIndexTagGet()
+    // Bootstrap `if cond { a } else { b }` does not accept `&&` in cond (use nested if).
+    return if ft != 0 { collEnvBindDo(name, ft, it) } else { if it != 0 { collEnvBindDo(name, ft, it) } else { 0 } }
+}
+
+fun collEnvBindDo(name: String, ft: Int, it: Int) -> Int {
+    bsBufAppend(slotCollEnv(), name + ":" + toString(ft) + ":" + toString(it) + "|")
+    return 0
+}
+
+fun collEnvTryAt(buf: String, name: String, pos: Int) -> Int {
+    return when {
+        funSigNameEqAt(buf, name, pos) == false -> -1
+        else -> pos + len(name) + 1
+    }
+}
+
+fun collEnvFindPos(name: String) -> Int {
+    val buf: String = bsBufGet(slotCollEnv())
+    var pos: Int = 0
+    var hit: Int = -1
+    var done: Int = 0
+    var t: Int = -1
+    val end: Int = len(buf)
+    for n in 0..end {
+        if done == 1 { break } else { if pos >= end { done = 1 } else { t = collEnvTryAt(buf, name, pos) } }
+        if done == 1 { continue } else { if t < 0 { pos = pos + 1 } else { hit = t } }
+        if done == 1 { continue } else { if t < 0 { continue } else { done = 1 } }
+    }
+    return hit
+}
+
+fun collEnvRestore(name: String) -> Int {
+    val p: Int = collEnvFindPos(name)
+    return if p < 0 { collTagsSet(0, 0) } else { collEnvRestoreAt(p) }
+}
+
+fun collEnvRestoreAt(p: Int) -> Int {
+    val buf: String = bsBufGet(slotCollEnv())
+    val ft: Int = readArityAt(buf, p)
+    val colon: Int = findCharFrom(buf, ":", p)
+    val it: Int = readTagAt(buf, colon + 1)
+    return collTagsSet(ft, it)
+}
+
+fun collForTagOrInt() -> Int {
+    val t: Int = collForTagGet()
+    return if t == 0 { 1 } else { t }
+}
+
+fun collIndexTagOrInt() -> Int {
+    val t: Int = collIndexTagGet()
+    return if t == 0 { 1 } else { t }
+}
+
+// ---------------------------------------------------------------------------
+// M77/M78: enum variant registry + if exhaustiveness + variant→enum tags
+// ---------------------------------------------------------------------------
+
+fun slotEnumDefs() -> Int { return 41 }fun slotWhenCovered() -> Int { return 42 }
+
+fun slotWhenExhElse() -> Int { return 33 }
+
+fun slotWhenExhScrTag() -> Int { return 34 }
+
+fun whenUnifyOff() -> Bool {
+    return bsIntGet(parser.slotWhenUnifyOff()) != 0
+}
+
+fun enumDefsClear() -> Int {
+    bsBufClear(slotEnumDefs())
+    return 0
+}
+
+fun whenExhClear() -> Int {
+    bsBufClear(slotWhenCovered())
+    bsIntSet(slotWhenExhElse(), 0)
+    bsIntSet(slotWhenExhScrTag(), 0)
+    return 0
+}
+
+fun findNameStart(buf: String, name: String) -> Int {
+    return findNameStartFrom(buf, name, 0)
+}
+
+fun findNameStartFrom(buf: String, name: String, pos: Int) -> Int {
+    return if pos >= len(buf) { -1 } else { findNameStartTry(buf, name, pos) }
+}
+
+fun findNameStartTry(buf: String, name: String, pos: Int) -> Int {
+    return when {
+        envEntryStart(buf, pos) == false -> findNameStartFrom(buf, name, pos + 1)
+        nameEqAt(buf, name, pos) == false -> findNameStartFrom(buf, name, pos + 1)
+        else -> pos
+    }
+}
+
+fun enumRegister(enumName: String, variantsCsv: String) -> Int {
+    return if len(enumVariantsOf(enumName)) > 0 { 0 } else { enumRegisterDo(enumName, variantsCsv) }
+}
+
+fun enumRegisterDo(enumName: String, variantsCsv: String) -> Int {
+    bsBufAppend(slotEnumDefs(), enumName)
+    bsBufAppend(slotEnumDefs(), ":")
+    bsBufAppend(slotEnumDefs(), variantsCsv)
+    bsBufAppend(slotEnumDefs(), "|")
+    return enumRegisterVariants(enumName, variantsCsv)
+}
+
+// M78: each variant Ident resolves to the parent enum tag (Rust variant_to_enum).
+fun enumRegisterVariants(enumName: String, csv: String) -> Int {
+    val tag: Int = tyAnnTag(enumName)
+    return if isNamedTag(tag) == false { 0 } else { enumRegisterVariantsScan(csv, tag, 0) }
+}
+
+fun enumRegisterVariantsScan(csv: String, tag: Int, pos: Int) -> Int {
+    return if pos >= len(csv) { 0 } else { enumRegisterVariantsAt(csv, tag, pos) }
+}
+
+fun enumRegisterVariantsAt(csv: String, tag: Int, pos: Int) -> Int {
+    val comma: Int = findCharFrom(csv, ",", pos)
+    val end: Int = if comma < 0 { len(csv) } else { comma }
+    val piece: String = substring(csv, pos, end - pos)
+    envAddGlobal(piece, tag)
+    return enumRegisterVariantsNext(csv, tag, comma)
+}
+
+fun enumRegisterVariantsNext(csv: String, tag: Int, comma: Int) -> Int {
+    return if comma < 0 { 0 } else { enumRegisterVariantsScan(csv, tag, comma + 1) }
+}
+
+fun enumVariantsOf(enumName: String) -> String {
+    val buf: String = bsBufGet(slotEnumDefs())
+    val start: Int = findNameStart(buf, enumName)
+    return if start < 0 { "" } else { enumVariantsAt(buf, start, len(enumName)) }
+}
+
+fun enumVariantsAt(buf: String, start: Int, nameLen: Int) -> String {
+    val after: Int = start + nameLen
+    return if prelude.charAtSafe(buf, after) == ":" { enumVariantsUntilPipe(buf, after + 1) } else { "" }
+}
+
+fun enumVariantsUntilPipe(buf: String, from: Int) -> String {
+    val pipe: Int = findCharFrom(buf, "|", from)
+    return if pipe < 0 { "" } else { substring(buf, from, pipe - from) }
+}
+
+fun enumHasVariant(enumName: String, variant: String) -> Bool {
+    val csv: String = enumVariantsOf(enumName)
+    return if len(csv) == 0 { false } else { csvHasToken(csv, variant, 0) }
+}
+
+fun csvHasToken(csv: String, tok: String, pos: Int) -> Bool {
+    return if pos >= len(csv) { false } else { csvHasTokenAt(csv, tok, pos) }
+}
+
+fun csvHasTokenAt(csv: String, tok: String, pos: Int) -> Bool {
+    val comma: Int = findCharFrom(csv, ",", pos)
+    val end: Int = if comma < 0 { len(csv) } else { comma }
+    val piece: String = substring(csv, pos, end - pos)
+    return if piece == tok { true } else { csvHasTokenNext(csv, tok, comma) }
+}
+
+fun csvHasTokenNext(csv: String, tok: String, comma: Int) -> Bool {
+    return if comma < 0 { false } else { csvHasToken(csv, tok, comma + 1) }
+}
+
+fun whenExhBegin(scrTag: Int) -> Int {
+    bsBufClear(slotWhenCovered())
+    bsIntSet(slotWhenExhElse(), 0)
+    bsIntSet(slotWhenExhScrTag(), scrTag)
+    return 0
+}
+
+fun whenExhNoteElse() -> Int {
+    bsIntSet(slotWhenExhElse(), 1)
+    return 0
+}
+
+fun whenExhNotePat(name: String) -> Int {
+    return if len(name) == 0 { 0 } else { whenExhNotePatDo(name) }
+}
+
+fun whenExhNotePatDo(name: String) -> Int {
+    whenExhCheckKnown(name)
+    return if whenExhAlready(name) { 0 } else { whenExhCoverAppend(name) }
+}
+
+fun whenExhCoverAppend(name: String) -> Int {
+    bsBufAppend(slotWhenCovered(), name)
+    bsBufAppend(slotWhenCovered(), "|")
+    return 0
+}
+
+fun whenExhAlready(name: String) -> Bool {
+    val buf: String = bsBufGet(slotWhenCovered())
+    return whenExhFindName(buf, name, 0)
+}
+
+fun whenExhFindName(buf: String, name: String, pos: Int) -> Bool {
+    return if pos >= len(buf) { false } else { whenExhFindNameAt(buf, name, pos) }
+}
+
+fun whenExhFindNameAt(buf: String, name: String, pos: Int) -> Bool {
+    val pipe: Int = findCharFrom(buf, "|", pos)
+    val end: Int = if pipe < 0 { len(buf) } else { pipe }
+    val piece: String = substring(buf, pos, end - pos)
+    return if piece == name { true } else { whenExhFindNameNext(buf, name, pipe) }
+}
+
+fun whenExhFindNameNext(buf: String, name: String, pipe: Int) -> Bool {
+    return if pipe < 0 { false } else { whenExhFindName(buf, name, pipe + 1) }
+}
+
+fun whenExhCheckKnown(name: String) -> Int {
+    return if whenUnifyOff() { 0 } else { whenExhCheckKnownDo(name) }
+}
+
+fun whenExhCheckKnownDo(name: String) -> Int {
+    val scr: Int = bsIntGet(slotWhenExhScrTag())
+    val ename: String = tyTagName(scr)
+    val csv: String = enumVariantsOf(ename)
+    return if len(csv) == 0 { 0 } else { whenExhCheckKnownIn(ename, name) }
+}
+
+fun whenExhCheckKnownIn(ename: String, name: String) -> Int {
+    return if enumHasVariant(ename, name) { 0 } else { typeErrorMark() }
+}
+
+fun whenExhFinish() -> Int {
+    return if whenUnifyOff() { 0 } else { whenExhFinishDo() }
+}
+
+fun whenExhFinishDo() -> Int {
+    val hasElse: Int = bsIntGet(slotWhenExhElse())
+    return if hasElse != 0 { 0 } else { whenExhFinishNoElse() }
+}
+
+fun whenExhFinishNoElse() -> Int {
+    val scr: Int = bsIntGet(slotWhenExhScrTag())
+    val ename: String = tyTagName(scr)
+    val csv: String = enumVariantsOf(ename)
+    return if len(csv) == 0 { 0 } else { whenExhMissingScan(csv, 0) }
+}
+
+fun whenExhMissingScan(csv: String, pos: Int) -> Int {
+    return if pos >= len(csv) { 0 } else { whenExhMissingAt(csv, pos) }
+}
+
+fun whenExhMissingAt(csv: String, pos: Int) -> Int {
+    val comma: Int = findCharFrom(csv, ",", pos)
+    val end: Int = if comma < 0 { len(csv) } else { comma }
+    val piece: String = substring(csv, pos, end - pos)
+    whenExhMissingOne(piece)
+    return whenExhMissingNext(csv, comma)
+}
+
+fun whenExhMissingOne(piece: String) -> Int {
+    return if whenExhAlready(piece) { 0 } else { typeErrorMark() }
+}
+
+fun whenExhMissingNext(csv: String, comma: Int) -> Int {
+    return if comma < 0 { 0 } else { whenExhMissingScan(csv, comma + 1) }
+}
+

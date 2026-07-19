@@ -160,7 +160,9 @@ fn compound_to_binary(kind: &TokenKind) -> Option<BinaryOp> {
 }
 
 fn is_left_associative(op: &BinaryOp) -> bool {
-    !matches!(op, BinaryOp::Pow | BinaryOp::Assign)
+    // Pow is left-associative (`2 ** 3 ** 2` == 64), matching long-standing runtime tests.
+    // Only assignment chains are right-associative.
+    !matches!(op, BinaryOp::Assign)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -482,20 +484,58 @@ mod tests {
     }
 
     #[test]
-    fn test_when_one_line() {
-        let expr = parse_expr("when a > b { a else b }").unwrap();
-        match expr.kind {
-            ExprKind::When(w) => match &w.kind {
-                WhenKind::OneLine { .. } => {}
-                _ => panic!("Expected one-line when"),
-            },
-            _ => panic!("Expected when"),
+    fn test_arithmetic_left_associative() {
+        // M41: same-prec chains fold left — `10 - 3 - 2` is (10 - 3) - 2, not 10 - (3 - 2).
+        let expr = parse_expr("10 - 3 - 2").unwrap();
+        match &expr.kind {
+            ExprKind::Binary(lhs, BinaryOp::Sub, rhs) => {
+                assert!(
+                    matches!(
+                        (&lhs.kind, &rhs.kind),
+                        (
+                            ExprKind::Binary(_, BinaryOp::Sub, _),
+                            ExprKind::Literal(Literal::Int(2)),
+                        )
+                    ),
+                    "expected (10 - 3) - 2, got {expr:?}"
+                );
+            }
+            _ => panic!("Expected binary Sub, got {expr:?}"),
+        }
+
+        let expr = parse_expr("24 / 4 / 2").unwrap();
+        match &expr.kind {
+            ExprKind::Binary(lhs, BinaryOp::Div, rhs) => {
+                assert!(
+                    matches!(
+                        (&lhs.kind, &rhs.kind),
+                        (
+                            ExprKind::Binary(_, BinaryOp::Div, _),
+                            ExprKind::Literal(Literal::Int(2)),
+                        )
+                    ),
+                    "expected (24 / 4) / 2, got {expr:?}"
+                );
+            }
+            _ => panic!("Expected binary Div, got {expr:?}"),
         }
     }
 
     #[test]
-    fn test_when_call_condition_not_trailing_lambda() {
-        let expr = parse_expr("when atEnd(s, i) { false else true }").unwrap();
+    fn test_if_expr() {
+        let expr = parse_expr("if a > b { a } else { b }").unwrap();
+        match expr.kind {
+            ExprKind::When(w) => match &w.kind {
+                WhenKind::OneLine { .. } => {}
+                _ => panic!("Expected if (OneLine)"),
+            },
+            _ => panic!("Expected when/if"),
+        }
+    }
+
+    #[test]
+    fn test_if_call_condition_not_trailing_lambda() {
+        let expr = parse_expr("if atEnd(s, i) { false } else { true }").unwrap();
         match expr.kind {
             ExprKind::When(w) => match &w.kind {
                 WhenKind::OneLine {
@@ -504,34 +544,76 @@ mod tests {
                     else_expr,
                 } => {
                     assert!(matches!(condition.kind, ExprKind::Call { .. }));
-                    assert!(matches!(
-                        then_expr.kind,
-                        ExprKind::Literal(Literal::Bool(false))
-                    ));
-                    assert!(matches!(
-                        else_expr.kind,
-                        ExprKind::Literal(Literal::Bool(true))
-                    ));
+                    // Braced arms are always Blocks (final form).
+                    assert!(matches!(then_expr.kind, ExprKind::Block(_)));
+                    assert!(matches!(else_expr.kind, ExprKind::Block(_)));
+                    let then_lit = match &then_expr.kind {
+                        ExprKind::Block(stmts) => match &stmts[..] {
+                            [Stmt::Expr { expr, .. }] => &expr.kind,
+                            _ => panic!("expected single-expr then block"),
+                        },
+                        other => panic!("expected Block, got {other:?}"),
+                    };
+                    let else_lit = match &else_expr.kind {
+                        ExprKind::Block(stmts) => match &stmts[..] {
+                            [Stmt::Expr { expr, .. }] => &expr.kind,
+                            _ => panic!("expected single-expr else block"),
+                        },
+                        other => panic!("expected Block, got {other:?}"),
+                    };
+                    assert!(matches!(then_lit, ExprKind::Literal(Literal::Bool(false))));
+                    assert!(matches!(else_lit, ExprKind::Literal(Literal::Bool(true))));
                 }
-                _ => panic!("Expected one-line when"),
+                _ => panic!("Expected if (OneLine)"),
             },
-            _ => panic!("Expected when"),
+            _ => panic!("Expected when/if"),
         }
     }
 
     #[test]
-    fn test_when_multiline_trailing_else() {
-        let expr = parse_expr("when a > b { a } else b").unwrap();
+    fn test_if_multi_stmt_block() {
+        let expr = parse_expr("if c { val x = 1; x } else { 0 }").unwrap();
+        match expr.kind {
+            ExprKind::When(w) => match &w.kind {
+                WhenKind::OneLine { then_expr, .. } => match &then_expr.kind {
+                    ExprKind::Block(stmts) => {
+                        assert!(stmts.len() >= 2, "expected multi-stmt then block");
+                        assert!(matches!(stmts[0], Stmt::Let { .. }));
+                    }
+                    other => panic!("expected Block then arm, got {other:?}"),
+                },
+                _ => panic!("Expected if (OneLine)"),
+            },
+            _ => panic!("Expected when/if"),
+        }
+    }
+
+    #[test]
+    fn test_if_else_if_chain() {
+        let expr = parse_expr("if a > b { a } else if a < b { b } else { 0 }").unwrap();
         match expr.kind {
             ExprKind::When(w) => match &w.kind {
                 WhenKind::OneLine { else_expr, .. } => match &else_expr.kind {
-                    ExprKind::Ident(s) => assert_eq!(s, "b"),
-                    _ => panic!("Expected else ident b, got {:?}", else_expr.kind),
+                    ExprKind::When(inner) => match &inner.kind {
+                        WhenKind::OneLine { .. } => {}
+                        _ => panic!("Expected nested if"),
+                    },
+                    _ => panic!("Expected else-if"),
                 },
-                _ => panic!("Expected one-line when"),
+                _ => panic!("Expected if"),
             },
-            _ => panic!("Expected when"),
+            _ => panic!("Expected when/if"),
         }
+    }
+
+    #[test]
+    fn test_when_ternary_rejected() {
+        let err = parse_expr("when a > b { a else b }").unwrap_err();
+        assert!(
+            err.message.contains("if cond") || err.message.contains("Boolean ternary"),
+            "expected migration hint, got: {}",
+            err.message
+        );
     }
 
     #[test]

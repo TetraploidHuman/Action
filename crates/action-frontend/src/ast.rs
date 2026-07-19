@@ -222,6 +222,7 @@ impl fmt::Display for BinaryOp {
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum UnaryOp {
     Neg,
+    Pos,
     Not,
     BitNot,
 }
@@ -230,6 +231,7 @@ impl fmt::Display for UnaryOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             UnaryOp::Neg => write!(f, "-"),
+            UnaryOp::Pos => write!(f, "+"),
             UnaryOp::Not => write!(f, "!"),
             UnaryOp::BitNot => write!(f, "~"),
         }
@@ -642,7 +644,7 @@ impl fmt::Display for When {
             } => {
                 write!(
                     f,
-                    "when {} {{ {} else {} }}",
+                    "if {} {{ {} }} else {{ {} }}",
                     condition, then_expr, else_expr
                 )
             }

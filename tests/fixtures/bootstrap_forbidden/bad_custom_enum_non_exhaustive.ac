@@ -1,0 +1,9 @@
+enum Shape { Circle, Square }
+
+fun main() -> Int {
+    val s: Shape = Circle
+    val code: Int = when s {
+        Circle -> 1
+    }
+    return code
+}

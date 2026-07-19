@@ -95,6 +95,7 @@ fn classify_token(
         | TokenKind::Var
         | TokenKind::Fun
         | TokenKind::When
+        | TokenKind::If
         | TokenKind::Else
         | TokenKind::For
         | TokenKind::In

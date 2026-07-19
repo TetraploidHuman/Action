@@ -1,0 +1,6 @@
+// Infinite for: parse + compile_hir smoke only (empty body; do not JIT — would loop forever).
+fun main() -> Int {
+    for {
+    }
+    return 0
+}

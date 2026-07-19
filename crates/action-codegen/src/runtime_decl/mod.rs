@@ -5,6 +5,7 @@ use action_frontend::typecheck::TypeRegistry;
 use inkwell::context::Context;
 use inkwell::memory_buffer::MemoryBuffer;
 use inkwell::module::Module;
+use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
 use std::sync::OnceLock;
 
 // Validated at build time by build.rs (not linked at runtime — see define_runtime).
@@ -43,11 +44,14 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(global.as_pointer_value())
     }
 
-    pub(super) fn define_runtime(&self) -> Result<(), String> {
-        // Build-time embed is validated only; linking duplicates LLVM types from CodeGen::new().
+    pub(super) fn define_runtime(&mut self) -> Result<(), String> {
+        // Build-time embed is validated only; linked bitcode carries opaque types from
+        // another LLVMContext — sync_runtime_types_from_module realigns CodeGen fields.
         let _ = EMBEDDED_RUNTIME_BC;
         if let Some(bitcode) = RUNTIME_BITCODE.get() {
-            return link_runtime_bitcode_into(&self.module, self.context, bitcode);
+            link_runtime_bitcode_into(&self.module, self.context, bitcode)?;
+            self.sync_runtime_types_from_module()?;
+            return Ok(());
         }
 
         self.define_runtime_generate()?;
@@ -55,6 +59,25 @@ impl<'ctx> CodeGen<'ctx> {
         if RUNTIME_BITCODE.get().is_none() {
             let mem = self.module.write_bitcode_to_memory();
             let _ = RUNTIME_BITCODE.set(mem.as_slice().to_vec());
+        }
+        Ok(())
+    }
+
+    /// After linking cached runtime bitcode, opaque named types in the user module
+    /// (`__action_str`) differ from the linked definitions (`__action_str.0`). Point
+    /// CodeGen at the linked canonical types before emitting user IR.
+    fn sync_runtime_types_from_module(&mut self) -> Result<(), String> {
+        if let Some(f) = self.module.get_function("action_string_rc_inc") {
+            if let Some(BasicMetadataTypeEnum::StructType(st)) =
+                f.get_type().get_param_types().first()
+            {
+                self.string_type = *st;
+            }
+        }
+        if let Some(f) = self.module.get_function("action_list_flatten") {
+            if let Some(BasicTypeEnum::StructType(st)) = f.get_type().get_return_type() {
+                self.list_type = st;
+            }
         }
         Ok(())
     }

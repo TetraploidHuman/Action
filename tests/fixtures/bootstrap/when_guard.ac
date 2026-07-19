@@ -1,0 +1,12 @@
+fun inBand(n: Int) -> Int {
+    return when {
+        n > 0 and n < 10 -> 1
+        else -> 0
+    }
+}
+
+fun main() -> Int {
+    println(inBand(5))
+    println(inBand(15))
+    return 0
+}

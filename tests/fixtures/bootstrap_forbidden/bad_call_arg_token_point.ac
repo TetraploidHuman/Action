@@ -1,0 +1,14 @@
+type Point = {x: Int, y: Int}
+type Token = {kind: String, start: Int, end: Int, line: Int, col: Int}
+
+fun mkToken() -> Token {
+    return {kind = "x", start = 0, end = 1, line = 1, col = 1}
+}
+
+fun f(p: Point) -> Int {
+    return p.x
+}
+
+fun main() -> Int {
+    return f(mkToken())
+}

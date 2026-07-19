@@ -1,0 +1,6 @@
+fun main() -> Int {
+    return when {
+        1 -> 0
+        else -> 1
+    }
+}

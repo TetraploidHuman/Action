@@ -1,0 +1,7 @@
+type Point = {x: Int, y: Int}
+
+fun main() -> Int {
+    var p: Point = {x = 0, y = 0}
+    p = 1
+    return p.x
+}

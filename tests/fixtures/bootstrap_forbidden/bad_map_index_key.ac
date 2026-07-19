@@ -1,0 +1,5 @@
+fun main() -> Int {
+    var m: Map = Map["a": 1]
+    m[1] = 2
+    return 0
+}

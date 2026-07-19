@@ -1,0 +1,5 @@
+import prelude
+
+fun main() -> Int {
+    return if prelude.keywordKind("fun", "extra") == "fun" { 1 } else { 0 }
+}

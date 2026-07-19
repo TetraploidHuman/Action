@@ -1,88 +1,259 @@
-// Bootstrap M4: recursive scanner — token kinds for `keywords.ac` golden fixture.
+// Bootstrap M4+: iterative scanner with Token record type.
+// Reads source from bootstrap/_run_source.txt (written by tests) or defaults to keywords fixture.
 
-fun atEnd(s: String, pos: Int) -> Bool {
-    return pos == len(s)
-}
+import prelude
 
-fun containsAt(alphabet: String, ch: String, i: Int) -> Bool {
-    return when atEnd(alphabet, i) { false else containsAtStep(alphabet, ch, i) }
-}
+type Token = {kind: String, start: Int, end: Int, line: Int, col: Int}
 
-fun containsAtStep(alphabet: String, ch: String, i: Int) -> Bool {
-    val at: String = charAt(alphabet, i)
-    return when ch == at { true else containsAt(alphabet, ch, i + 1) }
+external fun readFile(path: String) -> String
+external fun bsIntSet(slot: Int, value: Int) -> Int
+external fun bsIntGet(slot: Int) -> Int
+
+fun slotTokDone() -> Int { return 24 }
+fun slotTokPos() -> Int { return 25 }
+fun slotTokSteps() -> Int { return 26 }
+
+fun keywordKindOpsTail(text: String) -> String {
+    return when text {
+        "and" -> "and"
+        "or" -> "or"
+        "not" -> "!"
+        else -> text
+    }
 }
 
 fun skipWsEnd(s: String, pos: Int) -> Int {
-    return when atEnd(s, pos) { pos else skipWsMore(s, pos) }
+    return prelude.skipWsWhitespace(s, pos)
 }
 
-fun skipWsMore(s: String, pos: Int) -> Int {
-    val ch: String = charAt(s, pos)
-    val ws: Bool = containsAt(" \t\n\r", ch, 0)
-    return when ws { skipWsEnd(s, pos + 1) else pos }
+fun makeToken(kind: String, start: Int, end: Int, line: Int, col: Int) -> Token {
+    return {kind = kind, start = start, end = end, line = line, col = col}
 }
 
-fun readWhileAlnumEnd(s: String, pos: Int) -> Int {
-    return when atEnd(s, pos) { pos else readWhileAlnumMore(s, pos) }
+fun readWhileIdentEnd(s: String, pos: Int) -> Int {
+    return if prelude.atEnd(s, pos) { pos } else { readWhileIdentMore(s, pos) }
 }
 
-fun readWhileAlnumMore(s: String, pos: Int) -> Int {
-    val ch: String = charAt(s, pos)
-    val al: Bool = containsAt("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", ch, 0)
-    return when al { readWhileAlnumEnd(s, pos + 1) else pos }
+fun readWhileIdentMore(s: String, pos: Int) -> Int {
+    val ch: String = prelude.charAtSafe(s, pos)
+    return if prelude.isIdentPart(ch) { readWhileIdentEnd(s, pos + 1) } else { pos }
 }
 
 fun readWhileDigitEnd(s: String, pos: Int) -> Int {
-    return when atEnd(s, pos) { pos else readWhileDigitMore(s, pos) }
+    return if prelude.atEnd(s, pos) { pos } else { readWhileDigitMore(s, pos) }
 }
 
 fun readWhileDigitMore(s: String, pos: Int) -> Int {
-    val ch: String = charAt(s, pos)
-    val dg: Bool = containsAt("0123456789", ch, 0)
-    return when dg { readWhileDigitEnd(s, pos + 1) else pos }
+    val ch: String = prelude.charAtSafe(s, pos)
+    return if prelude.isDigit(ch) { readWhileDigitEnd(s, pos + 1) } else { pos }
 }
 
-fun emitSlice(s: String, start: Int, end: Int) -> Int {
-    val text: String = substring(s, start, end - start)
-    println(text)
-    return tokenize(s, end)
+fun readStringEnd(s: String, pos: Int) -> Int {
+    return if prelude.atEnd(s, pos) { pos } else { readStringMore(s, pos) }
 }
 
-fun emitOneChar(s: String, pos: Int) -> Int {
-    val ch: String = charAt(s, pos)
-    println(ch)
-    return tokenize(s, pos + 1)
+fun readStringMore(s: String, pos: Int) -> Int {
+    val ch: String = prelude.charAtSafe(s, pos)
+    return if ch == "\"" { pos + 1 } else { readStringEnd(s, pos + 1) }
 }
 
-fun emitIdent(s: String, pos: Int) -> Int {
-    val end: Int = readWhileAlnumEnd(s, pos)
-    return emitSlice(s, pos, end)
+fun sliceText(s: String, start: Int, endPos: Int) -> String {
+    return substring(s, start, endPos - start)
+}
+
+fun emitKind(kind: String) -> Int {
+    println(kind)
+    return 0
+}
+
+fun emitSlice(s: String, start: Int, endPos: Int) -> Int {
+    val text: String = sliceText(s, start, endPos)
+    val kind: String = prelude.keywordKind(text)
+    emitKind(kind)
+    return endPos
+}
+
+fun emitThreeChar(kind: String, pos: Int) -> Int {
+    emitKind(kind)
+    return pos + 3
+}
+
+fun emitOneChar(kind: String, pos: Int) -> Int {
+    emitKind(kind)
+    return pos + 1
+}
+
+fun emitTwoChar(kind: String, pos: Int) -> Int {
+    emitKind(kind)
+    return pos + 2
+}
+
+fun emitStringLit(s: String, start: Int, endPos: Int) -> Int {
+    val inner: String = sliceText(s, start + 1, endPos - 1)
+    val kind: String = "\"" + inner + "\""
+    emitKind(kind)
+    return endPos
+}
+
+fun emitInt(s: String, start: Int, endPos: Int) -> Int {
+    val text: String = sliceText(s, start, endPos)
+    emitKind(text)
+    return endPos
+}
+
+fun emitFloat(s: String, start: Int, dotPos: Int) -> Int {
+    val afterDot: Int = readWhileDigitEnd(s, dotPos + 1)
+    val text: String = sliceText(s, start, afterDot)
+    emitKind(text)
+    return afterDot
+}
+
+fun emitNumberAfterDot(s: String, pos: Int, dotPos: Int) -> Int {
+    return if prelude.charAtSafe(s, dotPos + 1) == "." { emitInt(s, pos, dotPos) } else { emitFloat(s, pos, dotPos) }
 }
 
 fun emitNumber(s: String, pos: Int) -> Int {
-    val end: Int = readWhileDigitEnd(s, pos)
-    return emitSlice(s, pos, end)
+    val endDigits: Int = readWhileDigitEnd(s, pos)
+    val dot: String = prelude.charAtSafe(s, endDigits)
+    return if dot == "." { emitNumberAfterDot(s, pos, endDigits) } else { emitInt(s, pos, endDigits) }
 }
 
-fun tokenizeAtNonPunct(s: String, pos: Int, ch: String) -> Int {
-    val digit: Bool = containsAt("0123456789", ch, 0)
-    return when digit { emitNumber(s, pos) else emitIdent(s, pos) }
+fun emitIdent(s: String, pos: Int) -> Int {
+    val endPos: Int = readWhileIdentEnd(s, pos)
+    return if endPos == pos { emitOneChar(prelude.charAtSafe(s, pos), pos) } else { emitSlice(s, pos, endPos) }
 }
 
-fun tokenizeAt(s: String, pos: Int) -> Int {
-    val ch: String = charAt(s, pos)
-    val punct: Bool = containsAt("(){}=", ch, 0)
-    return when punct { emitOneChar(s, pos) else tokenizeAtNonPunct(s, pos, ch) }
+fun tokenizeAtBang(s: String, pos: Int) -> Int {
+    val nxt: String = prelude.charAtSafe(s, pos + 1)
+    return if nxt == "=" { emitTwoChar("!=", pos) } else { emitOneChar("!", pos) }
 }
 
-fun tokenize(s: String, pos: Int) -> Int {
-    val p: Int = skipWsEnd(s, pos)
-    return when atEnd(s, p) { p else tokenizeAt(s, p) }
+fun tokenizeAtEq(s: String, pos: Int) -> Int {
+    val nxt: String = prelude.charAtSafe(s, pos + 1)
+    return when nxt {
+        "=" -> emitTwoChar("==", pos)
+        ">" -> emitTwoChar("=>", pos)
+        else -> emitOneChar("=", pos)
+    }
+}
+
+fun tokenizeAtLt(s: String, pos: Int) -> Int {
+    return if prelude.charAtSafe(s, pos + 1) == "=" { emitTwoChar("<=", pos) } else { emitOneChar("<", pos) }
+}
+
+fun tokenizeAtGt(s: String, pos: Int) -> Int {
+    return if prelude.charAtSafe(s, pos + 1) == "=" { emitTwoChar(">=", pos) } else { emitOneChar(">", pos) }
+}
+
+fun tokenizeAtMinus(s: String, pos: Int) -> Int {
+    return if prelude.charAtSafe(s, pos + 1) == ">" { emitTwoChar("->", pos) } else { emitOneChar("-", pos) }
+}
+
+fun tokenizeAtAmp(s: String, pos: Int) -> Int {
+    val nxt: String = prelude.charAtSafe(s, pos + 1)
+    return if nxt == "&" { emitTwoChar("and", pos) } else { emitOneChar("&", pos) }
+}
+
+fun tokenizeAtPipe(s: String, pos: Int) -> Int {
+    val nxt: String = prelude.charAtSafe(s, pos + 1)
+    return if nxt == "|" { emitTwoChar("or", pos) } else { emitOneChar("|", pos) }
+}
+
+fun tokenizeAtPunct(s: String, pos: Int, ch: String) -> Int {
+    return when ch {
+        "!" -> tokenizeAtBang(s, pos)
+        "=" -> tokenizeAtEq(s, pos)
+        "<" -> tokenizeAtLt(s, pos)
+        ">" -> tokenizeAtGt(s, pos)
+        "-" -> tokenizeAtMinus(s, pos)
+        "." -> tokenizeAtDot(s, pos)
+        "&" -> tokenizeAtAmp(s, pos)
+        "|" -> tokenizeAtPipe(s, pos)
+        else -> emitOneChar(ch, pos)
+    }
+}
+
+fun tokenizeAtString(s: String, pos: Int) -> Int {
+    val endPos: Int = readStringEnd(s, pos + 1)
+    return emitStringLit(s, pos, endPos)
+}
+
+fun tokenizeAtIdentOrNum(s: String, pos: Int, ch: String) -> Int {
+    return if prelude.isDigit(ch) { emitNumber(s, pos) } else { emitIdent(s, pos) }
+}
+
+fun tokenizeAtDotDot(s: String, pos: Int) -> Int {
+    return if prelude.charAtSafe(s, pos + 2) == "<" { emitThreeChar("..<", pos) } else { emitTwoChar("..", pos) }
+}
+
+fun tokenizeAtDot(s: String, pos: Int) -> Int {
+    return if prelude.charAtSafe(s, pos + 1) == "." { tokenizeAtDotDot(s, pos) } else { emitOneChar(".", pos) }
+}
+
+fun tokenizeOne(s: String, pos: Int) -> Int {
+    val ch: String = prelude.charAtSafe(s, pos)
+    val comment: Bool = if ch == "/" { prelude.charAtSafe(s, pos + 1) == "/" } else { false }
+    return when {
+        comment -> prelude.skipLineComment(s, pos)
+        ch == "\"" -> tokenizeAtString(s, pos)
+        else -> tokenizeOneAfterComment(s, pos, ch)
+    }
+}
+
+fun tokenizeOneAfterComment(s: String, pos: Int, ch: String) -> Int {
+    val punct: Bool = prelude.containsAt("(){}[]=+-*/<>!&|,;:.", ch, 0)
+    return if punct { tokenizeAtPunct(s, pos, ch) } else { tokenizeAtIdentOrNum(s, pos, ch) }
+}
+
+fun tokenizeDone() -> Int {
+    bsIntSet(slotTokDone(), 1)
+    return 0
+}
+
+fun tokenizeAdvance(s: String, ws: Int, steps: Int) -> Int {
+    bsIntSet(slotTokPos(), tokenizeOne(s, ws))
+    bsIntSet(slotTokSteps(), steps + 1)
+    return 0
+}
+
+fun tokenizeStep2(s: String) -> Int {
+    val p: Int = bsIntGet(slotTokPos())
+    val steps: Int = bsIntGet(slotTokSteps())
+    val ws: Int = skipWsEnd(s, p)
+    when {
+        prelude.atEnd(s, ws) -> tokenizeDone()
+        steps >= 200000 -> tokenizeDone()
+        else -> tokenizeAdvance(s, ws, steps)
+    }
+    return 0
+}
+
+fun tokenizeStep(s: String) -> Int {
+    return if bsIntGet(slotTokDone()) == 1 { 0 } else { tokenizeStep2(s) }
+}
+
+fun tokenize(s: String, start: Int) -> Int {
+    bsIntSet(slotTokDone(), 0)
+    bsIntSet(slotTokPos(), start)
+    bsIntSet(slotTokSteps(), 0)
+    for n in 0..200000 {
+        tokenizeStep(s)
+    }
+    return 0
+}
+
+fun defaultKeywordsSource() -> String {
+    return "fun main() {\n    val x = 1\n    var y = 2\n}"
+}
+
+fun loadSource() -> String {
+    val path: String = "bootstrap/_run_source.txt"
+    val text: String = readFile(path)
+    return if len(text) == 0 { defaultKeywordsSource() } else { text }
 }
 
 fun main() -> Int {
-    val src: String = "fun main() {\n    val x = 1\n    var y = 2\n}"
+    val src: String = loadSource()
     tokenize(src, 0)
     return 0
 }

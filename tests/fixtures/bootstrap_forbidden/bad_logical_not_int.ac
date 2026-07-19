@@ -1,0 +1,4 @@
+fun main() -> Int {
+    val x: Bool = not 1
+    if x { 0 } else { 1 }
+}

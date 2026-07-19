@@ -333,6 +333,10 @@ impl<'ctx> CodeGen<'ctx> {
                 if self.try_compile_mutating_ufcs_stmt_writeback(expr)? {
                     return Ok(());
                 }
+                if let HirExprKind::For(f) = &expr.kind {
+                    self.compile_hir_for_stmt(f)?;
+                    return Ok(());
+                }
                 let result = self.compile_hir_expr(expr)?;
                 self.rc_discard_value(&result)?;
             }

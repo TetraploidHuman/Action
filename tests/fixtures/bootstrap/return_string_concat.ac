@@ -1,0 +1,9 @@
+// TC4 positive: String function may return string literal concatenation.
+fun greet() -> String {
+    return "hello" + " world"
+}
+
+fun main() -> Int {
+    val s: String = greet()
+    return len(s)
+}

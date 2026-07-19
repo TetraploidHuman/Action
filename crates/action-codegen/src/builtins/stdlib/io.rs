@@ -25,6 +25,122 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 self.compile_read_line_fallible()
             }
+            // M42: process-local bootstrap session buffers (see host-rt/runtime_bs_buf.rs).
+            "bsBufClear" => {
+                if args.len() != 1 {
+                    return Err("bsBufClear expects 1 argument (slot)".to_string());
+                }
+                let slot = self.compile_call_arg(args[0])?;
+                match slot {
+                    TypedValue::Int(sv) => {
+                        let cc = self.call_rt("action_bs_buf_clear", &[sv.into()])?;
+                        let result = cc
+                            .try_as_basic_value()
+                            .basic()
+                            .ok_or("bsBufClear failed")?
+                            .into_int_value();
+                        Ok(TypedValue::Int(result))
+                    }
+                    _ => Err("bsBufClear: slot must be Int".to_string()),
+                }
+            }
+            "bsBufAppend" => {
+                if args.len() != 2 {
+                    return Err("bsBufAppend expects 2 arguments (slot, content)".to_string());
+                }
+                let slot = self.compile_call_arg(args[0])?;
+                let content = self.compile_call_arg(args[1])?;
+                match (&slot, &content) {
+                    (TypedValue::Int(sv), TypedValue::Str(cp)) => {
+                        let cv = self.load_string(*cp)?;
+                        let cc = self.call_rt("action_bs_buf_append", &[(*sv).into(), cv.into()])?;
+                        let result = cc
+                            .try_as_basic_value()
+                            .basic()
+                            .ok_or("bsBufAppend failed")?
+                            .into_int_value();
+                        Ok(TypedValue::Int(result))
+                    }
+                    _ => Err("bsBufAppend: (Int, String) required".to_string()),
+                }
+            }
+            "bsBufSet" => {
+                if args.len() != 2 {
+                    return Err("bsBufSet expects 2 arguments (slot, content)".to_string());
+                }
+                let slot = self.compile_call_arg(args[0])?;
+                let content = self.compile_call_arg(args[1])?;
+                match (&slot, &content) {
+                    (TypedValue::Int(sv), TypedValue::Str(cp)) => {
+                        let cv = self.load_string(*cp)?;
+                        let cc = self.call_rt("action_bs_buf_set", &[(*sv).into(), cv.into()])?;
+                        let result = cc
+                            .try_as_basic_value()
+                            .basic()
+                            .ok_or("bsBufSet failed")?
+                            .into_int_value();
+                        Ok(TypedValue::Int(result))
+                    }
+                    _ => Err("bsBufSet: (Int, String) required".to_string()),
+                }
+            }
+            "bsBufGet" => {
+                if args.len() != 1 {
+                    return Err("bsBufGet expects 1 argument (slot)".to_string());
+                }
+                let slot = self.compile_call_arg(args[0])?;
+                match slot {
+                    TypedValue::Int(sv) => {
+                        let cc = self.call_rt("action_bs_buf_get", &[sv.into()])?;
+                        let result = cc.try_as_basic_value().basic().ok_or("bsBufGet failed")?;
+                        let alloca = self
+                            .builder
+                            .build_alloca(self.string_type, "bs_buf")
+                            .map_err(llvm_err)?;
+                        self.builder.build_store(alloca, result).map_err(llvm_err)?;
+                        Ok(TypedValue::Str(alloca))
+                    }
+                    _ => Err("bsBufGet: slot must be Int".to_string()),
+                }
+            }
+            // M45: process-local Int session slots (span / line-col).
+            "bsIntSet" => {
+                if args.len() != 2 {
+                    return Err("bsIntSet expects 2 arguments (slot, value)".to_string());
+                }
+                let slot = self.compile_call_arg(args[0])?;
+                let value = self.compile_call_arg(args[1])?;
+                match (&slot, &value) {
+                    (TypedValue::Int(sv), TypedValue::Int(vv)) => {
+                        let cc = self.call_rt("action_bs_int_set", &[(*sv).into(), (*vv).into()])?;
+                        let result = cc
+                            .try_as_basic_value()
+                            .basic()
+                            .ok_or("bsIntSet failed")?
+                            .into_int_value();
+                        Ok(TypedValue::Int(result))
+                    }
+                    _ => Err("bsIntSet: (Int, Int) required".to_string()),
+                }
+            }
+            "bsIntGet" => {
+                if args.len() != 1 {
+                    return Err("bsIntGet expects 1 argument (slot)".to_string());
+                }
+                let slot = self.compile_call_arg(args[0])?;
+                match slot {
+                    TypedValue::Int(sv) => {
+                        let cc = self.call_rt("action_bs_int_get", &[sv.into()])?;
+                        let result = cc
+                            .try_as_basic_value()
+                            .basic()
+                            .ok_or("bsIntGet failed")?
+                            .into_int_value();
+                        Ok(TypedValue::Int(result))
+                    }
+                    _ => Err("bsIntGet: slot must be Int".to_string()),
+                }
+            }
             "readFile" => {
                 if args.len() != 1 {
                     return Err("readFile expects 1 argument (path)".to_string());
@@ -197,43 +313,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if args.len() != 1 {
                     return Err("fileReadLine expects 1 argument (file)".to_string());
                 }
-                let file = self.compile_call_arg(args[0])?;
-                match file {
-                    TypedValue::FileHandle(p) => {
-                        let cc = self.call_rt("action_file_read_line", &[p.into()])?;
-                        let result = cc
-                            .try_as_basic_value()
-                            .basic()
-                            .ok_or("fileReadLine failed")?
-                            .into_struct_value();
-                        // Build string from len+ptr
-                        let len = self
-                            .builder
-                            .build_extract_value(result, 0, "len")
-                            .map_err(llvm_err)?
-                            .into_int_value();
-                        let data = self
-                            .builder
-                            .build_extract_value(result, 1, "data")
-                            .map_err(llvm_err)?
-                            .into_pointer_value();
-                        let str_struct =
-                            self.call_rt("action_string_create", &[data.into(), len.into()])?;
-                        let str_val = str_struct
-                            .try_as_basic_value()
-                            .basic()
-                            .ok_or("string_create failed")?;
-                        let str_alloca = self
-                            .builder
-                            .build_alloca(self.string_type, "str_tmp")
-                            .map_err(llvm_err)?;
-                        self.builder
-                            .build_store(str_alloca, str_val)
-                            .map_err(llvm_err)?;
-                        Ok(TypedValue::Str(str_alloca))
-                    }
-                    _ => Err("fileReadLine: argument must be a FileHandle".to_string()),
-                }
+                self.compile_file_read_line_fallible(args[0])
             }
             "fileReadBytes" => {
                 if args.len() != 2 {

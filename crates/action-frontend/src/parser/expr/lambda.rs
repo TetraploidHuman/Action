@@ -15,6 +15,7 @@ impl Parser {
             | TokenKind::Val
             | TokenKind::For
             | TokenKind::When
+            | TokenKind::If
             | TokenKind::Return
             | TokenKind::Const
             | TokenKind::Fun
@@ -250,6 +251,7 @@ impl Parser {
                 | TokenKind::Lazy
                 | TokenKind::For
                 | TokenKind::When
+                | TokenKind::If
                 | TokenKind::Return
                 | TokenKind::Const
                 | TokenKind::Fun
@@ -277,6 +279,7 @@ impl Parser {
             | TokenKind::Lazy
             | TokenKind::For
             | TokenKind::When
+            | TokenKind::If
             | TokenKind::Return
             | TokenKind::Const
             | TokenKind::Fun

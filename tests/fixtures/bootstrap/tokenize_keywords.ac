@@ -1,0 +1,96 @@
+// Minimal inline scanner: tokenize keywords fixture source, return token count.
+// Bootstrap path: compiler.ac -> HIR JSON -> compile_hir -> JIT (M9 alpha).
+
+fun atEnd(s: String, pos: Int) -> Bool {
+    return pos == len(s)
+}
+
+fun charAtSafe(s: String, pos: Int) -> String {
+    return if atEnd(s, pos) { "" } else { charAt(s, pos) }
+}
+
+fun containsAt(alphabet: String, ch: String, i: Int) -> Bool {
+    return if atEnd(alphabet, i) { false } else { containsAtStep(alphabet, ch, i) }
+}
+
+fun containsAtStep(alphabet: String, ch: String, i: Int) -> Bool {
+    val at: String = charAt(alphabet, i)
+    return if ch == at { true } else { containsAt(alphabet, ch, i + 1) }
+}
+
+fun isDigit(ch: String) -> Bool {
+    return containsAt("0123456789", ch, 0)
+}
+
+fun isIdentPart(ch: String) -> Bool {
+    val alpha: Bool = containsAt("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_", ch, 0)
+    return if alpha { true } else { isDigit(ch) }
+}
+
+fun skipWs(s: String, pos: Int) -> Int {
+    return if atEnd(s, pos) { pos } else { skipWsStep(s, pos) }
+}
+
+fun skipWsStep(s: String, pos: Int) -> Int {
+    val ch: String = charAtSafe(s, pos)
+    return if containsAt(" \t\n\r", ch, 0) { skipWs(s, pos + 1) } else { pos }
+}
+
+fun readWhileIdent(s: String, pos: Int) -> Int {
+    return if atEnd(s, pos) { pos } else { readWhileIdentStep(s, pos) }
+}
+
+fun readWhileIdentStep(s: String, pos: Int) -> Int {
+    return if isIdentPart(charAtSafe(s, pos)) { readWhileIdent(s, pos + 1) } else { pos }
+}
+
+fun readWhileDigit(s: String, pos: Int) -> Int {
+    return if atEnd(s, pos) { pos } else { readWhileDigitStep(s, pos) }
+}
+
+fun readWhileDigitStep(s: String, pos: Int) -> Int {
+    return if isDigit(charAtSafe(s, pos)) { readWhileDigit(s, pos + 1) } else { pos }
+}
+
+fun emitPunct(s: String, pos: Int, ch: String) -> Int {
+    println(ch)
+    return pos + 1
+}
+
+fun emitIdent(s: String, pos: Int) -> Int {
+    val endPos: Int = readWhileIdent(s, pos)
+    val text: String = substring(s, pos, endPos - pos)
+    println(text)
+    return endPos
+}
+
+fun emitNumber(s: String, pos: Int) -> Int {
+    val endPos: Int = readWhileDigit(s, pos)
+    val text: String = substring(s, pos, endPos - pos)
+    println(text)
+    return endPos
+}
+
+fun tokenizeOne(s: String, pos: Int) -> Int {
+    val ch: String = charAtSafe(s, pos)
+    val punct: Bool = containsAt("(){}[]=+-*/<>!&|,;:.", ch, 0)
+    return when {
+        punct -> emitPunct(s, pos, ch)
+        isDigit(ch) -> emitNumber(s, pos)
+        else -> emitIdent(s, pos)
+    }
+}
+
+fun tokenizeLoop(s: String, pos: Int, count: Int) -> Int {
+    val ws: Int = skipWs(s, pos)
+    return if atEnd(s, ws) { count } else { tokenizeLoop(s, tokenizeOne(s, ws), count + 1) }
+}
+
+fun keywordsSource() -> String {
+    return "fun main() {\n    val x = 1\n    var y = 2\n}"
+}
+
+fun main() -> Int {
+    val src: String = keywordsSource()
+    return tokenizeLoop(src, 0, 0)
+}

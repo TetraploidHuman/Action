@@ -1,0 +1,8 @@
+fun inner() -> Int {
+    val leaked: Int = 55
+    return leaked
+}
+
+fun main() -> Int {
+    return leaked
+}

@@ -261,7 +261,8 @@ impl<'ctx> CodeGen<'ctx> {
             }
             "readLine" | "readFile" | "writeFile" | "appendFile" | "exists" | "deleteFile"
             | "openFile" | "closeFile" | "isEof" | "fileReadLine" | "fileReadBytes"
-            | "fileWrite" | "fileWriteLine" | "fileFlush" | "fileSeek" | "fileTell" | "readDir" => {
+            | "fileWrite" | "fileWriteLine" | "fileFlush" | "fileSeek" | "fileTell" | "readDir"
+            | "bsBufClear" | "bsBufAppend" | "bsBufSet" | "bsBufGet" | "bsIntSet" | "bsIntGet" => {
                 self.builtin_stdlib_io(name, args)
             }
             "abs" | "min" | "max" | "sqrt" | "cbrt" | "sin" | "cos" | "tan" | "asin" | "acos"

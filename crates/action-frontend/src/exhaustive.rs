@@ -69,8 +69,9 @@ fn collect_pattern_coverage(
                 if enum_name.is_none() {
                     *enum_name = Some(en.clone());
                 }
+                // Only known variants count as coverage (M66: unknowns → E014 elsewhere).
+                covered.insert(name.clone());
             }
-            covered.insert(name.clone());
             for sub in args {
                 collect_pattern_coverage(registry, sub, covered, enum_name, has_wildcard);
             }

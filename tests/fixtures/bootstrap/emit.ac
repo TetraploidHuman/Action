@@ -1,0 +1,220 @@
+// M26/M46 bootstrap HIR JSON emit helpers (bsBuf slot 19; flush to _hir_out.json).
+
+import prelude
+
+import parser
+
+import typeenv
+
+external fun writeFile(path: String, content: String) -> Bool
+external fun bsBufClear(slot: Int) -> Int
+external fun bsBufAppend(slot: Int, content: String) -> Int
+external fun bsBufSet(slot: Int, content: String) -> Int
+external fun bsBufGet(slot: Int) -> String
+external fun bsIntSet(slot: Int, value: Int) -> Int
+
+// M44 accumulator slots (see host-rt/runtime_bs_buf.rs).
+fun slotArms() -> Int { return 5 }
+fun slotArgs() -> Int { return 6 }
+fun slotList() -> Int { return 7 }
+fun slotMap() -> Int { return 8 }
+fun slotSet() -> Int { return 9 }
+fun slotFields() -> Int { return 10 }
+fun slotArgsSave(d: Int) -> Int { return 11 + d }
+fun slotHirOut() -> Int { return 19 }
+// M48 short string session mailboxes
+fun slotRecv() -> Int { return 20 }
+fun slotPat() -> Int { return 21 }
+fun slotGuard() -> Int { return 22 }
+fun slotLastIdent() -> Int { return 23 }
+fun slotLitTy() -> Int { return 24 }
+fun slotUndefIdent() -> Int { return 25 }
+fun slotFnName() -> Int { return 26 }
+fun slotFnRetTy() -> Int { return 27 }
+fun slotBindName() -> Int { return 28 }
+fun slotBindTy() -> Int { return 29 }
+fun slotStructName() -> Int { return 30 }
+
+fun sessGet(slot: Int) -> String { return bsBufGet(slot) }
+
+fun sessSet(slot: Int, content: String) -> Int { bsBufSet(slot, content); return 0 }
+
+fun strSessionClear() -> Int {
+    bsBufClear(slotRecv())
+    bsBufClear(slotPat())
+    bsBufSet(slotGuard(), "null")
+    bsBufClear(slotLastIdent())
+    bsBufSet(slotLitTy(), "Point")
+    bsBufClear(slotUndefIdent())
+    bsBufClear(slotFnName())
+    bsBufClear(slotFnRetTy())
+    bsBufClear(slotBindName())
+    bsBufClear(slotBindTy())
+    bsBufClear(slotStructName())
+    return 0
+}
+
+fun jEscapeChar(ch: String) -> String {
+    return when ch {
+        "\\" -> "\\\\"
+        "\"" -> "\\\""
+        "\n" -> "\\n"
+        "\r" -> "\\r"
+        "\t" -> "\\t"
+        else -> ch
+    }
+}
+
+fun jEscapeFrom(s: String, i: Int) -> String {
+    return if i >= len(s) { "" } else { jEscapeChar(charAt(s, i)) + jEscapeFrom(s, i + 1) }
+}
+
+fun jEscape(s: String) -> String {
+    return jEscapeFrom(s, 0)
+}
+
+fun jQuotedInner(token: String) -> String {
+    return substring(token, 1, len(token) - 2)
+}
+
+fun jQuotedString(token: String) -> String {
+    return "\"" + jQuotedInner(token) + "\""
+}
+
+fun jOut(t: String) -> Int { bsBufAppend(slotHirOut(), t); return 0 }
+
+fun jOutReset() -> Int { bsBufClear(slotHirOut()); return 0 }
+
+fun jOutGet() -> String { return bsBufGet(slotHirOut()) }
+
+fun jOutBegin() -> Int {
+    bsBufSet(slotHirOut(), "{\n  \"stmts\": [")
+    return 0
+}
+
+fun jOutFlush() -> Int {
+    writeFile("bootstrap/_hir_out.json", jOutGet())
+    return 0
+}
+
+fun jSpan() -> Int {
+    jOut(parser.spanJson())
+    return 0
+}
+
+fun jTyNamed(name: String) -> Int {
+    return jOut("{\"Named\": \"" + name + "\"}")
+}
+
+fun jComma(sep: Int) -> Int {
+    return if sep == 1 { jOut(",") } else { 0 }
+}
+
+fun markStmtEmitted() -> Int {
+    bsIntSet(parser.slotPpHirEmitted(), 1)
+    return 0
+}
+
+fun jCommaStmt(sep: Int) -> Int {
+    jComma(sep)
+    markStmtEmitted()
+    return 0
+}
+
+fun jOutBool(b: Bool) -> Int {
+    return if b { jOut("true") } else { jOut("false") }
+}
+
+fun tyJson(tag: Int) -> String {
+    return if tag == 0 { "\"Unit\"" } else { "{\"Named\": \"" + typeenv.tyTagName(tag) + "\"}" }
+}
+
+fun exprWrap(tag: Int, kind: String) -> String {
+    typeenv.lastExprTySet(tag)
+    return "{\"ty\": " + tyJson(tag) + ", \"span\": " + parser.spanJson() + ", \"kind\": " + kind + "}"
+}
+
+// Wrap a full expr JSON as a singleton statement block (Kotlin-style if arms).
+// Break/Continue exprs become Break/Continue stmts (Rust `parse_block_expr` parity).
+fun exprAsBlock(tag: Int, inner: String) -> String {
+    typeenv.lastExprTySet(tag)
+    val span: String = parser.spanJson()
+    val stmt: String = when {
+        isKindBreak(inner) -> "{\"Break\": {\"span\": " + span + "}}"
+        isKindContinue(inner) -> "{\"Continue\": {\"span\": " + span + "}}"
+        else -> "{\"Expr\": {\"expr\": " + inner + ", \"span\": " + span + "}}"
+    }
+    return "{\"ty\": " + tyJson(tag) + ", \"span\": " + span + ", \"kind\": {\"Block\": [" + stmt + "]}}"
+}
+
+fun isKindBreak(j: String) -> Bool {
+    val suf: String = "\"kind\": \"Break\"}"
+    return if len(j) < len(suf) { false } else { substring(j, len(j) - len(suf), len(suf)) == suf }
+}
+
+fun isKindContinue(j: String) -> Bool {
+    val suf: String = "\"kind\": \"Continue\"}"
+    return if len(j) < len(suf) { false } else { substring(j, len(j) - len(suf), len(suf)) == suf }
+}
+
+fun setExpr(j: String) -> Int { bsBufSet(3, j); return 0 }
+
+fun getExpr() -> String { return bsBufGet(3) }
+
+fun setExprBool(b: Bool) -> Int {
+    return if b { setExpr(exprWrap(2, "{\"Literal\": {\"Bool\": true}}")) } else { setExpr(exprWrap(2, "{\"Literal\": {\"Bool\": false}}")) }
+}
+
+fun setExprLitInt(n: Int) -> Int {
+    setExpr(exprWrap(1, "{\"Literal\": {\"Int\": " + toString(n) + "}}"))
+    return 0
+}
+
+fun setExprIdent(name: String, tag: Int) -> Int {
+    setExpr(exprWrap(tag, "{\"Ident\": \"" + name + "\"}"))
+    return 0
+}
+
+fun setExprBinary(op: String, left: String, right: String, tag: Int) -> Int {
+    setExpr(exprWrap(tag, "{\"Binary\": [" + left + ", \"" + op + "\", " + right + "]}"))
+    return 0
+}
+
+fun accReset(slot: Int) -> Int { bsBufClear(slot); return 0 }
+
+fun accGet(slot: Int) -> String { return bsBufGet(slot) }
+
+fun accSet(slot: Int, content: String) -> Int { bsBufSet(slot, content); return 0 }
+
+fun accAdd(slot: Int, part: String, sep: Int) -> Int {
+    accAddSep(slot, sep)
+    bsBufAppend(slot, part)
+    return 0
+}
+
+fun accComma(slot: Int) -> Int {
+    bsBufAppend(slot, ", ")
+    return 0
+}
+
+fun accAddSep(slot: Int, sep: Int) -> Int {
+    return if sep == 1 { accComma(slot) } else { 0 }
+}
+
+fun accSessionClear() -> Int {
+    bsBufClear(5)
+    bsBufClear(6)
+    bsBufClear(7)
+    bsBufClear(8)
+    bsBufClear(9)
+    bsBufClear(10)
+    bsBufClear(11)
+    bsBufClear(12)
+    bsBufClear(13)
+    bsBufClear(14)
+    bsBufClear(15)
+    bsBufClear(16)
+    bsBufClear(17)
+    bsBufClear(18)
+    return 0
+}

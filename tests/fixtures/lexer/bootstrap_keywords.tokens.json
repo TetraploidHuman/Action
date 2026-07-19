@@ -1,0 +1,155 @@
+[
+  {
+    "kind": "val",
+    "span": {
+      "start": 0,
+      "end": 3,
+      "line": 1,
+      "col": 1
+    }
+  },
+  {
+    "kind": "var",
+    "span": {
+      "start": 3,
+      "end": 7,
+      "line": 1,
+      "col": 4
+    }
+  },
+  {
+    "kind": "fun",
+    "span": {
+      "start": 7,
+      "end": 11,
+      "line": 1,
+      "col": 8
+    }
+  },
+  {
+    "kind": "when",
+    "span": {
+      "start": 11,
+      "end": 16,
+      "line": 1,
+      "col": 12
+    }
+  },
+  {
+    "kind": "if",
+    "span": {
+      "start": 16,
+      "end": 19,
+      "line": 1,
+      "col": 17
+    }
+  },
+  {
+    "kind": "else",
+    "span": {
+      "start": 19,
+      "end": 24,
+      "line": 1,
+      "col": 20
+    }
+  },
+  {
+    "kind": "for",
+    "span": {
+      "start": 24,
+      "end": 28,
+      "line": 1,
+      "col": 25
+    }
+  },
+  {
+    "kind": "in",
+    "span": {
+      "start": 28,
+      "end": 31,
+      "line": 1,
+      "col": 29
+    }
+  },
+  {
+    "kind": "return",
+    "span": {
+      "start": 31,
+      "end": 38,
+      "line": 1,
+      "col": 32
+    }
+  },
+  {
+    "kind": "enum",
+    "span": {
+      "start": 38,
+      "end": 43,
+      "line": 1,
+      "col": 39
+    }
+  },
+  {
+    "kind": "type",
+    "span": {
+      "start": 43,
+      "end": 48,
+      "line": 1,
+      "col": 44
+    }
+  },
+  {
+    "kind": "external",
+    "span": {
+      "start": 48,
+      "end": 57,
+      "line": 1,
+      "col": 49
+    }
+  },
+  {
+    "kind": "true",
+    "span": {
+      "start": 57,
+      "end": 62,
+      "line": 1,
+      "col": 58
+    }
+  },
+  {
+    "kind": "false",
+    "span": {
+      "start": 62,
+      "end": 68,
+      "line": 1,
+      "col": 63
+    }
+  },
+  {
+    "kind": "and",
+    "span": {
+      "start": 68,
+      "end": 72,
+      "line": 1,
+      "col": 69
+    }
+  },
+  {
+    "kind": "or",
+    "span": {
+      "start": 72,
+      "end": 75,
+      "line": 1,
+      "col": 73
+    }
+  },
+  {
+    "kind": "!",
+    "span": {
+      "start": 75,
+      "end": 79,
+      "line": 1,
+      "col": 76
+    }
+  }
+]

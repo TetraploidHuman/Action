@@ -306,6 +306,84 @@ impl<'ctx> CodeGen<'ctx> {
             None,
         );
 
+        // Host-side file IO (crates/host-rt/runtime_file.rs) — (ptr,len) after string_data
+        let _host_file_write_fn = self.module.add_function(
+            "action_host_file_write",
+            i8.fn_type(
+                &[ptr.into(), i64.into(), ptr.into(), i64.into()],
+                false,
+            ),
+            None,
+        );
+        let _host_file_append_fn = self.module.add_function(
+            "action_host_file_append",
+            i8.fn_type(
+                &[ptr.into(), i64.into(), ptr.into(), i64.into()],
+                false,
+            ),
+            None,
+        );
+        let _host_file_read_fn = self.module.add_function(
+            "action_host_file_read",
+            self.string_type.fn_type(&[ptr.into(), i64.into()], false),
+            None,
+        );
+        let _host_file_exists_fn = self.module.add_function(
+            "action_host_file_exists",
+            i8.fn_type(&[ptr.into(), i64.into()], false),
+            None,
+        );
+        let _host_file_delete_fn = self.module.add_function(
+            "action_host_file_delete",
+            i8.fn_type(&[ptr.into(), i64.into()], false),
+            None,
+        );
+        let _host_file_io_barrier_fn = self.module.add_function(
+            "action_host_file_io_barrier",
+            void.fn_type(&[ptr.into(), i64.into()], false),
+            None,
+        );
+        let _host_file_open_fn = self.module.add_function(
+            "action_host_file_open",
+            ptr.fn_type(
+                &[ptr.into(), i64.into(), ptr.into(), i64.into()],
+                false,
+            ),
+            None,
+        );
+        // Bootstrap in-memory session buffers (M42) — slot + (ptr,len) append / String get
+        let _host_bs_buf_clear_fn = self.module.add_function(
+            "action_host_bs_buf_clear",
+            i64.fn_type(&[i64.into()], false),
+            None,
+        );
+        let _host_bs_buf_append_fn = self.module.add_function(
+            "action_host_bs_buf_append",
+            i64.fn_type(&[i64.into(), ptr.into(), i64.into()], false),
+            None,
+        );
+        let _host_bs_buf_set_fn = self.module.add_function(
+            "action_host_bs_buf_set",
+            i64.fn_type(&[i64.into(), ptr.into(), i64.into()], false),
+            None,
+        );
+        let _host_bs_buf_get_fn = self.module.add_function(
+            "action_host_bs_buf_get",
+            self.string_type.fn_type(&[i64.into()], false),
+            None,
+        );
+        // Bootstrap Int session slots (M45) — span / line-col scalars
+        let _host_bs_int_set_fn = self.module.add_function(
+            "action_host_bs_int_set",
+            i64.fn_type(&[i64.into(), i64.into()], false),
+            None,
+        );
+        let _host_bs_int_get_fn = self.module.add_function(
+            "action_host_bs_int_get",
+            i64.fn_type(&[i64.into()], false),
+            None,
+        );
+
         // ---- HTTP / networking runtime functions ----
         // action_http_request(method: ptr, url: ptr, headers: ptr, body: ptr, body_len: i64) -> ptr
         let _http_request_fn = self.module.add_function(

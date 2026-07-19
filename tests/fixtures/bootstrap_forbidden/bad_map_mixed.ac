@@ -1,0 +1,4 @@
+fun main() -> Int {
+    val m: Map = Map["a": 1, "b": true]
+    return 0
+}

@@ -15,6 +15,7 @@ dependencies = [
  "ariadne",
  "clap",
  "inkwell",
+ "libc",
  "llvm-sys",
  "lsp-server",
  "lsp-types",
@@ -59,6 +60,7 @@ dependencies = [
 name = "action-host-rt"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "serde_json",
 ]
 

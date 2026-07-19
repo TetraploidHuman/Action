@@ -20,7 +20,6 @@ impl<'ctx> CodeGen<'ctx> {
         let memcmp_fn = self.module.get_function("memcmp").unwrap();
         let _memcpy_fn = self.module.get_function("memcpy").unwrap();
         let str_data_fn = self.module.get_function("action_string_data").unwrap();
-        let is_slice_fn = self.module.get_function("action_string_is_slice").unwrap();
         let rc_inc_fn = self.module.get_function("action_rc_inc").unwrap();
         let slice_tag = i64.const_int(0xAC710001, false);
         let hdr_size = i64.const_int(24, false);
@@ -297,16 +296,12 @@ impl<'ctx> CodeGen<'ctx> {
             .build_insert_value(sub_er1, sub_ebuf, 1, "er2")
             .map_err(llvm_err)?;
         let _ = self.builder.build_return(Some(&sub_er2));
-        // Non-empty: create slice header {tag, parent_storage, data_offset}
+        // Non-empty: slice header {tag, parent_storage, relative_offset}.
+        // Offset is relative to parent storage (owned bytes or another slice).
+        // Do NOT fold parent abs offset here — action_string_data_ptr already
+        // adds recursively; absolute offsets would double-count nested slices
+        // and break charAt/isDigit on token substrings (M39 file-free lex).
         self.builder.position_at_end(sub_slice);
-        let sub_is_slice_cc = self
-            .builder
-            .build_call(is_slice_fn, &[sub_storage.into()], "chk")
-            .map_err(llvm_err)?;
-        let sub_parent_is_slice = sub_is_slice_cc
-            .try_as_basic_value()
-            .unwrap_basic()
-            .into_int_value();
         let sub_hdr = self
             .builder
             .build_call(malloc_rc_fn, &[hdr_size.into()], "hdr")
@@ -339,30 +334,6 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_store(sub_parent_i64p, sub_storage_i64)
             .map_err(llvm_err)?;
-        // base_offset = parent_is_slice ? load(parent+16) : 0
-        let sub_parent_off_p = unsafe {
-            self.builder
-                .build_gep(i8, sub_storage, &[sixteen], "parent_off_p")
-                .map_err(llvm_err)
-        }?;
-        let sub_parent_off_i64p = self
-            .builder
-            .build_pointer_cast(sub_parent_off_p, ptr, "parent_off_i64p")
-            .map_err(llvm_err)?;
-        let sub_parent_off = self
-            .builder
-            .build_load(i64, sub_parent_off_i64p, "parent_off")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let sub_base_off = self
-            .builder
-            .build_select(sub_parent_is_slice, sub_parent_off, zero, "base_off")
-            .map_err(llvm_err)?
-            .into_int_value();
-        let sub_abs_off = self
-            .builder
-            .build_int_add(sub_base_off, sub_clamped_start, "abs_off")
-            .map_err(llvm_err)?;
         let sub_off_p = unsafe {
             self.builder
                 .build_gep(i8, sub_hdr, &[sixteen], "off_p")
@@ -374,7 +345,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self
             .builder
-            .build_store(sub_off_i64p, sub_abs_off)
+            .build_store(sub_off_i64p, sub_clamped_start)
             .map_err(llvm_err)?;
         let _ = self
             .builder

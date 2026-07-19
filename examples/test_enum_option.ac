@@ -2,7 +2,7 @@
 enum Option { Some(Int), None }
 
 fun safe_div(a: Int, b: Int) -> Option {
-    when b == 0 { None else Some(a / b) }
+    if b == 0 { None } else { Some(a / b) }
 }
 
 fun add_one(opt: Option) -> Option {
@@ -44,7 +44,7 @@ fun main() {
     // Test 5: Nested pattern matching on Option
     val r5 = safe_div(50, 3)
     when r5 {
-        Some(v) -> when v > 15 { print(5) else print(6) }
+        Some(v) -> if v > 15 { print(5) } else { print(6) }
         None -> print(0)
     }
 }

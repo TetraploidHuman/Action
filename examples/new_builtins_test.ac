@@ -2,9 +2,8 @@
 fun main() {
     val xs = range(1, 5)
 
-    // Test tail (fallible when empty)
-    val t = tail(xs) or { List[] }
-    print("tail len: ")
+    // Test tail (fallible if empty)
+    val t = tail(xs) or { List[] }print("tail len: ")
     print(len(t))
     println("")
 

@@ -1,10 +1,8 @@
-// Test: and guards in when - simple value match
-fun main() {
-    val x = 5
+// Test: and guards in if - simple value match
+fun main() { val x = 5
     val result = when x {
         n and n > 0 -> "positive"
         else -> "non-positive"
     }
     println(result)
-    println("done")
-}
+    println("done") }

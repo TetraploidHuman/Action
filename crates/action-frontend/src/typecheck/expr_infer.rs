@@ -4,6 +4,18 @@ use crate::ast::resolve_type_vars;
 use crate::types::infer_type_args;
 
 impl TypeChecker {
+    fn hm_expr_diverges(expr: &Expr) -> bool {
+        match &expr.kind {
+            ExprKind::Break | ExprKind::Continue => true,
+            ExprKind::Block(stmts) => match stmts.last() {
+                Some(Stmt::Break { .. } | Stmt::Continue { .. }) => true,
+                Some(Stmt::Expr { expr, .. }) => Self::hm_expr_diverges(expr),
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
     /// Infer the type of an expression (Hindley-Milner with structural fallback)
     pub(crate) fn infer_expr_type(&self, expr: &Expr) -> Result<Type, CompilerError> {
         self.infer_expr_type_with_locals(expr, &HashMap::new())
@@ -168,6 +180,13 @@ impl TypeChecker {
                 ) {
                     return Ok(Type::Named("Int".into()));
                 }
+                if matches!(op, BinaryOp::Range | BinaryOp::RangeExclusive) {
+                    // Same surface type as ExprKind::Range — enables List UFCS (contains/toList).
+                    return Ok(Type::Generic(
+                        Box::new(Type::Named("List".into())),
+                        vec![Type::Named("Int".into())],
+                    ));
+                }
                 let lt = engine.resolve(&lt);
                 let rt = engine.resolve(&rt);
                 if *op == BinaryOp::Pow {
@@ -245,7 +264,11 @@ impl TypeChecker {
                                 }
                                 return Ok(*ret.clone());
                             }
-                            if let Some(ty) = builtin::lookup_return_type(name) {
+                            let mut arg_tys = Vec::with_capacity(args.len());
+                            for arg in args {
+                                arg_tys.push(self.hm_infer_expr(arg, locals, engine)?);
+                            }
+                            if let Some(ty) = builtin::lookup_return_type_for_args(name, &arg_tys) {
                                 return Ok(ty);
                             }
                             Ok(engine.fresh_var())
@@ -294,6 +317,17 @@ impl TypeChecker {
                     ..
                 } = &w.kind
                 {
+                    let then_div = Self::hm_expr_diverges(then_expr);
+                    let else_div = Self::hm_expr_diverges(else_expr);
+                    if then_div && else_div {
+                        return Ok(Type::Unit);
+                    }
+                    if then_div {
+                        return self.hm_infer_expr(else_expr, locals, engine);
+                    }
+                    if else_div {
+                        return self.hm_infer_expr(then_expr, locals, engine);
+                    }
                     let then_ty = self.hm_infer_expr(then_expr, locals, engine)?;
                     let else_ty = self.hm_infer_expr(else_expr, locals, engine)?;
                     engine
@@ -347,17 +381,46 @@ impl TypeChecker {
                 Ok(engine.resolve(&fallible_ty))
             }
             ExprKind::Unsafe(inner) => self.hm_infer_expr(inner, locals, engine),
-            ExprKind::Block(stmts) => stmts
-                .last()
-                .map(|s| match s {
-                    Stmt::Expr { expr: e, .. } => self.hm_infer_expr(e, locals, engine),
-                    Stmt::Return { value: e, .. } => e
-                        .as_ref()
-                        .map(|re| self.hm_infer_expr(re, locals, engine))
-                        .unwrap_or(Ok(Type::Unit)),
-                    _ => Ok(Type::Unit),
-                })
-                .unwrap_or(Ok(Type::Unit)),
+            ExprKind::Block(stmts) => {
+                // Scoped locals for block `val`/`var` (Kotlin-style last-expr value).
+                let mut block_locals = locals.clone();
+                let mut last_ty = Type::Unit;
+                for s in stmts {
+                    match s {
+                        Stmt::Let {
+                            name,
+                            type_ann,
+                            value,
+                            ..
+                        }
+                        | Stmt::Const {
+                            name,
+                            type_ann,
+                            value,
+                            ..
+                        } => {
+                            let inferred = self.hm_infer_expr(value, &block_locals, engine)?;
+                            let ty = type_ann.clone().unwrap_or(inferred);
+                            block_locals.insert(name.clone(), ty);
+                            last_ty = Type::Unit;
+                        }
+                        Stmt::Expr { expr: e, .. } => {
+                            last_ty = self.hm_infer_expr(e, &block_locals, engine)?;
+                        }
+                        Stmt::Return { value: e, .. } => {
+                            last_ty = e
+                                .as_ref()
+                                .map(|re| self.hm_infer_expr(re, &block_locals, engine))
+                                .transpose()?
+                                .unwrap_or(Type::Unit);
+                        }
+                        _ => {
+                            last_ty = Type::Unit;
+                        }
+                    }
+                }
+                Ok(last_ty)
+            }
             ExprKind::Ident(name) => {
                 if let Some(ty) = locals.get(name) {
                     return Ok(ty.clone());
@@ -392,7 +455,7 @@ impl TypeChecker {
                 let body_ty = self.hm_infer_expr(body, &lambda_locals, engine)?;
                 Ok(Type::Function(param_tys, Box::new(body_ty)))
             }
-            ExprKind::Index(obj, _) => {
+            ExprKind::Index(obj, idx) => {
                 let obj_ty = self.hm_infer_expr(obj, locals, engine)?;
                 let obj_type = engine.resolve(&obj_ty);
                 match obj_type {
@@ -403,7 +466,38 @@ impl TypeChecker {
                     }
                     Type::Map(_, v) => return Ok((*v).clone()),
                     Type::Set(e) => return Ok((*e).clone()),
+                    // M89: bare Named collection (no element args) — soft defaults for index lvalues.
+                    Type::Named(ref n) if n == "List" => {
+                        return Ok(Type::Named("Int".into()));
+                    }
+                    Type::Named(ref n) if n == "Map" => {
+                        return Ok(Type::Named("Int".into()));
+                    }
                     Type::Named(ref n) if n == "String" => return Ok(Type::Named("Int".into())),
+                    Type::Struct(fields) => {
+                        // Anonymous tuple / pair: only in-bounds integer literals select a field
+                        // (matches codegen + M64 E005).
+                        if let ExprKind::Literal(Literal::Int(n)) = &idx.kind {
+                            let n = *n;
+                            if n >= 0 {
+                                let i = n as usize;
+                                if let Some((_, ty)) = fields.get(i) {
+                                    return Ok(ty.clone());
+                                }
+                            }
+                            return Err(crate::error::e005_struct_index_invalid(
+                                format!(
+                                    "tuple/struct index {n} is out of range for {} field(s)",
+                                    fields.len()
+                                ),
+                                expr.span,
+                            ));
+                        }
+                        return Err(crate::error::e005_struct_index_invalid(
+                            "tuple/struct index must be an integer literal",
+                            expr.span,
+                        ));
+                    }
                     _ => {}
                 }
                 Ok(engine.fresh_var())
@@ -411,7 +505,7 @@ impl TypeChecker {
             ExprKind::FieldAccess(obj, field) => {
                 let obj_ty = self.hm_infer_expr(obj, locals, engine)?;
                 let obj_type = engine.resolve(&obj_ty);
-                let field_type = if let Type::Named(type_name) = &obj_type {
+                if let Type::Named(type_name) = &obj_type {
                     let struct_name = match type_name.as_str() {
                         "Str" => "String",
                         "Double" => "Float",
@@ -419,17 +513,14 @@ impl TypeChecker {
                     };
                     if let Some(struct_info) = self.registry.structs.get(struct_name) {
                         if let Some(index) = struct_info.field_index.get(field) {
-                            struct_info.fields[*index].1.clone()
-                        } else {
-                            engine.fresh_var()
+                            return Ok(struct_info.fields[*index].1.clone());
                         }
-                    } else {
-                        engine.fresh_var()
+                        return Err(crate::error::e013_unknown_struct_field(
+                            struct_name, field, expr.span,
+                        ));
                     }
-                } else {
-                    engine.fresh_var()
-                };
-                Ok(field_type)
+                }
+                Ok(engine.fresh_var())
             }
             ExprKind::StructLiteral(fields) => {
                 let field_names: Vec<String> = fields.iter().map(|(n, _)| n.clone()).collect();
@@ -442,7 +533,9 @@ impl TypeChecker {
             ExprKind::Assign { value, .. } => self.hm_infer_expr(value, locals, engine),
             ExprKind::Unary(op, inner) => match op {
                 UnaryOp::Not => Ok(Type::Named("Bool".into())),
-                UnaryOp::Neg | UnaryOp::BitNot => self.hm_infer_expr(inner, locals, engine),
+                UnaryOp::Neg | UnaryOp::Pos | UnaryOp::BitNot => {
+                    self.hm_infer_expr(inner, locals, engine)
+                }
             },
             ExprKind::Tuple(exprs) => {
                 let field_tys: Result<Vec<(String, Type)>, CompilerError> = exprs

@@ -1,6 +1,37 @@
 use super::*;
 
 impl Parser {
+    /// Parse `if <cond> { <stmts…> } [else { <stmts…> } | else if … | else <expr>]`.
+    /// Braced arms are always statement blocks (Kotlin-style); the last expression is the value.
+    /// Desugars to `WhenKind::OneLine` (same IR/codegen as the old ternary when).
+    pub(crate) fn parse_if(&mut self) -> Result<Expr, ParseError> {
+        self.advance(); // skip 'if'
+        self.no_trailing_lambda = true;
+        let condition = self.parse_expr()?;
+        self.no_trailing_lambda = false;
+        let then_expr = self.parse_block_expr()?;
+        let else_expr = if self.current_kind() == TokenKind::Else {
+            self.advance();
+            if self.current_kind() == TokenKind::If {
+                self.parse_if()?
+            } else if self.current_kind() == TokenKind::LBrace {
+                self.parse_block_expr()?
+            } else {
+                self.parse_when_arm_expr()?
+            }
+        } else {
+            ExprKind::Literal(Literal::Unit).into()
+        };
+        Ok(ExprKind::When(Box::new(When {
+            kind: WhenKind::OneLine {
+                condition: Box::new(condition),
+                then_expr: Box::new(then_expr),
+                else_expr: Box::new(else_expr),
+            },
+        }))
+        .into())
+    }
+
     pub(crate) fn parse_when(&mut self) -> Result<Expr, ParseError> {
         self.advance(); // skip 'when'
 
@@ -47,28 +78,23 @@ impl Parser {
             .into());
         }
 
-        // Parse the condition or value
+        // Parse the subject value for value-match: when value { Pat -> expr, ... }
         self.no_trailing_lambda = true;
         let first = self.parse_expr()?;
         self.no_trailing_lambda = false;
 
-        // when first { ... }
         if self.current_kind() == TokenKind::LBrace {
             self.advance(); // skip '{'
 
-            // Distinguish: binary { A else B } vs value-match { Pat -> expr, ... }
-            // Try parsing first item as a pattern. If followed by ->, it's value-match.
-            // Also handle optional `and guard` between pattern and ->.
+            // Distinguish value-match { Pat -> expr } from the removed ternary form.
             let saved_pos = self.pos;
             let is_value_match = self.parse_pattern().ok().map_or(false, |_| {
-                // Skip comma-separated or-patterns: 0, 1, 2 -> ...
                 while self.current_kind() == TokenKind::Comma {
                     self.advance();
                     if self.parse_pattern().is_err() {
                         return false;
                     }
                 }
-                // Skip optional and guard
                 if self.current_kind() == TokenKind::And {
                     self.advance();
                     let _ = self.parse_expr();
@@ -78,7 +104,6 @@ impl Parser {
             self.pos = saved_pos;
 
             if is_value_match {
-                // when value { Pat -> expr, ... }
                 let mut arms = Vec::new();
                 while self.current_kind() != TokenKind::RBrace {
                     if !arms.is_empty() {
@@ -120,46 +145,21 @@ impl Parser {
                     },
                 }))
                 .into());
-            } else {
-                // Binary conditional: when cond { true_expr else false_expr }
-                // else clause is optional; if omitted, defaults to ()
-                // Support struct-literal arms: when cond { {fields} else {fields} }
-                // The outer { of the when-block was already consumed above;
-                // if an arm starts with {, it's a struct literal or block expression
-                // which needs its own {} pair.
-                // The when-block's closing } must still appear after the last arm.
-                let true_expr = self.parse_when_arm_expr()?;
-                let mut false_expr = if self.current_kind() == TokenKind::Else {
-                    self.advance();
-                    self.parse_when_arm_expr()?
-                } else {
-                    ExprKind::Literal(Literal::Unit).into()
-                };
-                self.expect(TokenKind::RBrace)?;
-                // Multiline: when cond { then } else { alt }
-                if matches!(false_expr.kind, ExprKind::Literal(Literal::Unit))
-                    && self.current_kind() == TokenKind::Else
-                {
-                    self.advance();
-                    false_expr = self.parse_when_arm_expr()?;
-                }
-                return Ok(ExprKind::When(Box::new(When {
-                    kind: WhenKind::OneLine {
-                        condition: Box::new(first),
-                        then_expr: Box::new(true_expr),
-                        else_expr: Box::new(false_expr),
-                    },
-                }))
-                .into());
             }
+
+            return Err(self.error(
+                "Boolean ternary uses `if cond { then } else { else }`; \
+                 `when` is only for pattern match (`when x { … -> … }`) \
+                 or condition chains (`when { cond -> … }`)",
+            ));
         }
 
         Err(self.error("Invalid when expression"))
     }
 
-    /// Parse an expression that appears as a when arm (inside the when-block { }).
-    /// After the outer { of the when block is consumed, the arm may itself be a
-    /// struct literal or block starting with {, so we route to the right parser.
+    /// Parse an expression that appears as a when/if arm (inside a `{ }` block).
+    /// After the outer `{` is consumed, the arm may itself be a
+    /// struct literal or block starting with `{`, so we route to the right parser.
     pub(crate) fn parse_when_arm_expr(&mut self) -> Result<Expr, ParseError> {
         if self.current_kind() == TokenKind::LBrace {
             self.parse_lambda_or_struct()

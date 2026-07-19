@@ -1,0 +1,9 @@
+fun main() -> Int {
+    var x: Int = 0
+    var s: Int = 0
+    for x < 3 {
+        s = s + 1
+        x = x + 1
+    }
+    return s
+}

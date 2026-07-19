@@ -1,6 +1,5 @@
-// Test tuple pattern matching in when expressions
-fun main() {
-    val pair = (1, 2)
+// Test tuple pattern matching in if expressions
+fun main() { val pair = (1, 2)
 
     // Match with wildcard
     when pair {
@@ -31,5 +30,4 @@ fun main() {
         (2, _) -> "second"
         else -> "other"
     }
-    println(r2)
-}
+    println(r2) }

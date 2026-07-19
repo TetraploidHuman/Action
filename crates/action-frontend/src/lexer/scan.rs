@@ -722,6 +722,7 @@ impl Lexer {
             "var" => TokenKind::Var,
             "fun" => TokenKind::Fun,
             "when" => TokenKind::When,
+            "if" => TokenKind::If,
             "else" => TokenKind::Else,
             "for" => TokenKind::For,
             "in" => TokenKind::In,

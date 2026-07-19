@@ -7,7 +7,7 @@ fun main() {
 
     // Even numbers only: [2, 4, 6, 8, 10]
     val evens = for x in 1..11 {
-        when x % 2 == 0 { x else continue }
+        if x % 2 == 0 { x } else { continue }
     }
 
     // Shorthand with implicit it

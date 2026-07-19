@@ -16,7 +16,6 @@ impl<'ctx> CodeGen<'ctx> {
         let i32 = self.context.i32_type();
         let i8 = self.context.i8_type();
         let malloc_rc_fn = self.module.get_function("action_malloc_rc").unwrap();
-        let fopen_fn = self.module.get_function("fopen").unwrap();
         let fclose_fn = self.module.get_function("fclose").unwrap();
         let fseek_fn = self.module.get_function("fseek").unwrap();
         let ftell_fn = self.module.get_function("ftell").unwrap();
@@ -45,11 +44,16 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(pi_s, 0, "len")
             .map_err(llvm_err)?
             .into_int_value();
-        let pi_data = self
-            .builder
-            .build_extract_value(pi_s, 1, "data")
-            .map_err(llvm_err)?
-            .into_pointer_value();
+        // Resolve slices before digit GEP (M40).
+        let pi_data = {
+            let str_data_fn = self.module.get_function("action_string_data").unwrap();
+            self.builder
+                .build_call(str_data_fn, &[pi_s.into()], "data")
+                .map_err(llvm_err)?
+                .try_as_basic_value()
+                .unwrap_basic()
+                .into_pointer_value()
+        };
         // Initialize result=0, sign=1, i=0, valid=0
         let pi_result = self.builder.build_alloca(i64, "result").map_err(llvm_err)?;
         let pi_sign = self.builder.build_alloca(i64, "sign").map_err(llvm_err)?;
@@ -259,7 +263,37 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let _ = self.builder.build_return(Some(&pi_ret2));
 
+        let host_file_write_fn = self
+            .module
+            .get_function("action_host_file_write")
+            .ok_or("action_host_file_write not declared")?;
+        let host_file_append_fn = self
+            .module
+            .get_function("action_host_file_append")
+            .ok_or("action_host_file_append not declared")?;
+        let host_file_read_fn = self
+            .module
+            .get_function("action_host_file_read")
+            .ok_or("action_host_file_read not declared")?;
+        let host_file_exists_fn = self
+            .module
+            .get_function("action_host_file_exists")
+            .ok_or("action_host_file_exists not declared")?;
+        let host_file_delete_fn = self
+            .module
+            .get_function("action_host_file_delete")
+            .ok_or("action_host_file_delete not declared")?;
+        let host_file_open_fn = self
+            .module
+            .get_function("action_host_file_open")
+            .ok_or("action_host_file_open not declared")?;
+        let str_data_fn = self
+            .module
+            .get_function("action_string_data")
+            .ok_or("action_string_data not declared")?;
+
         // ---- action_read_file({i64, ptr}) -> {i64, ptr} ----
+        // Resolve path slices, then host length-aware read (M40).
         let rf_fn = self.module.add_function(
             "action_read_file",
             str_ty.fn_type(&[str_ty.into()], false),
@@ -268,159 +302,33 @@ impl<'ctx> CodeGen<'ctx> {
         let entry = self.context.append_basic_block(rf_fn, "entry");
         self.builder.position_at_end(entry);
         let rf_path_s = rf_fn.get_first_param().unwrap().into_struct_value();
+        let rf_path_len = self
+            .builder
+            .build_extract_value(rf_path_s, 0, "path_len")
+            .map_err(llvm_err)?
+            .into_int_value();
         let rf_path_data = self
             .builder
-            .build_extract_value(rf_path_s, 1, "path_data")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let rf_mode = self.make_global_str(".rf_mode", b"rb\0")?;
-        let rf_file = self
-            .builder
-            .build_call(fopen_fn, &[rf_path_data.into(), rf_mode.into()], "file")
+            .build_call(str_data_fn, &[rf_path_s.into()], "path_data")
             .map_err(llvm_err)?
             .try_as_basic_value()
             .unwrap_basic()
             .into_pointer_value();
-        let rf_null = self
-            .builder
-            .build_int_compare(
-                IntPredicate::EQ,
-                self.builder
-                    .build_ptr_to_int(rf_file, i64, "rf_i64")
-                    .map_err(llvm_err)?,
-                i64.const_int(0, false),
-                "rf_null",
-            )
-            .map_err(llvm_err)?;
-        let rf_open_ok = self.context.append_basic_block(rf_fn, "open_ok");
-        let rf_fail = self.context.append_basic_block(rf_fn, "fail");
-        let _ = self
-            .builder
-            .build_conditional_branch(rf_null, rf_fail, rf_open_ok);
-
-        // Fail: return empty string
-        self.builder.position_at_end(rf_fail);
-        let rf_e_undef = str_ty.get_undef();
-        let rf_e_r1 = self
-            .builder
-            .build_insert_value(rf_e_undef, i64.const_int(0, false), 0, "r1")
-            .map_err(llvm_err)?;
-        let rf_e_r2 = self
-            .builder
-            .build_insert_value(
-                rf_e_r1,
-                self.builder
-                    .build_int_to_ptr(i64.const_int(0, false), ptr, "nullp")
-                    .map_err(llvm_err)?,
-                1,
-                "r2",
-            )
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_return(Some(&rf_e_r2));
-
-        // Open ok: seek to end, get size, read, return
-        self.builder.position_at_end(rf_open_ok);
-        // fseek(file, 0, 2) from end
-        let _ = self
+        let rf_str = self
             .builder
             .build_call(
-                fseek_fn,
-                &[
-                    rf_file.into(),
-                    i64.const_int(0, false).into(),
-                    i32.const_int(2, false).into(),
-                ],
-                "",
+                host_file_read_fn,
+                &[rf_path_data.into(), rf_path_len.into()],
+                "rf_str",
             )
-            .map_err(llvm_err)?;
-        let rf_size = self
-            .builder
-            .build_call(ftell_fn, &[rf_file.into()], "size")
             .map_err(llvm_err)?
             .try_as_basic_value()
             .unwrap_basic()
-            .into_int_value();
-        // Rewind
-        let _ = self
-            .builder
-            .build_call(
-                fseek_fn,
-                &[
-                    rf_file.into(),
-                    i64.const_int(0, false).into(),
-                    i32.const_int(0, false).into(),
-                ],
-                "",
-            )
-            .map_err(llvm_err)?;
-        // Allocate size+1, read, null-terminate
-        let rf_alc = self
-            .builder
-            .build_int_add(rf_size, i64.const_int(1, false), "alc")
-            .map_err(llvm_err)?;
-        let rf_buf = self
-            .builder
-            .build_call(malloc_rc_fn, &[rf_alc.into()], "buf")
-            .map_err(llvm_err)?
-            .try_as_basic_value()
-            .unwrap_basic()
-            .into_pointer_value();
-        // Set RC=1 for newly allocated buffer
-        let rf_rc_addr = self
-            .builder
-            .build_int_sub(
-                self.builder
-                    .build_ptr_to_int(rf_buf, i64, "rf_buf_i64")
-                    .map_err(llvm_err)?,
-                i64.const_int(8, false),
-                "rf_rc_addr",
-            )
-            .map_err(llvm_err)?;
-        self.builder
-            .build_store(
-                self.builder
-                    .build_int_to_ptr(rf_rc_addr, ptr, "")
-                    .map_err(llvm_err)?,
-                i64.const_int(1, false),
-            )
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_call(
-                fread_fn,
-                &[
-                    rf_buf.into(),
-                    i64.const_int(1, false).into(),
-                    rf_size.into(),
-                    rf_file.into(),
-                ],
-                "",
-            )
-            .map_err(llvm_err)?;
-        let rf_null_gep = unsafe {
-            self.builder
-                .build_gep(i8, rf_buf, &[rf_size], "null_gep")
-                .map_err(llvm_err)
-        }?;
-        self.builder
-            .build_store(rf_null_gep, i8.const_int(0, false))
-            .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_call(fclose_fn, &[rf_file.into()], "")
-            .map_err(llvm_err)?;
-        let rf_und = str_ty.get_undef();
-        let rf_r1 = self
-            .builder
-            .build_insert_value(rf_und, rf_size, 0, "r1")
-            .map_err(llvm_err)?;
-        let rf_r2 = self
-            .builder
-            .build_insert_value(rf_r1, rf_buf, 1, "r2")
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_return(Some(&rf_r2));
+            .into_struct_value();
+        let _ = self.builder.build_return(Some(&rf_str));
 
         // ---- action_write_file({i64, ptr}, {i64, ptr}) -> i1 ----
+        // Resolve slices via action_string_data, then host truncating write (len-aware).
         let wf_fn = self.module.add_function(
             "action_write_file",
             self.bool_ty()
@@ -431,10 +339,17 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(entry);
         let wf_path = wf_fn.get_first_param().unwrap().into_struct_value();
         let wf_content = wf_fn.get_nth_param(1).unwrap().into_struct_value();
+        let wf_plen = self
+            .builder
+            .build_extract_value(wf_path, 0, "plen")
+            .map_err(llvm_err)?
+            .into_int_value();
         let wf_pdata = self
             .builder
-            .build_extract_value(wf_path, 1, "pdata")
+            .build_call(str_data_fn, &[wf_path.into()], "pdata")
             .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
             .into_pointer_value();
         let wf_clen = self
             .builder
@@ -443,65 +358,37 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
         let wf_cdata = self
             .builder
-            .build_extract_value(wf_content, 1, "cdata")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let wf_wmode = self.make_global_str(".wf_mode", b"wb\0")?;
-        let wf_file = self
-            .builder
-            .build_call(fopen_fn, &[wf_pdata.into(), wf_wmode.into()], "file")
+            .build_call(str_data_fn, &[wf_content.into()], "cdata")
             .map_err(llvm_err)?
             .try_as_basic_value()
             .unwrap_basic()
             .into_pointer_value();
-        let wf_null = self
-            .builder
-            .build_int_compare(
-                IntPredicate::EQ,
-                self.builder
-                    .build_ptr_to_int(wf_file, i64, "wf_i64")
-                    .map_err(llvm_err)?,
-                i64.const_int(0, false),
-                "wf_null",
-            )
-            .map_err(llvm_err)?;
-        let wf_open_ok = self.context.append_basic_block(wf_fn, "open_ok");
-        let wf_fail = self.context.append_basic_block(wf_fn, "wf_fail");
-        let wf_done = self.context.append_basic_block(wf_fn, "wf_done");
-        let _ = self
-            .builder
-            .build_conditional_branch(wf_null, wf_fail, wf_open_ok);
-        self.builder.position_at_end(wf_fail);
-        let _ = self.builder.build_unconditional_branch(wf_done);
-        self.builder.position_at_end(wf_open_ok);
-        let _ = self
+        let wf_ok_i8 = self
             .builder
             .build_call(
-                fwrite_fn,
+                host_file_write_fn,
                 &[
+                    wf_pdata.into(),
+                    wf_plen.into(),
                     wf_cdata.into(),
-                    i64.const_int(1, false).into(),
                     wf_clen.into(),
-                    wf_file.into(),
                 ],
-                "",
+                "ok_i8",
+            )
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_int_value();
+        let wf_ok = self
+            .builder
+            .build_int_compare(
+                IntPredicate::NE,
+                wf_ok_i8,
+                self.context.i8_type().const_int(0, false),
+                "ok",
             )
             .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_call(fclose_fn, &[wf_file.into()], "")
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(wf_done);
-        self.builder.position_at_end(wf_done);
-        let wf_phi = self
-            .builder
-            .build_phi(self.bool_ty(), "wf_ok")
-            .map_err(llvm_err)?;
-        wf_phi.add_incoming(&[
-            (&self.bool_ty().const_int(0, false), wf_fail),
-            (&self.bool_ty().const_int(1, false), wf_open_ok),
-        ]);
-        let _ = self.builder.build_return(Some(&wf_phi.as_basic_value()));
+        let _ = self.builder.build_return(Some(&wf_ok));
 
         // ---- action_file_exists({i64, ptr}) -> i1 ----
         let fe_fn = self.module.add_function(
@@ -512,53 +399,42 @@ impl<'ctx> CodeGen<'ctx> {
         let entry = self.context.append_basic_block(fe_fn, "entry");
         self.builder.position_at_end(entry);
         let fe_path = fe_fn.get_first_param().unwrap().into_struct_value();
+        let fe_plen = self
+            .builder
+            .build_extract_value(fe_path, 0, "plen")
+            .map_err(llvm_err)?
+            .into_int_value();
         let fe_pdata = self
             .builder
-            .build_extract_value(fe_path, 1, "pdata")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let fe_mode = self.make_global_str(".fe_mode", b"r\0")?;
-        let fe_file = self
-            .builder
-            .build_call(fopen_fn, &[fe_pdata.into(), fe_mode.into()], "file")
+            .build_call(str_data_fn, &[fe_path.into()], "pdata")
             .map_err(llvm_err)?
             .try_as_basic_value()
             .unwrap_basic()
             .into_pointer_value();
-        let fe_null = self
+        let fe_ok_i8 = self
+            .builder
+            .build_call(
+                host_file_exists_fn,
+                &[fe_pdata.into(), fe_plen.into()],
+                "ok_i8",
+            )
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_int_value();
+        let fe_ok = self
             .builder
             .build_int_compare(
-                IntPredicate::EQ,
-                self.builder
-                    .build_ptr_to_int(fe_file, i64, "fe_i64")
-                    .map_err(llvm_err)?,
-                i64.const_int(0, false),
-                "fe_null",
+                IntPredicate::NE,
+                fe_ok_i8,
+                self.context.i8_type().const_int(0, false),
+                "ok",
             )
             .map_err(llvm_err)?;
-        let fe_exists_bb = self.context.append_basic_block(fe_fn, "exists_ok");
-        let fe_not_bb = self.context.append_basic_block(fe_fn, "fe_done");
-        let _ = self
-            .builder
-            .build_conditional_branch(fe_null, fe_not_bb, fe_exists_bb);
-        self.builder.position_at_end(fe_exists_bb);
-        let _ = self
-            .builder
-            .build_call(fclose_fn, &[fe_file.into()], "")
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(fe_not_bb);
-        self.builder.position_at_end(fe_not_bb);
-        let fe_phi = self
-            .builder
-            .build_phi(self.bool_ty(), "fe_exists")
-            .map_err(llvm_err)?;
-        fe_phi.add_incoming(&[
-            (&self.bool_ty().const_int(0, false), entry),
-            (&self.bool_ty().const_int(1, false), fe_exists_bb),
-        ]);
-        let _ = self.builder.build_return(Some(&fe_phi.as_basic_value()));
+        let _ = self.builder.build_return(Some(&fe_ok));
 
         // ---- action_file_append({i64, ptr}, {i64, ptr}) -> i1 ----
+        // Resolve slices, then host-rt cached append (action_host_file_append).
         let fa_fn = self.module.add_function(
             "action_file_append",
             self.bool_ty()
@@ -569,10 +445,17 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(entry);
         let fa_path = fa_fn.get_first_param().unwrap().into_struct_value();
         let fa_content = fa_fn.get_nth_param(1).unwrap().into_struct_value();
+        let fa_plen = self
+            .builder
+            .build_extract_value(fa_path, 0, "plen")
+            .map_err(llvm_err)?
+            .into_int_value();
         let fa_pdata = self
             .builder
-            .build_extract_value(fa_path, 1, "pdata")
+            .build_call(str_data_fn, &[fa_path.into()], "pdata")
             .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
             .into_pointer_value();
         let fa_clen = self
             .builder
@@ -581,65 +464,37 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
         let fa_cdata = self
             .builder
-            .build_extract_value(fa_content, 1, "cdata")
-            .map_err(llvm_err)?
-            .into_pointer_value();
-        let fa_amode = self.make_global_str(".fa_mode", b"a\0")?;
-        let fa_file = self
-            .builder
-            .build_call(fopen_fn, &[fa_pdata.into(), fa_amode.into()], "file")
+            .build_call(str_data_fn, &[fa_content.into()], "cdata")
             .map_err(llvm_err)?
             .try_as_basic_value()
             .unwrap_basic()
             .into_pointer_value();
-        let fa_null = self
-            .builder
-            .build_int_compare(
-                IntPredicate::EQ,
-                self.builder
-                    .build_ptr_to_int(fa_file, i64, "fa_i64")
-                    .map_err(llvm_err)?,
-                i64.const_int(0, false),
-                "fa_null",
-            )
-            .map_err(llvm_err)?;
-        let fa_open_ok = self.context.append_basic_block(fa_fn, "open_ok");
-        let fa_fail = self.context.append_basic_block(fa_fn, "fa_fail");
-        let fa_done = self.context.append_basic_block(fa_fn, "fa_done");
-        let _ = self
-            .builder
-            .build_conditional_branch(fa_null, fa_fail, fa_open_ok);
-        self.builder.position_at_end(fa_fail);
-        let _ = self.builder.build_unconditional_branch(fa_done);
-        self.builder.position_at_end(fa_open_ok);
-        let _ = self
+        let fa_ok_i8 = self
             .builder
             .build_call(
-                fwrite_fn,
+                host_file_append_fn,
                 &[
+                    fa_pdata.into(),
+                    fa_plen.into(),
                     fa_cdata.into(),
-                    i64.const_int(1, false).into(),
                     fa_clen.into(),
-                    fa_file.into(),
                 ],
-                "",
+                "ok_i8",
+            )
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_int_value();
+        let fa_ok = self
+            .builder
+            .build_int_compare(
+                IntPredicate::NE,
+                fa_ok_i8,
+                self.context.i8_type().const_int(0, false),
+                "ok",
             )
             .map_err(llvm_err)?;
-        let _ = self
-            .builder
-            .build_call(fclose_fn, &[fa_file.into()], "")
-            .map_err(llvm_err)?;
-        let _ = self.builder.build_unconditional_branch(fa_done);
-        self.builder.position_at_end(fa_done);
-        let fa_phi = self
-            .builder
-            .build_phi(self.bool_ty(), "fa_ok")
-            .map_err(llvm_err)?;
-        fa_phi.add_incoming(&[
-            (&self.bool_ty().const_int(0, false), fa_fail),
-            (&self.bool_ty().const_int(1, false), fa_open_ok),
-        ]);
-        let _ = self.builder.build_return(Some(&fa_phi.as_basic_value()));
+        let _ = self.builder.build_return(Some(&fa_ok));
 
         // ---- action_file_delete({i64, ptr}) -> i1 ----
         let fd_fn = self.module.add_function(
@@ -650,15 +505,25 @@ impl<'ctx> CodeGen<'ctx> {
         let entry = self.context.append_basic_block(fd_fn, "entry");
         self.builder.position_at_end(entry);
         let fd_path = fd_fn.get_first_param().unwrap().into_struct_value();
+        let fd_plen = self
+            .builder
+            .build_extract_value(fd_path, 0, "plen")
+            .map_err(llvm_err)?
+            .into_int_value();
         let fd_pdata = self
             .builder
-            .build_extract_value(fd_path, 1, "pdata")
+            .build_call(str_data_fn, &[fd_path.into()], "pdata")
             .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
             .into_pointer_value();
-        let remove_fn = self.module.get_function("remove").unwrap();
-        let fd_ret = self
+        let fd_ok_i8 = self
             .builder
-            .build_call(remove_fn, &[fd_pdata.into()], "ret")
+            .build_call(
+                host_file_delete_fn,
+                &[fd_pdata.into(), fd_plen.into()],
+                "ok_i8",
+            )
             .map_err(llvm_err)?
             .try_as_basic_value()
             .unwrap_basic()
@@ -666,10 +531,10 @@ impl<'ctx> CodeGen<'ctx> {
         let fd_ok = self
             .builder
             .build_int_compare(
-                IntPredicate::EQ,
-                fd_ret,
-                self.i32_ty().const_int(0, false),
-                "fd_ok",
+                IntPredicate::NE,
+                fd_ok_i8,
+                self.context.i8_type().const_int(0, false),
+                "ok",
             )
             .map_err(llvm_err)?;
         let _ = self.builder.build_return(Some(&fd_ok));
@@ -677,7 +542,7 @@ impl<'ctx> CodeGen<'ctx> {
         // ---- Streaming File I/O Runtime Functions ----
 
         // ---- action_file_open({i64, ptr}, {i64, ptr}) -> ptr (FILE*) ----
-        // Opens a file at path with mode. Returns FILE* (null on failure).
+        // Resolve path/mode slices via action_string_data, then host fopen (len-aware).
         let fo_fn = self.module.add_function(
             "action_file_open",
             ptr.fn_type(&[str_ty.into(), str_ty.into()], false),
@@ -687,19 +552,43 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(entry);
         let fo_path = fo_fn.get_first_param().unwrap().into_struct_value();
         let fo_mode = fo_fn.get_nth_param(1).unwrap().into_struct_value();
+        let fo_plen = self
+            .builder
+            .build_extract_value(fo_path, 0, "plen")
+            .map_err(llvm_err)?
+            .into_int_value();
         let fo_pdata = self
             .builder
-            .build_extract_value(fo_path, 1, "pdata")
+            .build_call(str_data_fn, &[fo_path.into()], "pdata")
             .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
             .into_pointer_value();
+        let fo_mlen = self
+            .builder
+            .build_extract_value(fo_mode, 0, "mlen")
+            .map_err(llvm_err)?
+            .into_int_value();
         let fo_mdata = self
             .builder
-            .build_extract_value(fo_mode, 1, "mdata")
+            .build_call(str_data_fn, &[fo_mode.into()], "mdata")
             .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
             .into_pointer_value();
+        // Host open also runs path-aware append barrier.
         let fo_file = self
             .builder
-            .build_call(fopen_fn, &[fo_pdata.into(), fo_mdata.into()], "file")
+            .build_call(
+                host_file_open_fn,
+                &[
+                    fo_pdata.into(),
+                    fo_plen.into(),
+                    fo_mdata.into(),
+                    fo_mlen.into(),
+                ],
+                "file",
+            )
             .map_err(llvm_err)?
             .try_as_basic_value()
             .unwrap_basic()
@@ -865,6 +754,18 @@ impl<'ctx> CodeGen<'ctx> {
                 "is_nl",
             )
             .map_err(llvm_err)?;
+        // print_string for owned buffers walks to NUL — overwrite '\n' so adj_len matches.
+        let frl_strip_bb = self.context.append_basic_block(frl_fn, "strip_nl");
+        let frl_len_bb = self.context.append_basic_block(frl_fn, "len_done");
+        let _ = self
+            .builder
+            .build_conditional_branch(frl_is_nl, frl_strip_bb, frl_len_bb);
+        self.builder.position_at_end(frl_strip_bb);
+        self.builder
+            .build_store(frl_last_ptr, i8.const_int(0, false))
+            .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(frl_len_bb);
+        self.builder.position_at_end(frl_len_bb);
         let frl_adj_len = self
             .builder
             .build_select(frl_is_nl, frl_last, frl_str_len, "adj_len")
@@ -889,7 +790,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_phi(frl_ret_ty, "frl_ret")
             .map_err(llvm_err)?;
-        frl_phi.add_incoming(&[(&frl_e3, frl_eof_bb), (&frl_o3, frl_ok_bb)]);
+        frl_phi.add_incoming(&[(&frl_e3, frl_eof_bb), (&frl_o3, frl_len_bb)]);
         let _ = self.builder.build_return(Some(&frl_phi.as_basic_value()));
 
         // ---- action_file_read_bytes(ptr, i64) -> {i64, ptr} (actual_len, data) ----
@@ -1064,6 +965,179 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_compare(IntPredicate::EQ, ff_ret, i32.const_int(0, false), "ok")
             .map_err(llvm_err)?;
         let _ = self.builder.build_return(Some(&ff_ok));
+
+        // ---- M42 bootstrap session buffers (Action String ABI → host ptr/len) ----
+        let host_bs_clear = self
+            .module
+            .get_function("action_host_bs_buf_clear")
+            .ok_or("action_host_bs_buf_clear not declared")?;
+        let host_bs_append = self
+            .module
+            .get_function("action_host_bs_buf_append")
+            .ok_or("action_host_bs_buf_append not declared")?;
+        let host_bs_set = self
+            .module
+            .get_function("action_host_bs_buf_set")
+            .ok_or("action_host_bs_buf_set not declared")?;
+        let host_bs_get = self
+            .module
+            .get_function("action_host_bs_buf_get")
+            .ok_or("action_host_bs_buf_get not declared")?;
+
+        // action_bs_buf_clear(i64) -> i64
+        let bs_clear_fn = self.module.add_function(
+            "action_bs_buf_clear",
+            i64.fn_type(&[i64.into()], false),
+            None,
+        );
+        let entry = self.context.append_basic_block(bs_clear_fn, "entry");
+        self.builder.position_at_end(entry);
+        let bs_slot = bs_clear_fn.get_first_param().unwrap().into_int_value();
+        let bs_c_ret = self
+            .builder
+            .build_call(host_bs_clear, &[bs_slot.into()], "c")
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_int_value();
+        let _ = self.builder.build_return(Some(&bs_c_ret));
+
+        // action_bs_buf_append(i64, {i64,ptr}) -> i64
+        let bs_append_fn = self.module.add_function(
+            "action_bs_buf_append",
+            i64.fn_type(&[i64.into(), str_ty.into()], false),
+            None,
+        );
+        let entry = self.context.append_basic_block(bs_append_fn, "entry");
+        self.builder.position_at_end(entry);
+        let bs_a_slot = bs_append_fn.get_first_param().unwrap().into_int_value();
+        let bs_a_s = bs_append_fn.get_nth_param(1).unwrap().into_struct_value();
+        let bs_a_len = self
+            .builder
+            .build_extract_value(bs_a_s, 0, "alen")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let bs_a_data = self
+            .builder
+            .build_call(str_data_fn, &[bs_a_s.into()], "adata")
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_pointer_value();
+        let bs_a_ret = self
+            .builder
+            .build_call(
+                host_bs_append,
+                &[bs_a_slot.into(), bs_a_data.into(), bs_a_len.into()],
+                "a",
+            )
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_int_value();
+        let _ = self.builder.build_return(Some(&bs_a_ret));
+
+        // action_bs_buf_set(i64, {i64,ptr}) -> i64
+        let bs_set_fn = self.module.add_function(
+            "action_bs_buf_set",
+            i64.fn_type(&[i64.into(), str_ty.into()], false),
+            None,
+        );
+        let entry = self.context.append_basic_block(bs_set_fn, "entry");
+        self.builder.position_at_end(entry);
+        let bs_s_slot = bs_set_fn.get_first_param().unwrap().into_int_value();
+        let bs_s_s = bs_set_fn.get_nth_param(1).unwrap().into_struct_value();
+        let bs_s_len = self
+            .builder
+            .build_extract_value(bs_s_s, 0, "slen")
+            .map_err(llvm_err)?
+            .into_int_value();
+        let bs_s_data = self
+            .builder
+            .build_call(str_data_fn, &[bs_s_s.into()], "sdata")
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_pointer_value();
+        let bs_s_ret = self
+            .builder
+            .build_call(
+                host_bs_set,
+                &[bs_s_slot.into(), bs_s_data.into(), bs_s_len.into()],
+                "s",
+            )
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_int_value();
+        let _ = self.builder.build_return(Some(&bs_s_ret));
+
+        // action_bs_buf_get(i64) -> {i64,ptr}
+        let bs_get_fn = self.module.add_function(
+            "action_bs_buf_get",
+            str_ty.fn_type(&[i64.into()], false),
+            None,
+        );
+        let entry = self.context.append_basic_block(bs_get_fn, "entry");
+        self.builder.position_at_end(entry);
+        let bs_g_slot = bs_get_fn.get_first_param().unwrap().into_int_value();
+        let bs_g_str = self
+            .builder
+            .build_call(host_bs_get, &[bs_g_slot.into()], "g")
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_struct_value();
+        let _ = self.builder.build_return(Some(&bs_g_str));
+
+        // ---- M45 bootstrap Int session slots ----
+        let host_bs_int_set = self
+            .module
+            .get_function("action_host_bs_int_set")
+            .ok_or("action_host_bs_int_set not declared")?;
+        let host_bs_int_get = self
+            .module
+            .get_function("action_host_bs_int_get")
+            .ok_or("action_host_bs_int_get not declared")?;
+
+        let bs_int_set_fn = self.module.add_function(
+            "action_bs_int_set",
+            i64.fn_type(&[i64.into(), i64.into()], false),
+            None,
+        );
+        let entry = self.context.append_basic_block(bs_int_set_fn, "entry");
+        self.builder.position_at_end(entry);
+        let bi_s_slot = bs_int_set_fn.get_first_param().unwrap().into_int_value();
+        let bi_s_val = bs_int_set_fn.get_nth_param(1).unwrap().into_int_value();
+        let bi_s_ret = self
+            .builder
+            .build_call(
+                host_bs_int_set,
+                &[bi_s_slot.into(), bi_s_val.into()],
+                "is",
+            )
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_int_value();
+        let _ = self.builder.build_return(Some(&bi_s_ret));
+
+        let bs_int_get_fn = self.module.add_function(
+            "action_bs_int_get",
+            i64.fn_type(&[i64.into()], false),
+            None,
+        );
+        let entry = self.context.append_basic_block(bs_int_get_fn, "entry");
+        self.builder.position_at_end(entry);
+        let bi_g_slot = bs_int_get_fn.get_first_param().unwrap().into_int_value();
+        let bi_g_ret = self
+            .builder
+            .build_call(host_bs_int_get, &[bi_g_slot.into()], "ig")
+            .map_err(llvm_err)?
+            .try_as_basic_value()
+            .unwrap_basic()
+            .into_int_value();
+        let _ = self.builder.build_return(Some(&bi_g_ret));
 
         Ok(())
     }

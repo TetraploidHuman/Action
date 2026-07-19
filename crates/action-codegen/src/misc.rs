@@ -134,9 +134,10 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(llvm_err)?
                     .into_int_value();
                 let data = self
-                    .builder
-                    .build_extract_value(str_val, 1, "data")
-                    .map_err(llvm_err)?
+                    .call_rt("action_string_data", &[str_val.into()])?
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("string index: action_string_data failed")?
                     .into_pointer_value();
                 let zero = self.i64_ty().const_int(0, false);
                 let len_minus1 = self
