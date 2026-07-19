@@ -51,6 +51,8 @@ def main() -> None:
         raise SystemExit(f"{PEXPR}: expected parseCallTrailing (M122)")
     if "fun parseBraceLambda(" not in pexpr:
         raise SystemExit(f"{PEXPR}: expected parseBraceLambda (M122)")
+    if "fun parseLambdaBlock(" not in pexpr:
+        raise SystemExit(f"{PEXPR}: expected parseLambdaBlock (M123)")
     if '"pexpr" -> true' not in MODLOAD.read_text():
         raise SystemExit(f"{MODLOAD}: importAllowed must allow pexpr")
     print("=== bootstrap pexpr check OK ===")

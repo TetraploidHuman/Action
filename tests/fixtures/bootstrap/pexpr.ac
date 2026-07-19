@@ -184,7 +184,23 @@ fun parseLambdaArrow(s: String, pos: Int) -> Int {
     return p
 }
 
-// M119/M121: brace lambda (no postfix); used by trailing-lambda attach (M122).
+// M123: `{ expr }` — no-param lambda (params=[], body=Block, implicit_it=false).
+fun parseLambdaBlock(s: String, pos: Int) -> Int {
+    parser.spanMarkBegin(s, pos)
+    var p: Int = parser.advance(s, pos)
+    val snap: String = typeenv.envLocalSnapshot()
+    p = parseExpr(s, p)
+    val inner: String = emit.getExpr()
+    val bodyTag: Int = typeenv.lastExprTyTag()
+    p = parser.expect(s, p, parser.closeBrace())
+    typeenv.envLocalRestore(snap)
+    parser.spanMarkEnd(s, p)
+    val block: String = emit.exprAsBlock(bodyTag, inner)
+    emit.setExpr(emit.exprWrap(bodyTag, "{\"Lambda\": {\"params\": [], \"body\": " + block + ", \"implicit_it\": false}}"))
+    return p
+}
+
+// M119/M122/M123: brace lambda (no postfix); used by trailing-lambda attach.
 fun parseBraceLambda(s: String, pos: Int) -> Int {
     val p1: Int = parser.advance(s, pos)
     val first: String = parser.cur(s, p1)
@@ -193,11 +209,11 @@ fun parseBraceLambda(s: String, pos: Int) -> Int {
         second == "->" -> parseLambdaArrow(s, pos)
         second == "," -> parseLambdaArrow(s, pos)
         first == "it" -> parseLambdaIt(s, pos)
-        else -> parseLambdaIt(s, pos)
+        else -> parseLambdaBlock(s, pos)
     }
 }
 
-// M119/M121: `{` — struct (`x = …`) vs lambda (`it …` / `x -> …` / `x, y -> …`).
+// M119–M123: `{` — struct (`x = …`) vs lambda (`it` / `x ->` / `{ expr }`).
 fun parseBraceExpr(s: String, pos: Int) -> Int {
     val p1: Int = parser.advance(s, pos)
     val first: String = parser.cur(s, p1)
@@ -207,7 +223,7 @@ fun parseBraceExpr(s: String, pos: Int) -> Int {
         second == "->" -> parsePostfix(s, parseLambdaArrow(s, pos))
         second == "," -> parsePostfix(s, parseLambdaArrow(s, pos))
         first == "it" -> parsePostfix(s, parseLambdaIt(s, pos))
-        else -> parseStructLit(s, pos)
+        else -> parsePostfix(s, parseLambdaBlock(s, pos))
     }
 }
 
@@ -334,6 +350,8 @@ fun parseCallTrailingOk(s: String, pos: Int) -> Bool {
 fun parseCallTrailingLook(s: String, p1: Int) -> Bool {
     val first: String = parser.cur(s, p1)
     val second: String = parser.cur(s, parser.advance(s, p1))
+    // Keep narrow: do not treat `if f() { … }` then-braces as trailing lambdas.
+    // (Rust disables trailing under if-conds via no_trailing_lambda.)
     return when {
         second == "->" -> true
         second == "," -> true

@@ -1345,6 +1345,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "lambda_it_ok { it * 2 }(21) should return 42",
     ),
     (
+        "lambda_block_ok",
+        42,
+        "lambda_block_ok { 21 * 2 }() should return 42",
+    ),
+    (
         "lambda_multi_ok",
         42,
         "lambda_multi_ok { x, y -> x + y }(20, 22) should return 42",
@@ -1361,7 +1366,7 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
     ),
 ];
 
-/// Bootstrap allowed fixtures with golden HIR + main oracle (64 stems).
+/// Bootstrap allowed fixtures with golden HIR + main oracle (65 stems).
 /// `env_scope_leak.ac` is TC3-negative only (no golden).
 /// Fixtures where bootstrap import loader emits the full module but Rust uses selective import.
 const BOOTSTRAP_SKIP_RUST_FUN_NAME_ORACLE: &[&str] =
@@ -1400,6 +1405,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "jit_smoke",
     "keywords_subset",
     "lambda_it_ok",
+    "lambda_block_ok",
     "lambda_multi_ok",
     "let_point_ok",
     "list_string",
@@ -3314,6 +3320,34 @@ fn test_bootstrap_m122_allowlisted_trailing_lambda_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"trailing_lambda_ok"),
         "trailing_lambda_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M123: no-param lambda body type error rejected.
+#[test]
+fn test_bootstrap_m123_rejects_bad_lambda_block_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_lambda_block_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_lambda_block_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M123: `{ 21 * 2 }()` accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m123_allowlisted_lambda_block_ok() {
+    let path = fixtures_root().join("bootstrap/lambda_block_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept lambda_block_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"lambda_block_ok"),
+        "lambda_block_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 

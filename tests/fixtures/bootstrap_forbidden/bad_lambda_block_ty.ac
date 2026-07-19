@@ -1,0 +1,4 @@
+// M123: no-param lambda body is Bool; main expects Int → type error.
+fun main() -> Int {
+    return { true }()
+}
