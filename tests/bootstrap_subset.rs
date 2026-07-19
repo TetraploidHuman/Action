@@ -1339,9 +1339,14 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         0,
         "or_block_ok parseInt(\"x\") or { 0 } should return 0",
     ),
+    (
+        "lambda_it_ok",
+        42,
+        "lambda_it_ok { it * 2 }(21) should return 42",
+    ),
 ];
 
-/// Bootstrap allowed fixtures with golden HIR + main oracle (60 stems).
+/// Bootstrap allowed fixtures with golden HIR + main oracle (61 stems).
 /// `env_scope_leak.ac` is TC3-negative only (no golden).
 /// Fixtures where bootstrap import loader emits the full module but Rust uses selective import.
 const BOOTSTRAP_SKIP_RUST_FUN_NAME_ORACLE: &[&str] = &["import_call_ok", "import_prelude"];
@@ -1377,6 +1382,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "index_key_ok",
     "jit_smoke",
     "keywords_subset",
+    "lambda_it_ok",
     "let_point_ok",
     "list_string",
     "logical_not",
@@ -3165,6 +3171,34 @@ fn test_bootstrap_m118_allowlisted_or_block_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"or_block_ok"),
         "or_block_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M119: implicit-it lambda body type error rejected.
+#[test]
+fn test_bootstrap_m119_rejects_bad_lambda_it_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_lambda_it_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_lambda_it_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M119: `{ it * 2 }(21)` accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m119_allowlisted_lambda_it_ok() {
+    let path = fixtures_root().join("bootstrap/lambda_it_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept lambda_it_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"lambda_it_ok"),
+        "lambda_it_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 

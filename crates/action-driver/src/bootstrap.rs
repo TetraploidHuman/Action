@@ -46,6 +46,7 @@ pub const BOOTSTRAP_FRONTEND_ALLOWLIST: &[&str] = &[
     "index_key_ok",
     "jit_smoke",
     "keywords_subset",
+    "lambda_it_ok",
     "let_point_ok",
     "list_string",
     "logical_not",

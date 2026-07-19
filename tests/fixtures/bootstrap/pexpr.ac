@@ -134,6 +134,54 @@ fun parseStructLit(s: String, pos: Int) -> Int {
     return p
 }
 
+// M119: `{` — struct (`x = …`) vs lambda (`it …` / `x -> …`).
+fun parseBraceExpr(s: String, pos: Int) -> Int {
+    val p1: Int = parser.advance(s, pos)
+    val first: String = parser.cur(s, p1)
+    val second: String = parser.cur(s, parser.advance(s, p1))
+    return when {
+        second == "=" -> parseStructLit(s, pos)
+        second == "->" -> parseLambdaArrow(s, pos)
+        first == "it" -> parseLambdaIt(s, pos)
+        else -> parseStructLit(s, pos)
+    }
+}
+
+// M119: `{ it * 2 }` — implicit-it lambda (HIR params=["it"], implicit_it=true).
+fun parseLambdaIt(s: String, pos: Int) -> Int {
+    parser.spanMarkBegin(s, pos)
+    var p: Int = parser.advance(s, pos)
+    val snap: String = typeenv.envLocalSnapshot()
+    typeenv.envAddLocal("it", 1, 0)
+    p = parseExpr(s, p)
+    val body: String = emit.getExpr()
+    val bodyTag: Int = typeenv.lastExprTyTag()
+    p = parser.expect(s, p, parser.closeBrace())
+    typeenv.envLocalRestore(snap)
+    parser.spanMarkEnd(s, p)
+    emit.setExpr(emit.exprWrap(bodyTag, "{\"Lambda\": {\"params\": [\"it\"], \"body\": " + body + ", \"implicit_it\": true}}"))
+    return parsePostfix(s, p)
+}
+
+// M119: `{ x -> body }` — single explicit param (pilot).
+fun parseLambdaArrow(s: String, pos: Int) -> Int {
+    parser.spanMarkBegin(s, pos)
+    var p: Int = parser.advance(s, pos)
+    val pname: String = parser.cur(s, p)
+    p = parser.advance(s, p)
+    p = parser.expect(s, p, "->")
+    val snap: String = typeenv.envLocalSnapshot()
+    typeenv.envAddLocal(pname, 1, 0)
+    p = parseExpr(s, p)
+    val body: String = emit.getExpr()
+    val bodyTag: Int = typeenv.lastExprTyTag()
+    p = parser.expect(s, p, parser.closeBrace())
+    typeenv.envLocalRestore(snap)
+    parser.spanMarkEnd(s, p)
+    emit.setExpr(emit.exprWrap(bodyTag, "{\"Lambda\": {\"params\": [\"" + pname + "\"], \"body\": " + body + ", \"implicit_it\": false}}"))
+    return parsePostfix(s, p)
+}
+
 fun parseStructFields(s: String, pos: Int, sep: Int) -> Int {
     return if parser.isTok(s, pos, parser.closeBrace()) { pos } else { parseStructField(s, pos, sep) }
 }
@@ -227,20 +275,27 @@ fun callRetTag() -> Int {
 
 fun parseCall(s: String, pos: Int) -> Int {
     val fn: String = emit.getExpr()
-    val fname: String = emit.sessGet(emit.slotLastIdent())
+    // M119: immediate call of brace-lambda — skip funSig/undef checks.
+    val isLam: Bool = jsonHas(fn, "\"Lambda\"")
     var p: Int = parser.advance(s, pos)
-    val retTag: Int = callRetTag()
-    typeenv.callCheckPush()
-    typeenv.callCheckSetName(fname)
-    typeenv.callCheckBegin(fname)
+    val retTag: Int = if isLam { typeenv.lastExprTyTag() } else { callRetTag() }
     parseCallPushArgs()
-    p = parseCallArgs(s, p, 0)
+    p = if isLam { parseCallArgsNoCheck(s, p, 0) } else { parseCallChecked(s, p) }
     p = parser.expect(s, p, ")")
-    typeenv.callCheckEnd()
     val args: String = emit.accGet(emit.slotArgs())
     emit.accReset(emit.slotArgs())
     emit.setExpr(emit.exprWrap(retTag, "{\"Call\": {\"func\": " + fn + ", \"args\": [" + args + "], \"trailing_lambda\": null}}"))
     parseCallPopArgs()
+    return p
+}
+
+fun parseCallChecked(s: String, pos: Int) -> Int {
+    val fname: String = emit.sessGet(emit.slotLastIdent())
+    typeenv.callCheckPush()
+    typeenv.callCheckSetName(fname)
+    typeenv.callCheckBegin(fname)
+    val p: Int = parseCallArgs(s, pos, 0)
+    typeenv.callCheckEnd()
     typeenv.callCheckPop()
     return p
 }
@@ -255,6 +310,17 @@ fun parseCallArg(s: String, pos: Int, sep: Int) -> Int {
     emit.accAdd(emit.slotArgs(), emit.getExpr(), sep)
     val p2: Int = parser.advanceIfComma(s, p)
     return parseCallArgs(s, p2, if p2 == p { 0 } else { 1 })
+}
+
+fun parseCallArgsNoCheck(s: String, pos: Int, sep: Int) -> Int {
+    return if parser.cur(s, pos) == ")" { pos } else { parseCallArgNoCheck(s, pos, sep) }
+}
+
+fun parseCallArgNoCheck(s: String, pos: Int, sep: Int) -> Int {
+    val p: Int = parseExpr(s, pos)
+    emit.accAdd(emit.slotArgs(), emit.getExpr(), sep)
+    val p2: Int = parser.advanceIfComma(s, p)
+    return parseCallArgsNoCheck(s, p2, if p2 == p { 0 } else { 1 })
 }
 
 fun parseIndex(s: String, pos: Int) -> Int {
@@ -562,7 +628,7 @@ fun parsePrimary(s: String, pos: Int) -> Int {
         k == "false" -> parseBoolLit(s, pos, false)
         whenty.isStringLit(k) -> parseStringLitExpr(s, pos)
         prelude.isDigit(prelude.charAtSafe(k, 0)) -> parseIntLit(s, pos)
-        parser.isBraceOpen(k) -> parseStructLit(s, pos)
+        parser.isBraceOpen(k) -> parseBraceExpr(s, pos)
         else -> parsePrimaryKw(s, pos, k)
     }
 }

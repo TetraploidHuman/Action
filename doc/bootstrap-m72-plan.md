@@ -116,18 +116,19 @@ Phase AR M116 external funSig            ← ✅
 | **M116** | external funSig | `preScanExternal` 复用 `preScanFunParams`+`funSigCommit`；仍不发射 HIR | `external_call_ok` 接受；`bad_external_call_{arity,arg_ty}` → exit 1；self-host 绿；不入 Path B allowlist | S | M115 | ✅ |
 | **M117** | 基本 UFCS（nullary 试点） | `.method(` 跳过 `structFieldRequire`；HIR `Call(FieldAccess)`；`len`/`isEmpty` 种子 ret tag；List/Map/Set lit 接 `parsePostfix`（不禁带参 UFCS，以免破坏 `s.substring`） | `ufcs_len_ok` →3；`bad_ufcs_unknown` → exit 1；allowlist 59；self-host 绿 | M | M76 | ✅ |
 | **M118** | fallible `or {}` 试点 | `parseOrAfterKw`：`or {` → HIR `OrBlock`；否则逻辑 Or；`tyCheckOrBlock`；种子 `parseInt` | `or_block_ok` →0；`bad_or_block_ty` → exit 1；allowlist 60；`logical_ops` 仍绿 | M | M80/M117 | ✅ |
+| **M119** | lambda / `it` 试点 | `{` 消歧：`x=`→struct，`x->`/`it …`→`Lambda`；立即调用跳过 funSig；locals snapshot | `lambda_it_ok` →42；`bad_lambda_it_ty` → exit 1；allowlist 61；struct lit 仍绿 | M | M76 | ✅ |
 
-### 后续批次（M119+，规划）
+### 后续批次（M120+，规划）
 
 | ID | 目标 | 依赖 |
 |----|------|------|
-| **M119** | lambda / `it` 试点 | subset 文档 |
 | **M120** | 开放 import 图（窄：path-safe + cycle） | M115 |
 
 ### 刻意延后（非本批次）
 
 - 开放任意 `import` 图（超出白名单）— 见 M120
-- lazy / **复杂** UFCS 方法链（子集仍禁止；M117 仅 nullary）— 见 M119
+- trailing lambda / 多参 `{ x, y -> }` / `{ stmts }` 无参块 — 见后续
+- lazy / **复杂** UFCS 方法链（子集仍禁止；M117 仅 nullary）
 - Action 实现 codegen（L3，不做）
 
 ## 4. Phase A — 文档与契约（并行可做）

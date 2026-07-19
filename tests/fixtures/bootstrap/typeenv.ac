@@ -182,6 +182,16 @@ fun envAddLocal(name: String, tag: Int, mut: Int) -> Int {
     return envAppendMut(1, name, tag, mut)
 }
 
+// M119: snapshot/restore locals around lambda param binds (`it` / `x ->`).
+fun envLocalSnapshot() -> String {
+    return bsBufGet(1)
+}
+
+fun envLocalRestore(saved: String) -> Int {
+    bsBufSet(1, saved)
+    return 0
+}
+
 fun structFieldsClear() -> Int {
     bsBufClear(2)
     return 0

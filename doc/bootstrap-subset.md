@@ -9,7 +9,7 @@
 | 绑定 | `val` / `var` / `fun` |
 | 类型 | 基本类型、`struct` / `enum`、显式类型标注 |
 | 控制流 | `when`（…）、`for`（含 `for v in map` 值、`for k in map` 键（`len(k)` 启发式）、`for x in set`、`for k, v in map`、**break** / **continue**）、`return` |
-| 表达式 | 二元 `+ - * / %`、逻辑 **`and` / `or`**、一元 `+ - not`、下标 `m["k"]`、字段 `.x`（可链式）、**nullary UFCS**（`x.len()` / `x.isEmpty()`，M117）、fallible **`or { … }`**（M118） |
+| 表达式 | 二元 `+ - * / %`、逻辑 **`and` / `or`**、一元 `+ - not`、下标 `m["k"]`、字段 `.x`（可链式）、**nullary UFCS**（`x.len()` / `x.isEmpty()`，M117）、fallible **`or { … }`**（M118）、**lambda / `it`**（`{ it * 2 }(21)` / `{ x -> … }`，M119） |
 | 集合 | `List` / `Map` / `Set` / `String` |
 | 模块 | 单文件；**M24** 起 `import prelude` / `import parser` / **M26** `import emit` / **M27** `import typeenv` / `import whenty` / **M29** `import modload` / **M30** `import pexpr` / **M31** `import pstmt` / **M32** `import pdecl` / **M33** `import pscan`（命名空间调用 `mod.fn()`） |
 | 输出 | `print` / `println`（bootstrap 编译器均已实现） |
@@ -162,8 +162,9 @@
 | M116 | external funSig | ✅ `preScanExternal` 写入 arity/param tags；`external_call_ok`/`bad_external_call_*`；不入 Path B allowlist |
 | M117 | 基本 nullary UFCS | ✅ `.method(` → `Call(FieldAccess)`；`ufcs_len_ok`→3；`bad_ufcs_unknown`；allowlist 59 |
 | M118 | fallible `or {}` | ✅ `or {` → HIR `OrBlock`；`or_block_ok`→0；`bad_or_block_ty`；allowlist 60 |
+| M119 | lambda / `it` | ✅ `{ it * 2 }(21)` → HIR `Lambda`+Call；`lambda_it_ok`→42；`bad_lambda_it_ty`；allowlist 61 |
 
-**M72+ 执行计划**：[bootstrap-m72-plan.md](bootstrap-m72-plan.md)（M72–M118 ✅）。
+**M72+ 执行计划**：[bootstrap-m72-plan.md](bootstrap-m72-plan.md)（M72–M119 ✅）。
 
 CI 维护：`scripts/check_bootstrap_goldens.sh`（`ci-linux.sh core` 内执行，防 golden drift）；`check_bootstrap_{prelude,parser,emit}.py` 校验模块 import 与 fixture 同步。
 
