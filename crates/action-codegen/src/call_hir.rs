@@ -107,8 +107,18 @@ impl<'ctx> CodeGen<'ctx> {
                 | "sortedBy"
                 | "partition"
                 | "count"
+                | "flatMap"
         ) {
+            if name == "flatMap" {
+                return self.maybe_builtin_flat_map_call_args(args, trailing);
+            }
             return self.maybe_builtin_callback_list_call_args(name, args, trailing);
+        }
+
+        // Map HOFs must precede registry lookup: once registered, `lookup` would
+        // send them to BuiltinDispatch::Stdlib → "Unknown builtin".
+        if matches!(name, "mapFilter" | "mapMapValues" | "mapFold") {
+            return self.builtin_callback_map(name, args, trailing);
         }
 
         if let Some(generic_stmt) = self.mono_cache.generic_fun_defs.get(name).cloned() {
@@ -160,13 +170,6 @@ impl<'ctx> CodeGen<'ctx> {
             .map(|(ei, vi)| (ei.clone(), vi.clone()))
         {
             return self.compile_enum_construct(&enum_info, &variant, args);
-        }
-
-        if name == "flatMap" {
-            return self.maybe_builtin_flat_map_call_args(args, trailing);
-        }
-        if matches!(name, "mapFilter" | "mapMapValues" | "mapFold") {
-            return self.builtin_callback_map(name, args, trailing);
         }
 
         if let Some(overloads) = self.overloaded_functions.get(name).cloned() {

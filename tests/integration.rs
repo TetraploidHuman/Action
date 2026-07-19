@@ -414,7 +414,7 @@ fn test_arithmetic_complex() {
     // Note: ** is left-associative
     assert_eq!(
         run_example("test_arithmetic_complex.ac"),
-        "14203264645-71615251410"
+        "1420325364645-71615251410"
     );
 }
 
@@ -1537,7 +1537,19 @@ fn test_io_builtins() {
          delete nofile: false\n\
          append: true\n\
          appended exists: true\n\
+         write slice: true\n\
+         read slice: slice\n\
+         exists path slice: true\n\
+         read path slice: slice\n\
+         parseInt slice: 42\n\
+         stream line1: line-a\n\
+         stream line2: line-b\n\
+         stream eof: EOF\n\
+         close stream: true\n\
          delete test: true\n\
+         delete write: true\n\
+         delete stream: true\n\
+         exists after delete: false\n\
          done\n"
     );
 }

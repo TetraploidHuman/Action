@@ -969,21 +969,19 @@ impl<'ctx> CodeGen<'ctx> {
         then_expr: &action_frontend::hir::HirExpr,
         else_expr: &action_frontend::hir::HirExpr,
     ) -> Result<TypedValue<'ctx>, String> {
-        let then_diverges = matches!(
-            then_expr.kind,
-            action_frontend::hir::HirExprKind::Continue | action_frontend::hir::HirExprKind::Break
-        );
-        let else_diverges = matches!(
-            else_expr.kind,
-            action_frontend::hir::HirExprKind::Continue | action_frontend::hir::HirExprKind::Break
-        );
+        let then_diverges = Self::hir_expr_diverges(then_expr);
+        let else_diverges = Self::hir_expr_diverges(else_expr);
 
         let then_inferred = if !then_diverges {
             self.infer_hir_expr_type(then_expr)
         } else {
             Type::Named("Int".into())
         };
-        let result_type = then_inferred.clone();
+        let result_type = if then_diverges && !else_diverges {
+            self.infer_hir_expr_type(else_expr)
+        } else {
+            then_inferred.clone()
+        };
         let result_ty: BasicTypeEnum = self.ast_type_to_basic_type(&result_type)?;
 
         let current_fn = self
@@ -1028,15 +1026,21 @@ impl<'ctx> CodeGen<'ctx> {
             self.compile_hir_expr(then_expr)?;
         } else {
             let tv = self.compile_hir_expr(then_expr)?;
-            if let TypedValue::Enum(_, _, inner, rc) = &tv {
-                when_enum_info = Some((*inner, *rc));
+            if self
+                .builder
+                .get_insert_block()
+                .is_none_or(|bb| bb.get_terminator().is_none())
+            {
+                if let TypedValue::Enum(_, _, inner, rc) = &tv {
+                    when_enum_info = Some((*inner, *rc));
+                }
+                self.store_branch_result(
+                    &tv,
+                    result_alloca.ok_or_else(|| "No result alloca".to_string())?,
+                    &result_type,
+                )?;
+                let _ = self.builder.build_unconditional_branch(merge_block);
             }
-            self.store_branch_result(
-                &tv,
-                result_alloca.ok_or_else(|| "No result alloca".to_string())?,
-                &result_type,
-            )?;
-            let _ = self.builder.build_unconditional_branch(merge_block);
         }
 
         self.builder.position_at_end(else_block);
@@ -1044,17 +1048,23 @@ impl<'ctx> CodeGen<'ctx> {
             self.compile_hir_expr(else_expr)?;
         } else {
             let ev = self.compile_hir_expr(else_expr)?;
-            if when_enum_info.is_none() {
-                if let TypedValue::Enum(_, _, inner, rc) = &ev {
-                    when_enum_info = Some((*inner, *rc));
+            if self
+                .builder
+                .get_insert_block()
+                .is_none_or(|bb| bb.get_terminator().is_none())
+            {
+                if when_enum_info.is_none() {
+                    if let TypedValue::Enum(_, _, inner, rc) = &ev {
+                        when_enum_info = Some((*inner, *rc));
+                    }
                 }
+                self.store_branch_result(
+                    &ev,
+                    result_alloca.ok_or_else(|| "No result alloca".to_string())?,
+                    &result_type,
+                )?;
+                let _ = self.builder.build_unconditional_branch(merge_block);
             }
-            self.store_branch_result(
-                &ev,
-                result_alloca.ok_or_else(|| "No result alloca".to_string())?,
-                &result_type,
-            )?;
-            let _ = self.builder.build_unconditional_branch(merge_block);
         }
 
         self.builder.position_at_end(merge_block);
@@ -1067,6 +1077,19 @@ impl<'ctx> CodeGen<'ctx> {
             self.bv_to_typed(loaded)
         } else {
             Ok(TypedValue::Unit)
+        }
+    }
+
+    fn hir_expr_diverges(expr: &action_frontend::hir::HirExpr) -> bool {
+        use action_frontend::hir::{HirExprKind, HirStmt};
+        match &expr.kind {
+            HirExprKind::Break | HirExprKind::Continue => true,
+            HirExprKind::Block(stmts) => match stmts.last() {
+                Some(HirStmt::Break { .. } | HirStmt::Continue { .. }) => true,
+                Some(HirStmt::Expr { expr, .. }) => Self::hir_expr_diverges(expr),
+                _ => false,
+            },
+            _ => false,
         }
     }
 }
