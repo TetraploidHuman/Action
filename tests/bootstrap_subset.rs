@@ -1365,6 +1365,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_val_ok { val a: Int = 21; a * 2 } should return 42",
     ),
     (
+        "lambda_val_ok",
+        42,
+        "lambda_val_ok { 21; val a: Int = 21; a * 2 }() should return 42",
+    ),
+    (
         "lambda_multi_ok",
         42,
         "lambda_multi_ok { x, y -> x + y }(20, 22) should return 42",
@@ -1434,6 +1439,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "lambda_block_ok",
     "lambda_multi_ok",
     "lambda_stmts_ok",
+    "lambda_val_ok",
     "let_point_ok",
     "list_string",
     "logical_not",
@@ -3484,6 +3490,34 @@ fn test_bootstrap_m127_allowlisted_plain_block_val_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_val_ok"),
         "plain_block_val_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M128: lambda body val init type error rejected.
+#[test]
+fn test_bootstrap_m128_rejects_bad_lambda_val_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_lambda_val_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_lambda_val_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M128: `{ 21; val a: Int = 21; a * 2 }()` accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m128_allowlisted_lambda_val_ok() {
+    let path = fixtures_root().join("bootstrap/lambda_val_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept lambda_val_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"lambda_val_ok"),
+        "lambda_val_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 

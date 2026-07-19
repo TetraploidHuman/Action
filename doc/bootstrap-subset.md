@@ -171,8 +171,9 @@
 | M125 | 多语句 `{ expr; … }` lambda | ✅ `{ 21; 21 * 2 }()`→42；`bad_lambda_stmts_ty`；allowlist 67 |
 | M126 | `if`/`or {}` 多语句 PlainBlock | ✅ `if true { 21; 21 * 2 } else { 0 }`→42；`bad_if_stmts_ty`；allowlist 68 |
 | M127 | `{ val …; }` PlainBlock | ✅ `{ val a: Int = 21; a * 2 }`→42；`bad_plain_block_val_ty`；allowlist 69 |
+| M128 | lambda 体内 `val` | ✅ `{ 21; val a: Int = 21; a * 2 }()`→42；`bad_lambda_val_ty`；allowlist 70 |
 
-**M72+ 执行计划**：[bootstrap-m72-plan.md](bootstrap-m72-plan.md)（M72–M127 ✅）。
+**M72+ 执行计划**：[bootstrap-m72-plan.md](bootstrap-m72-plan.md)（M72–M128 ✅）。
 
 CI 维护：`scripts/check_bootstrap_goldens.sh`（`ci-linux.sh core` 内执行，防 golden drift）；`check_bootstrap_{prelude,parser,emit}.py` 校验模块 import 与 fixture 同步。
 

@@ -53,6 +53,7 @@ pub const BOOTSTRAP_FRONTEND_ALLOWLIST: &[&str] = &[
     "lambda_block_ok",
     "lambda_multi_ok",
     "lambda_stmts_ok",
+    "lambda_val_ok",
     "let_point_ok",
     "list_string",
     "logical_not",
