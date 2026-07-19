@@ -226,16 +226,17 @@ fun importModulePathFixtures(name: String) -> String {
 
 fun importModulePath(name: String) -> String {
     val p0: String = importModulePathBootstrap(name)
-    return if exists(p0) {
-        p0
-    } else {
-        importModulePathPickFixtures(name)
-    }
+    // Bind before return: `return if { String }` hits a host RC footgun (glibc malloc abort).
+    val ok0: Bool = exists(p0)
+    val out0: String = if ok0 { p0 } else { importModulePathPickFixtures(name) }
+    return out0
 }
 
 fun importModulePathPickFixtures(name: String) -> String {
     val p1: String = importModulePathFixtures(name)
-    return if exists(p1) { p1 } else { "" }
+    val ok1: Bool = exists(p1)
+    val out1: String = if ok1 { p1 } else { "" }
+    return out1
 }
 
 fun parseImportReject(sep: Int) -> Int {
