@@ -66,6 +66,7 @@ pub const BOOTSTRAP_FRONTEND_ALLOWLIST: &[&str] = &[
     "string_index_ok",
     "struct_when",
     "tokenize_keywords",
+    "ufcs_len_ok",
     "unary_neg_ok",
     "unary_plus",
     "when_condition_chain",
@@ -100,8 +101,7 @@ pub fn find_project_root(start: &Path) -> Option<PathBuf> {
     loop {
         // Require Cargo.toml so `tests/fixtures/bootstrap/compiler.ac` (synced copy)
         // is not mistaken for the real bootstrap tree.
-        if cur.join("Cargo.toml").is_file() && cur.join("bootstrap").join("compiler.ac").is_file()
-        {
+        if cur.join("Cargo.toml").is_file() && cur.join("bootstrap").join("compiler.ac").is_file() {
             return fs::canonicalize(&cur).ok().or(Some(cur));
         }
         if !cur.pop() {
@@ -141,7 +141,8 @@ fn run_bootstrap_compiler(
     project_root: &Path,
     compiler_ac: &Path,
 ) -> Result<std::process::Output, String> {
-    let project_root = fs::canonicalize(project_root).unwrap_or_else(|_| project_root.to_path_buf());
+    let project_root =
+        fs::canonicalize(project_root).unwrap_or_else(|_| project_root.to_path_buf());
     let compiler_ac = fs::canonicalize(compiler_ac).unwrap_or_else(|_| compiler_ac.to_path_buf());
     // Prefer on-disk target artifacts: `current_exe` can point at a replaced/`(deleted)` inode.
     let candidates = [
@@ -189,10 +190,7 @@ pub fn check_file_bootstrap(
             "file '{}' is not on the bootstrap frontend allowlist (M76). \
              Use --frontend rust, or pick a stem from doc/bootstrap-m72-plan.md / \
              action_driver::bootstrap::BOOTSTRAP_FRONTEND_ALLOWLIST",
-            source
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("?")
+            source.file_name().and_then(|n| n.to_str()).unwrap_or("?")
         ));
     }
 
@@ -255,14 +253,11 @@ pub fn verify_bootstrap_hir(hir: &HirModule, label: &str) -> Result<(), String> 
 }
 
 /// Write HIR JSON next to the source (or stdout), same naming as Rust `--emit hir`.
-pub fn emit_bootstrap_hir(
-    hir_json: &str,
-    src_path: &Path,
-    to_stdout: bool,
-) -> Result<(), String> {
+pub fn emit_bootstrap_hir(hir_json: &str, src_path: &Path, to_stdout: bool) -> Result<(), String> {
     let pretty = match serde_json::from_str::<serde_json::Value>(hir_json) {
-        Ok(v) => serde_json::to_string_pretty(&v)
-            .map_err(|e| format!("HIR pretty-print failed: {e}"))?,
+        Ok(v) => {
+            serde_json::to_string_pretty(&v).map_err(|e| format!("HIR pretty-print failed: {e}"))?
+        }
         Err(_) => hir_json.to_string(),
     };
     if to_stdout {

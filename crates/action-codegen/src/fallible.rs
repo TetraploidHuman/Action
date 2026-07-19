@@ -949,6 +949,15 @@ impl<'ctx> CodeGen<'ctx> {
         lp: PointerValue<'ctx>,
         idx_iv: inkwell::values::IntValue<'ctx>,
     ) -> Result<TypedValue<'ctx>, String> {
+        self.compile_list_get_fallible_on_ptr_typed(lp, idx_iv, &Type::Named("Int".into()))
+    }
+
+    pub(crate) fn compile_list_get_fallible_on_ptr_typed(
+        &mut self,
+        lp: PointerValue<'ctx>,
+        idx_iv: inkwell::values::IntValue<'ctx>,
+        elem_ty: &Type,
+    ) -> Result<TypedValue<'ctx>, String> {
         let list_val = self.load_list(lp)?;
         let len = self
             .builder
@@ -1001,11 +1010,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(found_flag_a, in_range)
             .map_err(llvm_err)?;
-        self.build_fallible_from_fat_found_flag(
-            fat_alloca,
-            found_flag_a,
-            &Type::Named("Int".into()),
-        )
+        self.build_fallible_from_fat_found_flag(fat_alloca, found_flag_a, elem_ty)
     }
 
     pub(crate) fn compile_last_fallible(
@@ -1026,6 +1031,7 @@ impl<'ctx> CodeGen<'ctx> {
         list_arg: CallArg<'_>,
         idx_iv: inkwell::values::IntValue<'ctx>,
     ) -> Result<TypedValue<'ctx>, String> {
+        let elem_ty = self.list_element_ast_type(list_arg);
         let v = self.compile_call_arg(list_arg)?;
         match v {
             TypedValue::List(lp) | TypedValue::LazyList(lp) => {
@@ -1039,24 +1045,27 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_int_compare(IntPredicate::ULT, idx_iv, len, "in_range")
                     .map_err(llvm_err)?;
-                self.branch_to_fail_if(in_range)?;
                 let elem = self.call_rt("action_list_get", &[list_val.into(), idx_iv.into()])?;
-                let tag = self
+                let elem_bv = elem
+                    .try_as_basic_value()
+                    .basic()
+                    .ok_or("get failed")?
+                    .into_struct_value();
+                let fat_alloca = self
                     .builder
-                    .build_extract_value(
-                        elem.try_as_basic_value()
-                            .basic()
-                            .ok_or("get failed")?
-                            .into_struct_value(),
-                        0,
-                        "tag",
-                    )
-                    .map_err(llvm_err)?
-                    .into_int_value();
-                Ok(TypedValue::FallibleInt {
-                    val: tag,
-                    ok: in_range,
-                })
+                    .build_alloca(self.string_type, "idx_fat")
+                    .map_err(llvm_err)?;
+                self.builder
+                    .build_store(fat_alloca, elem_bv)
+                    .map_err(llvm_err)?;
+                let found_flag_a = self
+                    .builder
+                    .build_alloca(self.bool_ty(), "idx_ok")
+                    .map_err(llvm_err)?;
+                self.builder
+                    .build_store(found_flag_a, in_range)
+                    .map_err(llvm_err)?;
+                self.build_fallible_from_fat_found_flag(fat_alloca, found_flag_a, &elem_ty)
             }
             _ => Err("list index: argument must be a list".to_string()),
         }
@@ -1347,6 +1356,9 @@ impl<'ctx> CodeGen<'ctx> {
                         "readLine" if args.is_empty() => {
                             self.compile_read_line_fallible().map(Some)
                         }
+                        "fileReadLine" if args.len() == 1 => self
+                            .compile_file_read_line_fallible(CallArg::hir(&args[0]))
+                            .map(Some),
                         "__jsonParse" if args.len() == 1 => self
                             .compile_json_parse_fallible(CallArg::hir(&args[0]))
                             .map(Some),
@@ -1929,6 +1941,31 @@ impl<'ctx> CodeGen<'ctx> {
             .basic()
             .ok_or("readLine failed")?
             .into_struct_value();
+        self.fallible_str_from_len_ptr_ok(result_struct, "line")
+    }
+
+    pub(crate) fn compile_file_read_line_fallible(
+        &mut self,
+        file: CallArg<'_>,
+    ) -> Result<TypedValue<'ctx>, String> {
+        let handle = self.compile_call_arg(file)?;
+        let TypedValue::FileHandle(p) = handle else {
+            return Err("fileReadLine: argument must be a FileHandle".to_string());
+        };
+        let cc = self.call_rt("action_file_read_line", &[p.into()])?;
+        let result_struct = cc
+            .try_as_basic_value()
+            .basic()
+            .ok_or("fileReadLine failed")?
+            .into_struct_value();
+        self.fallible_str_from_len_ptr_ok(result_struct, "fline")
+    }
+
+    fn fallible_str_from_len_ptr_ok(
+        &mut self,
+        result_struct: inkwell::values::StructValue<'ctx>,
+        name: &str,
+    ) -> Result<TypedValue<'ctx>, String> {
         let str_len = self
             .builder
             .build_extract_value(result_struct, 0, "slen")
@@ -1955,7 +1992,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(llvm_err)?;
         let fat_alloca = self
             .builder
-            .build_alloca(self.string_type, "line")
+            .build_alloca(self.string_type, name)
             .map_err(llvm_err)?;
         self.builder
             .build_store(fat_alloca, line_val)

@@ -63,7 +63,8 @@ fun parseListLit(s: String, pos: Int) -> Int {
     val et: String = collElemTyName()
     val fn: String = emit.exprWrap(0, "{\"Ident\": \"__list\"" + "}")
     emit.setExpr("{\"ty\": {\"Generic\": [{\"Named\": \"List\"}, [{\"Named\": \"" + et + "\"}]]}, \"span\": " + parser.spanJson() + ", \"kind\": {\"Call\": {\"func\": " + fn + ", \"args\": [" + elems + "], \"trailing_lambda\": null}}}")
-    return p
+    // M117: allow postfix UFCS on list literals (`List[1,2,3].len()`).
+    return parsePostfix(s, p)
 }
 
 fun parseMapEntries(s: String, pos: Int, sep: Int) -> Int {
@@ -95,7 +96,8 @@ fun parseMapLit(s: String, pos: Int) -> Int {
     val vt: String = collIndexTyName()
     emit.setExpr("{\"ty\": {\"Generic\": [{\"Named\": \"Map\"}, [{\"Named\": \"String\"}, {\"Named\": \"" + vt + "\"}]]}, \"span\": " + parser.spanJson() + ", \"kind\": {\"MapLiteral\": [" + entries + "]}}")
     typeenv.lastExprTySet(7)
-    return p
+    // M117: allow postfix UFCS on map literals.
+    return parsePostfix(s, p)
 }
 
 fun parseSetLit(s: String, pos: Int) -> Int {
@@ -111,7 +113,8 @@ fun parseSetLit(s: String, pos: Int) -> Int {
     val elems: String = emit.accGet(emit.slotSet())
     val et: String = collElemTyName()
     emit.setExpr("{\"ty\": {\"Generic\": [{\"Named\": \"Set\"}, [{\"Named\": \"" + et + "\"}]]}, \"span\": " + parser.spanJson() + ", \"kind\": {\"SetLiteral\": [" + elems + "]}}")
-    return p
+    // M117: allow postfix UFCS on set literals.
+    return parsePostfix(s, p)
 }
 
 fun parseStructLit(s: String, pos: Int) -> Int {
@@ -148,13 +151,30 @@ fun parseStructField(s: String, pos: Int, sep: Int) -> Int {
     return if p2 == p { p } else { parseStructFields(s, p2, 1) }
 }
 
-fun parseFieldStruct(s: String, pos: Int, field: String) -> Int {
-    val recv: String = emit.sessGet(emit.slotRecv())
-    val recvTag: Int = typeenv.lastExprTyTag()
+// M117: nullary UFCS — `.method(` skips structFieldRequire; Call wraps FieldAccess.
+// Ret tag from seeded builtins (`len`→Int); unknown method → typeError via callCheckUndefCallee.
+fun parseFieldUfcs(s: String, pos: Int, field: String, recv: String) -> Int {
+    emit.sessSet(emit.slotLastIdent(), field)
+    val retTag: Int = typeenv.tagForExpr(typeenv.lookupTag(field))
+    emit.setExpr(emit.exprWrap(retTag, "{\"FieldAccess\": [" + recv + ", \"" + field + "\"" + "]}"))
+    return parsePostfix(s, pos)
+}
+
+fun parseFieldStructOnly(s: String, pos: Int, field: String, recv: String, recvTag: Int) -> Int {
     val structName: String = typeenv.tyTagName(recvTag)
     val fieldTag: Int = if structName == "" { 1 } else { typeenv.structFieldRequire(structName, field) }
     emit.setExpr(emit.exprWrap(fieldTag, "{\"FieldAccess\": [" + recv + ", \"" + field + "\"" + "]}"))
     return parsePostfix(s, pos)
+}
+
+fun parseFieldStruct(s: String, pos: Int, field: String) -> Int {
+    val recv: String = emit.sessGet(emit.slotRecv())
+    val recvTag: Int = typeenv.lastExprTyTag()
+    return if parser.cur(s, pos) == "(" {
+        parseFieldUfcs(s, pos, field, recv)
+    } else {
+        parseFieldStructOnly(s, pos, field, recv, recvTag)
+    }
 }
 
 fun parseFieldModule(modName: String, field: String, s: String, pos: Int) -> Int {

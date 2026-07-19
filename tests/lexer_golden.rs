@@ -73,7 +73,8 @@ fn write_bootstrap_keywords_golden_fixture() {
     let source =
         fs::read_to_string(dir.join("bootstrap_keywords.ac")).expect("read bootstrap_keywords.ac");
     let json = tokenize_json(&source.replace("\r\n", "\n"));
-    fs::write(dir.join("bootstrap_keywords.tokens.json"), json).expect("write bootstrap_keywords.tokens.json");
+    fs::write(dir.join("bootstrap_keywords.tokens.json"), json)
+        .expect("write bootstrap_keywords.tokens.json");
 }
 
 #[test]

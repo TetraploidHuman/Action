@@ -7,10 +7,10 @@ use action_frontend::hir::HirModule;
 use action_frontend::registry::TypeRegistry;
 use inkwell::context::Context;
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 #[cfg(unix)]
 use std::os::unix::io::AsRawFd;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 fn action_binary() -> PathBuf {
     if let Ok(path) = std::env::var("CARGO_BIN_EXE_action") {
@@ -67,16 +67,20 @@ fn filter_action_stdout(stdout: &str) -> Vec<String> {
 
 fn write_bootstrap_run_source(source: &Path) {
     let dest = bootstrap_dir().join("_run_source.txt");
-    fs::write(&dest, fs::read_to_string(source).expect("read lexer fixture source")).expect(
-        "write bootstrap/_run_source.txt",
-    );
+    fs::write(
+        &dest,
+        fs::read_to_string(source).expect("read lexer fixture source"),
+    )
+    .expect("write bootstrap/_run_source.txt");
 }
 
 fn write_bootstrap_compile_input(source: &Path) {
     let dest = bootstrap_dir().join("_compile_input.txt");
-    fs::write(&dest, fs::read_to_string(source).expect("read compile fixture")).expect(
-        "write bootstrap/_compile_input.txt",
-    );
+    fs::write(
+        &dest,
+        fs::read_to_string(source).expect("read compile fixture"),
+    )
+    .expect("write bootstrap/_compile_input.txt");
 }
 
 fn strip_spans(value: &serde_json::Value) -> serde_json::Value {
@@ -298,7 +302,10 @@ fn test_bootstrap_m23_prelude_embed_in_sync() {
 fn test_bootstrap_m24_import_prelude_smoke() {
     let path = bootstrap_fixture_ac("import_prelude");
     let code = run_bootstrap_hir_jit(&path, "import_prelude");
-    assert_eq!(code, 42, "import_prelude should return 42 via bootstrap HIR JIT");
+    assert_eq!(
+        code, 42,
+        "import_prelude should return 42 via bootstrap HIR JIT"
+    );
 }
 /// M25: `bootstrap/parser.ac` scannerless lexer imported by `compiler.ac`.
 #[test]
@@ -569,7 +576,8 @@ fn test_bootstrap_m5_compiler_parses_token_ac() {
 
     let emitted = bootstrap_dir().join("_hir_out.json");
     let value: serde_json::Value =
-        serde_json::from_str(&fs::read_to_string(&emitted).expect("read hir out")).expect("hir json");
+        serde_json::from_str(&fs::read_to_string(&emitted).expect("read hir out"))
+            .expect("hir json");
     let names: Vec<&str> = value["stmts"]
         .as_array()
         .expect("stmts array")
@@ -604,7 +612,8 @@ fn test_bootstrap_m5_compiler_parses_keywords_subset() {
 
     let emitted = bootstrap_dir().join("_hir_out.json");
     let value: serde_json::Value =
-        serde_json::from_str(&fs::read_to_string(&emitted).expect("read hir out")).expect("hir json");
+        serde_json::from_str(&fs::read_to_string(&emitted).expect("read hir out"))
+            .expect("hir json");
     let funs = value["stmts"]
         .as_array()
         .expect("stmts array")
@@ -630,7 +639,8 @@ fn test_bootstrap_m5_compiler_parses_tokenize_keywords() {
 
     let emitted = bootstrap_dir().join("_hir_out.json");
     let value: serde_json::Value =
-        serde_json::from_str(&fs::read_to_string(&emitted).expect("read hir out")).expect("hir json");
+        serde_json::from_str(&fs::read_to_string(&emitted).expect("read hir out"))
+            .expect("hir json");
     let funs = value["stmts"]
         .as_array()
         .expect("stmts array")
@@ -713,7 +723,8 @@ fn test_bootstrap_m5_compiler_parses_lexer_ac() {
 
     let emitted = bootstrap_dir().join("_hir_out.json");
     let value: serde_json::Value =
-        serde_json::from_str(&fs::read_to_string(&emitted).expect("read hir out")).expect("hir json");
+        serde_json::from_str(&fs::read_to_string(&emitted).expect("read hir out"))
+            .expect("hir json");
     let funs = value["stmts"]
         .as_array()
         .expect("stmts array")
@@ -741,7 +752,8 @@ fn test_bootstrap_m5_compiler_parses_compiler_ac() {
 
     let emitted = bootstrap_dir().join("_hir_out.json");
     let value: serde_json::Value =
-        serde_json::from_str(&fs::read_to_string(&emitted).expect("read hir out")).expect("hir json");
+        serde_json::from_str(&fs::read_to_string(&emitted).expect("read hir out"))
+            .expect("hir json");
     let funs = value["stmts"]
         .as_array()
         .expect("stmts array")
@@ -772,7 +784,8 @@ fn rust_hir_value(source: &Path) -> serde_json::Value {
     let path = source.to_path_buf();
     let checked = loader::check_file(&path, false)
         .unwrap_or_else(|e| panic!("Rust frontend should typecheck {}: {e:?}", source.display()));
-    serde_json::from_str(&checked.hir_json_pretty().expect("rust hir json")).expect("parse rust hir")
+    serde_json::from_str(&checked.hir_json_pretty().expect("rust hir json"))
+        .expect("parse rust hir")
 }
 
 fn read_emitted_bootstrap_hir_json() -> serde_json::Value {
@@ -802,16 +815,12 @@ fn test_bootstrap_alpha_rust_oracle_fun_names() {
         let path = bootstrap_fixture_ac(fixture);
         let rust = loader::check_file(&path, false)
             .unwrap_or_else(|e| panic!("Rust frontend should typecheck {fixture}: {e:?}"));
-        let rust_value: serde_json::Value = serde_json::from_str(
-            &rust
-                .hir_json_pretty()
-                .expect("rust hir json"),
-        )
-        .expect("parse rust hir json");
+        let rust_value: serde_json::Value =
+            serde_json::from_str(&rust.hir_json_pretty().expect("rust hir json"))
+                .expect("parse rust hir json");
 
         let bootstrap = load_bootstrap_hir_from_source(&path, fixture);
-        let bootstrap_value =
-            serde_json::to_value(&bootstrap).expect("serialize bootstrap hir");
+        let bootstrap_value = serde_json::to_value(&bootstrap).expect("serialize bootstrap hir");
 
         assert_eq!(
             top_level_fun_names(&bootstrap_value),
@@ -862,14 +871,12 @@ fn test_bootstrap_alpha_rust_oracle_hir_shape() {
         let path = fixtures_root().join(format!("bootstrap/{fixture}.ac"));
         let rust = loader::check_file(&path, false)
             .unwrap_or_else(|e| panic!("Rust frontend should typecheck {fixture}: {e:?}"));
-        let rust_value: serde_json::Value = serde_json::from_str(
-            &rust.hir_json_pretty().expect("rust hir json"),
-        )
-        .expect("parse rust hir json");
+        let rust_value: serde_json::Value =
+            serde_json::from_str(&rust.hir_json_pretty().expect("rust hir json"))
+                .expect("parse rust hir json");
 
         let bootstrap = load_bootstrap_hir_from_source(&path, fixture);
-        let bootstrap_value =
-            serde_json::to_value(&bootstrap).expect("serialize bootstrap hir");
+        let bootstrap_value = serde_json::to_value(&bootstrap).expect("serialize bootstrap hir");
 
         for needle in needles {
             assert!(
@@ -915,16 +922,10 @@ fn test_bootstrap_alpha_rust_oracle_main_shape() {
 
 fn stmt_top_level_name(stmt: &serde_json::Value) -> Option<String> {
     if let Some(e) = stmt.get("Enum") {
-        return e
-            .get("name")
-            .and_then(|n| n.as_str())
-            .map(str::to_owned);
+        return e.get("name").and_then(|n| n.as_str()).map(str::to_owned);
     }
     if let Some(f) = stmt.get("Fun") {
-        return f
-            .get("name")
-            .and_then(|n| n.as_str())
-            .map(str::to_owned);
+        return f.get("name").and_then(|n| n.as_str()).map(str::to_owned);
     }
     None
 }
@@ -975,12 +976,15 @@ fn find_aot_host_staticlib() -> Option<PathBuf> {
         }
     }
     for profile in profiles {
-        candidates.push(root.join(format!("target/host_rt_build/{profile}/libaction_host_rt.a")));
+        candidates.push(root.join(format!(
+            "target/host_rt_build/{profile}/libaction_host_rt.a"
+        )));
         candidates.push(root.join(format!("host_rt_build/{profile}/libaction_host_rt.a")));
     }
     for profile in profiles {
         if let Ok(target_dir) = std::env::var("CARGO_TARGET_DIR") {
-            candidates.push(PathBuf::from(target_dir).join(format!("{profile}/libaction_host_rt.a")));
+            candidates
+                .push(PathBuf::from(target_dir).join(format!("{profile}/libaction_host_rt.a")));
         }
         candidates.push(root.join(format!("target/{profile}/libaction_host_rt.a")));
     }
@@ -1053,9 +1057,12 @@ fn build_bootstrap_hir_aot_exe(hir: &HirModule, label: &str, opt_level: u8) -> P
 }
 
 fn run_bootstrap_aot_exe(exe_path: &Path) -> (i64, String) {
-    let output = Command::new(exe_path)
-        .output()
-        .unwrap_or_else(|e| panic!("failed to run bootstrap AOT exe {}: {e}", exe_path.display()));
+    let output = Command::new(exe_path).output().unwrap_or_else(|e| {
+        panic!(
+            "failed to run bootstrap AOT exe {}: {e}",
+            exe_path.display()
+        )
+    });
     let code = match output.status.code() {
         Some(c) => c as i64,
         None => panic!(
@@ -1072,10 +1079,7 @@ fn run_bootstrap_aot_exe(exe_path: &Path) -> (i64, String) {
             String::from_utf8_lossy(&output.stderr)
         );
     }
-    (
-        code,
-        String::from_utf8_lossy(&output.stdout).into_owned(),
-    )
+    (code, String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 /// Bootstrap HIR → AOT exe → process exit code (maps `main()` return to Unix exit status).
@@ -1091,12 +1095,36 @@ fn run_bootstrap_hir_aot_from_source(source: &Path, label: &str, opt_level: u8) 
 
 /// Bootstrap fixture `main()` return values — shared by M9 JIT and M20 AOT oracles.
 const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
-    ("assign_expr", 0, "assign_expr when-assign smoke should return 0"),
-    ("assign_point_ok", 1, "assign_point_ok Point reassign should return 1"),
-    ("call_point_ok", 0, "call_point_ok Point→Point call should return 0"),
-    ("coll_homo_ok", 0, "coll_homo_ok homogeneous literals should return 0"),
-    ("control_flow", 0, "control_flow when/return smoke should return 0"),
-    ("custom_struct", 12, "custom_struct area(3x4) should return 12"),
+    (
+        "assign_expr",
+        0,
+        "assign_expr when-assign smoke should return 0",
+    ),
+    (
+        "assign_point_ok",
+        1,
+        "assign_point_ok Point reassign should return 1",
+    ),
+    (
+        "call_point_ok",
+        0,
+        "call_point_ok Point→Point call should return 0",
+    ),
+    (
+        "coll_homo_ok",
+        0,
+        "coll_homo_ok homogeneous literals should return 0",
+    ),
+    (
+        "control_flow",
+        0,
+        "control_flow when/return smoke should return 0",
+    ),
+    (
+        "custom_struct",
+        12,
+        "custom_struct area(3x4) should return 12",
+    ),
     (
         "many_structs",
         9,
@@ -1104,17 +1132,57 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
     ),
     ("enum_simple", 0, "enum_simple when match should return 0"),
     ("custom_enum", 1, "custom_enum Circle arm should return 1"),
-    ("when_exhaustive", 3, "when_exhaustive Blue arm should return 3"),
-    ("when_guard_bool", 1, "when_guard_bool Red and true should return 1"),
-    ("logical_not", 0, "logical_not not false → if true {0} else {1} should return 0"),
-    ("keywords_subset", 0, "keywords_subset parse smoke should return 0"),
-    ("struct_when", 0, "struct_when pattern match should return 0"),
-    ("when_condition_chain", 0, "when_condition_chain nested when should return 0"),
+    (
+        "when_exhaustive",
+        3,
+        "when_exhaustive Blue arm should return 3",
+    ),
+    (
+        "when_guard_bool",
+        1,
+        "when_guard_bool Red and true should return 1",
+    ),
+    (
+        "logical_not",
+        0,
+        "logical_not not false → if true {0} else {1} should return 0",
+    ),
+    (
+        "keywords_subset",
+        0,
+        "keywords_subset parse smoke should return 0",
+    ),
+    (
+        "struct_when",
+        0,
+        "struct_when pattern match should return 0",
+    ),
+    (
+        "when_condition_chain",
+        0,
+        "when_condition_chain nested when should return 0",
+    ),
     ("when_guard", 0, "when_guard guarded arm should return 0"),
-    ("field_assign_ok", 7, "field_assign_ok p.x = 7 should return 7"),
-    ("index_assign_ok", 0, "index_assign_ok xs[0] = 9 should return 0"),
-    ("index_key_ok", 0, "index_key_ok list index + map key assign should return 0"),
-    ("string_index_ok", 0, "string_index_ok s[0]-s[0] should return 0"),
+    (
+        "field_assign_ok",
+        7,
+        "field_assign_ok p.x = 7 should return 7",
+    ),
+    (
+        "index_assign_ok",
+        0,
+        "index_assign_ok xs[0] = 9 should return 0",
+    ),
+    (
+        "index_key_ok",
+        0,
+        "index_key_ok list index + map key assign should return 0",
+    ),
+    (
+        "string_index_ok",
+        0,
+        "string_index_ok s[0]-s[0] should return 0",
+    ),
     (
         "import_call_ok",
         7,
@@ -1144,7 +1212,7 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         6,
         "for_string sum len(s) over List[String] should be 6",
     ),
-        (
+    (
         "list_string",
         3,
         "list_string len(List[String]) should be 3",
@@ -1167,7 +1235,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
     ("for_modulo", 20, "for_modulo sum evens 1..10 should be 20"),
     ("map_index", 10, "map_index m[\"a\"] should be 10"),
     ("map_iter", 15, "map_iter sum of values should be 15"),
-    ("map_values", 15, "map_values sum of map values should be 15"),
+    (
+        "map_values",
+        15,
+        "map_values sum of map values should be 15",
+    ),
     ("set_iter", 6, "set_iter sum 1+2+3 should be 6"),
     ("map_keys", 3, "map_keys sum of len(k) should be 3"),
     (
@@ -1182,7 +1254,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
     ),
     ("unary_plus", 15, "unary_plus +10 + +5 should be 15"),
     ("map_literal", 0, "map_literal smoke should return 0"),
-    ("print_stmt", 0, "print_stmt should return 0 after print call"),
+    (
+        "print_stmt",
+        0,
+        "print_stmt should return 0 after print call",
+    ),
     (
         "return_string_concat",
         11,
@@ -1203,9 +1279,14 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         0,
         "return_point_make origin().x + origin().y should be 0",
     ),
+    (
+        "ufcs_len_ok",
+        3,
+        "ufcs_len_ok List[1,2,3].len() should return 3",
+    ),
 ];
 
-/// Bootstrap allowed fixtures with golden HIR + main oracle (58 stems).
+/// Bootstrap allowed fixtures with golden HIR + main oracle (59 stems).
 /// `env_scope_leak.ac` is TC3-negative only (no golden).
 /// Fixtures where bootstrap import loader emits the full module but Rust uses selective import.
 const BOOTSTRAP_SKIP_RUST_FUN_NAME_ORACLE: &[&str] = &["import_call_ok", "import_prelude"];
@@ -1261,6 +1342,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "string_index_ok",
     "struct_when",
     "tokenize_keywords",
+    "ufcs_len_ok",
     "unary_neg_ok",
     "unary_plus",
     "when_condition_chain",
@@ -1379,7 +1461,10 @@ fn test_bootstrap_m6_lexer_self_tokenize_alpha() {
         "lexer should emit many real tokens for bootstrap/lexer.ac (got {})",
         tokens.len()
     );
-    assert!(!tokens.iter().any(|t| t.is_empty()), "token kinds must not be empty");
+    assert!(
+        !tokens.iter().any(|t| t.is_empty()),
+        "token kinds must not be empty"
+    );
     assert_eq!(tokens.first().map(String::as_str), Some("import"));
     assert!(tokens.iter().any(|t| t == "tokenize"));
 }
@@ -1396,7 +1481,13 @@ fn test_bootstrap_m6_compiler_self_hir_alpha() {
         "compiler.ac self-HIR should contain many functions (got {})",
         funs.len()
     );
-    for needle in ["main", "parseExpr", "lexKindAt", "parseProgram", "keywordKind"] {
+    for needle in [
+        "main",
+        "parseExpr",
+        "lexKindAt",
+        "parseProgram",
+        "keywordKind",
+    ] {
         assert!(
             funs.iter().any(|n| n == needle),
             "compiler.ac self-HIR missing top-level function {needle}"
@@ -1553,9 +1644,9 @@ fn run_lexer_hir_jit_tokens(fixture_stem: &str) -> (i64, Vec<String>) {
     cg.compile_hir(&hir).unwrap_or_else(|e| {
         panic!("compile_hir failed for bootstrap lexer.ac M14 {fixture_stem}: {e}")
     });
-    let code = cg
-        .run_jit()
-        .unwrap_or_else(|e| panic!("run_jit failed for bootstrap lexer.ac M14 {fixture_stem}: {e}"));
+    let code = cg.run_jit().unwrap_or_else(|e| {
+        panic!("run_jit failed for bootstrap lexer.ac M14 {fixture_stem}: {e}")
+    });
 
     unsafe {
         libc::fflush(std::ptr::null_mut());
@@ -1570,7 +1661,13 @@ fn run_lexer_hir_jit_tokens(fixture_stem: &str) -> (i64, Vec<String>) {
 #[test]
 #[ignore = "JIT stdout must run in an isolated process"]
 fn test_bootstrap_m14_lexer_jit_tokenize_goldens() {
-    for fixture in ["keywords", "literals", "operators", "ranges", "bootstrap_keywords"] {
+    for fixture in [
+        "keywords",
+        "literals",
+        "operators",
+        "ranges",
+        "bootstrap_keywords",
+    ] {
         let expected = lexer_golden_kinds(fixture);
         let (code, actual) = run_lexer_hir_jit_tokens(fixture);
         assert_eq!(
@@ -1714,11 +1811,7 @@ fn run_lexer_hir_aot_tokens(fixture_stem: &str) -> (i64, Vec<String>) {
     let source = fixtures_root().join(format!("lexer/{fixture_stem}.ac"));
     write_bootstrap_run_source(&source);
 
-    let exe = build_bootstrap_hir_aot_exe(
-        &hir,
-        &format!("m19_lexer_{fixture_stem}"),
-        0,
-    );
+    let exe = build_bootstrap_hir_aot_exe(&hir, &format!("m19_lexer_{fixture_stem}"), 0);
     let (code, stdout) = run_bootstrap_aot_exe(&exe);
     (code, filter_action_stdout(&stdout))
 }
@@ -1727,7 +1820,13 @@ fn run_lexer_hir_aot_tokens(fixture_stem: &str) -> (i64, Vec<String>) {
 #[test]
 #[ignore = "AOT stdout oracle must run in an isolated process"]
 fn test_bootstrap_m19_lexer_aot_tokenize_goldens() {
-    for fixture in ["keywords", "literals", "operators", "ranges", "bootstrap_keywords"] {
+    for fixture in [
+        "keywords",
+        "literals",
+        "operators",
+        "ranges",
+        "bootstrap_keywords",
+    ] {
         let expected = lexer_golden_kinds(fixture);
         let (code, actual) = run_lexer_hir_aot_tokens(fixture);
         assert_eq!(
@@ -1774,10 +1873,7 @@ fn test_bootstrap_compiler_detects_return_mismatch() {
 #[test]
 fn test_bootstrap_compiler_detects_parse_errors() {
     let root = fixtures_root().join("bootstrap_bootstrap_only");
-    for name in [
-        "bad_parse_missing_paren",
-        "bad_toplevel_return",
-    ] {
+    for name in ["bad_parse_missing_paren", "bad_toplevel_return"] {
         let path = root.join(format!("{name}.ac"));
         let output = run_bootstrap_compiler_on(&path);
         assert!(
@@ -2808,7 +2904,12 @@ fn test_bootstrap_m111_accepts_known_calls() {
 /// M112: undefined Ident outside bare return rejected (bind/arg/arith).
 #[test]
 fn test_bootstrap_m112_rejects_bad_undef_ident_use() {
-    for name in ["bad_undef_bind", "bad_undef_arg", "bad_undef_arith", "bad_undef_var"] {
+    for name in [
+        "bad_undef_bind",
+        "bad_undef_arg",
+        "bad_undef_arith",
+        "bad_undef_var",
+    ] {
         let path = fixtures_root().join(format!("bootstrap_forbidden/{name}.ac"));
         let output = run_bootstrap_compiler_on(&path);
         assert!(
@@ -2952,6 +3053,34 @@ fn test_bootstrap_m116_accepts_external_call_ok() {
     assert!(
         !action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"external_call_ok"),
         "external_call_ok must stay off Path B allowlist (no host echo symbol)"
+    );
+}
+
+/// M117: unknown nullary UFCS method rejected.
+#[test]
+fn test_bootstrap_m117_rejects_bad_ufcs_unknown() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_ufcs_unknown.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_ufcs_unknown.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M117: nullary UFCS `List[1,2,3].len()` accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m117_allowlisted_ufcs_len_ok() {
+    let path = fixtures_root().join("bootstrap/ufcs_len_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept ufcs_len_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"ufcs_len_ok"),
+        "ufcs_len_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 
@@ -3176,8 +3305,7 @@ fn test_bootstrap_tc3_env_scope_leak_hir_oracle() {
     let emitted = bootstrap_dir().join("_hir_out.json");
     let raw = fs::read_to_string(&emitted).expect("read bootstrap hir json");
     let json: serde_json::Value = serde_json::from_str(&raw).expect("hir json");
-    let ty = main_return_ident_ty(&json, "leaked")
-        .expect("main should return ident `leaked`");
+    let ty = main_return_ident_ty(&json, "leaked").expect("main should return ident `leaked`");
     assert_eq!(
         ty,
         serde_json::Value::String("Unit".to_owned()),
@@ -3285,7 +3413,6 @@ fn test_bootstrap_hir_codegen_goldens_verify_subprocess() {
     run_isolated_test("test_bootstrap_hir_verify_fixture_goldens");
     run_isolated_test("test_bootstrap_hir_verify_token_ac");
 }
-
 
 #[test]
 fn test_bootstrap_hir_codegen_token_ac() {

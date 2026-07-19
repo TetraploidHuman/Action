@@ -1060,6 +1060,8 @@ fun callCheckPopNonEmpty(stack: String) -> Int {
 
 fun envSeedBuiltins() -> Int {
     envAddGlobal("len", 1)
+    // M117: nullary UFCS method ret tags (Call(FieldAccess) path).
+    envAddGlobal("isEmpty", 2)
     envAddGlobal("charAt", 5)
     envAddGlobal("substring", 5)
     envAddGlobal("toString", 5)
