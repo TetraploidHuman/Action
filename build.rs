@@ -153,6 +153,10 @@ fn build_host_runtime_staticlib() {
     // Separate target dir: nested build must not share the outer artifact lock (CI deadlock).
     let host_rt_target = target_dir.join("host_rt_build");
     cmd.env("CARGO_TARGET_DIR", &host_rt_target);
+    // Parent `cargo test --target $TRIPLE` may export CARGO_BUILD_TARGET/TARGET;
+    // strip them so host-rt lands at host_rt_build/{profile}/ (not …/{triple}/…).
+    cmd.env_remove("CARGO_BUILD_TARGET");
+    cmd.env_remove("TARGET");
     cmd.args(["build", "--manifest-path"])
         .arg(&host_rt_manifest);
     if profile == "release" {

@@ -967,27 +967,51 @@ fn find_aot_host_staticlib() -> Option<PathBuf> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let profiles = ["release", "debug"];
     let mut candidates = Vec::new();
-    // Prefer build.rs output (`target/host_rt_build/...`) over a stale
-    // `target/{profile}/libaction_host_rt.a` that may lack newer host file symbols.
-    if let Ok(target_dir) = std::env::var("CARGO_TARGET_DIR") {
-        let td = PathBuf::from(target_dir);
+    // Nested `cargo build` of host-rt may land under host_rt_build/{triple}/{profile}/
+    // when CI sets TARGET / --target.
+    let triples: Vec<String> = [
+        std::env::var("TARGET").ok(),
+        std::env::var("CARGO_BUILD_TARGET").ok(),
+        Some("x86_64-unknown-linux-gnu".into()),
+        None,
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+
+    let mut push_under = |base: &Path| {
         for profile in profiles {
-            candidates.push(td.join(format!("host_rt_build/{profile}/libaction_host_rt.a")));
+            candidates.push(base.join(format!("host_rt_build/{profile}/libaction_host_rt.a")));
+            for triple in &triples {
+                candidates.push(base.join(format!(
+                    "host_rt_build/{triple}/{profile}/libaction_host_rt.a"
+                )));
+            }
+            candidates.push(base.join(format!("{profile}/libaction_host_rt.a")));
+            for triple in &triples {
+                candidates.push(base.join(format!("{triple}/{profile}/libaction_host_rt.a")));
+            }
+        }
+    };
+
+    // Prefer build.rs output (`…/host_rt_build/...`) over a stale profile copy.
+    if let Ok(target_dir) = std::env::var("CARGO_TARGET_DIR") {
+        push_under(&PathBuf::from(target_dir));
+    }
+    push_under(&root.join("target"));
+    push_under(&root);
+
+    // Walk up from the test binary (deps/ → debug/ → target/) like action-cli.
+    if let Ok(exe) = std::env::current_exe() {
+        let mut dir = exe.parent().map(|p| p.to_path_buf());
+        for _ in 0..6 {
+            if let Some(ref d) = dir {
+                push_under(d);
+                dir = d.parent().map(|p| p.to_path_buf());
+            }
         }
     }
-    for profile in profiles {
-        candidates.push(root.join(format!(
-            "target/host_rt_build/{profile}/libaction_host_rt.a"
-        )));
-        candidates.push(root.join(format!("host_rt_build/{profile}/libaction_host_rt.a")));
-    }
-    for profile in profiles {
-        if let Ok(target_dir) = std::env::var("CARGO_TARGET_DIR") {
-            candidates
-                .push(PathBuf::from(target_dir).join(format!("{profile}/libaction_host_rt.a")));
-        }
-        candidates.push(root.join(format!("target/{profile}/libaction_host_rt.a")));
-    }
+
     candidates.into_iter().find(|p| p.is_file())
 }
 
@@ -999,13 +1023,14 @@ fn link_bootstrap_aot_executable(
     let mut cmd = Command::new("cc");
     cmd.arg("-o").arg(exe_path).arg(obj_path);
     if needs_host_rt {
-        if let Some(host_lib) = find_aot_host_staticlib() {
-            cmd.arg(host_lib);
-        } else {
-            eprintln!(
-                "warning: libaction_host_rt.a not found; AOT link may fail if IR uses host_rt"
-            );
-        }
+        let host_lib = find_aot_host_staticlib().ok_or_else(|| {
+            format!(
+                "libaction_host_rt.a not found for bootstrap AOT (CARGO_TARGET_DIR={:?}, TARGET={:?})",
+                std::env::var("CARGO_TARGET_DIR").ok(),
+                std::env::var("TARGET").ok()
+            )
+        })?;
+        cmd.arg(host_lib);
     }
     cmd.args(["-lm", "-lpthread", "-ldl"]);
     let output = cmd
