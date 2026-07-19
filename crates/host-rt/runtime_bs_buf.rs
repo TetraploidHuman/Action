@@ -12,6 +12,7 @@
 //! - 40 — collection env `name:forTag:indexTag|` (M75)
 //! - 41 — enum defs `Name:V0,V1,...|` (M77)
 //! - 42 — when-match covered constructors `V0|V1|` (M77)
+//! - 43 — import visiting stack `name|` (M120 cycle detection)
 //!
 //! `Append` grows a table; `Set` replaces (truncate-write), matching former `writeFile`.
 
@@ -19,7 +20,7 @@ use std::sync::Mutex;
 
 use crate::runtime_file::{alloc_action_str, HostStr};
 
-const SLOT_COUNT: usize = 43;
+const SLOT_COUNT: usize = 44;
 
 struct BsBuffers {
     slots: [Vec<u8>; SLOT_COUNT],
@@ -29,6 +30,7 @@ impl BsBuffers {
     const fn new() -> Self {
         Self {
             slots: [
+                Vec::new(),
                 Vec::new(),
                 Vec::new(),
                 Vec::new(),

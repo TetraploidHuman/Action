@@ -32,6 +32,8 @@ EXPECTED_FUNS = {
     "preScanEnumVarOne",
     "preScanTypeAlias",
     "preScanImportLoadModule",
+    "preScanImportLoadModuleBody",
+    "preScanImportLoadModuleGo",
     "preScanImportLoad",
     "preScanImport",
     "preScanTopLevel",

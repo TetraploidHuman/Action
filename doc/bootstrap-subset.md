@@ -11,7 +11,7 @@
 | 控制流 | `when`（…）、`for`（含 `for v in map` 值、`for k in map` 键（`len(k)` 启发式）、`for x in set`、`for k, v in map`、**break** / **continue**）、`return` |
 | 表达式 | 二元 `+ - * / %`、逻辑 **`and` / `or`**、一元 `+ - not`、下标 `m["k"]`、字段 `.x`（可链式）、**nullary UFCS**（`x.len()` / `x.isEmpty()`，M117）、fallible **`or { … }`**（M118）、**lambda / `it`**（`{ it * 2 }(21)` / `{ x -> … }`，M119） |
 | 集合 | `List` / `Map` / `Set` / `String` |
-| 模块 | 单文件；**M24** 起 `import prelude` / `import parser` / **M26** `import emit` / **M27** `import typeenv` / `import whenty` / **M29** `import modload` / **M30** `import pexpr` / **M31** `import pstmt` / **M32** `import pdecl` / **M33** `import pscan`（命名空间调用 `mod.fn()`） |
+| 模块 | 单文件；flat 自举模块（`prelude`…`pscan`）裸名；**M120** 起亦可 `import` 其它 path-safe 的 `bootstrap/{name}.ac`（非 flat → `mod.fn()` / `mod_` 前缀）；环与缺文件拒绝 |
 | 输出 | `print` / `println`（bootstrap 编译器均已实现） |
 
 ## 禁止（首版）
@@ -163,8 +163,9 @@
 | M117 | 基本 nullary UFCS | ✅ `.method(` → `Call(FieldAccess)`；`ufcs_len_ok`→3；`bad_ufcs_unknown`；allowlist 59 |
 | M118 | fallible `or {}` | ✅ `or {` → HIR `OrBlock`；`or_block_ok`→0；`bad_or_block_ty`；allowlist 60 |
 | M119 | lambda / `it` | ✅ `{ it * 2 }(21)` → HIR `Lambda`+Call；`lambda_it_ok`→42；`bad_lambda_it_ty`；allowlist 61 |
+| M120 | 开放 import 图（窄） | ✅ path-safe + cycle + 缺文件拒；`import_graph_ok`→42；`bad_import_{cycle,unknown}`；allowlist 62 |
 
-**M72+ 执行计划**：[bootstrap-m72-plan.md](bootstrap-m72-plan.md)（M72–M119 ✅）。
+**M72+ 执行计划**：[bootstrap-m72-plan.md](bootstrap-m72-plan.md)（M72–M120 ✅）。
 
 CI 维护：`scripts/check_bootstrap_goldens.sh`（`ci-linux.sh core` 内执行，防 golden drift）；`check_bootstrap_{prelude,parser,emit}.py` 校验模块 import 与 fixture 同步。
 

@@ -41,6 +41,7 @@ pub const BOOTSTRAP_FRONTEND_ALLOWLIST: &[&str] = &[
     "infinite_for",
     "infinite_for_return",
     "import_call_ok",
+    "import_graph_ok",
     "import_prelude",
     "index_assign_ok",
     "index_key_ok",

@@ -1,0 +1,6 @@
+// M120: open import beyond flat allowlist (path-safe + file exists).
+import m120_lib
+
+fun main() -> Int {
+    return m120_lib.add1(41)
+}

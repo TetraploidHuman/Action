@@ -28,7 +28,7 @@ def main() -> None:
         raise SystemExit(f"{COMPILER}: expected `import modload`")
     if any(ln.startswith("import modload.{") for ln in non_comment):
         raise SystemExit(f"{COMPILER}: use `import modload` with modload.fn() calls")
-    for fn in ("importClear", "importIsLoaded", "importAllowed", "parseImportSkipItems"):
+    for fn in ("importClear", "importIsLoaded", "importAllowed", "importNamePathSafe", "parseImportSkipItems"):
         if f"fun {fn}(" in text:
             raise SystemExit(f"{COMPILER}: {fn} should live in modload.ac")
     for fn in ("parseImport", "parseImportLoadModule"):
@@ -45,6 +45,10 @@ def main() -> None:
         raise SystemExit(f"{MODLOAD}: expected import typeenv")
     if '"modload" -> true' not in mod:
         raise SystemExit(f"{MODLOAD}: importAllowed must allow modload")
+    if "fun importNamePathSafe(" not in mod:
+        raise SystemExit(f"{MODLOAD}: expected importNamePathSafe (M120)")
+    if "fun importIsVisiting(" not in mod:
+        raise SystemExit(f"{MODLOAD}: expected importIsVisiting (M120)")
     print("=== bootstrap modload check OK ===")
 
 

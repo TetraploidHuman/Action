@@ -161,18 +161,39 @@ fun preScanTypeAlias(s: String, pos: Int) -> Int {
 }
 
 fun preScanImportLoadModule(modName: String) -> Int {
-    modload.importMarkPrescanned(modName)
-    modload.parseImportApplyPrefix(modName)
+    return when {
+        modload.importNamePathSafe(modName) == false -> typeenv.typeErrorMark()
+        else -> preScanImportLoadModuleBody(modName)
+    }
+}
+
+fun preScanImportLoadModuleBody(modName: String) -> Int {
     val modSrc: String = readFile(modload.importModulePath(modName))
+    return if len(modSrc) == 0 {
+        typeenv.typeErrorMark()
+    } else {
+        preScanImportLoadModuleGo(modName, modSrc)
+    }
+}
+
+fun preScanImportLoadModuleGo(modName: String, modSrc: String) -> Int {
+    modload.importVisitEnter(modName)
+    modload.parseImportApplyPrefix(modName)
     typeenv.funSigImportEnter()
     preScanProgram(modSrc, 0)
     typeenv.funSigImportLeave()
     modload.importPrefixClear()
+    modload.importVisitLeave(modName)
+    modload.importMarkPrescanned(modName)
     return 0
 }
 
 fun preScanImportLoad(modName: String) -> Int {
-    return if modload.importIsPrescanned(modName) { 0 } else { preScanImportLoadModule(modName) }
+    return when {
+        modload.importIsPrescanned(modName) -> 0
+        modload.importIsVisiting(modName) -> typeenv.typeErrorMark()
+        else -> preScanImportLoadModule(modName)
+    }
 }
 
 fun preScanImport(s: String, pos: Int) -> Int {

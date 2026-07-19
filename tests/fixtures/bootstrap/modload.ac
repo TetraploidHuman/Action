@@ -20,6 +20,7 @@ fun slotImportPrefix() -> Int { return 33 }
 fun slotImportSrc() -> Int { return 36 }
 fun slotImportSelective() -> Int { return 21 }
 fun slotImportScanHit() -> Int { return 22 }
+fun slotImportsVisiting() -> Int { return 43 }
 
 fun importPrefixClear() -> Int {
     bsBufClear(slotImportPrefix())
@@ -57,6 +58,7 @@ fun importSelective() -> Bool {
 fun importClear() -> Int {
     bsBufClear(slotImports())
     bsBufClear(slotImportsPrescanned())
+    bsBufClear(slotImportsVisiting())
     bsBufClear(slotImportSrc())
     importPrefixClear()
     importSelectiveClear()
@@ -118,6 +120,64 @@ fun importIsLoaded(name: String) -> Bool {
     importIsLoadedInit()
     importIsLoadedFor(bsBufGet(slotImports()), name)
     return bsIntGet(slotImportScanHit()) == 1
+}
+
+
+fun importIsVisiting(name: String) -> Bool {
+    importIsLoadedInit()
+    importIsLoadedFor(bsBufGet(slotImportsVisiting()), name)
+    return bsIntGet(slotImportScanHit()) == 1
+}
+
+fun importVisitEnter(name: String) -> Int {
+    bsBufAppend(slotImportsVisiting(), name + "|")
+    return 0
+}
+
+fun importVisitLeave(name: String) -> Int {
+    return importVisitLeaveDo(bsBufGet(slotImportsVisiting()), name + "|")
+}
+
+fun importVisitLeaveDo(buf: String, needle: String) -> Int {
+    val nlen: Int = len(needle)
+    val blen: Int = len(buf)
+    return if blen < nlen { 0 } else { importVisitLeaveTail(buf, needle, nlen, blen) }
+}
+
+fun importVisitLeaveTail(buf: String, needle: String, nlen: Int, blen: Int) -> Int {
+    return if substring(buf, blen - nlen, nlen) == needle {
+        importVisitLeaveCommit(substring(buf, 0, blen - nlen))
+    } else {
+        0
+    }
+}
+
+fun importVisitLeaveCommit(rest: String) -> Int {
+    bsBufSet(slotImportsVisiting(), rest)
+    return 0
+}
+
+fun importNamePathSafe(name: String) -> Bool {
+    return when {
+        name == "" -> false
+        else -> importNamePathSafeChars(name, 0)
+    }
+}
+
+fun importNamePathSafeChars(name: String, i: Int) -> Bool {
+    return when {
+        i >= len(name) -> true
+        prelude.charAtSafe(name, i) == "/" -> false
+        prelude.charAtSafe(name, i) == "." -> importNamePathSafeDot(name, i)
+        else -> importNamePathSafeChars(name, i + 1)
+    }
+}
+
+fun importNamePathSafeDot(name: String, i: Int) -> Bool {
+    return when {
+        prelude.charAtSafe(name, i + 1) == "." -> false
+        else -> importNamePathSafeChars(name, i + 1)
+    }
 }
 
 fun importSrcSet(src: String) -> Int {

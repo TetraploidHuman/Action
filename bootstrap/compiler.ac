@@ -39,10 +39,19 @@ fun keywordKindOpsTail(text: String) -> String {
 // ── Top level ────────────────────────────────────────────────────────────
 
 fun parseImportLoadModule(modName: String, sep: Int) -> Int {
-    modload.importMarkLoaded(modName)
     modload.parseImportApplyPrefix(modName)
     val modPath: String = modload.importModulePath(modName)
     val modSrc: String = readFile(modPath)
+    // M120: missing module → empty read → reject (open graph beyond allowlist).
+    return if len(modSrc) == 0 {
+        modload.parseImportReject(sep)
+    } else {
+        parseImportLoadModuleBody(modName, sep, modSrc)
+    }
+}
+
+fun parseImportLoadModuleBody(modName: String, sep: Int, modSrc: String) -> Int {
+    modload.importVisitEnter(modName)
     modload.importSrcSet(modSrc)
     whenty.whenUnifyDisable()
     parseProgramSave()
@@ -52,6 +61,8 @@ fun parseImportLoadModule(modName: String, sep: Int) -> Int {
     maybeMarkStmtEmitted(nestedSep)
     whenty.whenUnifyEnable()
     modload.importPrefixClear()
+    modload.importVisitLeave(modName)
+    modload.importMarkLoaded(modName)
     return 1
 }
 
@@ -59,12 +70,20 @@ fun maybeMarkStmtEmitted(nestedSep: Int) -> Int {
     return if nestedSep == 1 { emit.markStmtEmitted() } else { 0 }
 }
 
+// M120: path-safe + open graph (any existing bootstrap/{name}.ac); cycle → reject.
 fun parseImportLoadFresh(modName: String, sep: Int) -> Int {
-    return if modload.importAllowed(modName) { parseImportLoadModule(modName, sep) } else { modload.parseImportReject(sep) }
+    return when {
+        modload.importNamePathSafe(modName) == false -> modload.parseImportReject(sep)
+        else -> parseImportLoadModule(modName, sep)
+    }
 }
 
 fun parseImportLoad(modName: String, sep: Int) -> Int {
-    return if modload.importIsLoaded(modName) { sep } else { parseImportLoadFresh(modName, sep) }
+    return when {
+        modload.importIsLoaded(modName) -> sep
+        modload.importIsVisiting(modName) -> modload.parseImportReject(sep)
+        else -> parseImportLoadFresh(modName, sep)
+    }
 }
 
 fun parseImport(s: String, pos: Int, sep: Int) -> Int {

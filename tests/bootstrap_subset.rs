@@ -1344,12 +1344,18 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         42,
         "lambda_it_ok { it * 2 }(21) should return 42",
     ),
+    (
+        "import_graph_ok",
+        42,
+        "import_graph_ok m120_lib.add1(41) should return 42",
+    ),
 ];
 
-/// Bootstrap allowed fixtures with golden HIR + main oracle (61 stems).
+/// Bootstrap allowed fixtures with golden HIR + main oracle (62 stems).
 /// `env_scope_leak.ac` is TC3-negative only (no golden).
 /// Fixtures where bootstrap import loader emits the full module but Rust uses selective import.
-const BOOTSTRAP_SKIP_RUST_FUN_NAME_ORACLE: &[&str] = &["import_call_ok", "import_prelude"];
+const BOOTSTRAP_SKIP_RUST_FUN_NAME_ORACLE: &[&str] =
+    &["import_call_ok", "import_graph_ok", "import_prelude"];
 
 const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "arith_add_string_ok",
@@ -1377,6 +1383,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "infinite_for",
     "infinite_for_return",
     "import_call_ok",
+    "import_graph_ok",
     "import_prelude",
     "index_assign_ok",
     "index_key_ok",
@@ -3199,6 +3206,46 @@ fn test_bootstrap_m119_allowlisted_lambda_it_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"lambda_it_ok"),
         "lambda_it_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M120: circular import rejected.
+#[test]
+fn test_bootstrap_m120_rejects_bad_import_cycle() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_import_cycle.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_import_cycle.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M120: missing module rejected.
+#[test]
+fn test_bootstrap_m120_rejects_bad_import_unknown() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_import_unknown.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_import_unknown.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M120: open-graph import of non-allowlist module accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m120_allowlisted_import_graph_ok() {
+    let path = fixtures_root().join("bootstrap/import_graph_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept import_graph_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"import_graph_ok"),
+        "import_graph_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 
