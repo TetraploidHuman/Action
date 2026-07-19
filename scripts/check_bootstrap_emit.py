@@ -33,6 +33,8 @@ def main() -> None:
         raise SystemExit(f"{EMIT}: expected stmtsAsBlock (M125)")
     if "fun slotBlockStmts(" not in emit:
         raise SystemExit(f"{EMIT}: expected slotBlockStmts (M125)")
+    if "fun letAsStmt(" not in emit:
+        raise SystemExit(f"{EMIT}: expected letAsStmt (M127)")
     print("=== bootstrap emit check OK ===")
 
 

@@ -1,0 +1,4 @@
+// M127: PlainBlock val init type error (dual frontend).
+fun main() -> Int {
+    return { val a: Int = true; a }
+}

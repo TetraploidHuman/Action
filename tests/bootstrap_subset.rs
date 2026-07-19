@@ -1360,6 +1360,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "if_stmts_ok if true { 21; 21 * 2 } else { 0 } should return 42",
     ),
     (
+        "plain_block_val_ok",
+        42,
+        "plain_block_val_ok { val a: Int = 21; a * 2 } should return 42",
+    ),
+    (
         "lambda_multi_ok",
         42,
         "lambda_multi_ok { x, y -> x + y }(20, 22) should return 42",
@@ -1440,6 +1445,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "map_values",
     "nested_for",
     "or_block_ok",
+    "plain_block_val_ok",
     "print_stmt",
     "range_ok",
     "return_bool_cmp",
@@ -3450,6 +3456,34 @@ fn test_bootstrap_m126_allowlisted_if_stmts_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"if_stmts_ok"),
         "if_stmts_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M127: PlainBlock val init type error rejected.
+#[test]
+fn test_bootstrap_m127_rejects_bad_plain_block_val_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_plain_block_val_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_val_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M127: `{ val a: Int = 21; a * 2 }` PlainBlock accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m127_allowlisted_plain_block_val_ok() {
+    let path = fixtures_root().join("bootstrap/plain_block_val_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept plain_block_val_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_val_ok"),
+        "plain_block_val_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 

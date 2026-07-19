@@ -160,6 +160,13 @@ fun exprAsStmt(inner: String) -> String {
     }
 }
 
+// M127: Let stmt JSON for PlainBlock accumulator (not jOut).
+fun letAsStmt(mut: Bool, name: String, ty: String, value: String) -> String {
+    val mutJ: String = if mut { "true" } else { "false" }
+    val span: String = parser.spanJson()
+    return "{\"Let\": {\"mutable\": " + mutJ + ", \"lazy_init\": false, \"name\": \"" + name + "\", \"type_ann\": {\"Named\": \"" + ty + "\"}, \"value\": " + value + ", \"span\": " + span + "}}"
+}
+
 fun isKindBreak(j: String) -> Bool {
     val suf: String = "\"kind\": \"Break\"}"
     return if len(j) < len(suf) { false } else { substring(j, len(j) - len(suf), len(suf)) == suf }

@@ -124,17 +124,18 @@ Phase AR M116 external funSig            ← ✅
 | **M124** | 更广搜索根 | `bootstrap/` → `tests/fixtures/bootstrap/`（`exists`）；无 canonicalize 逃逸 | `import_fixtures_ok` →42（`m124_lib` 仅 fixtures）；`bad_import_unknown` 仍拒；allowlist 66 | S | M120 | ✅ |
 | **M125** | 多语句 `{ expr; … }` lambda | `parseLambdaBlock` 循环 stmt；Block 类型=末 expr；slot 44 | `lambda_stmts_ok` →42；`bad_lambda_stmts_ty` → exit 1；allowlist 67；`lambda_block_ok` 仍绿 | S | M123 | ✅ |
 | **M126** | `if`/`or {}` 多语句 PlainBlock | `parsePlainBlockBody`（复用 stmt 循环，HIR Block 非 Lambda） | `if_stmts_ok` →42；`bad_if_stmts_ty` → exit 1；`or_block_ok` 仍绿；allowlist 68 | S | M125 | ✅ |
+| **M127** | `{ val …; }` PlainBlock | `parsePlainBlockLet` + `letAsStmt`；`parseBraceExpr` 认 `val`/`var` | `plain_block_val_ok` →42；`bad_plain_block_val_ty` → exit 1；if/or 臂可用 `val`；allowlist 69 | S | M126 | ✅ |
 
 ### 后续批次（规划）
 
 | ID | 目标 | 依赖 |
 |----|------|------|
-| **M127+** | `{ val …; }` 表达式 PlainBlock；if/or 臂内 `val` | M126 |
+| **M128+** | PlainBlock 更广语句（`for`/`return`）；lambda 体内 `val` | M127 |
 
 ### 刻意延后（非本批次）
 
 - 任意目录 import / canonicalize 逃逸层（仍固定双根：`bootstrap/` + `tests/fixtures/bootstrap/`，见 M124）
-- `{ val …; stmts }` 表达式 PlainBlock / if·or 臂内 `val` — 见 M127+
+- PlainBlock 更广语句（`for`/`return`）/ lambda 体内 `val` — 见 M128+
 - lazy / **复杂** UFCS 方法链（子集仍禁止；M117 仅 nullary）
 - Action 实现 codegen（L3，不做）
 
@@ -265,7 +266,8 @@ bash scripts/check_bootstrap_goldens.sh
 - [x] 更广搜索根 `bootstrap/` + `tests/fixtures/bootstrap/`（M124）
 - [x] 多语句 `{ expr; … }` 无参 lambda（M125）
 - [x] `if`/`or {}` 多语句 PlainBlock（M126）
-- [ ] `{ val …; }` / if·or 臂内 `val`（M127+）
+- [x] `{ val …; }` 表达式 PlainBlock / if·or 臂内 `val`（M127）
+- [ ] PlainBlock 更广语句 / lambda 体内 `val`（M128+）
 
 ## 8. 与既有文档关系
 

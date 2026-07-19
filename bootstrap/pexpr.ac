@@ -220,17 +220,72 @@ fun parseLambdaBlockStmt(s: String, pos: Int, sep: Int) -> Int {
     return parseLambdaBlockStmts(s, p, 1)
 }
 
-// M126: after `{` consumed — multi-stmt PlainBlock (HIR Block, not Lambda).
+// M126/M127: after `{` consumed — PlainBlock (HIR Block; may include typed val/var).
 fun parsePlainBlockBody(s: String, pos: Int) -> Int {
+    val snap: String = typeenv.envLocalSnapshot()
     val saved: String = emit.accGet(emit.slotBlockStmts())
     emit.accReset(emit.slotBlockStmts())
-    var p: Int = parseLambdaBlockStmt(s, pos, 0)
-    p = parseLambdaBlockStmts(s, p, 1)
+    var p: Int = parsePlainBlockStmt(s, pos, 0)
+    p = parsePlainBlockStmts(s, p, 1)
     val tag: Int = typeenv.lastExprTyTag()
     val stmts: String = emit.accGet(emit.slotBlockStmts())
     emit.accSet(emit.slotBlockStmts(), saved)
     p = parser.expect(s, p, parser.closeBrace())
+    typeenv.envLocalRestore(snap)
     emit.setExpr(emit.stmtsAsBlock(tag, stmts))
+    return p
+}
+
+fun parsePlainBlockStmts(s: String, pos: Int, sep: Int) -> Int {
+    return if parser.isTok(s, pos, parser.closeBrace()) {
+        pos
+    } else {
+        parsePlainBlockStmt(s, pos, sep)
+    }
+}
+
+fun parsePlainBlockStmt(s: String, pos: Int, sep: Int) -> Int {
+    return when {
+        parser.cur(s, pos) == "val" -> parsePlainBlockLet(s, pos, sep, false)
+        parser.cur(s, pos) == "var" -> parsePlainBlockLet(s, pos, sep, true)
+        else -> parsePlainBlockExprStmt(s, pos, sep)
+    }
+}
+
+fun parsePlainBlockExprStmt(s: String, pos: Int, sep: Int) -> Int {
+    var p: Int = parseExpr(s, pos)
+    val inner: String = emit.getExpr()
+    emit.accAdd(emit.slotBlockStmts(), emit.exprAsStmt(inner), sep)
+    p = skipOptionalSemi(s, p)
+    return parsePlainBlockStmts(s, p, 1)
+}
+
+fun parsePlainBlockLet(s: String, pos: Int, sep: Int, mut: Bool) -> Int {
+    parser.spanMarkBegin(s, pos)
+    var p: Int = parser.advance(s, pos)
+    val name: String = parser.cur(s, p)
+    p = parser.advance(s, p)
+    p = parser.expect(s, p, ":")
+    val ty: String = parser.cur(s, p)
+    p = parser.advance(s, p)
+    p = parser.expect(s, p, "=")
+    typeenv.setLitTy(ty)
+    p = parseExpr(s, p)
+    typeenv.tyCheckBind(typeenv.tyAnnTag(ty), typeenv.lastExprTyTag())
+    parser.spanMarkEnd(s, p)
+    val v: String = emit.getExpr()
+    emit.accAdd(emit.slotBlockStmts(), emit.letAsStmt(mut, name, ty, v), sep)
+    typeenv.envAddLocal(name, typeenv.tyAnnTag(ty), if mut { 1 } else { 0 })
+    p = skipOptionalSemi(s, p)
+    return parsePlainBlockStmts(s, p, 1)
+}
+
+// M127: expr-position `{ val …; expr }` PlainBlock (not Lambda; no trailing Call attach).
+fun parsePlainBlockExpr(s: String, pos: Int) -> Int {
+    parser.spanMarkBegin(s, pos)
+    var p: Int = parser.advance(s, pos)
+    p = parsePlainBlockBody(s, p)
+    parser.spanMarkEnd(s, p)
     return p
 }
 
@@ -247,7 +302,7 @@ fun parseBraceLambda(s: String, pos: Int) -> Int {
     }
 }
 
-// M119–M123: `{` — struct (`x = …`) vs lambda (`it` / `x ->` / `{ expr }`).
+// M119–M127: `{` — struct / lambda / PlainBlock (`val`/`var`).
 fun parseBraceExpr(s: String, pos: Int) -> Int {
     val p1: Int = parser.advance(s, pos)
     val first: String = parser.cur(s, p1)
@@ -257,6 +312,8 @@ fun parseBraceExpr(s: String, pos: Int) -> Int {
         second == "->" -> parsePostfix(s, parseLambdaArrow(s, pos))
         second == "," -> parsePostfix(s, parseLambdaArrow(s, pos))
         first == "it" -> parsePostfix(s, parseLambdaIt(s, pos))
+        first == "val" -> parsePlainBlockExpr(s, pos)
+        first == "var" -> parsePlainBlockExpr(s, pos)
         else -> parsePostfix(s, parseLambdaBlock(s, pos))
     }
 }

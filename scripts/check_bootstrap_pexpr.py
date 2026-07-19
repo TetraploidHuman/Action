@@ -57,6 +57,8 @@ def main() -> None:
         raise SystemExit(f"{PEXPR}: expected parseLambdaBlockStmts (M125)")
     if "fun parsePlainBlockBody(" not in pexpr:
         raise SystemExit(f"{PEXPR}: expected parsePlainBlockBody (M126)")
+    if "fun parsePlainBlockLet(" not in pexpr:
+        raise SystemExit(f"{PEXPR}: expected parsePlainBlockLet (M127)")
     if '"pexpr" -> true' not in MODLOAD.read_text():
         raise SystemExit(f"{MODLOAD}: importAllowed must allow pexpr")
     print("=== bootstrap pexpr check OK ===")
