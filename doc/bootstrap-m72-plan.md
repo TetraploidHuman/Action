@@ -132,12 +132,13 @@ Phase AR M116 external funSig            ← ✅
 | **M132** | PlainBlock `for` WithIndex | `forWithIndexAsStmt` + List/Map bind；`,` 分派 | `plain_block_for_with_index_ok` →6；`bad_plain_block_for_with_index_ty` → exit 1；allowlist 74 | S | M131 | ✅ |
 | **M133** | PlainBlock `for` Infinite | `forInfiniteAsStmt`；`for {` 分派；ok 须 early `return` | `plain_block_for_infinite_ok` →42；`bad_plain_block_for_infinite_ty` → exit 1；allowlist 75 | S | M132 | ✅ |
 | **M134** | PlainBlock Map `for-in` 值绑定 | `pexpr.plainForInBindTag`（`len(v)` 启发式）；对齐 pstmt/Rust | `plain_block_map_values_ok` →15；`bad_plain_block_map_values_ty` → exit 1；allowlist 76 | S | M133 | ✅ |
+| **M135** | PlainBlock `break`/`continue` | 复用 `exprAsStmt` 升格；夹具入 Path B | `plain_block_break_ok` →15；`plain_block_continue_ok` →12；`bad_plain_block_break_ty` → exit 1；allowlist 78 | S | M134 | ✅ |
 
 ### 后续批次（规划）
 
 | ID | 目标 | 依赖 |
 |----|------|------|
-| **M135+** | PlainBlock break/continue 或文档核对 | M134 |
+| **M136+** | 文档核对 / 其它子集缺口 | M135 |
 
 ### 刻意延后（非本批次）
 
@@ -281,6 +282,7 @@ bash scripts/check_bootstrap_goldens.sh
 - [x] PlainBlock `for` WithIndex（M132）
 - [x] PlainBlock `for` Infinite（M133）
 - [x] PlainBlock Map `for-in` 值绑定（M134）
+- [x] PlainBlock `break`/`continue`（M135）
 
 ## 8. 与既有文档关系
 

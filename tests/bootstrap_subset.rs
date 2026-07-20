@@ -1400,6 +1400,16 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_map_values_ok for v in Map values should return 15",
     ),
     (
+        "plain_block_break_ok",
+        15,
+        "plain_block_break_ok for-break should sum 1..5 → 15",
+    ),
+    (
+        "plain_block_continue_ok",
+        12,
+        "plain_block_continue_ok for-continue should skip 3 → 12",
+    ),
+    (
         "lambda_multi_ok",
         42,
         "lambda_multi_ok { x, y -> x + y }(20, 22) should return 42",
@@ -1481,6 +1491,8 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "map_values",
     "nested_for",
     "or_block_ok",
+    "plain_block_break_ok",
+    "plain_block_continue_ok",
     "plain_block_for_cond_ok",
     "plain_block_for_infinite_ok",
     "plain_block_for_ok",
@@ -3723,6 +3735,36 @@ fn test_bootstrap_m134_allowlisted_plain_block_map_values_ok() {
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_map_values_ok"),
         "plain_block_map_values_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
+}
+
+/// M135: non-Bool if around break in PlainBlock for rejected.
+#[test]
+fn test_bootstrap_m135_rejects_bad_plain_block_break_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_plain_block_break_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_break_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M135: PlainBlock for-break / for-continue accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m135_allowlisted_plain_block_break_continue_ok() {
+    for stem in ["plain_block_break_ok", "plain_block_continue_ok"] {
+        let path = fixtures_root().join(format!("bootstrap/{stem}.ac"));
+        let output = run_bootstrap_compiler_on(&path);
+        assert!(
+            output.status.success(),
+            "bootstrap compiler should accept {stem}.ac (stderr: {})",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&stem),
+            "{stem} must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+        );
+    }
 }
 
 /// M81: `not` with Bool operand accepted.
