@@ -283,13 +283,13 @@ fun parsePlainBlockReturn(s: String, pos: Int, sep: Int) -> Int {
     return parsePlainBlockStmts(s, p, 1)
 }
 
-// M130/M131: PlainBlock `for` — Iterate (`in`) or Condition (else); Infinite/WithIndex deferred.
+// M130–M132: PlainBlock `for` — Iterate / WithIndex / Condition; Infinite deferred (M133).
 fun parsePlainBlockFor(s: String, pos: Int, sep: Int) -> Int {
     parser.spanMarkBegin(s, pos)
     var p: Int = parser.advance(s, pos)
     return when {
         parser.cur(s, p) == parser.openBrace() -> parsePlainBlockForReject(s, p, sep)
-        parser.cur(s, parser.advance(s, p)) == "," -> parsePlainBlockForReject(s, p, sep)
+        parser.cur(s, parser.advance(s, p)) == "," -> parsePlainBlockForWithIndex(s, p, sep)
         else -> parsePlainBlockForDispatch(s, p, sep)
     }
 }
@@ -307,6 +307,43 @@ fun parsePlainBlockForDispatch(s: String, pos: Int, sep: Int) -> Int {
     } else {
         parsePlainBlockForCond(s, p, sep, vname)
     }
+}
+
+// M132: `for idx, n in expr { … }` — List bind (Map deferred with pstmt parity inline).
+fun parsePlainBlockForWithIndex(s: String, pos: Int, sep: Int) -> Int {
+    val v0: String = parser.cur(s, pos)
+    var p: Int = parser.advance(s, pos)
+    p = parser.advance(s, p)
+    val v1: String = parser.cur(s, p)
+    p = parser.advance(s, p)
+    p = parser.expect(s, p, "in")
+    p = parseExpr(s, p)
+    val iterable: String = emit.getExpr()
+    p = if typeenv.lastExprTyTag() == 7 {
+        typeenv.envAddLocal(v0, typeenv.collForTagOrInt(), 0)
+        typeenv.envAddLocal(v1, typeenv.collIndexTagOrInt(), 0)
+        p
+    } else {
+        typeenv.envAddLocal(v0, 1, 0)
+        typeenv.envAddLocal(v1, typeenv.collForTagOrInt(), 0)
+        p
+    }
+    p = parser.expect(s, p, parser.openBrace())
+    val saved: String = emit.accGet(emit.slotBlockStmts())
+    emit.accReset(emit.slotBlockStmts())
+    p = if parser.isTok(s, p, parser.closeBrace()) {
+        p
+    } else {
+        parsePlainBlockForBodyGo(s, p)
+    }
+    val bodyStmts: String = emit.accGet(emit.slotBlockStmts())
+    emit.accSet(emit.slotBlockStmts(), saved)
+    p = parser.expect(s, p, parser.closeBrace())
+    parser.spanMarkEnd(s, p)
+    emit.accAdd(emit.slotBlockStmts(), emit.forWithIndexAsStmt(v0, v1, iterable, bodyStmts), sep)
+    typeenv.lastExprTySet(0)
+    p = skipOptionalSemi(s, p)
+    return parsePlainBlockStmts(s, p, 1)
 }
 
 fun parsePlainBlockForIn(s: String, pos: Int, sep: Int, vname: String) -> Int {

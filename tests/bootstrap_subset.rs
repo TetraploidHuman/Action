@@ -1385,6 +1385,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_for_cond_ok for s < 42 { s = s + 1 } should return 42",
     ),
     (
+        "plain_block_for_with_index_ok",
+        6,
+        "plain_block_for_with_index_ok for idx, n in List[1,2,3] should return 6",
+    ),
+    (
         "lambda_multi_ok",
         42,
         "lambda_multi_ok { x, y -> x + y }(20, 22) should return 42",
@@ -1468,6 +1473,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "or_block_ok",
     "plain_block_for_cond_ok",
     "plain_block_for_ok",
+    "plain_block_for_with_index_ok",
     "plain_block_return_ok",
     "plain_block_val_ok",
     "print_stmt",
@@ -3620,6 +3626,34 @@ fn test_bootstrap_m131_allowlisted_plain_block_for_cond_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_for_cond_ok"),
         "plain_block_for_cond_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M132: PlainBlock for-with-index heterogeneous List rejected.
+#[test]
+fn test_bootstrap_m132_rejects_bad_plain_block_for_with_index_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_plain_block_for_with_index_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_for_with_index_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M132: PlainBlock `for idx, n in List[1,2,3]` accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m132_allowlisted_plain_block_for_with_index_ok() {
+    let path = fixtures_root().join("bootstrap/plain_block_for_with_index_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept plain_block_for_with_index_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_for_with_index_ok"),
+        "plain_block_for_with_index_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 
