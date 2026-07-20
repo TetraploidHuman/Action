@@ -1,0 +1,13 @@
+// M134: PlainBlock Map for-in value bind (no len) — sum values → 15.
+fun main() -> Int {
+    return if true {
+        val m: Map = Map["a": 10, "bb": 5]
+        var sum: Int = 0
+        for v in m {
+            sum = sum + v
+        }
+        sum
+    } else {
+        0
+    }
+}

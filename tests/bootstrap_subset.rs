@@ -1395,6 +1395,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_for_infinite_ok for { return 42 } should return 42",
     ),
     (
+        "plain_block_map_values_ok",
+        15,
+        "plain_block_map_values_ok for v in Map values should return 15",
+    ),
+    (
         "lambda_multi_ok",
         42,
         "lambda_multi_ok { x, y -> x + y }(20, 22) should return 42",
@@ -1480,6 +1485,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "plain_block_for_infinite_ok",
     "plain_block_for_ok",
     "plain_block_for_with_index_ok",
+    "plain_block_map_values_ok",
     "plain_block_return_ok",
     "plain_block_val_ok",
     "print_stmt",
@@ -3688,6 +3694,34 @@ fn test_bootstrap_m133_allowlisted_plain_block_for_infinite_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_for_infinite_ok"),
         "plain_block_for_infinite_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M134: PlainBlock Map value for-in type error rejected.
+#[test]
+fn test_bootstrap_m134_rejects_bad_plain_block_map_values_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_plain_block_map_values_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_map_values_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M134: PlainBlock `for v in Map` value bind accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m134_allowlisted_plain_block_map_values_ok() {
+    let path = fixtures_root().join("bootstrap/plain_block_map_values_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept plain_block_map_values_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_map_values_ok"),
+        "plain_block_map_values_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 

@@ -366,11 +366,44 @@ fun parsePlainBlockForWithIndex(s: String, pos: Int, sep: Int) -> Int {
     return parsePlainBlockStmts(s, p, 1)
 }
 
+// M134: Map `for v in m` PlainBlock — value by default; key if body uses `len(v)`.
+fun plainForBodyUsesLenAfterLen(s: String, pos: Int, vname: String, depth: Int) -> Bool {
+    return when {
+        parser.cur(s, pos) != "(" -> plainForBodyUsesLenScan(s, pos, vname, depth)
+        parser.cur(s, parser.advance(s, pos)) == vname -> true
+        else -> plainForBodyUsesLenScan(s, pos, vname, depth)
+    }
+}
+
+fun plainForBodyUsesLenScan(s: String, pos: Int, vname: String, depth: Int) -> Bool {
+    val tok: String = parser.cur(s, pos)
+    return when {
+        depth <= 0 -> false
+        tok == "" -> false
+        tok == parser.openBrace() -> plainForBodyUsesLenScan(s, parser.advance(s, pos), vname, depth + 1)
+        tok == parser.closeBrace() -> plainForBodyUsesLenScan(s, parser.advance(s, pos), vname, depth - 1)
+        tok == "len" -> plainForBodyUsesLenAfterLen(s, parser.advance(s, pos), vname, depth)
+        else -> plainForBodyUsesLenScan(s, parser.advance(s, pos), vname, depth)
+    }
+}
+
+fun plainForBodyUsesLen(s: String, bracePos: Int, vname: String) -> Bool {
+    return if parser.cur(s, bracePos) != parser.openBrace() { false } else { plainForBodyUsesLenScan(s, parser.advance(s, bracePos), vname, 1) }
+}
+
+fun plainForInBindTag(s: String, bracePos: Int, vname: String) -> Int {
+    return if typeenv.lastExprTyTag() == 7 {
+        if plainForBodyUsesLen(s, bracePos, vname) { typeenv.collForTagOrInt() } else { typeenv.collIndexTagOrInt() }
+    } else {
+        typeenv.collForTagOrInt()
+    }
+}
+
 fun parsePlainBlockForIn(s: String, pos: Int, sep: Int, vname: String) -> Int {
     var p: Int = parser.expect(s, pos, "in")
     p = parseExpr(s, p)
     val iterable: String = emit.getExpr()
-    typeenv.envAddLocal(vname, typeenv.collForTagOrInt(), 0)
+    typeenv.envAddLocal(vname, plainForInBindTag(s, p, vname), 0)
     p = parser.expect(s, p, parser.openBrace())
     val saved: String = emit.accGet(emit.slotBlockStmts())
     emit.accReset(emit.slotBlockStmts())
