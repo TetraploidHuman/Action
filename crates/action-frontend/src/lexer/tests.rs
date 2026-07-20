@@ -414,8 +414,15 @@ proptest! {
 
     #[test]
     fn proptest_identifiers(name in "[a-zA-Z_][a-zA-Z0-9_]{0,30}") {
+        // Keywords are separate TokenKinds, not Ident — skip reserved words.
+        const KEYWORDS: &[&str] = &[
+            "val", "var", "fun", "when", "if", "else", "for", "in", "is", "break",
+            "continue", "return", "enum", "type", "import", "module", "export", "const",
+            "copy", "extension", "as", "true", "false", "and", "or", "not", "lazy",
+            "unsafe", "external", "null", "Task", "_",
+        ];
+        prop_assume!(!KEYWORDS.contains(&name.as_str()));
         let s = format!("val {} = 42", name);
-        prop_assume!(name != "_");
         let mut lexer = Lexer::new(&s);
         let tokens = lexer.tokenize();
         let kinds: Vec<_> = tokens.iter().map(|t| &t.kind).collect();
