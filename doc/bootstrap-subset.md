@@ -181,8 +181,9 @@
 | M135 | PlainBlock `break`/`continue` | ✅ break→15；continue→12；`bad_plain_block_break_ty`；allowlist 78 |
 | M136 | PlainBlock Map `for-in` 键绑定 | ✅ `collEnvBind` + `len(k)`→3；`bad_plain_block_map_keys_ty`；allowlist 79 |
 | M137 | PlainBlock 嵌套 for | ✅ `plain_block_nested_for_ok`→3；`bad_plain_block_nested_for_ty`；allowlist 80 |
+| M138 | PlainBlock Map `for k, v` | ✅ `plain_block_map_iter_ok`→15；`bad_plain_block_map_iter_ty`；allowlist 81 |
 
-**M72+ 执行计划**：[bootstrap-m72-plan.md](bootstrap-m72-plan.md)（M72–M137 ✅）。
+**M72+ 执行计划**：[bootstrap-m72-plan.md](bootstrap-m72-plan.md)（M72–M138 ✅）。
 
 CI 维护：`scripts/check_bootstrap_goldens.sh`（`ci-linux.sh core` 内执行，防 golden drift）；`check_bootstrap_{prelude,parser,emit}.py` 校验模块 import 与 fixture 同步。
 

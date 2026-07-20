@@ -332,7 +332,7 @@ fun parsePlainBlockForInfinite(s: String, pos: Int, sep: Int) -> Int {
     return parsePlainBlockStmts(s, p, 1)
 }
 
-// M132: `for idx, n in expr { … }` — List bind (Map deferred with pstmt parity inline).
+// M132/M138: `for idx, n in expr { … }` — List or Map (k, v) WithIndex bind.
 fun parsePlainBlockForWithIndex(s: String, pos: Int, sep: Int) -> Int {
     val v0: String = parser.cur(s, pos)
     var p: Int = parser.advance(s, pos)

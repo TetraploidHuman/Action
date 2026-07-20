@@ -1405,6 +1405,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_map_keys_ok for k in Map len(k) should return 3",
     ),
     (
+        "plain_block_map_iter_ok",
+        15,
+        "plain_block_map_iter_ok for k, v in Map should return 15",
+    ),
+    (
         "plain_block_nested_for_ok",
         3,
         "plain_block_nested_for_ok nested ranges should return 3",
@@ -1507,6 +1512,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "plain_block_for_infinite_ok",
     "plain_block_for_ok",
     "plain_block_for_with_index_ok",
+    "plain_block_map_iter_ok",
     "plain_block_map_keys_ok",
     "plain_block_map_values_ok",
     "plain_block_nested_for_ok",
@@ -3832,6 +3838,34 @@ fn test_bootstrap_m137_allowlisted_plain_block_nested_for_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_nested_for_ok"),
         "plain_block_nested_for_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M138: heterogeneous Map values in PlainBlock for k, v rejected.
+#[test]
+fn test_bootstrap_m138_rejects_bad_plain_block_map_iter_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_plain_block_map_iter_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_map_iter_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M138: PlainBlock Map for k, v accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m138_allowlisted_plain_block_map_iter_ok() {
+    let path = fixtures_root().join("bootstrap/plain_block_map_iter_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept plain_block_map_iter_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_map_iter_ok"),
+        "plain_block_map_iter_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 
