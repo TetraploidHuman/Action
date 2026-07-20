@@ -176,8 +176,9 @@
 | M130 | PlainBlock 窄 `for-in` | ✅ `for i in 0..42 { s = s + 1 }`→42；`bad_plain_block_for_ty`；allowlist 72 |
 | M131 | PlainBlock `for` Condition | ✅ `for s < 42 { s = s + 1 }`→42；`bad_plain_block_for_cond_ty`；allowlist 73 |
 | M132 | PlainBlock `for` WithIndex | ✅ `for idx, n in List[1,2,3]`→6；`bad_plain_block_for_with_index_ty`；allowlist 74 |
+| M133 | PlainBlock `for` Infinite | ✅ `for { return 42 }`→42；`bad_plain_block_for_infinite_ty`；allowlist 75 |
 
-**M72+ 执行计划**：[bootstrap-m72-plan.md](bootstrap-m72-plan.md)（M72–M132 ✅）。
+**M72+ 执行计划**：[bootstrap-m72-plan.md](bootstrap-m72-plan.md)（M72–M133 ✅）。
 
 CI 维护：`scripts/check_bootstrap_goldens.sh`（`ci-linux.sh core` 内执行，防 golden drift）；`check_bootstrap_{prelude,parser,emit}.py` 校验模块 import 与 fixture 同步。
 

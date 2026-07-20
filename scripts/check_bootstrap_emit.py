@@ -43,6 +43,8 @@ def main() -> None:
         raise SystemExit(f"{EMIT}: expected forCondAsStmt (M131)")
     if "fun forWithIndexAsStmt(" not in emit:
         raise SystemExit(f"{EMIT}: expected forWithIndexAsStmt (M132)")
+    if "fun forInfiniteAsStmt(" not in emit:
+        raise SystemExit(f"{EMIT}: expected forInfiniteAsStmt (M133)")
     print("=== bootstrap emit check OK ===")
 
 

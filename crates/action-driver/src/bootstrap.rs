@@ -66,6 +66,7 @@ pub const BOOTSTRAP_FRONTEND_ALLOWLIST: &[&str] = &[
     "nested_for",
     "or_block_ok",
     "plain_block_for_cond_ok",
+    "plain_block_for_infinite_ok",
     "plain_block_for_ok",
     "plain_block_for_with_index_ok",
     "plain_block_return_ok",

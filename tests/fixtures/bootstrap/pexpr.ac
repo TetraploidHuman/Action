@@ -283,12 +283,12 @@ fun parsePlainBlockReturn(s: String, pos: Int, sep: Int) -> Int {
     return parsePlainBlockStmts(s, p, 1)
 }
 
-// M130–M132: PlainBlock `for` — Iterate / WithIndex / Condition; Infinite deferred (M133).
+// M130–M133: PlainBlock `for` — Iterate / WithIndex / Condition / Infinite.
 fun parsePlainBlockFor(s: String, pos: Int, sep: Int) -> Int {
     parser.spanMarkBegin(s, pos)
     var p: Int = parser.advance(s, pos)
     return when {
-        parser.cur(s, p) == parser.openBrace() -> parsePlainBlockForReject(s, p, sep)
+        parser.cur(s, p) == parser.openBrace() -> parsePlainBlockForInfinite(s, p, sep)
         parser.cur(s, parser.advance(s, p)) == "," -> parsePlainBlockForWithIndex(s, p, sep)
         else -> parsePlainBlockForDispatch(s, p, sep)
     }
@@ -307,6 +307,26 @@ fun parsePlainBlockForDispatch(s: String, pos: Int, sep: Int) -> Int {
     } else {
         parsePlainBlockForCond(s, p, sep, vname)
     }
+}
+
+// M133: `for { … }` Infinite — body should early-return/break for Path B oracles.
+fun parsePlainBlockForInfinite(s: String, pos: Int, sep: Int) -> Int {
+    var p: Int = parser.expect(s, pos, parser.openBrace())
+    val saved: String = emit.accGet(emit.slotBlockStmts())
+    emit.accReset(emit.slotBlockStmts())
+    p = if parser.isTok(s, p, parser.closeBrace()) {
+        p
+    } else {
+        parsePlainBlockForBodyGo(s, p)
+    }
+    val bodyStmts: String = emit.accGet(emit.slotBlockStmts())
+    emit.accSet(emit.slotBlockStmts(), saved)
+    p = parser.expect(s, p, parser.closeBrace())
+    parser.spanMarkEnd(s, p)
+    emit.accAdd(emit.slotBlockStmts(), emit.forInfiniteAsStmt(bodyStmts), sep)
+    typeenv.lastExprTySet(0)
+    p = skipOptionalSemi(s, p)
+    return parsePlainBlockStmts(s, p, 1)
 }
 
 // M132: `for idx, n in expr { … }` — List bind (Map deferred with pstmt parity inline).

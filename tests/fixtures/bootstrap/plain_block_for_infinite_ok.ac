@@ -1,0 +1,11 @@
+// M133: PlainBlock infinite for with early return → 42.
+fun main() -> Int {
+    return if true {
+        for {
+            return 42
+        }
+        0
+    } else {
+        0
+    }
+}

@@ -130,17 +130,18 @@ Phase AR M116 external funSig            ← ✅
 | **M130** | PlainBlock 窄 `for-in` | `forAsStmt` Iterate + nested slot44 body；仅 `for v in expr` | `plain_block_for_ok` →42；`bad_plain_block_for_ty` → exit 1；allowlist 72 | M | M129 | ✅ |
 | **M131** | PlainBlock `for` Condition | `forCondAsStmt` + `tyCheckGuard`；`in` vs cond 分派 | `plain_block_for_cond_ok` →42；`bad_plain_block_for_cond_ty` → exit 1；allowlist 73 | S | M130 | ✅ |
 | **M132** | PlainBlock `for` WithIndex | `forWithIndexAsStmt` + List/Map bind；`,` 分派 | `plain_block_for_with_index_ok` →6；`bad_plain_block_for_with_index_ty` → exit 1；allowlist 74 | S | M131 | ✅ |
+| **M133** | PlainBlock `for` Infinite | `forInfiniteAsStmt`；`for {` 分派；ok 须 early `return` | `plain_block_for_infinite_ok` →42；`bad_plain_block_for_infinite_ty` → exit 1；allowlist 75 | S | M132 | ✅ |
 
 ### 后续批次（规划）
 
 | ID | 目标 | 依赖 |
 |----|------|------|
-| **M133+** | PlainBlock `for` Infinite | M132 |
+| **M134+** | 下一子集缺口（文档核对 / 其它 PlainBlock） | M133 |
 
 ### 刻意延后（非本批次）
 
 - 任意目录 import / canonicalize 逃逸层（仍固定双根：`bootstrap/` + `tests/fixtures/bootstrap/`，见 M124）
-- PlainBlock `for` Infinite — 见 M133+（ok 夹具须有 early `return`/`break`）
+- 空体 Infinite 入 return oracle（会挂；仅 compile-smoke，见既有 `infinite_for`）
 - lazy / **复杂** UFCS 方法链（子集仍禁止；M117 仅 nullary）
 - Action 实现 codegen（L3，不做）
 
@@ -277,7 +278,7 @@ bash scripts/check_bootstrap_goldens.sh
 - [x] PlainBlock 窄 `for-in` Iterate（M130）
 - [x] PlainBlock `for` Condition（M131）
 - [x] PlainBlock `for` WithIndex（M132）
-- [ ] PlainBlock `for` Infinite（M133+）
+- [x] PlainBlock `for` Infinite（M133）
 
 ## 8. 与既有文档关系
 

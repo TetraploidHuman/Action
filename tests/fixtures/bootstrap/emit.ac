@@ -200,6 +200,15 @@ fun forWithIndexAsStmt(v0: String, v1: String, iterable: String, bodyStmts: Stri
     return "{\"Expr\": {\"expr\": " + forExpr + ", \"span\": " + span + "}}"
 }
 
+// M133: Infinite for stmt JSON for PlainBlock accumulator (body must early-exit for oracles).
+fun forInfiniteAsStmt(bodyStmts: String) -> String {
+    val span: String = parser.spanJson()
+    val body: String = "{\"ty\": \"Unit\", \"span\": " + span + ", \"kind\": {\"Block\": [" + bodyStmts + "]}}"
+    val kind: String = "{\"Infinite\": {\"body\": " + body + "}}"
+    val forExpr: String = "{\"ty\": \"Unit\", \"span\": " + span + ", \"kind\": {\"For\": {\"kind\": " + kind + "}}}"
+    return "{\"Expr\": {\"expr\": " + forExpr + ", \"span\": " + span + "}}"
+}
+
 fun isKindBreak(j: String) -> Bool {
     val suf: String = "\"kind\": \"Break\"}"
     return if len(j) < len(suf) { false } else { substring(j, len(j) - len(suf), len(suf)) == suf }
