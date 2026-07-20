@@ -199,7 +199,7 @@ python3 scripts/gen_bootstrap_hir_golden.py <stem>  # 单夹具
 python3 scripts/gen_bootstrap_hir_golden.py --all   # 全部夹具
 ```
 
-`bootstrap_subset`：**174+ passed / 17 ignored**（含 M4–M20、TC1–TC10、M72–M136、AOT/JIT 子进程隔离；allowlist 79 stems）。
+`bootstrap_subset`：**174+ passed / 17 ignored**（含 M4–M20、TC1–TC10、M72–M137、AOT/JIT 子进程隔离；allowlist 80 stems）。
 
 覆盖：
 

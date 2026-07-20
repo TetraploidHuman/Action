@@ -1405,6 +1405,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_map_keys_ok for k in Map len(k) should return 3",
     ),
     (
+        "plain_block_nested_for_ok",
+        3,
+        "plain_block_nested_for_ok nested ranges should return 3",
+    ),
+    (
         "plain_block_break_ok",
         15,
         "plain_block_break_ok for-break should sum 1..5 → 15",
@@ -1504,6 +1509,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "plain_block_for_with_index_ok",
     "plain_block_map_keys_ok",
     "plain_block_map_values_ok",
+    "plain_block_nested_for_ok",
     "plain_block_return_ok",
     "plain_block_val_ok",
     "print_stmt",
@@ -3798,6 +3804,34 @@ fn test_bootstrap_m136_allowlisted_plain_block_map_keys_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_map_keys_ok"),
         "plain_block_map_keys_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M137: nested for range type error inside PlainBlock rejected.
+#[test]
+fn test_bootstrap_m137_rejects_bad_plain_block_nested_for_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_plain_block_nested_for_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_nested_for_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M137: PlainBlock nested for-in accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m137_allowlisted_plain_block_nested_for_ok() {
+    let path = fixtures_root().join("bootstrap/plain_block_nested_for_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept plain_block_nested_for_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_nested_for_ok"),
+        "plain_block_nested_for_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 
