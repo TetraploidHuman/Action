@@ -133,12 +133,13 @@ Phase AR M116 external funSig            ← ✅
 | **M133** | PlainBlock `for` Infinite | `forInfiniteAsStmt`；`for {` 分派；ok 须 early `return` | `plain_block_for_infinite_ok` →42；`bad_plain_block_for_infinite_ty` → exit 1；allowlist 75 | S | M132 | ✅ |
 | **M134** | PlainBlock Map `for-in` 值绑定 | `pexpr.plainForInBindTag`（`len(v)` 启发式）；对齐 pstmt/Rust | `plain_block_map_values_ok` →15；`bad_plain_block_map_values_ty` → exit 1；allowlist 76 | S | M133 | ✅ |
 | **M135** | PlainBlock `break`/`continue` | 复用 `exprAsStmt` 升格；夹具入 Path B | `plain_block_break_ok` →15；`plain_block_continue_ok` →12；`bad_plain_block_break_ty` → exit 1；allowlist 78 | S | M134 | ✅ |
+| **M136** | PlainBlock Map `for-in` 键绑定 | `parsePlainBlockLet`→`collEnvBind`（Ident 恢复键/值 tag）+ `len(k)`；夹具入 Path B | `plain_block_map_keys_ok` →3；`bad_plain_block_map_keys_ty` → exit 1；allowlist 79 | S | M135 | ✅ |
 
 ### 后续批次（规划）
 
 | ID | 目标 | 依赖 |
 |----|------|------|
-| **M136+** | 文档核对 / 其它子集缺口 | M135 |
+| **M137+** | PlainBlock 嵌套 for / 文档核对 | M136 |
 
 ### 刻意延后（非本批次）
 
@@ -283,6 +284,7 @@ bash scripts/check_bootstrap_goldens.sh
 - [x] PlainBlock `for` Infinite（M133）
 - [x] PlainBlock Map `for-in` 值绑定（M134）
 - [x] PlainBlock `break`/`continue`（M135）
+- [x] PlainBlock Map `for-in` 键绑定（M136）
 
 ## 8. 与既有文档关系
 

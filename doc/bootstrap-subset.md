@@ -179,8 +179,9 @@
 | M133 | PlainBlock `for` Infinite | ✅ `for { return 42 }`→42；`bad_plain_block_for_infinite_ty`；allowlist 75 |
 | M134 | PlainBlock Map `for-in` 值绑定 | ✅ `for v in Map`→15；`bad_plain_block_map_values_ty`；allowlist 76 |
 | M135 | PlainBlock `break`/`continue` | ✅ break→15；continue→12；`bad_plain_block_break_ty`；allowlist 78 |
+| M136 | PlainBlock Map `for-in` 键绑定 | ✅ `collEnvBind` + `len(k)`→3；`bad_plain_block_map_keys_ty`；allowlist 79 |
 
-**M72+ 执行计划**：[bootstrap-m72-plan.md](bootstrap-m72-plan.md)（M72–M135 ✅）。
+**M72+ 执行计划**：[bootstrap-m72-plan.md](bootstrap-m72-plan.md)（M72–M136 ✅）。
 
 CI 维护：`scripts/check_bootstrap_goldens.sh`（`ci-linux.sh core` 内执行，防 golden drift）；`check_bootstrap_{prelude,parser,emit}.py` 校验模块 import 与 fixture 同步。
 

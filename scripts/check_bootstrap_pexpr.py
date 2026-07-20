@@ -69,6 +69,10 @@ def main() -> None:
         raise SystemExit(f"{PEXPR}: expected parsePlainBlockForInfinite (M133)")
     if "fun plainForInBindTag(" not in pexpr:
         raise SystemExit(f"{PEXPR}: expected plainForInBindTag (M134)")
+    # M136: PlainBlock let must collEnvBind so Map Ident restore keeps key/value tags.
+    let_fn = pexpr.split("fun parsePlainBlockLet(", 1)[1].split("\nfun ", 1)[0]
+    if "typeenv.collEnvBind(name)" not in let_fn:
+        raise SystemExit(f"{PEXPR}: parsePlainBlockLet must call collEnvBind (M136)")
     if "parsePlainBlockStmt(s, p, 0)" not in pexpr:
         raise SystemExit(f"{PEXPR}: parseLambdaBlock should reuse parsePlainBlockStmt (M128)")
     if '"pexpr" -> true' not in MODLOAD.read_text():

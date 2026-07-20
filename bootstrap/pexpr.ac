@@ -263,6 +263,9 @@ fun parsePlainBlockLet(s: String, pos: Int, sep: Int, mut: Bool) -> Int {
     val v: String = emit.getExpr()
     emit.accAdd(emit.slotBlockStmts(), emit.letAsStmt(mut, name, ty, v), sep)
     typeenv.envAddLocal(name, typeenv.tyAnnTag(ty), if mut { 1 } else { 0 })
+    // M136: persist Map/List element tags (same as pstmt.parseLet) so Ident restore
+    // keeps key/value tags for PlainBlock for-in bind (`len(k)` → String key).
+    typeenv.collEnvBind(name)
     p = skipOptionalSemi(s, p)
     return parsePlainBlockStmts(s, p, 1)
 }

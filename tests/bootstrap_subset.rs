@@ -1400,6 +1400,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_map_values_ok for v in Map values should return 15",
     ),
     (
+        "plain_block_map_keys_ok",
+        3,
+        "plain_block_map_keys_ok for k in Map len(k) should return 3",
+    ),
+    (
         "plain_block_break_ok",
         15,
         "plain_block_break_ok for-break should sum 1..5 → 15",
@@ -1497,6 +1502,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "plain_block_for_infinite_ok",
     "plain_block_for_ok",
     "plain_block_for_with_index_ok",
+    "plain_block_map_keys_ok",
     "plain_block_map_values_ok",
     "plain_block_return_ok",
     "plain_block_val_ok",
@@ -3765,6 +3771,34 @@ fn test_bootstrap_m135_allowlisted_plain_block_break_continue_ok() {
             "{stem} must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
         );
     }
+}
+
+/// M136: key-bound String misused as Int after len(k) rejected.
+#[test]
+fn test_bootstrap_m136_rejects_bad_plain_block_map_keys_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_plain_block_map_keys_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_map_keys_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M136: PlainBlock Map key for-in via len(k) accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m136_allowlisted_plain_block_map_keys_ok() {
+    let path = fixtures_root().join("bootstrap/plain_block_map_keys_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept plain_block_map_keys_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_map_keys_ok"),
+        "plain_block_map_keys_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
 }
 
 /// M81: `not` with Bool operand accepted.

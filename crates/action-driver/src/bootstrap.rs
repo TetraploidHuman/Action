@@ -71,6 +71,7 @@ pub const BOOTSTRAP_FRONTEND_ALLOWLIST: &[&str] = &[
     "plain_block_for_infinite_ok",
     "plain_block_for_ok",
     "plain_block_for_with_index_ok",
+    "plain_block_map_keys_ok",
     "plain_block_map_values_ok",
     "plain_block_return_ok",
     "plain_block_val_ok",
