@@ -1,0 +1,9 @@
+// M130: for-in range type error inside PlainBlock (dual frontend).
+fun main() -> Int {
+    return if true {
+        for i in 0..true { }
+        42
+    } else {
+        0
+    }
+}

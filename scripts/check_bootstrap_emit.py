@@ -37,6 +37,8 @@ def main() -> None:
         raise SystemExit(f"{EMIT}: expected letAsStmt (M127)")
     if "fun returnAsStmt(" not in emit:
         raise SystemExit(f"{EMIT}: expected returnAsStmt (M129)")
+    if "fun forAsStmt(" not in emit:
+        raise SystemExit(f"{EMIT}: expected forAsStmt (M130)")
     print("=== bootstrap emit check OK ===")
 
 
