@@ -6,7 +6,7 @@ bench_cmp                                   135      141      147  PASS
 bench_concat_depth                          152      157      164  PASS
 bench_cow                                   134      137      144  PASS
 bench_enum                                  134      137      140  PASS
-bench_for_chain                             132      135      137  PASS
+bench_for_chain                             145      155      165  PASS
 bench_for_collect                           131      145      160  PASS
 bench_for_list                              134      137      142  PASS
 bench_for_method                            135      137      139  PASS
