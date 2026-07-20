@@ -283,13 +283,34 @@ fun parsePlainBlockReturn(s: String, pos: Int, sep: Int) -> Int {
     return parsePlainBlockStmts(s, p, 1)
 }
 
-// M130: narrow `for v in <expr> { … }` Iterate inside PlainBlock (acc path, not jOut).
+// M130/M131: PlainBlock `for` — Iterate (`in`) or Condition (else); Infinite/WithIndex deferred.
 fun parsePlainBlockFor(s: String, pos: Int, sep: Int) -> Int {
     parser.spanMarkBegin(s, pos)
     var p: Int = parser.advance(s, pos)
-    val vname: String = parser.cur(s, p)
-    p = parser.advance(s, p)
-    p = parser.expect(s, p, "in")
+    return when {
+        parser.cur(s, p) == parser.openBrace() -> parsePlainBlockForReject(s, p, sep)
+        parser.cur(s, parser.advance(s, p)) == "," -> parsePlainBlockForReject(s, p, sep)
+        else -> parsePlainBlockForDispatch(s, p, sep)
+    }
+}
+
+fun parsePlainBlockForReject(s: String, pos: Int, sep: Int) -> Int {
+    typeenv.typeErrorMark()
+    return parsePlainBlockStmts(s, pos, sep)
+}
+
+fun parsePlainBlockForDispatch(s: String, pos: Int, sep: Int) -> Int {
+    val vname: String = parser.cur(s, pos)
+    var p: Int = parser.advance(s, pos)
+    return if parser.cur(s, p) == "in" {
+        parsePlainBlockForIn(s, p, sep, vname)
+    } else {
+        parsePlainBlockForCond(s, p, sep, vname)
+    }
+}
+
+fun parsePlainBlockForIn(s: String, pos: Int, sep: Int, vname: String) -> Int {
+    var p: Int = parser.expect(s, pos, "in")
     p = parseExpr(s, p)
     val iterable: String = emit.getExpr()
     typeenv.envAddLocal(vname, typeenv.collForTagOrInt(), 0)
@@ -306,6 +327,30 @@ fun parsePlainBlockFor(s: String, pos: Int, sep: Int) -> Int {
     p = parser.expect(s, p, parser.closeBrace())
     parser.spanMarkEnd(s, p)
     emit.accAdd(emit.slotBlockStmts(), emit.forAsStmt(vname, iterable, bodyStmts), sep)
+    typeenv.lastExprTySet(0)
+    p = skipOptionalSemi(s, p)
+    return parsePlainBlockStmts(s, p, 1)
+}
+
+fun parsePlainBlockForCond(s: String, pos: Int, sep: Int, vname: String) -> Int {
+    typeenv.envAddLocal(vname, 1, 0)
+    emit.setExprIdent(vname, typeenv.lookupTag(vname))
+    var p: Int = parseCmpLoop(s, pos, emit.getExpr())
+    typeenv.tyCheckGuard()
+    val cond: String = emit.getExpr()
+    p = parser.expect(s, p, parser.openBrace())
+    val saved: String = emit.accGet(emit.slotBlockStmts())
+    emit.accReset(emit.slotBlockStmts())
+    p = if parser.isTok(s, p, parser.closeBrace()) {
+        p
+    } else {
+        parsePlainBlockForBodyGo(s, p)
+    }
+    val bodyStmts: String = emit.accGet(emit.slotBlockStmts())
+    emit.accSet(emit.slotBlockStmts(), saved)
+    p = parser.expect(s, p, parser.closeBrace())
+    parser.spanMarkEnd(s, p)
+    emit.accAdd(emit.slotBlockStmts(), emit.forCondAsStmt(cond, bodyStmts), sep)
     typeenv.lastExprTySet(0)
     p = skipOptionalSemi(s, p)
     return parsePlainBlockStmts(s, p, 1)

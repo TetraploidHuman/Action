@@ -1,0 +1,12 @@
+// M131: PlainBlock for-condition — `for s < 42 { s = s + 1 }` → 42.
+fun main() -> Int {
+    return if true {
+        var s: Int = 0
+        for s < 42 {
+            s = s + 1
+        }
+        s
+    } else {
+        0
+    }
+}

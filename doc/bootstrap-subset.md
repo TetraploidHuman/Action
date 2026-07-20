@@ -174,8 +174,9 @@
 | M128 | lambda 体内 `val` | ✅ `{ 21; val a: Int = 21; a * 2 }()`→42；`bad_lambda_val_ty`；allowlist 70 |
 | M129 | PlainBlock `return` | ✅ `if true { return 42; 0 }`→42；`bad_plain_block_return_ty`；allowlist 71 |
 | M130 | PlainBlock 窄 `for-in` | ✅ `for i in 0..42 { s = s + 1 }`→42；`bad_plain_block_for_ty`；allowlist 72 |
+| M131 | PlainBlock `for` Condition | ✅ `for s < 42 { s = s + 1 }`→42；`bad_plain_block_for_cond_ty`；allowlist 73 |
 
-**M72+ 执行计划**：[bootstrap-m72-plan.md](bootstrap-m72-plan.md)（M72–M130 ✅）。
+**M72+ 执行计划**：[bootstrap-m72-plan.md](bootstrap-m72-plan.md)（M72–M131 ✅）。
 
 CI 维护：`scripts/check_bootstrap_goldens.sh`（`ci-linux.sh core` 内执行，防 golden drift）；`check_bootstrap_{prelude,parser,emit}.py` 校验模块 import 与 fixture 同步。
 

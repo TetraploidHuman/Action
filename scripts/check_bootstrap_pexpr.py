@@ -61,6 +61,8 @@ def main() -> None:
         raise SystemExit(f"{PEXPR}: expected parsePlainBlockReturn (M129)")
     if "fun parsePlainBlockFor(" not in pexpr:
         raise SystemExit(f"{PEXPR}: expected parsePlainBlockFor (M130)")
+    if "fun parsePlainBlockForCond(" not in pexpr:
+        raise SystemExit(f"{PEXPR}: expected parsePlainBlockForCond (M131)")
     if "parsePlainBlockStmt(s, p, 0)" not in pexpr:
         raise SystemExit(f"{PEXPR}: parseLambdaBlock should reuse parsePlainBlockStmt (M128)")
     if '"pexpr" -> true' not in MODLOAD.read_text():

@@ -128,17 +128,18 @@ Phase AR M116 external funSig            ← ✅
 | **M128** | lambda 体内 `val` | `parseLambdaBlock` 复用 `parsePlainBlockStmt`；前导 `val` 仍 PlainBlock | `lambda_val_ok` →42；`bad_lambda_val_ty` → exit 1；allowlist 70 | S | M127 | ✅ |
 | **M129** | PlainBlock `return` | `returnAsStmt` + `parsePlainBlockReturn`；`parseBraceExpr` 认 `return` | `plain_block_return_ok` →42；`bad_plain_block_return_ty` → exit 1；allowlist 71 | S | M128 | ✅ |
 | **M130** | PlainBlock 窄 `for-in` | `forAsStmt` Iterate + nested slot44 body；仅 `for v in expr` | `plain_block_for_ok` →42；`bad_plain_block_for_ty` → exit 1；allowlist 72 | M | M129 | ✅ |
+| **M131** | PlainBlock `for` Condition | `forCondAsStmt` + `tyCheckGuard`；`in` vs cond 分派 | `plain_block_for_cond_ok` →42；`bad_plain_block_for_cond_ty` → exit 1；allowlist 73 | S | M130 | ✅ |
 
 ### 后续批次（规划）
 
 | ID | 目标 | 依赖 |
 |----|------|------|
-| **M131+** | PlainBlock `for` Condition/Infinite/WithIndex | M130 |
+| **M132+** | PlainBlock `for` Infinite / WithIndex | M131 |
 
 ### 刻意延后（非本批次）
 
 - 任意目录 import / canonicalize 逃逸层（仍固定双根：`bootstrap/` + `tests/fixtures/bootstrap/`，见 M124）
-- PlainBlock `for` Condition/Infinite/WithIndex — 见 M131+
+- PlainBlock `for` Infinite / WithIndex — 见 M132+
 - lazy / **复杂** UFCS 方法链（子集仍禁止；M117 仅 nullary）
 - Action 实现 codegen（L3，不做）
 
@@ -273,7 +274,8 @@ bash scripts/check_bootstrap_goldens.sh
 - [x] lambda 体内 `val`（M128）
 - [x] PlainBlock `return`（M129）
 - [x] PlainBlock 窄 `for-in` Iterate（M130）
-- [ ] PlainBlock `for` 其它形态（M131+）
+- [x] PlainBlock `for` Condition（M131）
+- [ ] PlainBlock `for` Infinite / WithIndex（M132+）
 
 ## 8. 与既有文档关系
 

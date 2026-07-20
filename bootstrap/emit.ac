@@ -182,6 +182,15 @@ fun forAsStmt(vname: String, iterable: String, bodyStmts: String) -> String {
     return "{\"Expr\": {\"expr\": " + forExpr + ", \"span\": " + span + "}}"
 }
 
+// M131: For-condition stmt JSON for PlainBlock accumulator (body Unit, match Iterate path).
+fun forCondAsStmt(cond: String, bodyStmts: String) -> String {
+    val span: String = parser.spanJson()
+    val body: String = "{\"ty\": \"Unit\", \"span\": " + span + ", \"kind\": {\"Block\": [" + bodyStmts + "]}}"
+    val kind: String = "{\"Condition\": {\"condition\": " + cond + ", \"body\": " + body + "}}"
+    val forExpr: String = "{\"ty\": \"Unit\", \"span\": " + span + ", \"kind\": {\"For\": {\"kind\": " + kind + "}}}"
+    return "{\"Expr\": {\"expr\": " + forExpr + ", \"span\": " + span + "}}"
+}
+
 fun isKindBreak(j: String) -> Bool {
     val suf: String = "\"kind\": \"Break\"}"
     return if len(j) < len(suf) { false } else { substring(j, len(j) - len(suf), len(suf)) == suf }
