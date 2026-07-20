@@ -167,6 +167,12 @@ fun letAsStmt(mut: Bool, name: String, ty: String, value: String) -> String {
     return "{\"Let\": {\"mutable\": " + mutJ + ", \"lazy_init\": false, \"name\": \"" + name + "\", \"type_ann\": {\"Named\": \"" + ty + "\"}, \"value\": " + value + ", \"span\": " + span + "}}"
 }
 
+// M129: Return stmt JSON for PlainBlock accumulator (not jOut).
+fun returnAsStmt(value: String) -> String {
+    val span: String = parser.spanJson()
+    return "{\"Return\": {\"value\": " + value + ", \"span\": " + span + "}}"
+}
+
 fun isKindBreak(j: String) -> Bool {
     val suf: String = "\"kind\": \"Break\"}"
     return if len(j) < len(suf) { false } else { substring(j, len(j) - len(suf), len(suf)) == suf }

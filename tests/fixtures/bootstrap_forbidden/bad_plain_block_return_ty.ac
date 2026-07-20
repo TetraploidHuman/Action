@@ -1,0 +1,4 @@
+// M129: return-value expr type error inside PlainBlock (dual frontend).
+fun main() -> Int {
+    return if true { return 1 and true; 0 } else { 0 }
+}
