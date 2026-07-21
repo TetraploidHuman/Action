@@ -3,7 +3,7 @@
 > 制定日期：2026-07-16  
 > 前置：M4–M71 / TC1–TC8 全部 ✅；Path B（Action 前端 → HIR JSON → Rust `compile_hir`）闭环已跑通。  
 > 基线（本计划启动时）：`cargo test --test bootstrap_subset -- --test-threads=1` → **77 passed / 0 failed / 17 ignored**。  
-> 当前（M142 后）：**209 passed / 0 failed / 17 ignored**（226 `#[test]`）；allowlist **84** stems。
+> 当前（M143 后）：**211 passed / 0 failed / 17 ignored**（228 `#[test]`）；allowlist **85** stems。
 
 ## 1. 战略定位
 
@@ -66,7 +66,7 @@ Phase AS M117–M140 PlainBlock / lambda / Map·Set / when Path B  ← ✅（见
 
 每完成一个编号里程碑：本机验证 → 更新本文件状态表 →（用户要求时）commit。
 
-## 3. 里程碑（M72–M142）
+## 3. 里程碑（M72–M143）
 
 | ID | 名称 | 目标 | 验收 | 难度 | 依赖 | 状态 |
 |----|------|------|------|------|------|------|
@@ -139,14 +139,15 @@ Phase AS M117–M140 PlainBlock / lambda / Map·Set / when Path B  ← ✅（见
 | **M138** | PlainBlock Map `for k, v` | Path B 入册 IterateWithIndex（M132 已实现绑定）；对齐 `map_iter` | `plain_block_map_iter_ok` →15；`bad_plain_block_map_iter_ty` → exit 1；allowlist 81 | S | M137 | ✅ |
 | **M139** | PlainBlock Set for-in | Path B 对齐 `set_iter` | `plain_block_set_iter_ok` →6；`bad_plain_block_set_iter_ty` → exit 1；allowlist 82 | S | M138 | ✅ |
 | **M140** | PlainBlock `when` | Path B 对齐 `when_for`；guard 否定夹具 | `plain_block_when_ok` →37；`bad_plain_block_when_ty` → exit 1；allowlist 83 | S | M139 | ✅ |
-| **M141** | Phase A 文档核对 | 修正过时数字 / 模块表 / `external fun` 契约 | README + plan + subset + `stdlib-layers` 与 allowlist **84** / **207** tests 一致 | S | M140 | ✅ |
+| **M141** | Phase A 文档核对 | 修正过时数字 / 模块表 / `external fun` 契约 | README + plan + subset + `stdlib-layers` 与 allowlist **83** / **207** tests 一致 | S | M140 | ✅ |
 | **M142** | PlainBlock 字段赋值 | Path B 对齐 `field_assign_ok` | `plain_block_field_assign_ok` →7；`bad_plain_block_field_assign_ty` → exit 1；allowlist 84 | S | M141 | ✅ |
+| **M143** | PlainBlock 下标赋值 | Path B 对齐 `index_assign_ok` | `plain_block_index_assign_ok` →0；`bad_plain_block_index_assign_ty` → exit 1；allowlist 85 | S | M142 | ✅ |
 
 ### 后续批次（规划）
 
 | ID | 目标 | 依赖 |
 |----|------|------|
-| **M143+** | PlainBlock 下标赋值 / print / when-guard | M142 |
+| **M144+** | PlainBlock print / when-guard | M143 |
 
 ### 刻意延后（非本批次）
 
@@ -233,6 +234,7 @@ bash scripts/check_bootstrap_goldens.sh
 - [x] M72–M142 状态表全部 ✅，或明确 `cancelled` 并写原因
 - [x] Phase A 文档核对（M141）
 - [x] PlainBlock 字段赋值（M142）
+- [x] PlainBlock 下标赋值（M143）
 - [x] 子集程序的 **拒绝/接受** 路径可在不依赖 Rust `typecheck` 的情况下对 allowlisted 夹具成立（M76）
 - [x] Bootstrap 侧 enum `when` 穷尽 / 未知构造器（M77；Rust `exhaustive.rs` 仍为双前端权威之一）
 - [x] 自定义 enum 变体 Ident 解析为父 enum tag（M78）
@@ -300,6 +302,7 @@ bash scripts/check_bootstrap_goldens.sh
 - [x] PlainBlock `when`（M140）
 - [x] Phase A 文档核对（M141）
 - [x] PlainBlock 字段赋值（M142）
+- [x] PlainBlock 下标赋值（M143）
 
 ## 8. 与既有文档关系
 

@@ -1,0 +1,10 @@
+// M143: index assign type error inside PlainBlock (dual frontend).
+fun main() -> Int {
+    return if true {
+        var xs: List = List[1, 2, 3]
+        xs[0] = true
+        0
+    } else {
+        1
+    }
+}
