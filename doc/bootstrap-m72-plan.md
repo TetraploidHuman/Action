@@ -141,7 +141,13 @@ Phase AR M116 external funSig            ← ✅
 
 | ID | 目标 | 依赖 |
 |----|------|------|
-| **M139+** | PlainBlock Set for-in / when 覆盖 / 文档核对 | M138 |
+| **M139** | PlainBlock Set for-in | Path B 对齐 `set_iter` | `plain_block_set_iter_ok` →6；`bad_plain_block_set_iter_ty` → exit 1；allowlist 82 | S | M138 | ✅ |
+
+### 后续批次（规划）
+
+| ID | 目标 | 依赖 |
+|----|------|------|
+| **M140+** | PlainBlock `when` 覆盖 / Phase A 文档 | M139 |
 
 ### 刻意延后（非本批次）
 
@@ -289,6 +295,7 @@ bash scripts/check_bootstrap_goldens.sh
 - [x] PlainBlock Map `for-in` 键绑定（M136）
 - [x] PlainBlock 嵌套 for（M137）
 - [x] PlainBlock Map `for k, v`（M138）
+- [x] PlainBlock Set for-in（M139）
 
 ## 8. 与既有文档关系
 

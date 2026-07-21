@@ -1410,6 +1410,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_map_iter_ok for k, v in Map should return 15",
     ),
     (
+        "plain_block_set_iter_ok",
+        6,
+        "plain_block_set_iter_ok for x in Set should return 6",
+    ),
+    (
         "plain_block_nested_for_ok",
         3,
         "plain_block_nested_for_ok nested ranges should return 3",
@@ -1517,6 +1522,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "plain_block_map_values_ok",
     "plain_block_nested_for_ok",
     "plain_block_return_ok",
+    "plain_block_set_iter_ok",
     "plain_block_val_ok",
     "print_stmt",
     "range_ok",
@@ -3866,6 +3872,34 @@ fn test_bootstrap_m138_allowlisted_plain_block_map_iter_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_map_iter_ok"),
         "plain_block_map_iter_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M139: heterogeneous Set elements in PlainBlock for-in rejected.
+#[test]
+fn test_bootstrap_m139_rejects_bad_plain_block_set_iter_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_plain_block_set_iter_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_set_iter_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M139: PlainBlock Set for-in accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m139_allowlisted_plain_block_set_iter_ok() {
+    let path = fixtures_root().join("bootstrap/plain_block_set_iter_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept plain_block_set_iter_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_set_iter_ok"),
+        "plain_block_set_iter_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 
