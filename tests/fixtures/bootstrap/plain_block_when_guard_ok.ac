@@ -1,0 +1,14 @@
+// M144: PlainBlock when guard Bool — mirror when_guard_bool → 1.
+enum Color { Red, Green, Blue }
+
+fun main() -> Int {
+    return if true {
+        val c: Color = Red
+        when c {
+            Red and true -> 1
+            else -> 0
+        }
+    } else {
+        0
+    }
+}
