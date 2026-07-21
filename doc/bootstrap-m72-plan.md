@@ -3,7 +3,7 @@
 > 制定日期：2026-07-16  
 > 前置：M4–M71 / TC1–TC8 全部 ✅；Path B（Action 前端 → HIR JSON → Rust `compile_hir`）闭环已跑通。  
 > 基线（本计划启动时）：`cargo test --test bootstrap_subset -- --test-threads=1` → **77 passed / 0 failed / 17 ignored**。  
-> 当前（M116 后）：**159 passed / 0 failed / 17 ignored**；allowlist **58** stems。
+> 当前（M140 后）：**207 passed / 0 failed / 17 ignored**（224 `#[test]`）；allowlist **83** stems。
 
 ## 1. 战略定位
 
@@ -17,7 +17,7 @@
 ## 2. 阶段总览
 
 ```
-Phase A  文档与契约对齐          ← 本计划第 0 周
+Phase A  文档与契约对齐          ← ✅ M141
 Phase B  M72–M74 类型系统深度    ← 核心推进
 Phase C  M75 集合/ for-in 类型
 Phase D  M76 Driver 子集门控
@@ -61,11 +61,12 @@ Phase AO M113 String 下标键须 Int       ← ✅
 Phase AP M114 string_index_ok Path B    ← ✅
 Phase AQ M115 import funSig + call 检查 ← ✅
 Phase AR M116 external funSig            ← ✅
+Phase AS M117–M140 PlainBlock / lambda / Map·Set / when Path B  ← ✅（见 §3 表）
 ```
 
 每完成一个编号里程碑：本机验证 → 更新本文件状态表 →（用户要求时）commit。
 
-## 3. 里程碑（M72–M116）
+## 3. 里程碑（M72–M141）
 
 | ID | 名称 | 目标 | 验收 | 难度 | 依赖 | 状态 |
 |----|------|------|------|------|------|------|
@@ -138,12 +139,13 @@ Phase AR M116 external funSig            ← ✅
 | **M138** | PlainBlock Map `for k, v` | Path B 入册 IterateWithIndex（M132 已实现绑定）；对齐 `map_iter` | `plain_block_map_iter_ok` →15；`bad_plain_block_map_iter_ty` → exit 1；allowlist 81 | S | M137 | ✅ |
 | **M139** | PlainBlock Set for-in | Path B 对齐 `set_iter` | `plain_block_set_iter_ok` →6；`bad_plain_block_set_iter_ty` → exit 1；allowlist 82 | S | M138 | ✅ |
 | **M140** | PlainBlock `when` | Path B 对齐 `when_for`；guard 否定夹具 | `plain_block_when_ok` →37；`bad_plain_block_when_ty` → exit 1；allowlist 83 | S | M139 | ✅ |
+| **M141** | Phase A 文档核对 | 修正过时数字 / 模块表 / `external fun` 契约 | README + plan + subset + `stdlib-layers` 与 allowlist **83** / **207** tests 一致 | S | M140 | ✅ |
 
 ### 后续批次（规划）
 
 | ID | 目标 | 依赖 |
 |----|------|------|
-| **M141+** | Phase A 文档核对 / 下一缺口 | M140 |
+| **M142+** | 下一 Path B / 类型缺口（按子集） | M141 |
 
 ### 刻意延后（非本批次）
 
@@ -152,14 +154,14 @@ Phase AR M116 external funSig            ← ✅
 - lazy / **复杂** UFCS 方法链（子集仍禁止；M117 仅 nullary）
 - Action 实现 codegen（L3，不做）
 
-## 4. Phase A — 文档与契约（并行可做）
+## 4. Phase A — 文档与契约（✅ M141）
 
-| 项 | 动作 |
-|----|------|
-| A1 | 本文件作为 M72+ 权威入口；`bootstrap/README.md` / `bootstrap-subset.md` 链到此处 |
-| A2 | 修正过时数字：`bootstrap_subset` 测试数、fixture stem 数、「规划中」标题 |
-| A3 | 子集「禁止 `external fun`」与 README（prescan 已支持）对齐 |
-| A4 | 确认模块树 13 个 `.ac` + 10 个 `check_bootstrap_*.py` 纳入日常验证 |
+| 项 | 动作 | 状态 |
+|----|------|------|
+| A1 | 本文件作为 M72+ 权威入口；`bootstrap/README.md` / `bootstrap-subset.md` 链到此处 | ✅ |
+| A2 | 修正过时数字：`bootstrap_subset` 测试数、fixture stem 数、「规划中」标题 | ✅ |
+| A3 | 子集「禁止 `external fun`」与 README（prescan 已支持）对齐 | ✅ |
+| A4 | 确认模块树 13 个 `.ac` + 10 个 `check_bootstrap_*.py` 纳入日常验证 | ✅ |
 
 ## 5. 验证清单（每个 Mx）
 
@@ -227,7 +229,8 @@ bash scripts/check_bootstrap_goldens.sh
 
 ## 7. 成功标准（本批次结束时）
 
-- [x] M72–M115 状态表全部 ✅，或明确 `cancelled` 并写原因
+- [x] M72–M140 状态表全部 ✅，或明确 `cancelled` 并写原因
+- [x] Phase A 文档核对（M141）
 - [x] 子集程序的 **拒绝/接受** 路径可在不依赖 Rust `typecheck` 的情况下对 allowlisted 夹具成立（M76）
 - [x] Bootstrap 侧 enum `when` 穷尽 / 未知构造器（M77；Rust `exhaustive.rs` 仍为双前端权威之一）
 - [x] 自定义 enum 变体 Ident 解析为父 enum tag（M78）
@@ -293,12 +296,13 @@ bash scripts/check_bootstrap_goldens.sh
 - [x] PlainBlock Map `for k, v`（M138）
 - [x] PlainBlock Set for-in（M139）
 - [x] PlainBlock `when`（M140）
+- [x] Phase A 文档核对（M141）
 
 ## 8. 与既有文档关系
 
 | 文档 | 角色 |
 |------|------|
 | `doc/roadmap-and-bootstrap-analysis.md` | 战略（Path B、不做 L3/L4）；时间线部分已部分过时 |
-| `doc/bootstrap-subset.md` | 子集允许/禁止 + M4–M71 历史表 |
-| `bootstrap/README.md` | 操作说明 + M4–M20/TC 状态 |
-| **本文件** | **M72+ 执行计划与状态** |
+| `doc/bootstrap-subset.md` | 子集允许/禁止 + M4–M140 状态表 |
+| `bootstrap/README.md` | 操作说明 + M4–M20/TC + M72+ 指针与当前 harness 数字 |
+| **本文件** | **M72+ 执行计划与状态（权威）** |

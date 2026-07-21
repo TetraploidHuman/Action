@@ -1,4 +1,4 @@
-# Bootstrap（M4–M19 自举试点）
+# Bootstrap（M4–M141 Path B 前端）
 
 Action-in-Action 编译器前端试点目录。首版仅使用 `doc/bootstrap-subset.md` 允许的语言特性。
 
@@ -33,11 +33,9 @@ Action-in-Action 编译器前端试点目录。首版仅使用 `doc/bootstrap-su
 | TC7 | Bootstrap return Named↔Named 检查 | ✅ `bad_return_point_token.ac` / `bad_return_token_point.ac` exit 1；`return_point_make.ac` 正向回归 |
 | M20 | Path B 流水线文档 + TC 正向 LLVM verify | ✅ 架构图与 artifact 说明；TC 正向 verify 子进程；**32** fixture AOT 返回值 oracle（对齐 M9 JIT；跳过 `infinite_for`） |
 
-## 下一阶段（M21+）
+## 已完成阶段（M21+）
 
-见 `doc/bootstrap-subset.md` §下一阶段。当前：**M27–M71** ✅（Struct **E013/E015/E016**（含无注解唯一形状）+ 顺序无关、when **E014**、datetime/`nextInt`、未知 Ident/UFCS → **E004**）。
-
-**M72+ 执行计划**：[`doc/bootstrap-m72-plan.md`](../doc/bootstrap-m72-plan.md)（多位数 tag、调用检查、bootstrap 侧 E013…、集合类型、Driver 门控）。
+见 `doc/bootstrap-subset.md`。**M27–M71** ✅；**M72–M141** ✅（权威状态见 [`doc/bootstrap-m72-plan.md`](../doc/bootstrap-m72-plan.md)）。
 
 ### M28 实现备忘
 
@@ -55,6 +53,8 @@ Action-in-Action 编译器前端试点目录。首版仅使用 `doc/bootstrap-su
 | 模块 | 路径 | 职责 |
 |------|------|------|
 | prelude | `bootstrap/prelude.ac` | 字符/关键字原语 |
+| lexer | `bootstrap/lexer.ac` | 独立 tokenize 入口（M4/M14/M19） |
+| token | `bootstrap/token.ac` | token 辅助（与 lexer 夹具） |
 | parser | `bootstrap/parser.ac` | 扫描器（lexer token） |
 | emit | `bootstrap/emit.ac` | HIR JSON 输出 + `jEscape` |
 | typeenv | `bootstrap/typeenv.ac` | 类型 tag、env 表、struct 注册 |
@@ -65,6 +65,8 @@ Action-in-Action 编译器前端试点目录。首版仅使用 `doc/bootstrap-su
 | pdecl | `bootstrap/pdecl.ac` | 顶层声明（enum / type / fun / external） |
 | pscan | `bootstrap/pscan.ac` | 预扫描（forward/mutual recursion + nested import） |
 | compiler | `bootstrap/compiler.ac` | import load + `parseProgram` + session/main（~277 行） |
+
+另：`m120_lib.ac` / `m120_cycle_*.ac` 为 M120 import 夹具，非核心前端树。
 
 ## Path B 流水线（M20 / M76）
 
@@ -193,13 +195,14 @@ nix-shell --run 'cargo test --test hir_golden -- --test-threads=1'
 
 # 维护 golden：重新生成并对比已提交文件
 bash scripts/check_bootstrap_goldens.sh          # CI：有 drift 则 exit 1
-python3 scripts/check_bootstrap_prelude.py     # CI：prelude 嵌入漂移检测
+# 模块契约（ci-linux.sh core 全套 10 个）：
+python3 scripts/check_bootstrap_{prelude,parser,emit,typeenv,whenty,modload,pexpr,pstmt,pdecl,pscan}.py     # CI：prelude 嵌入漂移检测
 bash scripts/check_bootstrap_goldens.sh --write # 本地：刷新全部 .bootstrap_hir.json
 python3 scripts/gen_bootstrap_hir_golden.py <stem>  # 单夹具
 python3 scripts/gen_bootstrap_hir_golden.py --all   # 全部夹具
 ```
 
-`bootstrap_subset`：**174+ passed / 17 ignored**（含 M4–M20、TC1–TC10、M72–M140、AOT/JIT 子进程隔离；allowlist 83 stems）。
+`bootstrap_subset`：**207 passed / 17 ignored**（含 M4–M20、TC1–TC10、M72–M141、AOT/JIT 子进程隔离；allowlist 83 stems）。
 
 覆盖：
 
@@ -208,7 +211,7 @@ python3 scripts/gen_bootstrap_hir_golden.py --all   # 全部夹具
 - M5：主夹具 `.bootstrap_hir.json` golden（含 `print_stmt`、`return_point_make`、`logical_ops`、`many_structs`、`list_string`、`for_string`）
 - M9：JIT 返回值（`logical_ops`=0，`map_keys`=3，`list_string`=3，`for_string`=6，`many_structs`=9，…）
 - M10/M11/M12/M13/M14/M15/M16/M17/M18/M19/M20：见上表（M20：Path B 文档 + TC 正向 verify）
-- **M72+**：见 `doc/bootstrap-m72-plan.md`（M72–M140 ✅；含 nullary UFCS、`or {}`、lambda/`it`/多参/trailing/无参块/多语句/体内 val、if/or/`val`/`return`/`for-*`/`break`/`continue` PlainBlock、Map for-in 键/值/`k,v`、Set for-in、`when`、嵌套 for、开放 import 图 + fixtures 搜索根、funSig）
+- **M72+**：见 `doc/bootstrap-m72-plan.md`（M72–M141 ✅；含 nullary UFCS、`or {}`、lambda/`it`/多参/trailing/无参块/多语句/体内 val、if/or/`val`/`return`/`for-*`/`break`/`continue` PlainBlock、Map for-in 键/值/`k,v`、Set for-in、`when`、嵌套 for、开放 import 图 + fixtures 搜索根、funSig）
 
 ## 对接
 

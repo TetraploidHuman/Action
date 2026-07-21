@@ -28,7 +28,7 @@ Action 运行时与标准库分四层；自举前端只需理解 **builtin + lib
 1. **语义单一来源**：builtin 签名在 `frontend/builtin/registry.rs`；codegen 只读 re-export，禁止 typecheck 依赖 codegen。
 2. **lib/** 证明纯 Action stdlib 可行；新纯函数优先放 `lib/` 而非 Rust。
 3. **stdlib/*.atom** 仅声明；实现必须在 host-rt 或 `external fun`。
-4. **Bootstrap M4–M6** 仅允许 `doc/bootstrap-subset.md` 特性；禁止 `import` / `external fun` / `lazy val`。
+4. **Bootstrap** 遵守 `doc/bootstrap-subset.md`：宿主 `external fun`（prescan）与模块 `import`（M120+）已支持；`lazy val` / 任意目录 import 仍延后。首版 M4–M6 历史约束已放宽。
 
 ## 相关文档
 
