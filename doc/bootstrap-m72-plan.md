@@ -136,11 +136,6 @@ Phase AR M116 external funSig            ← ✅
 | **M136** | PlainBlock Map `for-in` 键绑定 | `parsePlainBlockLet`→`collEnvBind`（Ident 恢复键/值 tag）+ `len(k)`；夹具入 Path B | `plain_block_map_keys_ok` →3；`bad_plain_block_map_keys_ty` → exit 1；allowlist 79 | S | M135 | ✅ |
 | **M137** | PlainBlock 嵌套 for | Path B smoke（slot44 已 save/restore）；对齐 `nested_for` | `plain_block_nested_for_ok` →3；`bad_plain_block_nested_for_ty` → exit 1；allowlist 80 | S | M136 | ✅ |
 | **M138** | PlainBlock Map `for k, v` | Path B 入册 IterateWithIndex（M132 已实现绑定）；对齐 `map_iter` | `plain_block_map_iter_ok` →15；`bad_plain_block_map_iter_ty` → exit 1；allowlist 81 | S | M137 | ✅ |
-
-### 后续批次（规划）
-
-| ID | 目标 | 依赖 |
-|----|------|------|
 | **M139** | PlainBlock Set for-in | Path B 对齐 `set_iter` | `plain_block_set_iter_ok` →6；`bad_plain_block_set_iter_ty` → exit 1；allowlist 82 | S | M138 | ✅ |
 
 ### 后续批次（规划）
