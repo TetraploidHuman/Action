@@ -3,7 +3,7 @@
 > 制定日期：2026-07-16  
 > 前置：M4–M71 / TC1–TC8 全部 ✅；Path B（Action 前端 → HIR JSON → Rust `compile_hir`）闭环已跑通。  
 > 基线（本计划启动时）：`cargo test --test bootstrap_subset -- --test-threads=1` → **77 passed / 0 failed / 17 ignored**。  
-> 当前（M146 后）：**217 passed / 0 failed / 17 ignored**（234 `#[test]`）；allowlist **88** stems。
+> 当前（M147 后）：**219 passed / 0 failed / 17 ignored**（236 `#[test]`）；allowlist **89** stems。
 
 ## 1. 战略定位
 
@@ -66,7 +66,7 @@ Phase AS M117–M140 PlainBlock / lambda / Map·Set / when Path B  ← ✅（见
 
 每完成一个编号里程碑：本机验证 → 更新本文件状态表 →（用户要求时）commit。
 
-## 3. 里程碑（M72–M146）
+## 3. 里程碑（M72–M147）
 
 | ID | 名称 | 目标 | 验收 | 难度 | 依赖 | 状态 |
 |----|------|------|------|------|------|------|
@@ -145,12 +145,13 @@ Phase AS M117–M140 PlainBlock / lambda / Map·Set / when Path B  ← ✅（见
 | **M144** | PlainBlock `when` guard | Path B 对齐 `when_guard_bool` | `plain_block_when_guard_ok` →1；`bad_plain_block_when_guard_ty` → exit 1；allowlist 86 | S | M143 | ✅ |
 | **M145** | PlainBlock `print` | Path B 对齐 `print_stmt` | `plain_block_print_ok` →0；`bad_plain_block_print_ty` → exit 1；allowlist 87 | S | M144 | ✅ |
 | **M146** | PlainBlock `when` 穷尽 | Path B 对齐 `when_exhaustive` | `plain_block_when_exhaustive_ok` →3；`bad_plain_block_when_exhaustive_ty` → exit 1；allowlist 88 | S | M145 | ✅ |
+| **M147** | PlainBlock nullary UFCS | Path B 对齐 `ufcs_len_ok` | `plain_block_ufcs_len_ok` →3；`bad_plain_block_ufcs_ty` → exit 1；allowlist 89 | S | M146 | ✅ |
 
 ### 后续批次（规划）
 
 | ID | 目标 | 依赖 |
 |----|------|------|
-| **M147+** | PlainBlock ufcs / or / 下一缺口 | M146 |
+| **M148+** | PlainBlock `or {}` / 下一缺口 | M147 |
 
 ### 刻意延后（非本批次）
 
@@ -241,6 +242,7 @@ bash scripts/check_bootstrap_goldens.sh
 - [x] PlainBlock `when` guard（M144）
 - [x] PlainBlock `print`（M145）
 - [x] PlainBlock `when` 穷尽（M146）
+- [x] PlainBlock nullary UFCS（M147）
 - [x] 子集程序的 **拒绝/接受** 路径可在不依赖 Rust `typecheck` 的情况下对 allowlisted 夹具成立（M76）
 - [x] Bootstrap 侧 enum `when` 穷尽 / 未知构造器（M77；Rust `exhaustive.rs` 仍为双前端权威之一）
 - [x] 自定义 enum 变体 Ident 解析为父 enum tag（M78）
@@ -312,6 +314,7 @@ bash scripts/check_bootstrap_goldens.sh
 - [x] PlainBlock `when` guard（M144）
 - [x] PlainBlock `print`（M145）
 - [x] PlainBlock `when` 穷尽（M146）
+- [x] PlainBlock nullary UFCS（M147）
 
 ## 8. 与既有文档关系
 

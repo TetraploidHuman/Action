@@ -1,0 +1,8 @@
+// M147: PlainBlock nullary UFCS — mirror ufcs_len_ok → 3.
+fun main() -> Int {
+    return if true {
+        List[1, 2, 3].len()
+    } else {
+        0
+    }
+}

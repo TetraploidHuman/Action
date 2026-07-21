@@ -1,0 +1,9 @@
+// M147: unknown UFCS method inside PlainBlock (dual frontend).
+fun main() -> Int {
+    return if true {
+        val xs: List = List[1, 2, 3]
+        xs.noSuch()
+    } else {
+        0
+    }
+}
