@@ -1430,6 +1430,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_print_ok print then return 0",
     ),
     (
+        "plain_block_when_exhaustive_ok",
+        3,
+        "plain_block_when_exhaustive_ok Blue arm should return 3",
+    ),
+    (
         "plain_block_field_assign_ok",
         7,
         "plain_block_field_assign_ok p.x = 7 should return 7",
@@ -1552,6 +1557,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "plain_block_return_ok",
     "plain_block_set_iter_ok",
     "plain_block_val_ok",
+    "plain_block_when_exhaustive_ok",
     "plain_block_when_guard_ok",
     "plain_block_when_ok",
     "print_stmt",
@@ -4070,6 +4076,34 @@ fn test_bootstrap_m145_allowlisted_plain_block_print_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_print_ok"),
         "plain_block_print_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M146: non-exhaustive when inside PlainBlock rejected.
+#[test]
+fn test_bootstrap_m146_rejects_bad_plain_block_when_exhaustive_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_plain_block_when_exhaustive_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_when_exhaustive_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M146: PlainBlock when exhaustive accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m146_allowlisted_plain_block_when_exhaustive_ok() {
+    let path = fixtures_root().join("bootstrap/plain_block_when_exhaustive_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept plain_block_when_exhaustive_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_when_exhaustive_ok"),
+        "plain_block_when_exhaustive_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 
