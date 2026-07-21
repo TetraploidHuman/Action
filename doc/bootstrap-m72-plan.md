@@ -137,12 +137,13 @@ Phase AR M116 external funSig            ← ✅
 | **M137** | PlainBlock 嵌套 for | Path B smoke（slot44 已 save/restore）；对齐 `nested_for` | `plain_block_nested_for_ok` →3；`bad_plain_block_nested_for_ty` → exit 1；allowlist 80 | S | M136 | ✅ |
 | **M138** | PlainBlock Map `for k, v` | Path B 入册 IterateWithIndex（M132 已实现绑定）；对齐 `map_iter` | `plain_block_map_iter_ok` →15；`bad_plain_block_map_iter_ty` → exit 1；allowlist 81 | S | M137 | ✅ |
 | **M139** | PlainBlock Set for-in | Path B 对齐 `set_iter` | `plain_block_set_iter_ok` →6；`bad_plain_block_set_iter_ty` → exit 1；allowlist 82 | S | M138 | ✅ |
+| **M140** | PlainBlock `when` | Path B 对齐 `when_for`；guard 否定夹具 | `plain_block_when_ok` →37；`bad_plain_block_when_ty` → exit 1；allowlist 83 | S | M139 | ✅ |
 
 ### 后续批次（规划）
 
 | ID | 目标 | 依赖 |
 |----|------|------|
-| **M140+** | PlainBlock `when` 覆盖 / Phase A 文档 | M139 |
+| **M141+** | Phase A 文档核对 / 下一缺口 | M140 |
 
 ### 刻意延后（非本批次）
 
@@ -291,6 +292,7 @@ bash scripts/check_bootstrap_goldens.sh
 - [x] PlainBlock 嵌套 for（M137）
 - [x] PlainBlock Map `for k, v`（M138）
 - [x] PlainBlock Set for-in（M139）
+- [x] PlainBlock `when`（M140）
 
 ## 8. 与既有文档关系
 

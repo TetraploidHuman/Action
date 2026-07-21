@@ -1415,6 +1415,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_set_iter_ok for x in Set should return 6",
     ),
     (
+        "plain_block_when_ok",
+        37,
+        "plain_block_when_ok when-in-for should return 37",
+    ),
+    (
         "plain_block_nested_for_ok",
         3,
         "plain_block_nested_for_ok nested ranges should return 3",
@@ -1524,6 +1529,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "plain_block_return_ok",
     "plain_block_set_iter_ok",
     "plain_block_val_ok",
+    "plain_block_when_ok",
     "print_stmt",
     "range_ok",
     "return_bool_cmp",
@@ -3900,6 +3906,34 @@ fn test_bootstrap_m139_allowlisted_plain_block_set_iter_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_set_iter_ok"),
         "plain_block_set_iter_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M140: when guard not Bool inside PlainBlock rejected.
+#[test]
+fn test_bootstrap_m140_rejects_bad_plain_block_when_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_plain_block_when_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_when_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M140: PlainBlock when ValueMatch accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m140_allowlisted_plain_block_when_ok() {
+    let path = fixtures_root().join("bootstrap/plain_block_when_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept plain_block_when_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_when_ok"),
+        "plain_block_when_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 

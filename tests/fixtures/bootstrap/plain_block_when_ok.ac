@@ -1,0 +1,16 @@
+// M140: PlainBlock when ValueMatch — mirror when_for → 37.
+fun main() -> Int {
+    return if true {
+        var sum: Int = 0
+        for n in List[1, 2, 3, 4] {
+            sum = sum + when n {
+                1 -> 10
+                2 -> 20
+                else -> n
+            }
+        }
+        sum
+    } else {
+        0
+    }
+}
