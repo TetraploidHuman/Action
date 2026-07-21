@@ -67,6 +67,7 @@ pub const BOOTSTRAP_FRONTEND_ALLOWLIST: &[&str] = &[
     "or_block_ok",
     "plain_block_break_ok",
     "plain_block_continue_ok",
+    "plain_block_field_assign_ok",
     "plain_block_for_cond_ok",
     "plain_block_for_infinite_ok",
     "plain_block_for_ok",
