@@ -3,7 +3,7 @@
 > 制定日期：2026-07-16  
 > 前置：M4–M71 / TC1–TC8 全部 ✅；Path B（Action 前端 → HIR JSON → Rust `compile_hir`）闭环已跑通。  
 > 基线（本计划启动时）：`cargo test --test bootstrap_subset -- --test-threads=1` → **77 passed / 0 failed / 17 ignored**。  
-> 当前（M140 后）：**207 passed / 0 failed / 17 ignored**（224 `#[test]`）；allowlist **83** stems。
+> 当前（M141 后）：**207 passed / 0 failed / 17 ignored**（224 `#[test]`）；allowlist **83** stems。
 
 ## 1. 战略定位
 
