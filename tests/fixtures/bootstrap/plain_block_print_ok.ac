@@ -1,0 +1,9 @@
+// M145: PlainBlock print — mirror print_stmt → 0.
+fun main() -> Int {
+    return if true {
+        print("ok")
+        0
+    } else {
+        1
+    }
+}
