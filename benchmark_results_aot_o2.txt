@@ -6,7 +6,7 @@ bench_cmp                                     5        5        6  PASS
 bench_concat_depth                           12       13       14  PASS
 bench_cow                                     4        4        5  PASS
 bench_enum                                    4        4        5  PASS
-bench_for_chain                               4        4        5  PASS
+bench_for_chain                               6        7        8  PASS
 bench_for_collect                             6        6        7  PASS
 bench_for_list                                4        5        6  PASS
 bench_for_method                              4        4        5  PASS
