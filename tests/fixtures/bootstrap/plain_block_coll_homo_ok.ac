@@ -1,0 +1,11 @@
+// M164: PlainBlock coll homo — mirror coll_homo_ok → 0.
+fun main() -> Int {
+    return if true {
+        val xs: List = List[1, 2, 3]
+        val s: Set = Set[10, 20]
+        val m: Map = Map["a": 1, "b": 2]
+        0
+    } else {
+        1
+    }
+}

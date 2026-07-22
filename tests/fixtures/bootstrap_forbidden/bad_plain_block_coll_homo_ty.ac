@@ -1,0 +1,9 @@
+// M164: heterogeneous List inside PlainBlock (dual frontend).
+fun main() -> Int {
+    return if true {
+        val xs: List = List[1, "a"]
+        0
+    } else {
+        1
+    }
+}

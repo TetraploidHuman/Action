@@ -1490,6 +1490,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_for_range_ok sum 1..5 should return 10",
     ),
     (
+        "plain_block_coll_homo_ok",
+        0,
+        "plain_block_coll_homo_ok List/Set/Map lit smoke should return 0",
+    ),
+    (
         "plain_block_when_guard_ok",
         1,
         "plain_block_when_guard_ok Red and true should return 1",
@@ -1630,6 +1635,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "plain_block_assign_expr_ok",
     "plain_block_break_ok",
     "plain_block_cmp_ok",
+    "plain_block_coll_homo_ok",
     "plain_block_continue_ok",
     "plain_block_field_assign_ok",
     "plain_block_for_cond_ok",
@@ -4685,6 +4691,34 @@ fn test_bootstrap_m163_allowlisted_plain_block_for_range_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_for_range_ok"),
         "plain_block_for_range_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M164: heterogeneous List inside PlainBlock rejected.
+#[test]
+fn test_bootstrap_m164_rejects_bad_plain_block_coll_homo_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_plain_block_coll_homo_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_coll_homo_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M164: PlainBlock coll homo accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m164_allowlisted_plain_block_coll_homo_ok() {
+    let path = fixtures_root().join("bootstrap/plain_block_coll_homo_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept plain_block_coll_homo_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_coll_homo_ok"),
+        "plain_block_coll_homo_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 
