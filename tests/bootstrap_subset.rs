@@ -1450,6 +1450,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_or_ok parseInt or { 0 } should return 0",
     ),
     (
+        "plain_block_trailing_lambda_ok",
+        42,
+        "plain_block_trailing_lambda_ok map trailing { it * 2 } should return 42",
+    ),
+    (
         "plain_block_field_assign_ok",
         7,
         "plain_block_field_assign_ok p.x = 7 should return 7",
@@ -1572,6 +1577,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "plain_block_print_ok",
     "plain_block_return_ok",
     "plain_block_set_iter_ok",
+    "plain_block_trailing_lambda_ok",
     "plain_block_ufcs_len_ok",
     "plain_block_val_ok",
     "plain_block_when_condition_chain_ok",
@@ -4207,6 +4213,34 @@ fn test_bootstrap_m149_allowlisted_plain_block_when_condition_chain_ok() {
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST
             .contains(&"plain_block_when_condition_chain_ok"),
         "plain_block_when_condition_chain_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M150: trailing lambda body type error inside PlainBlock rejected.
+#[test]
+fn test_bootstrap_m150_rejects_bad_plain_block_trailing_lambda_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_plain_block_trailing_lambda_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_trailing_lambda_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M150: PlainBlock trailing lambda accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m150_allowlisted_plain_block_trailing_lambda_ok() {
+    let path = fixtures_root().join("bootstrap/plain_block_trailing_lambda_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept plain_block_trailing_lambda_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_trailing_lambda_ok"),
+        "plain_block_trailing_lambda_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 
