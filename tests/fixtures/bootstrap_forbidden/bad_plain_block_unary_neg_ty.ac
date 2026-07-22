@@ -1,0 +1,8 @@
+// M158: unary - on Bool inside PlainBlock (dual frontend).
+fun main() -> Int {
+    return if true {
+        -true
+    } else {
+        0
+    }
+}

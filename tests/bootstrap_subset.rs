@@ -1460,6 +1460,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_unary_plus_ok +10 + +5 should return 15",
     ),
     (
+        "plain_block_unary_neg_ok",
+        2,
+        "plain_block_unary_neg_ok -3 + 5 should return 2",
+    ),
+    (
         "plain_block_when_guard_ok",
         1,
         "plain_block_when_guard_ok Red and true should return 1",
@@ -1619,6 +1624,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "plain_block_string_index_ok",
     "plain_block_trailing_lambda_ok",
     "plain_block_ufcs_len_ok",
+    "plain_block_unary_neg_ok",
     "plain_block_unary_plus_ok",
     "plain_block_val_ok",
     "plain_block_when_and_ok",
@@ -4481,6 +4487,34 @@ fn test_bootstrap_m157_allowlisted_plain_block_unary_plus_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_unary_plus_ok"),
         "plain_block_unary_plus_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M158: unary - on Bool inside PlainBlock rejected.
+#[test]
+fn test_bootstrap_m158_rejects_bad_plain_block_unary_neg_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_plain_block_unary_neg_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_unary_neg_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M158: PlainBlock unary neg accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m158_allowlisted_plain_block_unary_neg_ok() {
+    let path = fixtures_root().join("bootstrap/plain_block_unary_neg_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept plain_block_unary_neg_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_unary_neg_ok"),
+        "plain_block_unary_neg_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 

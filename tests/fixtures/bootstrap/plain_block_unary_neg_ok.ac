@@ -1,0 +1,8 @@
+// M158: PlainBlock unary neg — mirror unary_neg_ok → 2.
+fun main() -> Int {
+    return if true {
+        -3 + 5
+    } else {
+        0
+    }
+}
