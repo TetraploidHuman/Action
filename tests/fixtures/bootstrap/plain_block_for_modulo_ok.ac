@@ -1,0 +1,12 @@
+// M169: PlainBlock for + modulo — mirror for_modulo → 20.
+fun main() -> Int {
+    return if true {
+        var sum: Int = 0
+        for i in 1..10 {
+            if i % 2 == 0 { sum = sum + i } else { continue }
+        }
+        sum
+    } else {
+        0
+    }
+}

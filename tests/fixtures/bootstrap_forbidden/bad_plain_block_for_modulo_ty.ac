@@ -1,0 +1,12 @@
+// M169: Int % Bool inside PlainBlock for (dual frontend).
+fun main() -> Int {
+    return if true {
+        var sum: Int = 0
+        for i in 1..10 {
+            if i % true == 0 { sum = sum + i } else { continue }
+        }
+        sum
+    } else {
+        0
+    }
+}
