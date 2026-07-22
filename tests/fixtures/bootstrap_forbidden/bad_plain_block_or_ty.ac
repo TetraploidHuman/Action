@@ -1,0 +1,8 @@
+// M148: or-block fallback type mismatch inside PlainBlock (dual frontend).
+fun main() -> Int {
+    return if true {
+        parseInt("x") or { true }
+    } else {
+        0
+    }
+}

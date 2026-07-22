@@ -1440,6 +1440,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_ufcs_len_ok List.len() should return 3",
     ),
     (
+        "plain_block_or_ok",
+        0,
+        "plain_block_or_ok parseInt or { 0 } should return 0",
+    ),
+    (
         "plain_block_field_assign_ok",
         7,
         "plain_block_field_assign_ok p.x = 7 should return 7",
@@ -1558,6 +1563,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "plain_block_map_keys_ok",
     "plain_block_map_values_ok",
     "plain_block_nested_for_ok",
+    "plain_block_or_ok",
     "plain_block_print_ok",
     "plain_block_return_ok",
     "plain_block_set_iter_ok",
@@ -4138,6 +4144,34 @@ fn test_bootstrap_m147_allowlisted_plain_block_ufcs_len_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_ufcs_len_ok"),
         "plain_block_ufcs_len_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M148: or-block fallback type mismatch inside PlainBlock rejected.
+#[test]
+fn test_bootstrap_m148_rejects_bad_plain_block_or_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_plain_block_or_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_or_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M148: PlainBlock fallible or {} accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m148_allowlisted_plain_block_or_ok() {
+    let path = fixtures_root().join("bootstrap/plain_block_or_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept plain_block_or_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_or_ok"),
+        "plain_block_or_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 

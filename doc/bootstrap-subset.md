@@ -1,6 +1,6 @@
 # Bootstrap 语言子集（v0）
 
-> Action-in-Action 自举编译器首版**仅允许**使用下列语言特性。随 M4–M147 里程碑扩大（权威状态见 bootstrap-m72-plan）。
+> Action-in-Action 自举编译器首版**仅允许**使用下列语言特性。随 M4–M148 里程碑扩大（权威状态见 bootstrap-m72-plan）。
 
 ## 允许
 
@@ -191,8 +191,9 @@
 | M145 | PlainBlock `print` | ✅ `plain_block_print_ok`→0；`bad_plain_block_print_ty`；allowlist 87 |
 | M146 | PlainBlock `when` 穷尽 | ✅ `plain_block_when_exhaustive_ok`→3；`bad_plain_block_when_exhaustive_ty`；allowlist 88 |
 | M147 | PlainBlock nullary UFCS | ✅ `plain_block_ufcs_len_ok`→3；`bad_plain_block_ufcs_ty`；allowlist 89 |
+| M148 | PlainBlock `or {}` | ✅ `plain_block_or_ok`→0；`bad_plain_block_or_ty`；allowlist 90 |
 
-**M72+ 执行计划**：[bootstrap-m72-plan.md](bootstrap-m72-plan.md)（M72–M147 ✅）。
+**M72+ 执行计划**：[bootstrap-m72-plan.md](bootstrap-m72-plan.md)（M72–M148 ✅）。
 
 CI 维护：`scripts/check_bootstrap_goldens.sh` + 10 个 `check_bootstrap_*.py`（均在 `ci-linux.sh core`：prelude/parser/emit/typeenv/whenty/modload/pexpr/pstmt/pdecl/pscan）。
 
