@@ -3,7 +3,7 @@
 > 制定日期：2026-07-16  
 > 前置：M4–M71 / TC1–TC8 全部 ✅；Path B（Action 前端 → HIR JSON → Rust `compile_hir`）闭环已跑通。  
 > 基线（本计划启动时）：`cargo test --test bootstrap_subset -- --test-threads=1` → **77 passed / 0 failed / 17 ignored**。  
-> 当前（M152 后）：**229 passed / 0 failed / 17 ignored**（246 `#[test]`）；allowlist **94** stems。
+> 当前（M153 后）：**231 passed / 0 failed / 17 ignored**（248 `#[test]`）；allowlist **95** stems。
 
 ## 1. 战略定位
 
@@ -66,7 +66,7 @@ Phase AS M117–M140 PlainBlock / lambda / Map·Set / when Path B  ← ✅（见
 
 每完成一个编号里程碑：本机验证 → 更新本文件状态表 →（用户要求时）commit。
 
-## 3. 里程碑（M72–M152）
+## 3. 里程碑（M72–M153）
 
 | ID | 名称 | 目标 | 验收 | 难度 | 依赖 | 状态 |
 |----|------|------|------|------|------|------|
@@ -151,12 +151,13 @@ Phase AS M117–M140 PlainBlock / lambda / Map·Set / when Path B  ← ✅（见
 | **M150** | PlainBlock trailing lambda | Path B 对齐 `trailing_lambda_ok` | `plain_block_trailing_lambda_ok` →42；`bad_plain_block_trailing_lambda_ty` → exit 1；allowlist 92 | S | M149 | ✅ |
 | **M151** | PlainBlock `when` ConditionChain + `and` | Path B 对齐 `when_guard` | `plain_block_when_and_ok` →0；`bad_plain_block_when_and_ty` → exit 1；allowlist 93 | S | M150 | ✅ |
 | **M152** | PlainBlock Map 下标读 | Path B 对齐 `map_index` | `plain_block_map_index_ok` →10；`bad_plain_block_map_index_ty` → exit 1；allowlist 94 | S | M151 | ✅ |
+| **M153** | PlainBlock String 下标 | Path B 对齐 `string_index_ok` | `plain_block_string_index_ok` →0；`bad_plain_block_string_index_ty` → exit 1；allowlist 95 | S | M152 | ✅ |
 
 ### 后续批次（规划）
 
 | ID | 目标 | 依赖 |
 |----|------|------|
-| **M153+** | 下一 Path B / 子集缺口 | M152 |
+| **M154+** | 下一 Path B / 子集缺口 | M153 |
 
 ### 刻意延后（非本批次）
 
@@ -253,6 +254,7 @@ bash scripts/check_bootstrap_goldens.sh
 - [x] PlainBlock trailing lambda（M150）
 - [x] PlainBlock `when` ConditionChain + `and`（M151）
 - [x] PlainBlock Map 下标读（M152）
+- [x] PlainBlock String 下标（M153）
 - [x] 子集程序的 **拒绝/接受** 路径可在不依赖 Rust `typecheck` 的情况下对 allowlisted 夹具成立（M76）
 - [x] Bootstrap 侧 enum `when` 穷尽 / 未知构造器（M77；Rust `exhaustive.rs` 仍为双前端权威之一）
 - [x] 自定义 enum 变体 Ident 解析为父 enum tag（M78）
@@ -330,12 +332,13 @@ bash scripts/check_bootstrap_goldens.sh
 - [x] PlainBlock trailing lambda（M150）
 - [x] PlainBlock `when` ConditionChain + `and`（M151）
 - [x] PlainBlock Map 下标读（M152）
+- [x] PlainBlock String 下标（M153）
 
 ## 8. 与既有文档关系
 
 | 文档 | 角色 |
 |------|------|
 | `doc/roadmap-and-bootstrap-analysis.md` | 战略（Path B、不做 L3/L4）；时间线部分已部分过时 |
-| `doc/bootstrap-subset.md` | 子集允许/禁止 + M4–M152 状态表 |
+| `doc/bootstrap-subset.md` | 子集允许/禁止 + M4–M153 状态表 |
 | `bootstrap/README.md` | 操作说明 + M4–M20/TC + M72+ 指针与当前 harness 数字 |
 | **本文件** | **M72+ 执行计划与状态（权威）** |

@@ -1435,6 +1435,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_map_index_ok m[\"a\"] should return 10",
     ),
     (
+        "plain_block_string_index_ok",
+        0,
+        "plain_block_string_index_ok s[0]-s[0] should return 0",
+    ),
+    (
         "plain_block_when_guard_ok",
         1,
         "plain_block_when_guard_ok Red and true should return 1",
@@ -1588,6 +1593,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "plain_block_print_ok",
     "plain_block_return_ok",
     "plain_block_set_iter_ok",
+    "plain_block_string_index_ok",
     "plain_block_trailing_lambda_ok",
     "plain_block_ufcs_len_ok",
     "plain_block_val_ok",
@@ -4309,6 +4315,34 @@ fn test_bootstrap_m152_allowlisted_plain_block_map_index_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_map_index_ok"),
         "plain_block_map_index_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M153: String index key not Int inside PlainBlock rejected.
+#[test]
+fn test_bootstrap_m153_rejects_bad_plain_block_string_index_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_plain_block_string_index_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_string_index_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M153: PlainBlock String index accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m153_allowlisted_plain_block_string_index_ok() {
+    let path = fixtures_root().join("bootstrap/plain_block_string_index_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept plain_block_string_index_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_string_index_ok"),
+        "plain_block_string_index_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 

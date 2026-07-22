@@ -82,6 +82,7 @@ pub const BOOTSTRAP_FRONTEND_ALLOWLIST: &[&str] = &[
     "plain_block_print_ok",
     "plain_block_return_ok",
     "plain_block_set_iter_ok",
+    "plain_block_string_index_ok",
     "plain_block_trailing_lambda_ok",
     "plain_block_ufcs_len_ok",
     "plain_block_val_ok",
