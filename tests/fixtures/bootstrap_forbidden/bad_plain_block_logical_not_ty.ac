@@ -1,0 +1,9 @@
+// M154: not operand not Bool inside PlainBlock (dual frontend).
+fun main() -> Int {
+    return if true {
+        val x: Bool = not 1
+        if x { 0 } else { 1 }
+    } else {
+        0
+    }
+}
