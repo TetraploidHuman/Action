@@ -1500,6 +1500,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_coll_homo_ok List/Set/Map lit smoke should return 0",
     ),
     (
+        "plain_block_list_string_ok",
+        3,
+        "plain_block_list_string_ok List[String] len should return 3",
+    ),
+    (
         "plain_block_when_guard_ok",
         1,
         "plain_block_when_guard_ok Red and true should return 1",
@@ -1652,6 +1657,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "plain_block_for_string_ok",
     "plain_block_for_with_index_ok",
     "plain_block_index_assign_ok",
+    "plain_block_list_string_ok",
     "plain_block_logical_not_ok",
     "plain_block_logical_ops_ok",
     "plain_block_map_index_ok",
@@ -4753,6 +4759,34 @@ fn test_bootstrap_m165_allowlisted_plain_block_arith_add_string_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_arith_add_string_ok"),
         "plain_block_arith_add_string_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M166: heterogeneous List[String]/Int inside PlainBlock rejected.
+#[test]
+fn test_bootstrap_m166_rejects_bad_plain_block_list_string_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_plain_block_list_string_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_list_string_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M166: PlainBlock List[String] lit accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m166_allowlisted_plain_block_list_string_ok() {
+    let path = fixtures_root().join("bootstrap/plain_block_list_string_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept plain_block_list_string_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_list_string_ok"),
+        "plain_block_list_string_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 

@@ -1,0 +1,9 @@
+// M166: heterogeneous List[String]/Int inside PlainBlock (dual frontend).
+fun main() -> Int {
+    return if true {
+        val xs: List = List["a", 1]
+        len(xs)
+    } else {
+        0
+    }
+}
