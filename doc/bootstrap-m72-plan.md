@@ -3,7 +3,7 @@
 > 制定日期：2026-07-16  
 > 前置：M4–M71 / TC1–TC8 全部 ✅；Path B（Action 前端 → HIR JSON → Rust `compile_hir`）闭环已跑通。  
 > 基线（本计划启动时）：`cargo test --test bootstrap_subset -- --test-threads=1` → **77 passed / 0 failed / 17 ignored**。  
-> 当前（M156 后）：**237 passed / 0 failed / 17 ignored**（254 `#[test]`）；allowlist **98** stems。
+> 当前（M157 后）：**239 passed / 0 failed / 17 ignored**（256 `#[test]`）；allowlist **99** stems。
 
 ## 1. 战略定位
 
@@ -66,7 +66,7 @@ Phase AS M117–M140 PlainBlock / lambda / Map·Set / when Path B  ← ✅（见
 
 每完成一个编号里程碑：本机验证 → 更新本文件状态表 →（用户要求时）commit。
 
-## 3. 里程碑（M72–M156）
+## 3. 里程碑（M72–M157）
 
 | ID | 名称 | 目标 | 验收 | 难度 | 依赖 | 状态 |
 |----|------|------|------|------|------|------|
@@ -155,12 +155,13 @@ Phase AS M117–M140 PlainBlock / lambda / Map·Set / when Path B  ← ✅（见
 | **M154** | PlainBlock `not` | Path B 对齐 `logical_not` | `plain_block_logical_not_ok` →0；`bad_plain_block_logical_not_ty` → exit 1；allowlist 96 | S | M153 | ✅ |
 | **M155** | PlainBlock `for` exclusive range | Path B 对齐 `for_range_exclusive` | `plain_block_for_range_exclusive_ok` →10；`bad_plain_block_for_range_exclusive_ty` → exit 1；allowlist 97 | S | M154 | ✅ |
 | **M156** | PlainBlock `for` List[String] | Path B 对齐 `for_string` | `plain_block_for_string_ok` →6；`bad_plain_block_for_string_ty` → exit 1；allowlist 98 | S | M155 | ✅ |
+| **M157** | PlainBlock unary `+` | Path B 对齐 `unary_plus` | `plain_block_unary_plus_ok` →15；`bad_plain_block_unary_plus_ty` → exit 1；allowlist 99 | S | M156 | ✅ |
 
 ### 后续批次（规划）
 
 | ID | 目标 | 依赖 |
 |----|------|------|
-| **M157+** | 下一 Path B / 子集缺口 | M156 |
+| **M158+** | 下一 Path B / 子集缺口 | M157 |
 
 ### 刻意延后（非本批次）
 
@@ -261,6 +262,7 @@ bash scripts/check_bootstrap_goldens.sh
 - [x] PlainBlock `not`（M154）
 - [x] PlainBlock `for` exclusive range（M155）
 - [x] PlainBlock `for` List[String]（M156）
+- [x] PlainBlock unary `+`（M157）
 - [x] 子集程序的 **拒绝/接受** 路径可在不依赖 Rust `typecheck` 的情况下对 allowlisted 夹具成立（M76）
 - [x] Bootstrap 侧 enum `when` 穷尽 / 未知构造器（M77；Rust `exhaustive.rs` 仍为双前端权威之一）
 - [x] 自定义 enum 变体 Ident 解析为父 enum tag（M78）
@@ -342,12 +344,13 @@ bash scripts/check_bootstrap_goldens.sh
 - [x] PlainBlock `not`（M154）
 - [x] PlainBlock `for` exclusive range（M155）
 - [x] PlainBlock `for` List[String]（M156）
+- [x] PlainBlock unary `+`（M157）
 
 ## 8. 与既有文档关系
 
 | 文档 | 角色 |
 |------|------|
 | `doc/roadmap-and-bootstrap-analysis.md` | 战略（Path B、不做 L3/L4）；时间线部分已部分过时 |
-| `doc/bootstrap-subset.md` | 子集允许/禁止 + M4–M156 状态表 |
+| `doc/bootstrap-subset.md` | 子集允许/禁止 + M4–M157 状态表 |
 | `bootstrap/README.md` | 操作说明 + M4–M20/TC + M72+ 指针与当前 harness 数字 |
 | **本文件** | **M72+ 执行计划与状态（权威）** |

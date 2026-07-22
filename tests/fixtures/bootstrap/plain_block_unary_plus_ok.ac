@@ -1,0 +1,8 @@
+// M157: PlainBlock unary plus — mirror unary_plus → 15.
+fun main() -> Int {
+    return if true {
+        +10 + +5
+    } else {
+        0
+    }
+}

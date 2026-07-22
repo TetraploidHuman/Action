@@ -1455,6 +1455,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_for_string_ok sum len(s) should return 6",
     ),
     (
+        "plain_block_unary_plus_ok",
+        15,
+        "plain_block_unary_plus_ok +10 + +5 should return 15",
+    ),
+    (
         "plain_block_when_guard_ok",
         1,
         "plain_block_when_guard_ok Red and true should return 1",
@@ -1614,6 +1619,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "plain_block_string_index_ok",
     "plain_block_trailing_lambda_ok",
     "plain_block_ufcs_len_ok",
+    "plain_block_unary_plus_ok",
     "plain_block_val_ok",
     "plain_block_when_and_ok",
     "plain_block_when_condition_chain_ok",
@@ -4447,6 +4453,34 @@ fn test_bootstrap_m156_allowlisted_plain_block_for_string_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_for_string_ok"),
         "plain_block_for_string_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M157: unary + on Bool inside PlainBlock rejected.
+#[test]
+fn test_bootstrap_m157_rejects_bad_plain_block_unary_plus_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_plain_block_unary_plus_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_unary_plus_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M157: PlainBlock unary plus accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m157_allowlisted_plain_block_unary_plus_ok() {
+    let path = fixtures_root().join("bootstrap/plain_block_unary_plus_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept plain_block_unary_plus_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_unary_plus_ok"),
+        "plain_block_unary_plus_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 
