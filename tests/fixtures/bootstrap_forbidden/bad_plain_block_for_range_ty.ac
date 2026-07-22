@@ -1,0 +1,12 @@
+// M163: inclusive range end not Int inside PlainBlock (dual frontend).
+fun main() -> Int {
+    return if true {
+        var s: Int = 0
+        for i in 1..true {
+            s = s + 1
+        }
+        s
+    } else {
+        0
+    }
+}
