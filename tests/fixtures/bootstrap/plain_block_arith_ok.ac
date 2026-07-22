@@ -1,0 +1,8 @@
+// M161: PlainBlock arith — mirror arith_ok → 4.
+fun main() -> Int {
+    return if true {
+        10 - 3 * 2
+    } else {
+        0
+    }
+}

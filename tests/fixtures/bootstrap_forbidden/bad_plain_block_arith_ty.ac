@@ -1,0 +1,8 @@
+// M161: Int - Bool inside PlainBlock (dual frontend).
+fun main() -> Int {
+    return if true {
+        10 - true
+    } else {
+        0
+    }
+}
