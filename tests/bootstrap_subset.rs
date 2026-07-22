@@ -1465,6 +1465,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_unary_neg_ok -3 + 5 should return 2",
     ),
     (
+        "plain_block_logical_ops_ok",
+        0,
+        "plain_block_logical_ops_ok true and false should return 0",
+    ),
+    (
         "plain_block_when_guard_ok",
         1,
         "plain_block_when_guard_ok Red and true should return 1",
@@ -1612,6 +1617,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "plain_block_for_with_index_ok",
     "plain_block_index_assign_ok",
     "plain_block_logical_not_ok",
+    "plain_block_logical_ops_ok",
     "plain_block_map_index_ok",
     "plain_block_map_iter_ok",
     "plain_block_map_keys_ok",
@@ -4515,6 +4521,34 @@ fn test_bootstrap_m158_allowlisted_plain_block_unary_neg_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_unary_neg_ok"),
         "plain_block_unary_neg_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M159: and operand not Bool inside PlainBlock rejected.
+#[test]
+fn test_bootstrap_m159_rejects_bad_plain_block_logical_ops_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_plain_block_logical_ops_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_logical_ops_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M159: PlainBlock and/or accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m159_allowlisted_plain_block_logical_ops_ok() {
+    let path = fixtures_root().join("bootstrap/plain_block_logical_ops_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept plain_block_logical_ops_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_logical_ops_ok"),
+        "plain_block_logical_ops_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 

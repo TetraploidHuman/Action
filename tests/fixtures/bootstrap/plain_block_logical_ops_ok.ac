@@ -1,0 +1,12 @@
+// M159: PlainBlock and/or — mirror logical_ops → 0.
+fun both(a: Bool, b: Bool) -> Bool {
+    return a and b
+}
+
+fun main() -> Int {
+    return if true {
+        if both(true, false) { 1 } else { 0 }
+    } else {
+        1
+    }
+}
