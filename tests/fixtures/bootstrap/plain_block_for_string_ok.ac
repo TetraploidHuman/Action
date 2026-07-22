@@ -1,0 +1,13 @@
+// M156: PlainBlock for-in List[String] — mirror for_string → 6.
+fun main() -> Int {
+    return if true {
+        val xs: List = List["a", "bb", "ccc"]
+        var n: Int = 0
+        for s in xs {
+            n = n + len(s)
+        }
+        n
+    } else {
+        0
+    }
+}

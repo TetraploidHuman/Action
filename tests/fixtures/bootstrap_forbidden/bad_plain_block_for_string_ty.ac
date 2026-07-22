@@ -1,0 +1,12 @@
+// M156: for-in List[String] body Add Bool inside PlainBlock (dual frontend).
+fun main() -> Int {
+    return if true {
+        var n: Int = 0
+        for s in List["a"] {
+            n = n + true
+        }
+        n
+    } else {
+        0
+    }
+}
