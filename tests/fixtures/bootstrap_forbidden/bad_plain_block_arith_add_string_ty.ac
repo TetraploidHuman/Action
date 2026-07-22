@@ -1,0 +1,8 @@
+// M165: Int + Bool inside PlainBlock (dual frontend; String+"x" concat allows non-String rhs).
+fun main() -> Int {
+    return if true {
+        1 + true
+    } else {
+        0
+    }
+}

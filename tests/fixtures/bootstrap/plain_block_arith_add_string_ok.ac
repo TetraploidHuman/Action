@@ -1,0 +1,9 @@
+// M165: PlainBlock string + — mirror arith_add_string_ok → 2.
+fun main() -> Int {
+    return if true {
+        val s: String = "a" + "b"
+        len(s)
+    } else {
+        0
+    }
+}

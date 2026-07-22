@@ -3,7 +3,7 @@
 > 制定日期：2026-07-16  
 > 前置：M4–M71 / TC1–TC8 全部 ✅；Path B（Action 前端 → HIR JSON → Rust `compile_hir`）闭环已跑通。  
 > 基线（本计划启动时）：`cargo test --test bootstrap_subset -- --test-threads=1` → **77 passed / 0 failed / 17 ignored**。  
-> 当前（M164 后）：**253 passed / 0 failed / 17 ignored**（270 `#[test]`）；allowlist **106** stems。
+> 当前（M165 后）：**255 passed / 0 failed / 17 ignored**（272 `#[test]`）；allowlist **107** stems。
 
 ## 1. 战略定位
 
@@ -66,7 +66,7 @@ Phase AS M117–M140 PlainBlock / lambda / Map·Set / when Path B  ← ✅（见
 
 每完成一个编号里程碑：本机验证 → 更新本文件状态表 →（用户要求时）commit。
 
-## 3. 里程碑（M72–M164）
+## 3. 里程碑（M72–M165）
 
 | ID | 名称 | 目标 | 验收 | 难度 | 依赖 | 状态 |
 |----|------|------|------|------|------|------|
@@ -163,12 +163,13 @@ Phase AS M117–M140 PlainBlock / lambda / Map·Set / when Path B  ← ✅（见
 | **M162** | PlainBlock cmp | Path B 对齐 `cmp_ok` | `plain_block_cmp_ok` →0；`bad_plain_block_cmp_ty` → exit 1；allowlist 104 | S | M161 | ✅ |
 | **M163** | PlainBlock `for` inclusive range | Path B 对齐 `for_range` | `plain_block_for_range_ok` →10；`bad_plain_block_for_range_ty` → exit 1；allowlist 105 | S | M162 | ✅ |
 | **M164** | PlainBlock coll homo | Path B 对齐 `coll_homo_ok` | `plain_block_coll_homo_ok` →0；`bad_plain_block_coll_homo_ty` → exit 1；allowlist 106 | S | M163 | ✅ |
+| **M165** | PlainBlock string `+` | Path B 对齐 `arith_add_string_ok` | `plain_block_arith_add_string_ok` →2；`bad_plain_block_arith_add_string_ty` → exit 1；allowlist 107 | S | M164 | ✅ |
 
 ### 后续批次（规划）
 
 | ID | 目标 | 依赖 |
 |----|------|------|
-| **M165+** | 下一 Path B / 子集缺口（候选：`plain_block_arith_add_string_ok`） | M164 |
+| **M166+** | 下一 Path B / 子集缺口（候选：`plain_block_list_string_ok`） | M165 |
 
 ### 刻意延后（非本批次）
 
@@ -277,6 +278,7 @@ bash scripts/check_bootstrap_goldens.sh
 - [x] PlainBlock cmp（M162）
 - [x] PlainBlock inclusive for-range（M163）
 - [x] PlainBlock coll homo（M164）
+- [x] PlainBlock string `+`（M165）
 - [x] 子集程序的 **拒绝/接受** 路径可在不依赖 Rust `typecheck` 的情况下对 allowlisted 夹具成立（M76）
 - [x] Bootstrap 侧 enum `when` 穷尽 / 未知构造器（M77；Rust `exhaustive.rs` 仍为双前端权威之一）
 - [x] 自定义 enum 变体 Ident 解析为父 enum tag（M78）
@@ -366,12 +368,13 @@ bash scripts/check_bootstrap_goldens.sh
 - [x] PlainBlock cmp（M162）
 - [x] PlainBlock inclusive for-range（M163）
 - [x] PlainBlock coll homo（M164）
+- [x] PlainBlock string `+`（M165）
 
 ## 8. 与既有文档关系
 
 | 文档 | 角色 |
 |------|------|
 | `doc/roadmap-and-bootstrap-analysis.md` | 战略（Path B、不做 L3/L4）；时间线部分已部分过时 |
-| `doc/bootstrap-subset.md` | 子集允许/禁止 + M4–M164 状态表 |
+| `doc/bootstrap-subset.md` | 子集允许/禁止 + M4–M165 状态表 |
 | `bootstrap/README.md` | 操作说明 + M4–M20/TC + M72+ 指针与当前 harness 数字 |
 | **本文件** | **M72+ 执行计划与状态（权威）** |
