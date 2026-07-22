@@ -904,7 +904,7 @@ mod tests {
         #[test]
         fn proptest_parse_simple_val(name in "[a-zA-Z][a-zA-Z0-9_]{0,20}", n in 0i64..10000i64) {
             const KEYWORDS: &[&str] = &[
-                "val", "var", "fun", "when", "else", "for", "in", "is", "break", "continue",
+                "val", "var", "fun", "when", "if", "else", "for", "in", "is", "break", "continue",
                 "return", "enum", "type", "import", "module", "export", "const", "copy",
                 "extension", "as", "and", "or", "not", "lazy", "unsafe", "external", "null",
                 "Task", "true", "false",
@@ -914,8 +914,14 @@ mod tests {
             let tokens = crate::lexer::Lexer::new(&s).tokenize();
             let mut parser = Parser::new(tokens);
             let (stmts, errors) = parser.parse_program_recover();
-            prop_assert!(errors.is_empty() || stmts.len() == 1,
-                "expected 1 statement or parse errors for '{}', got {} stmts, {} errors", s, stmts.len(), errors.len());
+            // Valid id → one stmt; keyword slip-through → nonempty errors (0 stmts OK).
+            prop_assert!(
+                !errors.is_empty() || stmts.len() == 1,
+                "expected 1 statement or parse errors for '{}', got {} stmts, {} errors",
+                s,
+                stmts.len(),
+                errors.len()
+            );
         }
     }
 }
