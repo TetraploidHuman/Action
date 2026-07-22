@@ -65,6 +65,7 @@ pub const BOOTSTRAP_FRONTEND_ALLOWLIST: &[&str] = &[
     "map_values",
     "nested_for",
     "or_block_ok",
+    "plain_block_assign_expr_ok",
     "plain_block_break_ok",
     "plain_block_continue_ok",
     "plain_block_field_assign_ok",

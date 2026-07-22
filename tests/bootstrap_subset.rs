@@ -1470,6 +1470,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_logical_ops_ok true and false should return 0",
     ),
     (
+        "plain_block_assign_expr_ok",
+        0,
+        "plain_block_assign_expr_ok assign smoke should return 0",
+    ),
+    (
         "plain_block_when_guard_ok",
         1,
         "plain_block_when_guard_ok Red and true should return 1",
@@ -1606,6 +1611,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "map_values",
     "nested_for",
     "or_block_ok",
+    "plain_block_assign_expr_ok",
     "plain_block_break_ok",
     "plain_block_continue_ok",
     "plain_block_field_assign_ok",
@@ -4549,6 +4555,34 @@ fn test_bootstrap_m159_allowlisted_plain_block_logical_ops_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_logical_ops_ok"),
         "plain_block_logical_ops_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M160: assign Point to Int inside PlainBlock rejected.
+#[test]
+fn test_bootstrap_m160_rejects_bad_plain_block_assign_expr_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_plain_block_assign_expr_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_assign_expr_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M160: PlainBlock assign accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m160_allowlisted_plain_block_assign_expr_ok() {
+    let path = fixtures_root().join("bootstrap/plain_block_assign_expr_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept plain_block_assign_expr_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_assign_expr_ok"),
+        "plain_block_assign_expr_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 
