@@ -1,0 +1,12 @@
+// M155: PlainBlock exclusive range for — mirror for_range_exclusive → 10.
+fun main() -> Int {
+    return if true {
+        var sum: Int = 0
+        for i in 1..<5 {
+            sum = sum + i
+        }
+        sum
+    } else {
+        0
+    }
+}
