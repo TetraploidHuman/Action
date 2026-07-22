@@ -1,0 +1,12 @@
+// M149: PlainBlock when ConditionChain — mirror when_condition_chain → 0.
+fun main() -> Int {
+    return if true {
+        when {
+            1 < 0 -> 1
+            1 == 0 -> 2
+            else -> 0
+        }
+    } else {
+        1
+    }
+}

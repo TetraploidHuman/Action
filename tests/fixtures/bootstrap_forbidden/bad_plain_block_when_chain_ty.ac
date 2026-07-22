@@ -1,0 +1,11 @@
+// M149: ConditionChain arm condition not Bool inside PlainBlock (dual frontend).
+fun main() -> Int {
+    return if true {
+        when {
+            1 -> 0
+            else -> 1
+        }
+    } else {
+        0
+    }
+}

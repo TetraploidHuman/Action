@@ -1420,6 +1420,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_when_ok when-in-for should return 37",
     ),
     (
+        "plain_block_when_condition_chain_ok",
+        0,
+        "plain_block_when_condition_chain_ok else arm should return 0",
+    ),
+    (
         "plain_block_when_guard_ok",
         1,
         "plain_block_when_guard_ok Red and true should return 1",
@@ -1569,6 +1574,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "plain_block_set_iter_ok",
     "plain_block_ufcs_len_ok",
     "plain_block_val_ok",
+    "plain_block_when_condition_chain_ok",
     "plain_block_when_exhaustive_ok",
     "plain_block_when_guard_ok",
     "plain_block_when_ok",
@@ -4172,6 +4178,35 @@ fn test_bootstrap_m148_allowlisted_plain_block_or_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_or_ok"),
         "plain_block_or_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M149: ConditionChain arm not Bool inside PlainBlock rejected.
+#[test]
+fn test_bootstrap_m149_rejects_bad_plain_block_when_chain_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_plain_block_when_chain_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_when_chain_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M149: PlainBlock when ConditionChain accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m149_allowlisted_plain_block_when_condition_chain_ok() {
+    let path = fixtures_root().join("bootstrap/plain_block_when_condition_chain_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept plain_block_when_condition_chain_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST
+            .contains(&"plain_block_when_condition_chain_ok"),
+        "plain_block_when_condition_chain_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 
