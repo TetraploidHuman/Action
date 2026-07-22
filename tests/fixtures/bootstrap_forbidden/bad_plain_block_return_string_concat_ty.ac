@@ -1,0 +1,13 @@
+// M170: String fun returns Int (dual frontend); call site inside PlainBlock.
+fun greet() -> String {
+    return 1
+}
+
+fun main() -> Int {
+    return if true {
+        val s: String = greet()
+        len(s)
+    } else {
+        0
+    }
+}
