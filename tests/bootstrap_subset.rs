@@ -1500,6 +1500,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_return_bool_cmp_ok isOne(1) should return 1",
     ),
     (
+        "plain_block_return_token_make_ok",
+        3,
+        "plain_block_return_token_make_ok len(\"fun\") should return 3",
+    ),
+    (
         "plain_block_arith_ok",
         4,
         "plain_block_arith_ok 10 - 3 * 2 should return 4",
@@ -1722,6 +1727,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "plain_block_return_bool_cmp_ok",
     "plain_block_return_point_make_ok",
     "plain_block_return_string_concat_ok",
+    "plain_block_return_token_make_ok",
     "plain_block_set_iter_ok",
     "plain_block_string_index_ok",
     "plain_block_trailing_lambda_ok",
@@ -5095,6 +5101,34 @@ fn test_bootstrap_m175_allowlisted_plain_block_return_bool_cmp_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_return_bool_cmp_ok"),
         "plain_block_return_bool_cmp_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M176: Token fun returns Int rejected (call site in PlainBlock).
+#[test]
+fn test_bootstrap_m176_rejects_bad_plain_block_return_token_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_plain_block_return_token_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_return_token_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M176: PlainBlock Token return accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m176_allowlisted_plain_block_return_token_make_ok() {
+    let path = fixtures_root().join("bootstrap/plain_block_return_token_make_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept plain_block_return_token_make_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_return_token_make_ok"),
+        "plain_block_return_token_make_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 

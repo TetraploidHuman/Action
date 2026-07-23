@@ -3,7 +3,7 @@
 > 制定日期：2026-07-16  
 > 前置：M4–M71 / TC1–TC8 全部 ✅；Path B（Action 前端 → HIR JSON → Rust `compile_hir`）闭环已跑通。  
 > 基线（本计划启动时）：`cargo test --test bootstrap_subset -- --test-threads=1` → **77 passed / 0 failed / 17 ignored**。  
-> 当前（M175 后）：**275 passed / 0 failed / 17 ignored**（292 `#[test]`）；allowlist **117** stems。
+> 当前（M176 后）：**277 passed / 0 failed / 17 ignored**（294 `#[test]`）；allowlist **118** stems。
 
 ## 1. 战略定位
 
@@ -66,7 +66,7 @@ Phase AS M117–M140 PlainBlock / lambda / Map·Set / when Path B  ← ✅（见
 
 每完成一个编号里程碑：本机验证 → 更新本文件状态表 →（用户要求时）commit。
 
-## 3. 里程碑（M72–M175）
+## 3. 里程碑（M72–M176）
 
 | ID | 名称 | 目标 | 验收 | 难度 | 依赖 | 状态 |
 |----|------|------|------|------|------|------|
@@ -174,12 +174,13 @@ Phase AS M117–M140 PlainBlock / lambda / Map·Set / when Path B  ← ✅（见
 | **M173** | PlainBlock Point call | Path B 对齐 `call_point_ok` | `plain_block_call_point_ok` →0；`bad_plain_block_call_point_ty` → exit 1；allowlist 115 | S | M172 | ✅ |
 | **M174** | PlainBlock return Point | Path B 对齐 `return_point_make` | `plain_block_return_point_make_ok` →0；`bad_plain_block_return_point_ty` → exit 1；allowlist 116 | S | M173 | ✅ |
 | **M175** | PlainBlock Bool return/cmp | Path B 对齐 `return_bool_cmp` | `plain_block_return_bool_cmp_ok` →1；`bad_plain_block_return_bool_cmp_ty` → exit 1；allowlist 117 | S | M174 | ✅ |
+| **M176** | PlainBlock return Token | Path B 对齐 `return_token_make` | `plain_block_return_token_make_ok` →3；`bad_plain_block_return_token_ty` → exit 1；allowlist 118 | S | M175 | ✅ |
 
 ### 后续批次（规划）
 
 | ID | 目标 | 依赖 |
 |----|------|------|
-| **M176+** | 下一 Path B / 子集缺口（候选：`plain_block_return_token_make_ok`） | M175 |
+| **M177+** | 下一 Path B / 子集缺口 | M176 |
 
 ### 刻意延后（非本批次）
 
