@@ -1,0 +1,12 @@
+// M177: PlainBlock exclusive range — mirror range_ok → 3.
+fun main() -> Int {
+    return if true {
+        var s: Int = 0
+        for i in 1..<3 {
+            s = s + i
+        }
+        s
+    } else {
+        0
+    }
+}

@@ -97,6 +97,7 @@ pub const BOOTSTRAP_FRONTEND_ALLOWLIST: &[&str] = &[
     "plain_block_nested_for_ok",
     "plain_block_or_ok",
     "plain_block_print_ok",
+    "plain_block_range_ok",
     "plain_block_return_ok",
     "plain_block_return_bool_cmp_ok",
     "plain_block_return_point_make_ok",
