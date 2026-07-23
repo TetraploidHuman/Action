@@ -1,0 +1,12 @@
+// M175: Bool fun returns String inside PlainBlock call site (dual frontend).
+fun isOne(n: Int) -> Bool {
+    return "yes"
+}
+
+fun main() -> Int {
+    return if true {
+        if isOne(1) { 1 } else { 0 }
+    } else {
+        0
+    }
+}

@@ -1,6 +1,6 @@
 # Bootstrap 语言子集（v0）
 
-> Action-in-Action 自举编译器首版**仅允许**使用下列语言特性。随 M4–M174 里程碑扩大（权威状态见 bootstrap-m72-plan）。
+> Action-in-Action 自举编译器首版**仅允许**使用下列语言特性。随 M4–M175 里程碑扩大（权威状态见 bootstrap-m72-plan）。
 
 ## 允许
 
@@ -218,8 +218,9 @@
 | M172 | PlainBlock Point let | ✅ `plain_block_let_point_ok`→0；`bad_plain_block_let_point_ty`；allowlist 114 |
 | M173 | PlainBlock Point call | ✅ `plain_block_call_point_ok`→0；`bad_plain_block_call_point_ty`；allowlist 115 |
 | M174 | PlainBlock return Point | ✅ `plain_block_return_point_make_ok`→0；`bad_plain_block_return_point_ty`；allowlist 116 |
+| M175 | PlainBlock Bool return/cmp | ✅ `plain_block_return_bool_cmp_ok`→1；`bad_plain_block_return_bool_cmp_ty`；allowlist 117 |
 
-**M72+ 执行计划**：[bootstrap-m72-plan.md](bootstrap-m72-plan.md)（M72–M174 ✅）。
+**M72+ 执行计划**：[bootstrap-m72-plan.md](bootstrap-m72-plan.md)（M72–M175 ✅）。
 
 CI 维护：`scripts/check_bootstrap_goldens.sh` + 10 个 `check_bootstrap_*.py`（均在 `ci-linux.sh core`：prelude/parser/emit/typeenv/whenty/modload/pexpr/pstmt/pdecl/pscan）。
 
