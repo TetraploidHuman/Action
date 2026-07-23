@@ -3,7 +3,7 @@
 > 制定日期：2026-07-16  
 > 前置：M4–M71 / TC1–TC8 全部 ✅；Path B（Action 前端 → HIR JSON → Rust `compile_hir`）闭环已跑通。  
 > 基线（本计划启动时）：`cargo test --test bootstrap_subset -- --test-threads=1` → **77 passed / 0 failed / 17 ignored**。  
-> 当前（M171 后）：**267 passed / 0 failed / 17 ignored**（284 `#[test]`）；allowlist **113** stems。
+> 当前（M172 后）：**269 passed / 0 failed / 17 ignored**（286 `#[test]`）；allowlist **114** stems。
 
 ## 1. 战略定位
 
@@ -66,7 +66,7 @@ Phase AS M117–M140 PlainBlock / lambda / Map·Set / when Path B  ← ✅（见
 
 每完成一个编号里程碑：本机验证 → 更新本文件状态表 →（用户要求时）commit。
 
-## 3. 里程碑（M72–M171）
+## 3. 里程碑（M72–M172）
 
 | ID | 名称 | 目标 | 验收 | 难度 | 依赖 | 状态 |
 |----|------|------|------|------|------|------|
@@ -170,12 +170,13 @@ Phase AS M117–M140 PlainBlock / lambda / Map·Set / when Path B  ← ✅（见
 | **M169** | PlainBlock for + modulo | Path B 对齐 `for_modulo` | `plain_block_for_modulo_ok` →20；`bad_plain_block_for_modulo_ty` → exit 1；allowlist 111 | S | M168 | ✅ |
 | **M170** | PlainBlock string return/concat | Path B 对齐 `return_string_concat` | `plain_block_return_string_concat_ok` →11；`bad_plain_block_return_string_concat_ty` → exit 1；allowlist 112 | S | M169 | ✅ |
 | **M171** | PlainBlock Point assign | Path B 对齐 `assign_point_ok` | `plain_block_assign_point_ok` →1；`bad_plain_block_assign_point_ty` → exit 1；allowlist 113 | S | M170 | ✅ |
+| **M172** | PlainBlock Point let | Path B 对齐 `let_point_ok` | `plain_block_let_point_ok` →0；`bad_plain_block_let_point_ty` → exit 1；allowlist 114 | S | M171 | ✅ |
 
 ### 后续批次（规划）
 
 | ID | 目标 | 依赖 |
 |----|------|------|
-| **M172+** | 下一 Path B / 子集缺口 | M171 |
+| **M173+** | 下一 Path B / 子集缺口（候选：`plain_block_call_point_ok`） | M172 |
 
 ### 刻意延后（非本批次）
 
