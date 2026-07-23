@@ -1,0 +1,15 @@
+// M179: Rect field Bool where Int expected inside PlainBlock (dual frontend).
+type Rect = {w: Int, h: Int}
+
+fun area(r: Rect) -> Int {
+    return r.w * r.h
+}
+
+fun main() -> Int {
+    return if true {
+        val r: Rect = {w = true, h = 4}
+        area(r)
+    } else {
+        0
+    }
+}
