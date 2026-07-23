@@ -111,6 +111,7 @@ pub const BOOTSTRAP_FRONTEND_ALLOWLIST: &[&str] = &[
     "plain_block_unary_plus_ok",
     "plain_block_val_ok",
     "plain_block_when_and_ok",
+    "plain_block_when_cond_ok",
     "plain_block_when_condition_chain_ok",
     "plain_block_when_exhaustive_ok",
     "plain_block_when_guard_ok",

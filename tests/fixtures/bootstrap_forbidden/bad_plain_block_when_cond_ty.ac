@@ -1,0 +1,8 @@
+// M178: non-Bool if cond inside PlainBlock (dual frontend).
+fun main() -> Int {
+    return if true {
+        if 1 { 0 } else { 1 }
+    } else {
+        0
+    }
+}

@@ -3,7 +3,7 @@
 > 制定日期：2026-07-16  
 > 前置：M4–M71 / TC1–TC8 全部 ✅；Path B（Action 前端 → HIR JSON → Rust `compile_hir`）闭环已跑通。  
 > 基线（本计划启动时）：`cargo test --test bootstrap_subset -- --test-threads=1` → **77 passed / 0 failed / 17 ignored**。  
-> 当前（M177 后）：**279 passed / 0 failed / 17 ignored**（296 `#[test]`）；allowlist **119** stems。
+> 当前（M178 后）：**281 passed / 0 failed / 17 ignored**（298 `#[test]`）；allowlist **120** stems。
 
 ## 1. 战略定位
 
@@ -66,7 +66,7 @@ Phase AS M117–M140 PlainBlock / lambda / Map·Set / when Path B  ← ✅（见
 
 每完成一个编号里程碑：本机验证 → 更新本文件状态表 →（用户要求时）commit。
 
-## 3. 里程碑（M72–M177）
+## 3. 里程碑（M72–M178）
 
 | ID | 名称 | 目标 | 验收 | 难度 | 依赖 | 状态 |
 |----|------|------|------|------|------|------|
@@ -176,12 +176,13 @@ Phase AS M117–M140 PlainBlock / lambda / Map·Set / when Path B  ← ✅（见
 | **M175** | PlainBlock Bool return/cmp | Path B 对齐 `return_bool_cmp` | `plain_block_return_bool_cmp_ok` →1；`bad_plain_block_return_bool_cmp_ty` → exit 1；allowlist 117 | S | M174 | ✅ |
 | **M176** | PlainBlock return Token | Path B 对齐 `return_token_make` | `plain_block_return_token_make_ok` →3；`bad_plain_block_return_token_ty` → exit 1；allowlist 118 | S | M175 | ✅ |
 | **M177** | PlainBlock exclusive range | Path B 对齐 `range_ok` | `plain_block_range_ok` →3；`bad_plain_block_range_ty` → exit 1；allowlist 119 | S | M176 | ✅ |
+| **M178** | PlainBlock when/if cond | Path B 对齐 `when_cond_ok` | `plain_block_when_cond_ok` →0；`bad_plain_block_when_cond_ty` → exit 1；allowlist 120 | S | M177 | ✅ |
 
 ### 后续批次（规划）
 
 | ID | 目标 | 依赖 |
 |----|------|------|
-| **M178+** | 下一 Path B / 子集缺口（候选：`plain_block_when_cond_ok`） | M177 |
+| **M179+** | 下一 Path B / 子集缺口（候选：`plain_block_custom_struct_ok`） | M178 |
 
 ### 刻意延后（非本批次）
 
