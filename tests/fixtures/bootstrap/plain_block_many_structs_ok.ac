@@ -1,0 +1,13 @@
+// M180: PlainBlock many structs — mirror many_structs → 9.
+type T0 = {a: Int}
+type T1 = {a: Int}
+type T2 = {a: Int, c: String}
+
+fun main() -> Int {
+    return if true {
+        val x: T2 = {a = 7, c = "ab"}
+        x.a + len(x.c)
+    } else {
+        0
+    }
+}

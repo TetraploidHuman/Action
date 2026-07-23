@@ -90,6 +90,7 @@ pub const BOOTSTRAP_FRONTEND_ALLOWLIST: &[&str] = &[
     "plain_block_list_string_ok",
     "plain_block_logical_not_ok",
     "plain_block_logical_ops_ok",
+    "plain_block_many_structs_ok",
     "plain_block_map_index_ok",
     "plain_block_map_iter_ok",
     "plain_block_map_keys_ok",

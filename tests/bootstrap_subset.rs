@@ -1520,6 +1520,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_custom_struct_ok area(3x4) should return 12",
     ),
     (
+        "plain_block_many_structs_ok",
+        9,
+        "plain_block_many_structs_ok T2 a+len(c) should return 9",
+    ),
+    (
         "plain_block_arith_ok",
         4,
         "plain_block_arith_ok 10 - 3 * 2 should return 4",
@@ -1731,6 +1736,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "plain_block_list_string_ok",
     "plain_block_logical_not_ok",
     "plain_block_logical_ops_ok",
+    "plain_block_many_structs_ok",
     "plain_block_map_index_ok",
     "plain_block_map_iter_ok",
     "plain_block_map_keys_ok",
@@ -5231,6 +5237,34 @@ fn test_bootstrap_m179_allowlisted_plain_block_custom_struct_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_custom_struct_ok"),
         "plain_block_custom_struct_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M180: T2 field String where Int expected inside PlainBlock rejected.
+#[test]
+fn test_bootstrap_m180_rejects_bad_plain_block_many_structs_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_plain_block_many_structs_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_many_structs_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M180: PlainBlock many structs accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m180_allowlisted_plain_block_many_structs_ok() {
+    let path = fixtures_root().join("bootstrap/plain_block_many_structs_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept plain_block_many_structs_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_many_structs_ok"),
+        "plain_block_many_structs_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 

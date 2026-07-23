@@ -3,7 +3,7 @@
 > 制定日期：2026-07-16  
 > 前置：M4–M71 / TC1–TC8 全部 ✅；Path B（Action 前端 → HIR JSON → Rust `compile_hir`）闭环已跑通。  
 > 基线（本计划启动时）：`cargo test --test bootstrap_subset -- --test-threads=1` → **77 passed / 0 failed / 17 ignored**。  
-> 当前（M179 后）：**283 passed / 0 failed / 17 ignored**（300 `#[test]`）；allowlist **121** stems。
+> 当前（M180 后）：**285 passed / 0 failed / 17 ignored**（302 `#[test]`）；allowlist **122** stems。
 
 ## 1. 战略定位
 
@@ -66,7 +66,7 @@ Phase AS M117–M140 PlainBlock / lambda / Map·Set / when Path B  ← ✅（见
 
 每完成一个编号里程碑：本机验证 → 更新本文件状态表 →（用户要求时）commit。
 
-## 3. 里程碑（M72–M179）
+## 3. 里程碑（M72–M180）
 
 | ID | 名称 | 目标 | 验收 | 难度 | 依赖 | 状态 |
 |----|------|------|------|------|------|------|
@@ -178,12 +178,13 @@ Phase AS M117–M140 PlainBlock / lambda / Map·Set / when Path B  ← ✅（见
 | **M177** | PlainBlock exclusive range | Path B 对齐 `range_ok` | `plain_block_range_ok` →3；`bad_plain_block_range_ty` → exit 1；allowlist 119 | S | M176 | ✅ |
 | **M178** | PlainBlock when/if cond | Path B 对齐 `when_cond_ok` | `plain_block_when_cond_ok` →0；`bad_plain_block_when_cond_ty` → exit 1；allowlist 120 | S | M177 | ✅ |
 | **M179** | PlainBlock custom struct | Path B 对齐 `custom_struct` | `plain_block_custom_struct_ok` →12；`bad_plain_block_custom_struct_ty` → exit 1；allowlist 121 | S | M178 | ✅ |
+| **M180** | PlainBlock many structs | Path B 对齐 `many_structs` | `plain_block_many_structs_ok` →9；`bad_plain_block_many_structs_ty` → exit 1；allowlist 122 | S | M179 | ✅ |
 
 ### 后续批次（规划）
 
 | ID | 目标 | 依赖 |
 |----|------|------|
-| **M180+** | 下一 Path B / 子集缺口（候选：`plain_block_many_structs_ok`） | M179 |
+| **M181+** | 下一 Path B / 子集缺口（候选：`plain_block_struct_when_ok`） | M180 |
 
 ### 刻意延后（非本批次）
 
