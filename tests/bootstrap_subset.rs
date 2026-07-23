@@ -1530,6 +1530,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_struct_when_ok Point if+print should return 0",
     ),
     (
+        "plain_block_when_for_ok",
+        37,
+        "plain_block_when_for_ok sum should return 37",
+    ),
+    (
         "plain_block_arith_ok",
         4,
         "plain_block_arith_ok 10 - 3 * 2 should return 4",
@@ -1768,6 +1773,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "plain_block_when_cond_ok",
     "plain_block_when_condition_chain_ok",
     "plain_block_when_exhaustive_ok",
+    "plain_block_when_for_ok",
     "plain_block_when_guard_ok",
     "plain_block_when_ok",
     "print_stmt",
@@ -5299,6 +5305,34 @@ fn test_bootstrap_m181_allowlisted_plain_block_struct_when_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_struct_when_ok"),
         "plain_block_struct_when_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M182: when guard not Bool inside PlainBlock for+when rejected.
+#[test]
+fn test_bootstrap_m182_rejects_bad_plain_block_when_for_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_plain_block_when_for_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_when_for_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M182: PlainBlock when+for accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m182_allowlisted_plain_block_when_for_ok() {
+    let path = fixtures_root().join("bootstrap/plain_block_when_for_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept plain_block_when_for_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_when_for_ok"),
+        "plain_block_when_for_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 
