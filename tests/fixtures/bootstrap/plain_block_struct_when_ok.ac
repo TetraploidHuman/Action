@@ -1,0 +1,13 @@
+// M181: PlainBlock struct+if — mirror struct_when → 0.
+type Point = {x: Int, y: Int}
+
+fun main() -> Int {
+    return if true {
+        val p: Point = {x = 10, y = 20}
+        val tag: Int = if p.x == 10 { 1 } else { 0 }
+        println(tag)
+        0
+    } else {
+        1
+    }
+}
