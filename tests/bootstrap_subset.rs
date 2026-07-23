@@ -1490,6 +1490,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_call_point_ok Point→Point call should return 0",
     ),
     (
+        "plain_block_return_point_make_ok",
+        0,
+        "plain_block_return_point_make_ok Point fields sum should return 0",
+    ),
+    (
         "plain_block_arith_ok",
         4,
         "plain_block_arith_ok 10 - 3 * 2 should return 4",
@@ -1709,6 +1714,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "plain_block_or_ok",
     "plain_block_print_ok",
     "plain_block_return_ok",
+    "plain_block_return_point_make_ok",
     "plain_block_return_string_concat_ok",
     "plain_block_set_iter_ok",
     "plain_block_string_index_ok",
@@ -5027,6 +5033,34 @@ fn test_bootstrap_m173_allowlisted_plain_block_call_point_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_call_point_ok"),
         "plain_block_call_point_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M174: return Point where Int expected inside PlainBlock rejected.
+#[test]
+fn test_bootstrap_m174_rejects_bad_plain_block_return_point_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_plain_block_return_point_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_return_point_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M174: PlainBlock return Point make accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m174_allowlisted_plain_block_return_point_make_ok() {
+    let path = fixtures_root().join("bootstrap/plain_block_return_point_make_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept plain_block_return_point_make_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_return_point_make_ok"),
+        "plain_block_return_point_make_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 
