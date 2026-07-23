@@ -1485,6 +1485,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_let_point_ok Point let should return 0",
     ),
     (
+        "plain_block_call_point_ok",
+        0,
+        "plain_block_call_point_ok Point→Point call should return 0",
+    ),
+    (
         "plain_block_arith_ok",
         4,
         "plain_block_arith_ok 10 - 3 * 2 should return 4",
@@ -1676,6 +1681,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "plain_block_assign_expr_ok",
     "plain_block_assign_point_ok",
     "plain_block_break_ok",
+    "plain_block_call_point_ok",
     "plain_block_cmp_ok",
     "plain_block_coll_homo_ok",
     "plain_block_continue_ok",
@@ -4993,6 +4999,34 @@ fn test_bootstrap_m172_allowlisted_plain_block_let_point_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_let_point_ok"),
         "plain_block_let_point_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M173: call Point-param with Int inside PlainBlock rejected.
+#[test]
+fn test_bootstrap_m173_rejects_bad_plain_block_call_point_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_plain_block_call_point_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_call_point_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M173: PlainBlock Point call accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m173_allowlisted_plain_block_call_point_ok() {
+    let path = fixtures_root().join("bootstrap/plain_block_call_point_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept plain_block_call_point_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_call_point_ok"),
+        "plain_block_call_point_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 
