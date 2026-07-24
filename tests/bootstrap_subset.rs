@@ -1565,6 +1565,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_lambda_stmts_ok { 21; 21 * 2 }() via once() should return 42",
     ),
     (
+        "plain_block_lambda_val_ok",
+        42,
+        "plain_block_lambda_val_ok { 21; val a; a * 2 }() via once() should return 42",
+    ),
+    (
         "plain_block_infinite_for_return_ok",
         1,
         "plain_block_infinite_for_return_ok once() should return 1",
@@ -1784,6 +1789,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "plain_block_lambda_it_ok",
     "plain_block_lambda_multi_ok",
     "plain_block_lambda_stmts_ok",
+    "plain_block_lambda_val_ok",
     "plain_block_let_point_ok",
     "plain_block_list_string_ok",
     "plain_block_logical_not_ok",
@@ -5573,6 +5579,34 @@ fn test_bootstrap_m189_allowlisted_plain_block_lambda_stmts_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_lambda_stmts_ok"),
         "plain_block_lambda_stmts_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M190: lambda body val init type error inside PlainBlock rejected.
+#[test]
+fn test_bootstrap_m190_rejects_bad_plain_block_lambda_val_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_plain_block_lambda_val_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_lambda_val_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M190: PlainBlock lambda mid-stmt val accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m190_allowlisted_plain_block_lambda_val_ok() {
+    let path = fixtures_root().join("bootstrap/plain_block_lambda_val_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept plain_block_lambda_val_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_lambda_val_ok"),
+        "plain_block_lambda_val_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 

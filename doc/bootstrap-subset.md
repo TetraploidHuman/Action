@@ -1,6 +1,6 @@
 # Bootstrap 语言子集（v0）
 
-> Action-in-Action 自举编译器首版**仅允许**使用下列语言特性。随 M4–M189 里程碑扩大（权威状态见 bootstrap-m72-plan）。
+> Action-in-Action 自举编译器首版**仅允许**使用下列语言特性。随 M4–M190 里程碑扩大（权威状态见 bootstrap-m72-plan）。
 
 ## 允许
 
@@ -233,8 +233,9 @@
 | M187 | PlainBlock multi-param lambda | ✅ `plain_block_lambda_multi_ok`→42；`bad_plain_block_lambda_multi_ty`；allowlist 129 |
 | M188 | PlainBlock no-param brace lambda | ✅ `plain_block_lambda_block_ok`→42；`bad_plain_block_lambda_block_ty`；allowlist 130 |
 | M189 | PlainBlock multi-stmt brace lambda | ✅ `plain_block_lambda_stmts_ok`→42；`bad_plain_block_lambda_stmts_ty`；allowlist 131 |
+| M190 | PlainBlock lambda mid-stmt `val` | ✅ `plain_block_lambda_val_ok`→42；`bad_plain_block_lambda_val_ty`；allowlist 132 |
 
-**M72+ 执行计划**：[bootstrap-m72-plan.md](bootstrap-m72-plan.md)（M72–M189 ✅）。
+**M72+ 执行计划**：[bootstrap-m72-plan.md](bootstrap-m72-plan.md)（M72–M190 ✅）。
 
 CI 维护：`scripts/check_bootstrap_goldens.sh` + 10 个 `check_bootstrap_*.py`（均在 `ci-linux.sh core`：prelude/parser/emit/typeenv/whenty/modload/pexpr/pstmt/pdecl/pscan）。
 
