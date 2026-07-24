@@ -1,0 +1,3803 @@
+M188 automation start 2026-07-24T18:50:22+08:00
+=== STEP2 dual check ===
+Atomic Language Development Environment
+LLVM version: 21.1.8
+Rust version: rustc 1.95.0 (59807616e 2026-04-14) (built from a source tarball)
+Type checking passed. No errors found.
+CHECK1:0
+Bootstrap frontend check passed (Path B). No errors found.
+CHECK2:0
+RUN:42
+Parsed CHECK1=0 CHECK2=0 RUN=42
+STEP2_PASS
+=== STEP3 commit ===
+?? _dual_check_out.txt
+?? _m188_bundle.txt
+?? _m188_final_report.txt
+?? _m188_poll.txt
+?? _m188_status.txt
+?? _m188_summary.txt
+?? _poll_out.txt
+?? benchmark_results_jit_phase3_baseline.txt
+?? bootstrap/compiler
+?? crates/action-codegen/src/runtime_decl/define_misc/list_sort.rs
+?? examples/datetime_api.ac
+?? examples/if_multi_stmt.ac
+?? examples/logical_ops.ac
+?? examples/map_hof.ac
+?? examples/map_iter.ac
+?? examples/map_keys.ac
+?? examples/map_values.ac
+?? examples/print_stmt.ac
+?? examples/random_next.ac
+?? examples/set_iter.ac
+?? examples/struct_reorder.ac
+?? examples/test_error_e017_if_cond.ac
+?? examples/test_error_e018_if_branches.ac
+?? examples/test_for_string_concat.ac
+?? scripts/migrate_namespace_imports.py
+?? scripts/migrate_when_oneline_to_if.py
+?? scripts/split_emit_module.py
+?? scripts/split_m27_modules.py
+?? scripts/split_modload_module.py
+?? scripts/split_pdecl_module.py
+?? scripts/split_pexpr_module.py
+?? scripts/split_pscan_module.py
+?? scripts/split_pstmt_module.py
+?? tests/fixtures/bootstrap/_compile_input.txt
+?? tests/fixtures/bootstrap/_hir_out.json
+?? tests/fixtures/bootstrap/control_flow.hir.json
+?? tests/fixtures/bootstrap/enum_simple.hir.json
+?? tests/fixtures/bootstrap/for_index.hir.json
+?? tests/fixtures/bootstrap/for_range.hir.json
+?? tests/fixtures/bootstrap/for_range_exclusive.hir.json
+?? tests/fixtures/bootstrap/infinite_for_return.hir.json
+?? tests/fixtures/bootstrap/jit_smoke.hir.json
+?? tests/fixtures/bootstrap/map_literal.hir.json
+?? tests/fixtures/bootstrap/nested_for.hir.json
+?? tests/fixtures/bootstrap/struct_when.hir.json
+?? tests/fixtures/bootstrap/when_for.hir.json
+?? x
+位于分支 main
+您的分支与上游分支 'origin/main' 一致。
+
+未跟踪的文件:
+  （使用 "git add <文件>..." 以包含要提交的内容）
+	_dual_check_out.txt
+	_m188_bundle.txt
+	_m188_final_report.txt
+	_m188_poll.txt
+	_m188_status.txt
+	_m188_summary.txt
+	_poll_out.txt
+	benchmark_results_jit_phase3_baseline.txt
+	bootstrap/compiler
+	crates/action-codegen/src/runtime_decl/define_misc/list_sort.rs
+	examples/datetime_api.ac
+	examples/if_multi_stmt.ac
+	examples/logical_ops.ac
+	examples/map_hof.ac
+	examples/map_iter.ac
+	examples/map_keys.ac
+	examples/map_values.ac
+	examples/print_stmt.ac
+	examples/random_next.ac
+	examples/set_iter.ac
+	examples/struct_reorder.ac
+	examples/test_error_e017_if_cond.ac
+	examples/test_error_e018_if_branches.ac
+	examples/test_for_string_concat.ac
+	scripts/migrate_namespace_imports.py
+	scripts/migrate_when_oneline_to_if.py
+	scripts/split_emit_module.py
+	scripts/split_m27_modules.py
+	scripts/split_modload_module.py
+	scripts/split_pdecl_module.py
+	scripts/split_pexpr_module.py
+	scripts/split_pscan_module.py
+	scripts/split_pstmt_module.py
+	tests/fixtures/bootstrap/_compile_input.txt
+	tests/fixtures/bootstrap/_hir_out.json
+	tests/fixtures/bootstrap/control_flow.hir.json
+	tests/fixtures/bootstrap/enum_simple.hir.json
+	tests/fixtures/bootstrap/for_index.hir.json
+	tests/fixtures/bootstrap/for_range.hir.json
+	tests/fixtures/bootstrap/for_range_exclusive.hir.json
+	tests/fixtures/bootstrap/infinite_for_return.hir.json
+	tests/fixtures/bootstrap/jit_smoke.hir.json
+	tests/fixtures/bootstrap/map_literal.hir.json
+	tests/fixtures/bootstrap/nested_for.hir.json
+	tests/fixtures/bootstrap/struct_when.hir.json
+	tests/fixtures/bootstrap/when_for.hir.json
+	x
+
+提交为空，但是存在尚未跟踪的文件（使用 "git add" 建立跟踪）
+COMMIT_SHA=3d1c47b56e0f149979bb2b0bb5ca7b9efa11acd7
+?? _dual_check_out.txt
+?? _m188_bundle.txt
+?? _m188_final_report.txt
+?? _m188_poll.txt
+?? _m188_status.txt
+?? _m188_summary.txt
+?? _poll_out.txt
+?? benchmark_results_jit_phase3_baseline.txt
+?? bootstrap/compiler
+?? crates/action-codegen/src/runtime_decl/define_misc/list_sort.rs
+?? examples/datetime_api.ac
+?? examples/if_multi_stmt.ac
+?? examples/logical_ops.ac
+?? examples/map_hof.ac
+?? examples/map_iter.ac
+?? examples/map_keys.ac
+?? examples/map_values.ac
+?? examples/print_stmt.ac
+?? examples/random_next.ac
+?? examples/set_iter.ac
+?? examples/struct_reorder.ac
+?? examples/test_error_e017_if_cond.ac
+?? examples/test_error_e018_if_branches.ac
+?? examples/test_for_string_concat.ac
+?? scripts/migrate_namespace_imports.py
+?? scripts/migrate_when_oneline_to_if.py
+?? scripts/split_emit_module.py
+?? scripts/split_m27_modules.py
+?? scripts/split_modload_module.py
+?? scripts/split_pdecl_module.py
+?? scripts/split_pexpr_module.py
+?? scripts/split_pscan_module.py
+?? scripts/split_pstmt_module.py
+?? tests/fixtures/bootstrap/_compile_input.txt
+?? tests/fixtures/bootstrap/_hir_out.json
+?? tests/fixtures/bootstrap/control_flow.hir.json
+?? tests/fixtures/bootstrap/enum_simple.hir.json
+?? tests/fixtures/bootstrap/for_index.hir.json
+?? tests/fixtures/bootstrap/for_range.hir.json
+?? tests/fixtures/bootstrap/for_range_exclusive.hir.json
+3d1c47b feat(bootstrap): M188 PlainBlock no-param brace lambda Path B
+=== STEP4 push ===
+push attempt 1
+Everything up-to-date
+PUSH_OK=1
+=== STEP5 CI watch ===
+[{"conclusion":"","createdAt":"2026-07-24T10:02:37Z","databaseId":30084773882,"event":"push","headSha":"3d1c47b56e0f149979bb2b0bb5ca7b9efa11acd7","name":"CI","status":"in_progress","url":"https://github.com/TetraploidHuman/Action/actions/runs/30084773882"},{"conclusion":"success","createdAt":"2026-07-24T08:27:36Z","databaseId":30078995218,"event":"push","headSha":"f9aa660e951bb4818efd20a43001bf5cf6f91ae8","name":"CI","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30078995218"},{"conclusion":"success","createdAt":"2026-07-24T07:19:14Z","databaseId":30075067534,"event":"push","headSha":"81d784fd493a4a01dc4aa5072c4a4eabbe0476f6","name":"CI","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30075067534"},{"conclusion":"success","createdAt":"2026-07-24T06:14:54Z","databaseId":30071712178,"event":"push","headSha":"3720130c6be78f126fe3e748cfbedc841551f2b4","name":"CI","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30071712178"},{"conclusion":"success","createdAt":"2026-07-24T05:05:12Z","databaseId":30068473540,"event":"push","headSha":"28dfdf33c70c5885c9467ca24c732d1a2199984e","name":"CI","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30068473540"},{"conclusion":"success","createdAt":"2026-07-24T04:10:46Z","databaseId":30066113929,"event":"push","headSha":"6191692ca840f2dbd7f8f692338de29b0551b3b8","name":"CI","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30066113929"},{"conclusion":"success","createdAt":"2026-07-23T21:47:30Z","databaseId":30047539591,"event":"push","headSha":"e812877bbfa87bd760fe46eb6e78ddf693e523e3","name":"CI","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30047539591"},{"conclusion":"success","createdAt":"2026-07-23T20:37:29Z","databaseId":30042865071,"event":"push","headSha":"b66dfe1ec0cdb1bf18001a55b17b9048ec204157","name":"CI","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30042865071"},{"conclusion":"success","createdAt":"2026-07-23T19:28:48Z","databaseId":30038127350,"event":"push","headSha":"ba7031357407075926c63e70d9a5b32b8418fc33","name":"CI","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30038127350"},{"conclusion":"success","createdAt":"2026-07-23T18:56:11Z","databaseId":30035868997,"event":"schedule","headSha":"9f1128fcbab7f72d18306be309df43c6556a033d","name":"Benchmark","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30035868997"},{"conclusion":"success","createdAt":"2026-07-23T18:14:20Z","databaseId":30032844981,"event":"schedule","headSha":"9f1128fcbab7f72d18306be309df43c6556a033d","name":"Lint","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30032844981"},{"conclusion":"success","createdAt":"2026-07-23T18:00:57Z","databaseId":30031885631,"event":"push","headSha":"9f1128fcbab7f72d18306be309df43c6556a033d","name":"CI","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30031885631"},{"conclusion":"success","createdAt":"2026-07-23T17:02:42Z","databaseId":30027725633,"event":"push","headSha":"09d7e963d8cb183850f62c6702841d3431a4660c","name":"CI","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30027725633"},{"conclusion":"success","createdAt":"2026-07-23T08:25:24Z","databaseId":29991140593,"event":"push","headSha":"e9df765fac7c484db17a01d3fee047124bee27a8","name":"CI","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/29991140593"},{"conclusion":"success","createdAt":"2026-07-23T07:18:13Z","databaseId":29987823023,"event":"push","headSha":"fb25d65661129979179f0741f2a12c715317c54d","name":"CI","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/29987823023"}]
+RUN_ID=30084773882
+CI_URL=https://github.com/TetraploidHuman/Action/actions/runs/30084773882
+watch attempt 1 for 30084773882
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 48 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 48 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 48 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 48 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 48 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 48 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 48 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 48 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 48 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 48 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 49 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 49 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 49 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 49 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 49 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 49 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 49 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 49 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 49 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 49 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 49 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 49 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 50 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 50 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 50 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 50 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 50 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 50 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 50 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 50 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 50 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 50 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 51 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 51 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 51 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 51 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 51 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 51 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 51 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 51 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 51 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 51 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 51 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 51 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 52 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 52 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 52 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 52 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 52 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 52 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 52 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 52 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 52 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 52 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 52 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 53 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 53 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 53 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 53 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  * Core CI (single nix-shell)
+  * Debug run output
+  * Upload run output
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 53 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  ✓ Core CI (single nix-shell)
+  - Debug run output
+  - Upload run output
+  * Complete job
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+Refreshing run status every 3 seconds. Press Ctrl+C to quit.
+
+* main CI · 30084773882
+Triggered via push about 53 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  ✓ Core CI (single nix-shell)
+  - Debug run output
+  - Upload run output
+  * Complete job
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+✓ main CI · 30084773882
+Triggered via push about 53 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+✓ Linux CI in 53m24s (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  ✓ Core CI (single nix-shell)
+  - Debug run output
+  - Upload run output
+  ✓ Complete job
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+CI_FINAL={"conclusion":"success","headSha":"3d1c47b56e0f149979bb2b0bb5ca7b9efa11acd7","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30084773882"}
+COMMIT_SHA=3d1c47b56e0f149979bb2b0bb5ca7b9efa11acd7
+CI_URL=https://github.com/TetraploidHuman/Action/actions/runs/30084773882
+JIT_ORACLE=PASS
+STEP2=PASS CHECK1=0 CHECK2=0 RUN=42
+FINAL_STATUS done
+M188 automation end 2026-07-24T18:56:11+08:00
+4)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+* Linux CI (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  ✓ Core CI (single nix-shell)
+  - Debug run output
+  - Upload run output
+  * Complete job
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+WindRefreshing run stat✓ main CI · 30084773882
+Triggered via push about 53 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+✓ Linux CI in 53m24s (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  ✓ Core CI (single nix-shell)
+  - Debug run output
+  - Upload run output
+  ✓ Complete job
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+CI_FINAL={"conclusion":"succe✓ main CI · 30084773882
+Triggered via push about 53 minutes ago
+
+JOBS
+✓ Linux Benchmark in 1m36s (ID 89454269914)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Full benchmark (JIT + AOT)
+  ✓ Check AOT benchmark regression
+  ✓ Upload benchmark results
+  ✓ Complete job
+✓ Linux Proptest in 50s (ID 89454269954)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Frontend proptest
+  ✓ Complete job
+✓ Windows CI in 15m7s (ID 89454269957)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run dtolnay/rust-toolchain@stable
+  ✓ Run Swatinem/rust-cache@v2
+  ✓ Cache LLVM (Windows)
+  - Download LLVM (Windows)
+  ✓ Set LLVM env (Windows)
+  ✓ Build libxml2 (Windows)
+  ✓ Ensure link.exe on PATH (Windows)
+  ✓ Format check
+  ✓ Build
+  ✓ Clippy
+  ✓ Smoke & tests
+  - Debug run output
+  - Upload run output
+  ✓ Post Cache LLVM (Windows)
+  ✓ Post Run Swatinem/rust-cache@v2
+  ✓ Post Run actions/checkout@v4
+  ✓ Complete job
+✓ Linux CI in 53m24s (ID 89454269971)
+  ✓ Set up job
+  ✓ Checkout repository
+  ✓ Ensure persistent target dir
+  ✓ Format check
+  ✓ Core CI (single nix-shell)
+  - Debug run output
+  - Upload run output
+  ✓ Complete job
+
+ANNOTATIONS
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Linux Benchmark: .github#2
+
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+Windows CI: .github#3
+
+CI_FINAL={"conclusion":"success","headSha":"3d1c47b56e0f149979bb2b0bb5ca7b9efa11acd7","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30084773882"}
+COMMIT_SHA=3d1c47b56e0f149979bb2b0bb5ca7b9efa11acd7
+CI_URL=https://github.com/TetraploidHuman/Action/actions/runs/30084773882
+JIT_ORACLE=PASS
+STEP2=PASS CHECK1=0 CHECK2=0 RUN=42
+FINAL_STATUS done
+M188 automation end 2026-07-24T18:56:14+08:00

@@ -1,0 +1,70 @@
+M188 automation start 2026-07-24T18:50:22+08:00
+=== STEP2 dual check ===
+CHECK1:0
+CHECK2:0
+RUN:42
+Parsed CHECK1=0 CHECK2=0 RUN=42
+STEP2_PASS
+COMMIT_SHA=3d1c47b56e0f149979bb2b0bb5ca7b9efa11acd7
+3d1c47b feat(bootstrap): M188 PlainBlock no-param brace lambda Path B
+PUSH_OK=1
+[{"conclusion":"","createdAt":"2026-07-24T10:02:37Z","databaseId":30084773882,"event":"push","headSha":"3d1c47b56e0f149979bb2b0bb5ca7b9efa11acd7","name":"CI","status":"in_progress","url":"https://github.com/TetraploidHuman/Action/actions/runs/30084773882"},{"conclusion":"success","createdAt":"2026-07-24T08:27:36Z","databaseId":30078995218,"event":"push","headSha":"f9aa660e951bb4818efd20a43001bf5cf6f91ae8","name":"CI","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30078995218"},{"conclusion":"success","createdAt":"2026-07-24T07:19:14Z","databaseId":30075067534,"event":"push","headSha":"81d784fd493a4a01dc4aa5072c4a4eabbe0476f6","name":"CI","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30075067534"},{"conclusion":"success","createdAt":"2026-07-24T06:14:54Z","databaseId":30071712178,"event":"push","headSha":"3720130c6be78f126fe3e748cfbedc841551f2b4","name":"CI","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30071712178"},{"conclusion":"success","createdAt":"2026-07-24T05:05:12Z","databaseId":30068473540,"event":"push","headSha":"28dfdf33c70c5885c9467ca24c732d1a2199984e","name":"CI","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30068473540"},{"conclusion":"success","createdAt":"2026-07-24T04:10:46Z","databaseId":30066113929,"event":"push","headSha":"6191692ca840f2dbd7f8f692338de29b0551b3b8","name":"CI","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30066113929"},{"conclusion":"success","createdAt":"2026-07-23T21:47:30Z","databaseId":30047539591,"event":"push","headSha":"e812877bbfa87bd760fe46eb6e78ddf693e523e3","name":"CI","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30047539591"},{"conclusion":"success","createdAt":"2026-07-23T20:37:29Z","databaseId":30042865071,"event":"push","headSha":"b66dfe1ec0cdb1bf18001a55b17b9048ec204157","name":"CI","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30042865071"},{"conclusion":"success","createdAt":"2026-07-23T19:28:48Z","databaseId":30038127350,"event":"push","headSha":"ba7031357407075926c63e70d9a5b32b8418fc33","name":"CI","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30038127350"},{"conclusion":"success","createdAt":"2026-07-23T18:56:11Z","databaseId":30035868997,"event":"schedule","headSha":"9f1128fcbab7f72d18306be309df43c6556a033d","name":"Benchmark","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30035868997"},{"conclusion":"success","createdAt":"2026-07-23T18:14:20Z","databaseId":30032844981,"event":"schedule","headSha":"9f1128fcbab7f72d18306be309df43c6556a033d","name":"Lint","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30032844981"},{"conclusion":"success","createdAt":"2026-07-23T18:00:57Z","databaseId":30031885631,"event":"push","headSha":"9f1128fcbab7f72d18306be309df43c6556a033d","name":"CI","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30031885631"},{"conclusion":"success","createdAt":"2026-07-23T17:02:42Z","databaseId":30027725633,"event":"push","headSha":"09d7e963d8cb183850f62c6702841d3431a4660c","name":"CI","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30027725633"},{"conclusion":"success","createdAt":"2026-07-23T08:25:24Z","databaseId":29991140593,"event":"push","headSha":"e9df765fac7c484db17a01d3fee047124bee27a8","name":"CI","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/29991140593"},{"conclusion":"success","createdAt":"2026-07-23T07:18:13Z","databaseId":29987823023,"event":"push","headSha":"fb25d65661129979179f0741f2a12c715317c54d","name":"CI","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/29987823023"}]
+CI_URL=https://github.com/TetraploidHuman/Action/actions/runs/30084773882
+CI_FINAL={"conclusion":"success","headSha":"3d1c47b56e0f149979bb2b0bb5ca7b9efa11acd7","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30084773882"}
+COMMIT_SHA=3d1c47b56e0f149979bb2b0bb5ca7b9efa11acd7
+CI_URL=https://github.com/TetraploidHuman/Action/actions/runs/30084773882
+STEP2=PASS CHECK1=0 CHECK2=0 RUN=42
+FINAL_STATUS done
+M188 automation end 2026-07-24T18:56:11+08:00
+CI_FINAL={"conclusion":"succe✓ main CI · 30084773882
+CI_FINAL={"conclusion":"success","headSha":"3d1c47b56e0f149979bb2b0bb5ca7b9efa11acd7","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30084773882"}
+COMMIT_SHA=3d1c47b56e0f149979bb2b0bb5ca7b9efa11acd7
+CI_URL=https://github.com/TetraploidHuman/Action/actions/runs/30084773882
+STEP2=PASS CHECK1=0 CHECK2=0 RUN=42
+FINAL_STATUS done
+M188 automation end 2026-07-24T18:56:14+08:00
+CI_FINAL={"conclusion":"success","headSha":"3d1c47b56e0f149979bb2b0bb5ca7b9efa11acd7","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30084773882"}
+COMMIT_SHA=3d1c47b56e0f149979bb2b0bb5ca7b9efa11acd7
+CI_URL=https://github.com/TetraploidHuman/Action/actions/runs/30084773882
+STEP2=PASS CHECK1=0 CHECK2=0 RUN=42
+FINAL_STATUS done
+CI_FINAL={"conclusion":"succe✓ main CI · 30084773882
+CI_FINAL={"conclusion":"success","headSha":"3d1c47b56e0f149979bb2b0bb5ca7b9efa11acd7","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30084773882"}
+COMMIT_SHA=3d1c47b56e0f149979bb2b0bb5ca7b9efa11acd7
+CI_URL=https://github.com/TetraploidHuman/Action/actions/runs/30084773882
+STEP2=PASS CHECK1=0 CHECK2=0 RUN=42
+FINAL_STATUS done
+CI_FINAL={"conclusion":"success","headSha":"3d1c47b56e0f149979bb2b0bb5ca7b9efa11acd7","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30084773882"}
+COMMIT_SHA=3d1c47b56e0f149979bb2b0bb5ca7b9efa11acd7
+CI_URL=https://github.com/TetraploidHuman/Action/actions/runs/30084773882
+STEP2=PASS CHECK1=0 CHECK2=0 RUN=42
+FINAL_STATUS done
+CHECK1:0
+CHECK2:0
+RUN:42
+command: "nix-shell --run './target/release/action check tests/fixtures/bootstrap/plain_block_lambda_block_ok.ac; echo CHECK1:$?; ./target/release/action check --frontend bootstrap tests/fixtures/bootstrap/plain_block_lambda_block_ok.ac; echo CHECK2:$?; ./target/release/action run tests/fixtures/bootstrap/plain_block_lambda_block_ok.ac; echo RUN:$?'"
+CHECK1:0
+CHECK2:0
+RUN:42
+M188 automation start 2026-07-24T18:50:22+08:00
+=== STEP2 dual check ===
+CHECK1:0
+CHECK2:0
+RUN:42
+Parsed CHECK1=0 CHECK2=0 RUN=42
+STEP2_PASS
+CI_FINAL={"conclusion":"success","headSha":"3d1c47b56e0f149979bb2b0bb5ca7b9efa11acd7","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30084773882"}
+COMMIT_SHA=3d1c47b56e0f149979bb2b0bb5ca7b9efa11acd7
+CI_URL=https://github.com/TetraploidHuman/Action/actions/runs/30084773882
+STEP2=PASS CHECK1=0 CHECK2=0 RUN=42
+FINAL_STATUS done
+RUN_ID=30084773882
+RUN_ID=30084773882
+CI_URL=https://github.com/TetraploidHuman/Action/actions/runs/30084773882
+CI_URL=https://github.com/TetraploidHuman/Action/actions/runs/30084773882
+CI_GREEN attempt=1
+CI_GREEN attempt=1
+{"conclusion":"success","headSha":"3d1c47b56e0f149979bb2b0bb5ca7b9efa11acd7","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30084773882"}
+DONE_HARVEST2
+{"conclusion":"success","headSha":"3d1c47b56e0f149979bb2b0bb5ca7b9efa11acd7","status":"completed","url":"https://github.com/TetraploidHuman/Action/actions/runs/30084773882"}
+DONE_HARVEST2
