@@ -1535,6 +1535,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_when_for_ok sum should return 37",
     ),
     (
+        "plain_block_enum_simple_ok",
+        0,
+        "plain_block_enum_simple_ok when match should return 0",
+    ),
+    (
         "plain_block_arith_ok",
         4,
         "plain_block_arith_ok 10 - 3 * 2 should return 4",
@@ -1731,6 +1736,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "plain_block_coll_homo_ok",
     "plain_block_continue_ok",
     "plain_block_custom_struct_ok",
+    "plain_block_enum_simple_ok",
     "plain_block_field_assign_ok",
     "plain_block_for_cond_ok",
     "plain_block_for_infinite_ok",
@@ -5333,6 +5339,34 @@ fn test_bootstrap_m182_allowlisted_plain_block_when_for_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_when_for_ok"),
         "plain_block_when_for_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M183: unknown enum variant in PlainBlock when rejected.
+#[test]
+fn test_bootstrap_m183_rejects_bad_plain_block_enum_simple_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_plain_block_enum_simple_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_enum_simple_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M183: PlainBlock enum+when accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m183_allowlisted_plain_block_enum_simple_ok() {
+    let path = fixtures_root().join("bootstrap/plain_block_enum_simple_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept plain_block_enum_simple_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_enum_simple_ok"),
+        "plain_block_enum_simple_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 

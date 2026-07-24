@@ -3,7 +3,7 @@
 > 制定日期：2026-07-16  
 > 前置：M4–M71 / TC1–TC8 全部 ✅；Path B（Action 前端 → HIR JSON → Rust `compile_hir`）闭环已跑通。  
 > 基线（本计划启动时）：`cargo test --test bootstrap_subset -- --test-threads=1` → **77 passed / 0 failed / 17 ignored**。  
-> 当前（M182 后）：**289 passed / 0 failed / 17 ignored**（306 `#[test]`）；allowlist **124** stems。
+> 当前（M183 后）：**291 passed / 0 failed / 17 ignored**（308 `#[test]`）；allowlist **125** stems。
 
 ## 1. 战略定位
 
@@ -66,7 +66,7 @@ Phase AS M117–M140 PlainBlock / lambda / Map·Set / when Path B  ← ✅（见
 
 每完成一个编号里程碑：本机验证 → 更新本文件状态表 →（用户要求时）commit。
 
-## 3. 里程碑（M72–M182）
+## 3. 里程碑（M72–M183）
 
 | ID | 名称 | 目标 | 验收 | 难度 | 依赖 | 状态 |
 |----|------|------|------|------|------|------|
@@ -181,12 +181,13 @@ Phase AS M117–M140 PlainBlock / lambda / Map·Set / when Path B  ← ✅（见
 | **M180** | PlainBlock many structs | Path B 对齐 `many_structs` | `plain_block_many_structs_ok` →9；`bad_plain_block_many_structs_ty` → exit 1；allowlist 122 | S | M179 | ✅ |
 | **M181** | PlainBlock struct+if | Path B 对齐 `struct_when` | `plain_block_struct_when_ok` →0；`bad_plain_block_struct_when_ty` → exit 1；allowlist 123 | S | M180 | ✅ |
 | **M182** | PlainBlock when+for | Path B 对齐 `when_for` | `plain_block_when_for_ok` →37；`bad_plain_block_when_for_ty` → exit 1；allowlist 124 | S | M181 | ✅ |
+| **M183** | PlainBlock enum+when | Path B 对齐 `enum_simple` | `plain_block_enum_simple_ok` →0；`bad_plain_block_enum_simple_ty` → exit 1；allowlist 125 | S | M182 | ✅ |
 
 ### 后续批次（规划）
 
 | ID | 目标 | 依赖 |
 |----|------|------|
-| **M183+** | 下一 Path B / 子集缺口（PlainBlock 镜像已接近饱和；候选 enum/lambda/import 深化） | M182 |
+| **M184+** | 下一 Path B / 子集缺口（候选：`plain_block_custom_enum_ok`） | M183 |
 
 ### 刻意延后（非本批次）
 
