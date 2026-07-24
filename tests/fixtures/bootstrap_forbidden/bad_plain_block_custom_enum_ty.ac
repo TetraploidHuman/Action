@@ -1,0 +1,15 @@
+// M184: non-exhaustive enum when inside PlainBlock (dual frontend).
+enum Shape { Circle, Square }
+
+fun main() -> Int {
+    return if true {
+        val s: Shape = Circle
+        val code: Int = when s {
+            Circle -> 1
+        }
+        println(code)
+        code
+    } else {
+        0
+    }
+}
