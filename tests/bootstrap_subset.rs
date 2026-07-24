@@ -1550,6 +1550,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_lambda_it_ok { it * 2 }(21) should return 42",
     ),
     (
+        "plain_block_infinite_for_return_ok",
+        1,
+        "plain_block_infinite_for_return_ok once() should return 1",
+    ),
+    (
         "plain_block_arith_ok",
         4,
         "plain_block_arith_ok 10 - 3 * 2 should return 4",
@@ -1759,6 +1764,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "plain_block_for_with_index_ok",
     "plain_block_index_assign_ok",
     "plain_block_index_key_ok",
+    "plain_block_infinite_for_return_ok",
     "plain_block_lambda_it_ok",
     "plain_block_let_point_ok",
     "plain_block_list_string_ok",
@@ -5435,6 +5441,36 @@ fn test_bootstrap_m185_allowlisted_plain_block_lambda_it_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_lambda_it_ok"),
         "plain_block_lambda_it_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M186: return Bool from Int fun via infinite for (call site in PlainBlock) rejected.
+#[test]
+fn test_bootstrap_m186_rejects_bad_plain_block_infinite_for_return_ty() {
+    let path =
+        fixtures_root().join("bootstrap_forbidden/bad_plain_block_infinite_for_return_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_infinite_for_return_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M186: PlainBlock infinite for return accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m186_allowlisted_plain_block_infinite_for_return_ok() {
+    let path = fixtures_root().join("bootstrap/plain_block_infinite_for_return_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept plain_block_infinite_for_return_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST
+            .contains(&"plain_block_infinite_for_return_ok"),
+        "plain_block_infinite_for_return_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 

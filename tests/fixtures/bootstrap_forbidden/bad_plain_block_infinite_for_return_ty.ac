@@ -1,0 +1,15 @@
+// M186: return Bool from Int fun via infinite for, call site in PlainBlock (dual frontend).
+fun once() -> Int {
+    for {
+        return 1 and true
+    }
+    return 0
+}
+
+fun main() -> Int {
+    return if true {
+        once()
+    } else {
+        0
+    }
+}
