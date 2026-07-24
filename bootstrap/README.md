@@ -35,7 +35,7 @@ Action-in-Action 编译器前端试点目录。首版仅使用 `doc/bootstrap-su
 
 ## 已完成阶段（M21+）
 
-见 `doc/bootstrap-subset.md`。**M27–M71** ✅；**M72–M188** ✅（权威状态见 [`doc/bootstrap-m72-plan.md`](../doc/bootstrap-m72-plan.md)）。
+见 `doc/bootstrap-subset.md`。**M27–M71** ✅；**M72–M189** ✅（权威状态见 [`doc/bootstrap-m72-plan.md`](../doc/bootstrap-m72-plan.md)）。
 
 ### M28 实现备忘
 
@@ -202,7 +202,7 @@ python3 scripts/gen_bootstrap_hir_golden.py <stem>  # 单夹具
 python3 scripts/gen_bootstrap_hir_golden.py --all   # 全部夹具
 ```
 
-`bootstrap_subset`：**301 passed / 17 ignored**（含 M4–M20、TC1–TC10、M72–M188、AOT/JIT 子进程隔离；allowlist 130 stems）。
+`bootstrap_subset`：**303 passed / 17 ignored**（含 M4–M20、TC1–TC10、M72–M189、AOT/JIT 子进程隔离；allowlist 131 stems）。
 
 覆盖：
 
@@ -211,7 +211,7 @@ python3 scripts/gen_bootstrap_hir_golden.py --all   # 全部夹具
 - M5：主夹具 `.bootstrap_hir.json` golden（含 `print_stmt`、`return_point_make`、`logical_ops`、`many_structs`、`list_string`、`for_string`）
 - M9：JIT 返回值（`logical_ops`=0，`map_keys`=3，`list_string`=3，`for_string`=6，`many_structs`=9，…）
 - M10/M11/M12/M13/M14/M15/M16/M17/M18/M19/M20：见上表（M20：Path B 文档 + TC 正向 verify）
-- **M72+**：见 `doc/bootstrap-m72-plan.md`（M72–M188 ✅；含 nullary UFCS、`or {}`、lambda/`it`/多参/trailing/无参块/多语句/体内 val、if/or/`val`/`return`/`for-*`/`..`/`..<`/List[String]/`break`/`continue` PlainBlock、Map for-in 键/值/`k,v`/下标读、String 下标、`not`/`and`/`or`、unary `+`/`-`、arith、string `+`、cmp、assign、Point let/assign/call/return、Bool return/cmp、Token return、exclusive range、when/if cond、custom/many structs、struct+if、when+for、enum/custom enum、lambda it、PlainBlock multi-param/no-param brace lambda、infinite for return、Set for-in、`when`/ConditionChain(+and)/guard/穷尽、字段/下标赋值、`print`、嵌套 for、开放 import 图 + fixtures 搜索根、funSig）
+- **M72+**：见 `doc/bootstrap-m72-plan.md`（M72–M189 ✅；含 nullary UFCS、`or {}`、lambda/`it`/多参/trailing/无参块/多语句/体内 val、if/or/`val`/`return`/`for-*`/`..`/`..<`/List[String]/`break`/`continue` PlainBlock、Map for-in 键/值/`k,v`/下标读、String 下标、`not`/`and`/`or`、unary `+`/`-`、arith、string `+`、cmp、assign、Point let/assign/call/return、Bool return/cmp、Token return、exclusive range、when/if cond、custom/many structs、struct+if、when+for、enum/custom enum、lambda it、PlainBlock multi-param/no-param/multi-stmt brace lambda、infinite for return、Set for-in、`when`/ConditionChain(+and)/guard/穷尽、字段/下标赋值、`print`、嵌套 for、开放 import 图 + fixtures 搜索根、funSig）
 
 ## 对接
 
