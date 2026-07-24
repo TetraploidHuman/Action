@@ -3,7 +3,7 @@
 > 制定日期：2026-07-16  
 > 前置：M4–M71 / TC1–TC8 全部 ✅；Path B（Action 前端 → HIR JSON → Rust `compile_hir`）闭环已跑通。  
 > 基线（本计划启动时）：`cargo test --test bootstrap_subset -- --test-threads=1` → **77 passed / 0 failed / 17 ignored**。  
-> 当前（M190 后）：**305 passed / 0 failed / 17 ignored**（322 `#[test]`）；allowlist **132** stems。
+> 当前（M191 后）：**307 passed / 0 failed / 17 ignored**（324 `#[test]`）；allowlist **133** stems。
 
 ## 1. 战略定位
 
@@ -66,7 +66,7 @@ Phase AS M117–M140 PlainBlock / lambda / Map·Set / when Path B  ← ✅（见
 
 每完成一个编号里程碑：本机验证 → 更新本文件状态表 →（用户要求时）commit。
 
-## 3. 里程碑（M72–M190）
+## 3. 里程碑（M72–M191）
 
 | ID | 名称 | 目标 | 验收 | 难度 | 依赖 | 状态 |
 |----|------|------|------|------|------|------|
@@ -189,12 +189,13 @@ Phase AS M117–M140 PlainBlock / lambda / Map·Set / when Path B  ← ✅（见
 | **M188** | PlainBlock no-param brace lambda | Path B 对齐 `lambda_block_ok`（`once()` 包装 `{ 21 * 2 }()`，调用在 PlainBlock） | `plain_block_lambda_block_ok` →42；`bad_plain_block_lambda_block_ty` → exit 1；allowlist 130 | S | M187 | ✅ |
 | **M189** | PlainBlock multi-stmt brace lambda | Path B 对齐 `lambda_stmts_ok`（`once()` 包装 `{ 21; 21 * 2 }()`） | `plain_block_lambda_stmts_ok` →42；`bad_plain_block_lambda_stmts_ty` → exit 1；allowlist 131 | S | M188 | ✅ |
 | **M190** | PlainBlock lambda mid-stmt `val` | Path B 对齐 `lambda_val_ok`（`once()` 包装 `{ 21; val a: Int = 21; a * 2 }()`） | `plain_block_lambda_val_ok` →42；`bad_plain_block_lambda_val_ty` → exit 1；allowlist 132 | S | M189 | ✅ |
+| **M191** | PlainBlock nested multi-stmt if | Path B 对齐 `if_stmts_ok`（外层 if 包内层 `{ 21; 21 * 2 }`） | `plain_block_if_stmts_ok` →42；`bad_plain_block_if_stmts_ty` → exit 1；allowlist 133 | S | M190 | ✅ |
 
 ### 后续批次（规划）
 
 | ID | 目标 | 依赖 |
 |----|------|------|
-| **M191+** | 下一 Path B / 子集缺口（候选：`plain_block_if_stmts_ok` / `control_flow` 评估） | M190 |
+| **M192+** | 下一 Path B / 子集缺口（候选：`plain_block_env_scope_ok`） | M191 |
 
 ### 刻意延后（非本批次）
 

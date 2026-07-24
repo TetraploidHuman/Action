@@ -1570,6 +1570,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_lambda_val_ok { 21; val a; a * 2 }() via once() should return 42",
     ),
     (
+        "plain_block_if_stmts_ok",
+        42,
+        "plain_block_if_stmts_ok nested if true { 21; 21 * 2 } should return 42",
+    ),
+    (
         "plain_block_infinite_for_return_ok",
         1,
         "plain_block_infinite_for_return_ok once() should return 1",
@@ -1782,6 +1787,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "plain_block_for_range_ok",
     "plain_block_for_string_ok",
     "plain_block_for_with_index_ok",
+    "plain_block_if_stmts_ok",
     "plain_block_index_assign_ok",
     "plain_block_index_key_ok",
     "plain_block_infinite_for_return_ok",
@@ -5607,6 +5613,34 @@ fn test_bootstrap_m190_allowlisted_plain_block_lambda_val_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_lambda_val_ok"),
         "plain_block_lambda_val_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M191: multi-stmt if then arm type error inside nested PlainBlock rejected.
+#[test]
+fn test_bootstrap_m191_rejects_bad_plain_block_if_stmts_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_plain_block_if_stmts_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_if_stmts_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M191: nested multi-stmt if PlainBlock accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m191_allowlisted_plain_block_if_stmts_ok() {
+    let path = fixtures_root().join("bootstrap/plain_block_if_stmts_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept plain_block_if_stmts_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_if_stmts_ok"),
+        "plain_block_if_stmts_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 
