@@ -1,0 +1,13 @@
+// M188: PlainBlock no-param brace lambda — mirror lambda_block_ok → 42.
+// Call site in PlainBlock; `{ 21 * 2 }()` lives in helper (if-arm brace disambiguation).
+fun once() -> Int {
+    return { 21 * 2 }()
+}
+
+fun main() -> Int {
+    return if true {
+        once()
+    } else {
+        0
+    }
+}
