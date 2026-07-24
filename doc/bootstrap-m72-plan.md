@@ -3,7 +3,7 @@
 > 制定日期：2026-07-16  
 > 前置：M4–M71 / TC1–TC8 全部 ✅；Path B（Action 前端 → HIR JSON → Rust `compile_hir`）闭环已跑通。  
 > 基线（本计划启动时）：`cargo test --test bootstrap_subset -- --test-threads=1` → **77 passed / 0 failed / 17 ignored**。  
-> 当前（M186 后）：**297 passed / 0 failed / 17 ignored**（314 `#[test]`）；allowlist **128** stems。
+> 当前（M187 后）：**299 passed / 0 failed / 17 ignored**（316 `#[test]`）；allowlist **129** stems。
 
 ## 1. 战略定位
 
@@ -66,7 +66,7 @@ Phase AS M117–M140 PlainBlock / lambda / Map·Set / when Path B  ← ✅（见
 
 每完成一个编号里程碑：本机验证 → 更新本文件状态表 →（用户要求时）commit。
 
-## 3. 里程碑（M72–M186）
+## 3. 里程碑（M72–M187）
 
 | ID | 名称 | 目标 | 验收 | 难度 | 依赖 | 状态 |
 |----|------|------|------|------|------|------|
@@ -185,12 +185,13 @@ Phase AS M117–M140 PlainBlock / lambda / Map·Set / when Path B  ← ✅（见
 | **M184** | PlainBlock custom enum | Path B 对齐 `custom_enum` | `plain_block_custom_enum_ok` →1；`bad_plain_block_custom_enum_ty` → exit 1；allowlist 126 | S | M183 | ✅ |
 | **M185** | PlainBlock lambda `it` | Path B 对齐 `lambda_it_ok` | `plain_block_lambda_it_ok` →42；`bad_plain_block_lambda_it_ty` → exit 1；allowlist 127 | S | M184 | ✅ |
 | **M186** | PlainBlock infinite for return | Path B 对齐 `infinite_for_return` | `plain_block_infinite_for_return_ok` →1；`bad_plain_block_infinite_for_return_ty` → exit 1；allowlist 128 | S | M185 | ✅ |
+| **M187** | PlainBlock multi-param lambda | Path B 对齐 `lambda_multi_ok` | `plain_block_lambda_multi_ok` →42；`bad_plain_block_lambda_multi_ty` → exit 1；allowlist 129 | S | M186 | ✅ |
 
 ### 后续批次（规划）
 
 | ID | 目标 | 依赖 |
 |----|------|------|
-| **M187+** | 下一 Path B / 子集缺口（候选：`plain_block_lambda_multi_ok`） | M186 |
+| **M188+** | 下一 Path B / 子集缺口（候选：`plain_block_lambda_block_ok`） | M187 |
 
 ### 刻意延后（非本批次）
 
