@@ -1,0 +1,18 @@
+// M192: val init type error with helpers called from PlainBlock (dual frontend).
+fun inner() -> Int {
+    val secret: Int = true
+    return secret
+}
+
+fun shadowLen() -> Int {
+    val len: Int = 99
+    return len
+}
+
+fun main() -> Int {
+    return if true {
+        inner() + shadowLen()
+    } else {
+        0
+    }
+}

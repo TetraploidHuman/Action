@@ -1575,6 +1575,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_if_stmts_ok nested if true { 21; 21 * 2 } should return 42",
     ),
     (
+        "plain_block_env_scope_ok",
+        154,
+        "plain_block_env_scope_ok inner(55)+shadowLen(99) should return 154",
+    ),
+    (
         "plain_block_infinite_for_return_ok",
         1,
         "plain_block_infinite_for_return_ok once() should return 1",
@@ -1778,6 +1783,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "plain_block_custom_enum_ok",
     "plain_block_custom_struct_ok",
     "plain_block_enum_simple_ok",
+    "plain_block_env_scope_ok",
     "plain_block_field_assign_ok",
     "plain_block_for_cond_ok",
     "plain_block_for_infinite_ok",
@@ -5641,6 +5647,34 @@ fn test_bootstrap_m191_allowlisted_plain_block_if_stmts_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_if_stmts_ok"),
         "plain_block_if_stmts_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M192: val init type error with helpers called from PlainBlock rejected.
+#[test]
+fn test_bootstrap_m192_rejects_bad_plain_block_env_scope_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_plain_block_env_scope_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_env_scope_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M192: PlainBlock env scope + shadowing accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m192_allowlisted_plain_block_env_scope_ok() {
+    let path = fixtures_root().join("bootstrap/plain_block_env_scope_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept plain_block_env_scope_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_env_scope_ok"),
+        "plain_block_env_scope_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 
