@@ -74,6 +74,7 @@ pub const BOOTSTRAP_FRONTEND_ALLOWLIST: &[&str] = &[
     "plain_block_cmp_ok",
     "plain_block_coll_homo_ok",
     "plain_block_continue_ok",
+    "plain_block_control_flow_ok",
     "plain_block_custom_enum_ok",
     "plain_block_custom_struct_ok",
     "plain_block_enum_simple_ok",

@@ -1,0 +1,14 @@
+// M193: control flow with non-Bool for-cond inside PlainBlock (dual frontend).
+fun main() -> Int {
+    return if true {
+        var sum: Int = 0
+        var i: Int = 0
+        for i < true {
+            sum = sum + i
+            i = i + 1
+        }
+        sum
+    } else {
+        0
+    }
+}
