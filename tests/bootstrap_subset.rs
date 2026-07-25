@@ -1580,6 +1580,11 @@ const BOOTSTRAP_FIXTURE_RETURN_ORACLES: &[(&str, i64, &str)] = &[
         "plain_block_control_flow_ok for-cond+for-in+println should return 0",
     ),
     (
+        "plain_block_keywords_subset_ok",
+        0,
+        "plain_block_keywords_subset_ok val/var smoke should return 0",
+    ),
+    (
         "plain_block_env_scope_ok",
         154,
         "plain_block_env_scope_ok inner(55)+shadowLen(99) should return 154",
@@ -1803,6 +1808,7 @@ const BOOTSTRAP_FIXTURE_STEMS: &[&str] = &[
     "plain_block_index_assign_ok",
     "plain_block_index_key_ok",
     "plain_block_infinite_for_return_ok",
+    "plain_block_keywords_subset_ok",
     "plain_block_lambda_block_ok",
     "plain_block_lambda_it_ok",
     "plain_block_lambda_multi_ok",
@@ -5709,6 +5715,34 @@ fn test_bootstrap_m193_allowlisted_plain_block_control_flow_ok() {
     assert!(
         action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_control_flow_ok"),
         "plain_block_control_flow_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
+    );
+}
+
+/// M194: val init type error in PlainBlock keywords shape rejected.
+#[test]
+fn test_bootstrap_m194_rejects_bad_plain_block_keywords_subset_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_plain_block_keywords_subset_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_plain_block_keywords_subset_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// M194: PlainBlock keywords subset accepted + Path B allowlist.
+#[test]
+fn test_bootstrap_m194_allowlisted_plain_block_keywords_subset_ok() {
+    let path = fixtures_root().join("bootstrap/plain_block_keywords_subset_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept plain_block_keywords_subset_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        action::driver::BOOTSTRAP_FRONTEND_ALLOWLIST.contains(&"plain_block_keywords_subset_ok"),
+        "plain_block_keywords_subset_ok must be on BOOTSTRAP_FRONTEND_ALLOWLIST"
     );
 }
 
