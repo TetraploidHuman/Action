@@ -1,0 +1,8 @@
+// M195: PlainBlock jit smoke — mirror jit_smoke → 42.
+fun main() -> Int {
+    return if true {
+        42
+    } else {
+        0
+    }
+}

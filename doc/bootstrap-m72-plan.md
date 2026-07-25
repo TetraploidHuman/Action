@@ -3,7 +3,7 @@
 > 制定日期：2026-07-16  
 > 前置：M4–M71 / TC1–TC8 全部 ✅；Path B（Action 前端 → HIR JSON → Rust `compile_hir`）闭环已跑通。  
 > 基线（本计划启动时）：`cargo test --test bootstrap_subset -- --test-threads=1` → **77 passed / 0 failed / 17 ignored**。  
-> 当前（M194 后）：**313 passed / 0 failed / 17 ignored**（330 `#[test]`）；allowlist **136** stems。
+> 当前（M195 后）：**315 passed / 0 failed / 17 ignored**（332 `#[test]`）；allowlist **137** stems。
 
 ## 1. 战略定位
 
@@ -66,7 +66,7 @@ Phase AS M117–M140 PlainBlock / lambda / Map·Set / when Path B  ← ✅（见
 
 每完成一个编号里程碑：本机验证 → 更新本文件状态表 →（用户要求时）commit。
 
-## 3. 里程碑（M72–M194）
+## 3. 里程碑（M72–M195）
 
 | ID | 名称 | 目标 | 验收 | 难度 | 依赖 | 状态 |
 |----|------|------|------|------|------|------|
@@ -193,12 +193,13 @@ Phase AS M117–M140 PlainBlock / lambda / Map·Set / when Path B  ← ✅（见
 | **M192** | PlainBlock env scope + shadow | Path B 对齐 `env_scope_good`（调用在 PlainBlock） | `plain_block_env_scope_ok` →154；`bad_plain_block_env_scope_ty` → exit 1；allowlist 134 | S | M191 | ✅ |
 | **M193** | PlainBlock control flow | Path B 对齐 `control_flow`（for-cond + for-in + println） | `plain_block_control_flow_ok` →0；`bad_plain_block_control_flow_ty` → exit 1；allowlist 135 | S | M192 | ✅ |
 | **M194** | PlainBlock keywords subset | Path B 对齐 `keywords_subset`（val/var 烟测） | `plain_block_keywords_subset_ok` →0；`bad_plain_block_keywords_subset_ty` → exit 1；allowlist 136 | S | M193 | ✅ |
+| **M195** | PlainBlock jit smoke | Path B 对齐 `jit_smoke` | `plain_block_jit_smoke_ok` →42；`bad_plain_block_jit_smoke_ty` → exit 1；allowlist 137 | S | M194 | ✅ |
 
 ### 后续批次（规划）
 
 | ID | 目标 | 依赖 |
 |----|------|------|
-| **M195+** | 下一 Path B / 子集缺口（候选：`plain_block_jit_smoke_ok`；其余多为 import/tokenize） | M194 |
+| **M196+** | 下一子集缺口（剩余根 stem 多为 import / `tokenize_keywords`，非 PlainBlock 镜像） | M195 |
 
 ### 刻意延后（非本批次）
 
