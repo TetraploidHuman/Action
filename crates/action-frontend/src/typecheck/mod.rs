@@ -254,27 +254,83 @@ impl TypeChecker {
                 Stmt::Extension {
                     type_name, methods, ..
                 } => {
-                    for method in methods {
-                        if let Stmt::Fun {
-                            name,
-                            params,
-                            return_type,
-                            ..
-                        } = method
-                        {
-                            let param_tys: Vec<Type> = params
-                                .iter()
-                                .filter(|p| p.name != "self")
-                                .map(|p| p.ty.clone().unwrap_or(Type::Named("Int".into())))
-                                .collect();
-                            let ret_ty = return_type.clone().unwrap_or(Type::Named("Int".into()));
-                            let fn_type = Type::Function(param_tys, Box::new(ret_ty));
-                            let lookup_key = format!("{}.{}", type_name, name);
-                            self.type_env.insert(lookup_key, fn_type);
-                        }
+                    self.register_type_methods(type_name, methods);
+                }
+                Stmt::TypeAlias {
+                    name, methods, ..
+                } => {
+                    if !methods.is_empty() {
+                        self.register_type_methods(name, methods);
                     }
                 }
                 _ => {}
+            }
+        }
+    }
+
+    fn register_type_methods(&mut self, type_name: &str, methods: &[Stmt]) {
+        for method in methods {
+            if let Stmt::Fun {
+                name,
+                params,
+                return_type,
+                ..
+            } = method
+            {
+                let param_tys: Vec<Type> = params
+                    .iter()
+                    .filter(|p| p.name != "self")
+                    .map(|p| p.ty.clone().unwrap_or(Type::Named("Int".into())))
+                    .collect();
+                let ret_ty = return_type.clone().unwrap_or(Type::Named("Int".into()));
+                let fn_type = Type::Function(param_tys, Box::new(ret_ty));
+                let lookup_key = format!("{}.{}", type_name, name);
+                self.type_env.insert(lookup_key, fn_type);
+            }
+        }
+    }
+
+    /// Type-check methods nested in `type` / `extension` bodies.
+    fn check_type_methods(
+        &mut self,
+        type_name: &str,
+        methods: &[Stmt],
+        errors: &mut Vec<CompilerError>,
+    ) {
+        let self_ty = Type::Named(type_name.to_string());
+        for method in methods {
+            let Stmt::Fun {
+                params,
+                return_type,
+                body,
+                ..
+            } = method
+            else {
+                continue;
+            };
+            let mut saved: Vec<(String, Option<Type>)> = Vec::new();
+            for p in params {
+                let param_ty = if p.name == "self" {
+                    p.ty.clone().unwrap_or_else(|| self_ty.clone())
+                } else {
+                    p.ty.clone().unwrap_or_else(|| Type::Named("Int".into()))
+                };
+                let old = self.type_env.insert(p.name.clone(), param_ty);
+                saved.push((p.name.clone(), old));
+            }
+            let saved_ret = self.current_return_type.take();
+            self.current_return_type = return_type.clone();
+            self.collect_expr_errors(body, errors);
+            if let Some(ret) = return_type {
+                self.check_expr_struct_literal_against_expected(ret, body, errors);
+            }
+            self.current_return_type = saved_ret;
+            for (pname, old) in saved.into_iter().rev() {
+                if let Some(ty) = old {
+                    self.type_env.insert(pname, ty);
+                } else {
+                    self.type_env.remove(&pname);
+                }
             }
         }
     }
@@ -284,6 +340,7 @@ impl TypeChecker {
         self.infer_expr_type(expr)
             .unwrap_or(Type::Named("Int".into()))
     }
+
     /// Run all checks on the program. Returns a list of errors.
     pub fn check(&mut self, program: &Program) -> Vec<CompilerError> {
         self.build_type_env(program);
@@ -476,7 +533,7 @@ impl TypeChecker {
                 } => {
                     self.collect_expr_errors(value, &mut errors);
                     if let Some(ann) = type_ann {
-                        if let (Type::Named(struct_name), ExprKind::StructLiteral(fields)) =
+                        if let (Type::Named(struct_name), ExprKind::StructLiteral { fields, .. }) =
                             (ann, &value.kind)
                         {
                             self.check_struct_literal_against_named(
@@ -511,7 +568,7 @@ impl TypeChecker {
                 } => {
                     self.collect_expr_errors(value, &mut errors);
                     if let Some(ann) = type_ann {
-                        if let (Type::Named(struct_name), ExprKind::StructLiteral(fields)) =
+                        if let (Type::Named(struct_name), ExprKind::StructLiteral { fields, .. }) =
                             (ann, &value.kind)
                         {
                             self.check_struct_literal_against_named(
@@ -533,6 +590,16 @@ impl TypeChecker {
                                 .with_span(self.current_span),
                             );
                         }
+                    }
+                }
+                Stmt::Extension {
+                    type_name, methods, ..
+                } => {
+                    self.check_type_methods(type_name, methods, &mut errors);
+                }
+                Stmt::TypeAlias { name, methods, .. } => {
+                    if !methods.is_empty() {
+                        self.check_type_methods(name, methods, &mut errors);
                     }
                 }
                 _ => {}
@@ -752,9 +819,9 @@ mod tests {
         let errors = check_source(
             r#"fun main() {
                 val m = Map[1: 10, 2: 20]
-                val f = mapFilter(m) { k, v -> true }
-                val g = mapMapValues(m) { v -> v }
-                val s = mapFold(0, m) { acc, k, v -> acc + v }
+                val f = mapFilter(m) { k, v; true }
+                val g = mapMapValues(m) { v; v }
+                val s = mapFold(0, m) { acc, k, v; acc + v }
                 delay(1)
                 println(f.len())
                 println(g.len())
@@ -809,7 +876,7 @@ mod tests {
         let ok = check_source(
             r#"fun main() {
                 val nums = List[1, 2, 3]
-                val parts = partition(nums) { x -> x % 2 == 0 }
+                val parts = partition(nums) { x; x % 2 == 0 }
                 println(parts[0][0] or { 0 })
                 println(parts[1].len())
             }"#,
@@ -827,7 +894,7 @@ mod tests {
         let bare = check_source(
             r#"fun main() {
                 val nums = List[1, 2, 3]
-                val parts = partition(nums) { x -> true }
+                val parts = partition(nums) { x; true }
                 println(parts[0][0])
             }"#,
         );
@@ -840,7 +907,7 @@ mod tests {
         let false_or = check_source(
             r#"fun main() {
                 val nums = List[1, 2, 3]
-                val parts = partition(nums) { x -> true }
+                val parts = partition(nums) { x; true }
                 println((parts[1] or { List[] }).len())
             }"#,
         );
@@ -928,7 +995,7 @@ mod tests {
         let ok_parts = check_source(
             r#"fun main() {
                 val nums = List[1, 2, 3]
-                val parts = partition(nums) { x -> x % 2 == 0 }
+                val parts = partition(nums) { x; x % 2 == 0 }
                 println(parts[0].len())
                 println(parts[1].len())
             }"#,

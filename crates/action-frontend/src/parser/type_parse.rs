@@ -90,12 +90,18 @@ impl Parser {
                 }
             }
             TokenKind::LBrace => {
-                // Struct type: {x: Int, y: Int}
+                // Struct type: {x: Int, y: Int} — fields separated by `,` or `;`
                 self.advance();
                 let mut fields = Vec::new();
                 while self.current_kind() != TokenKind::RBrace {
                     if !fields.is_empty() {
-                        self.expect(TokenKind::Comma)?;
+                        if !self.skip(TokenKind::Comma) && !self.skip(TokenKind::Semicolon) {
+                            return Err(self.error("Expected ',' or ';' between struct fields"));
+                        }
+                        // Allow trailing separator before `}`
+                        if self.current_kind() == TokenKind::RBrace {
+                            break;
+                        }
                     }
                     let name = match &self.current_kind() {
                         TokenKind::Ident(s) => s.clone(),

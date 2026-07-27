@@ -635,12 +635,169 @@ mod tests {
 
     #[test]
     fn test_lambda() {
-        let expr = parse_expr("{ it * 2 }").unwrap();
+        let expr = parse_expr("lambda { it * 2 }").unwrap();
         match expr.kind {
             ExprKind::Lambda { implicit_it, .. } => {
                 assert!(implicit_it);
             }
             _ => panic!("Expected lambda"),
+        }
+    }
+
+    #[test]
+    fn test_lambda_keyword_params() {
+        let expr = parse_expr("lambda a, b { a + b }").unwrap();
+        match expr.kind {
+            ExprKind::Lambda {
+                params,
+                implicit_it,
+                ..
+            } => {
+                assert_eq!(params, vec!["a".to_string(), "b".to_string()]);
+                assert!(!implicit_it);
+            }
+            _ => panic!("Expected lambda"),
+        }
+    }
+
+    #[test]
+    fn test_lambda_keyword_empty() {
+        let expr = parse_expr("lambda { }").unwrap();
+        match expr.kind {
+            ExprKind::Lambda {
+                params,
+                implicit_it,
+                body,
+                ..
+            } => {
+                assert!(params.is_empty());
+                assert!(!implicit_it);
+                match &body.kind {
+                    ExprKind::Block(stmts) => assert!(stmts.is_empty()),
+                    _ => panic!("Expected empty block body"),
+                }
+            }
+            _ => panic!("Expected lambda"),
+        }
+    }
+
+    #[test]
+    fn test_bare_empty_braces_are_block() {
+        let expr = parse_expr("{}").unwrap();
+        match expr.kind {
+            ExprKind::Block(stmts) => assert!(stmts.is_empty()),
+            other => panic!("Expected empty Block, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_bare_it_braces_not_lambda() {
+        let expr = parse_expr("{ it * 2 }").unwrap();
+        match expr.kind {
+            ExprKind::Block(_) => {}
+            ExprKind::Lambda { .. } => panic!("bare {{ it }} must not be a lambda"),
+            other => panic!("Expected Block, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_bare_arrow_lambda_rejected() {
+        let err = parse_expr("{ x -> x + 1 }").unwrap_err();
+        assert!(
+            err.message.contains("lambda"),
+            "expected helpful lambda migration error, got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn test_trailing_param_line_semicolon() {
+        let prog = parse("fun main() { fold(0, List[1]) { acc, x; acc + x } }").unwrap();
+        let Stmt::Fun { body, .. } = &prog.stmts[0] else {
+            panic!("expected fun");
+        };
+        let ExprKind::Block(stmts) = &body.kind else {
+            panic!("expected block body");
+        };
+        let Stmt::Expr { expr, .. } = &stmts[0] else {
+            panic!("expected expr stmt");
+        };
+        let ExprKind::Call {
+            trailing_lambda: Some(lam),
+            ..
+        } = &expr.kind
+        else {
+            panic!("expected call with trailing lambda, got {:?}", expr.kind);
+        };
+        match &lam.kind {
+            ExprKind::Lambda { params, implicit_it, .. } => {
+                assert_eq!(params, &["acc".to_string(), "x".to_string()]);
+                assert!(!*implicit_it);
+            }
+            other => panic!("expected lambda, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_trailing_param_line_newline() {
+        let src = "fun main() {\n  fold(0, List[1]) { acc, x\n    acc + x\n  }\n}";
+        let prog = parse(src).unwrap();
+        let Stmt::Fun { body, .. } = &prog.stmts[0] else {
+            panic!("expected fun");
+        };
+        let ExprKind::Block(stmts) = &body.kind else {
+            panic!("expected block");
+        };
+        let Stmt::Expr { expr, .. } = &stmts[0] else {
+            panic!("expected expr");
+        };
+        let ExprKind::Call {
+            trailing_lambda: Some(lam),
+            ..
+        } = &expr.kind
+        else {
+            panic!("expected trailing lambda");
+        };
+        match &lam.kind {
+            ExprKind::Lambda { params, .. } => {
+                assert_eq!(params, &["acc".to_string(), "x".to_string()]);
+            }
+            other => panic!("expected lambda, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_trailing_arrow_rejected() {
+        let err = parse("fun main() { fold(0, List[1]) { acc, x -> acc + x } }").unwrap_err();
+        assert!(
+            err.message.contains("param line") || err.message.contains("no longer valid"),
+            "got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn test_trailing_it_still_works() {
+        let prog = parse("fun main() { map(List[1]) { it * 2 } }").unwrap();
+        let Stmt::Fun { body, .. } = &prog.stmts[0] else {
+            panic!("expected fun");
+        };
+        let ExprKind::Block(stmts) = &body.kind else {
+            panic!("expected block");
+        };
+        let Stmt::Expr { expr, .. } = &stmts[0] else {
+            panic!("expected expr");
+        };
+        let ExprKind::Call {
+            trailing_lambda: Some(lam),
+            ..
+        } = &expr.kind
+        else {
+            panic!("expected trailing");
+        };
+        match &lam.kind {
+            ExprKind::Lambda { implicit_it, .. } => assert!(*implicit_it),
+            other => panic!("expected lambda, got {other:?}"),
         }
     }
 
@@ -727,15 +884,96 @@ mod tests {
     }
 
     #[test]
+    fn test_type_def_brace() {
+        let prog = parse("type Point { x: Int, y: Int }").unwrap();
+        match &prog.stmts[0] {
+            Stmt::TypeAlias {
+                name,
+                definition: Type::Struct(fields),
+                ..
+            } => {
+                assert_eq!(name, "Point");
+                assert_eq!(fields.len(), 2);
+                assert_eq!(fields[0].0, "x");
+                assert_eq!(fields[1].0, "y");
+            }
+            other => panic!("Expected record TypeAlias, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_type_def_semicolon_fields() {
+        let prog = parse("type Point { x: Int; y: Int }").unwrap();
+        match &prog.stmts[0] {
+            Stmt::TypeAlias {
+                definition: Type::Struct(fields),
+                ..
+            } => {
+                assert_eq!(fields.len(), 2);
+            }
+            other => panic!("Expected record TypeAlias, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_type_def_with_method() {
+        let prog = parse(
+            "type Point { x: Int, y: Int\n fun sum(self) -> Int { self.x + self.y } }",
+        )
+        .unwrap();
+        match &prog.stmts[0] {
+            Stmt::TypeAlias {
+                name,
+                methods,
+                definition: Type::Struct(fields),
+                ..
+            } => {
+                assert_eq!(name, "Point");
+                assert_eq!(fields.len(), 2);
+                assert_eq!(methods.len(), 1);
+                match &methods[0] {
+                    Stmt::Fun { name, params, .. } => {
+                        assert_eq!(name, "sum");
+                        assert_eq!(params[0].name, "self");
+                        assert_eq!(params[0].ty, Some(Type::Named("Point".into())));
+                    }
+                    other => panic!("expected Fun, got {:?}", other),
+                }
+            }
+            other => panic!("Expected TypeAlias with methods, got {:?}", other),
+        }
+    }
+
+    #[test]
     fn test_struct_literal() {
         let expr = parse_expr("{x = 10, y = 20}").unwrap();
         match expr.kind {
-            ExprKind::StructLiteral(fields) => {
+            ExprKind::StructLiteral {
+                type_name: None,
+                fields,
+            } => {
                 assert_eq!(fields.len(), 2);
                 assert_eq!(fields[0].0, "x");
                 assert_eq!(fields[1].0, "y");
             }
             _ => panic!("Expected struct literal"),
+        }
+    }
+
+    #[test]
+    fn test_named_struct_literal() {
+        let expr = parse_expr("Point { x = 10, y = 20 }").unwrap();
+        match expr.kind {
+            ExprKind::StructLiteral {
+                type_name: Some(name),
+                fields,
+            } => {
+                assert_eq!(name, "Point");
+                assert_eq!(fields.len(), 2);
+                assert_eq!(fields[0].0, "x");
+                assert_eq!(fields[1].0, "y");
+            }
+            other => panic!("Expected named struct literal, got {:?}", other),
         }
     }
 
@@ -907,7 +1145,7 @@ mod tests {
                 "val", "var", "fun", "when", "if", "else", "for", "in", "is", "break", "continue",
                 "return", "enum", "type", "import", "module", "export", "const", "copy",
                 "extension", "as", "and", "or", "not", "lazy", "unsafe", "external", "null",
-                "Task", "true", "false",
+                "Task", "true", "false", "lambda",
             ];
             prop_assume!(!KEYWORDS.contains(&name.as_str()));
             let s = format!("val {} = {}", name, n);

@@ -62,7 +62,7 @@ pub(crate) fn collect_free_vars_hir(
         }
         HirExprKind::When(w) => visit_hir_when_free_vars(w, params, bound, free),
         HirExprKind::For(f) => visit_hir_for_free_vars(f, params, bound, free),
-        HirExprKind::StructLiteral(fields) => {
+        HirExprKind::StructLiteral { fields, .. } => {
             for (_, v) in fields {
                 collect_free_vars_hir(v, params, bound, free);
             }

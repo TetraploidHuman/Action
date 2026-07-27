@@ -1,0 +1,9 @@
+fun main() {
+    val m = Map[1: 10, 2: 20, 3: 30]
+    val kept = mapFilter(m) { k, v; v >= 20 }
+    val doubled = mapMapValues(kept) { v; v * 2 }
+    val sum = mapFold(0, doubled) { acc, k, v; acc + v }
+    // kept: 2+30→2 entries; doubled: 40+60; sum=100
+    print(kept.len())
+    print(sum)
+}

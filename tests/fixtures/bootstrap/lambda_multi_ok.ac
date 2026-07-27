@@ -1,4 +1,4 @@
-// M121: multi-param lambda — `{ x, y -> x + y }(20, 22)` → 42.
+// M121: multi-param lambda — `lambda x, y { x + y }(20, 22)` → 42.
 fun main() -> Int {
-    return { x, y -> x + y }(20, 22)
+    return lambda x, y { x + y }(20, 22)
 }

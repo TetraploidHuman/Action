@@ -1,5 +1,5 @@
-// M128: lambda body mid-stmt typed val — `{ 21; val a: Int = 21; a * 2 }()` → 42.
+// M128: lambda body mid-stmt typed val — `lambda { 21; val a: Int = 21; a * 2 }()` → 42.
 // Leading `val` stays PlainBlock (not callable); val after an expr keeps Lambda.
 fun main() -> Int {
-    return { 21; val a: Int = 21; a * 2 }()
+    return lambda { 21; val a: Int = 21; a * 2 }()
 }

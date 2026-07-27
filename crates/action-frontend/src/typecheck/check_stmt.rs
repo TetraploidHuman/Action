@@ -22,6 +22,15 @@ fn lvalue_root_ident(expr: &Expr) -> Option<&str> {
 }
 
 impl TypeChecker {
+    /// Phase 3: `self.x = …` / `self.xs[i] = …` is forbidden (read-only receiver).
+    pub(crate) fn lvalue_is_self_field(expr: &Expr) -> bool {
+        matches!(lvalue_root_ident(expr), Some("self"))
+            && matches!(
+                expr.kind,
+                ExprKind::FieldAccess(_, _) | ExprKind::Index(_, _)
+            )
+    }
+
     /// `break` / `continue` (or a block whose last stmt is one) never produce a value.
     fn expr_is_diverging_control(expr: &Expr) -> bool {
         match &expr.kind {
@@ -182,7 +191,7 @@ impl TypeChecker {
             }
             ExprKind::Lambda { body, .. } => self.expr_contains_fallible(body),
             ExprKind::Copy(inner) | ExprKind::Unsafe(inner) => self.expr_contains_fallible(inner),
-            ExprKind::StructLiteral(fields) => {
+            ExprKind::StructLiteral { fields, .. } => {
                 fields.iter().any(|(_, e)| self.expr_contains_fallible(e))
             }
             ExprKind::MapLiteral(entries) => entries
@@ -268,7 +277,7 @@ impl TypeChecker {
             ExprKind::Copy(inner) | ExprKind::Unsafe(inner) => {
                 self.expr_uses_len_on_var(inner, var)
             }
-            ExprKind::StructLiteral(fields) => fields
+            ExprKind::StructLiteral { fields, .. } => fields
                 .iter()
                 .any(|(_, e)| self.expr_uses_len_on_var(e, var)),
             ExprKind::MapLiteral(entries) => entries.iter().any(|(k, v)| {
@@ -586,6 +595,9 @@ impl TypeChecker {
                     self.collect_expr_errors(a, errors);
                 }
                 if let Some(lam) = trailing_lambda {
+                    if let Err(e) = self.check_trailing_lambda_allowed(func, args, lam) {
+                        errors.push(e);
+                    }
                     self.collect_expr_errors(lam, errors);
                 }
             }
@@ -840,6 +852,16 @@ impl TypeChecker {
             ExprKind::Assign { target, value, .. } => {
                 self.collect_lvalue_errors(target, errors);
                 self.collect_expr_errors(value, errors);
+                // Phase 3: methods use read-only `self` — no `self.field = …`.
+                if Self::lvalue_is_self_field(target) {
+                    errors.push(
+                        CompilerError::new(
+                            "Cannot assign to fields of 'self'; return an updated value instead"
+                                .to_string(),
+                        )
+                        .with_span(target.span),
+                    );
+                }
                 let target_ty = self.try_infer_expr_type(target);
                 self.check_expr_struct_literal_against_expected(&target_ty, value, errors);
                 // M85: assign rhs must match target type.
@@ -885,20 +907,31 @@ impl TypeChecker {
                     );
                 }
             }
-            ExprKind::StructLiteral(fields) => {
+            ExprKind::StructLiteral { type_name, fields } => {
                 for (_, v) in fields {
                     self.collect_expr_errors(v, errors);
                 }
-                // M71: unique name-set match → same E013/E015/E016 as annotated/expected Named.
-                let names: Vec<String> = fields.iter().map(|(n, _)| n.clone()).collect();
-                if let Some(info) = self.registry.find_struct_by_fields(&names) {
-                    let struct_name = info.name.clone();
-                    self.check_struct_literal_against_named(
-                        &struct_name,
-                        fields,
-                        expr.span,
-                        errors,
-                    );
+                if let Some(name) = type_name {
+                    if self.registry.get_struct(name).is_none() {
+                        errors.push(
+                            CompilerError::new(format!("Unknown struct type '{}'", name))
+                                .with_span(expr.span),
+                        );
+                    } else {
+                        self.check_struct_literal_against_named(name, fields, expr.span, errors);
+                    }
+                } else {
+                    // M71: unique name-set match → same E013/E015/E016 as annotated/expected Named.
+                    let names: Vec<String> = fields.iter().map(|(n, _)| n.clone()).collect();
+                    if let Some(info) = self.registry.find_struct_by_fields(&names) {
+                        let struct_name = info.name.clone();
+                        self.check_struct_literal_against_named(
+                            &struct_name,
+                            fields,
+                            expr.span,
+                            errors,
+                        );
+                    }
                 }
             }
             ExprKind::MapLiteral(entries) => {
@@ -965,7 +998,7 @@ impl TypeChecker {
             } => {
                 self.collect_expr_errors(value, errors);
                 if let Some(ann) = type_ann {
-                    if let (Type::Named(struct_name), ExprKind::StructLiteral(fields)) =
+                    if let (Type::Named(struct_name), ExprKind::StructLiteral { fields, .. }) =
                         (ann, &value.kind)
                     {
                         self.check_struct_literal_against_named(
@@ -1005,7 +1038,7 @@ impl TypeChecker {
             } => {
                 self.collect_expr_errors(value, errors);
                 if let Some(ann) = type_ann {
-                    if let (Type::Named(struct_name), ExprKind::StructLiteral(fields)) =
+                    if let (Type::Named(struct_name), ExprKind::StructLiteral { fields, .. }) =
                         (ann, &value.kind)
                     {
                         self.check_struct_literal_against_named(
@@ -1148,6 +1181,116 @@ impl TypeChecker {
                 }
             }
             BinaryOp::Assign | BinaryOp::In | BinaryOp::Is => {}
+        }
+        Ok(())
+    }
+
+    /// Phase 5: trailing brace lambda only when the callee’s last formal is a function type
+    /// (or a builtin that opts in via `supports_trailing_lambda`).
+    pub(crate) fn check_trailing_lambda_allowed(
+        &self,
+        func: &Expr,
+        args: &[Expr],
+        trailing: &Expr,
+    ) -> Result<(), CompilerError> {
+        let span = trailing.span;
+        match &func.kind {
+            ExprKind::Ident(name) => {
+                match name.as_str() {
+                    // Intrinsic launches — trailing body is the coroutine block.
+                    "launch" | "Stream" => return Ok(()),
+                    _ => {}
+                }
+                if let Some(b) = crate::builtin::lookup(name) {
+                    if b.supports_trailing_lambda {
+                        return Ok(());
+                    }
+                    return Err(CompilerError::new(format!(
+                        "Trailing lambda is not allowed on '{name}': last parameter is not a function type"
+                    ))
+                    .with_span(span));
+                }
+                if let Some(Type::Function(param_tys, _)) = self.type_env.get(name) {
+                    return self.require_trailing_last_function(name, param_tys, args.len(), span);
+                }
+                // Overloads / unresolved — don't block here; check_call covers unknowns.
+                Ok(())
+            }
+            ExprKind::FieldAccess(receiver, method) => {
+                if let Ok(recv_type) = self.infer_expr_type(receiver) {
+                    if let Some(kind) = crate::builtin::receiver_kind_from_type(&recv_type) {
+                        if let Some(b) = crate::builtin::lookup_ufcs(kind, method) {
+                            if b.supports_trailing_lambda {
+                                return Ok(());
+                            }
+                            return Err(CompilerError::new(format!(
+                                "Trailing lambda is not allowed on '{method}': last parameter is not a function type"
+                            ))
+                            .with_span(span));
+                        }
+                    }
+                    let type_name = match &recv_type {
+                        Type::Named(n) => n.clone(),
+                        Type::Map(_, _) => "Map".to_string(),
+                        Type::Set(_) => "Set".to_string(),
+                        Type::Generic(base, _) => format!("{base}"),
+                        other => format!("{other}"),
+                    };
+                    let lookup_key = format!("{type_name}.{method}");
+                    if let Some(Type::Function(param_tys, _)) = self.type_env.get(&lookup_key) {
+                        // Method params include `self`; trailing fills the last slot.
+                        return self.require_trailing_last_function(
+                            &lookup_key,
+                            param_tys,
+                            args.len() + 1,
+                            span,
+                        );
+                    }
+                }
+                if let Some(Type::Function(param_tys, _)) = self.type_env.get(method) {
+                    // UFCS: `x.f(args) { lam }` → `f(x, args…, lam)`.
+                    return self.require_trailing_last_function(
+                        method,
+                        param_tys,
+                        args.len() + 1,
+                        span,
+                    );
+                }
+                if crate::builtin::lookup(method).is_some_and(|b| b.supports_trailing_lambda) {
+                    return Ok(());
+                }
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
+
+    fn require_trailing_last_function(
+        &self,
+        name: &str,
+        param_tys: &[Type],
+        positional_including_self: usize,
+        span: Span,
+    ) -> Result<(), CompilerError> {
+        let Some(last) = param_tys.last() else {
+            return Err(CompilerError::new(format!(
+                "Trailing lambda is not allowed on '{name}': function has no parameters"
+            ))
+            .with_span(span));
+        };
+        if !matches!(last, Type::Function(_, _)) {
+            return Err(CompilerError::new(format!(
+                "Trailing lambda is only allowed when the last parameter of '{name}' is a function type, got '{last}'"
+            ))
+            .with_span(span));
+        }
+        let expected = param_tys.len();
+        let actual = positional_including_self + 1;
+        if actual != expected {
+            return Err(CompilerError::new(format!(
+                "Function '{name}' expects {expected} arguments (including trailing lambda), but got {actual}"
+            ))
+            .with_span(span));
         }
         Ok(())
     }
@@ -1555,9 +1698,21 @@ impl TypeChecker {
         errors: &mut Vec<CompilerError>,
     ) {
         let peeled = Self::peel_expr_for_struct_check(expr);
-        if let (Type::Named(struct_name), ExprKind::StructLiteral(fields)) =
+        if let (Type::Named(struct_name), ExprKind::StructLiteral { type_name, fields }) =
             (expected, &peeled.kind)
         {
+            if let Some(written) = type_name {
+                if written != struct_name {
+                    errors.push(
+                        CompilerError::new(format!(
+                            "Struct literal type '{}' does not match expected '{}'",
+                            written, struct_name
+                        ))
+                        .with_span(peeled.span),
+                    );
+                    return;
+                }
+            }
             self.check_struct_literal_against_named(struct_name, fields, peeled.span, errors);
         }
     }

@@ -54,6 +54,8 @@ fun closeBrace() -> String { return substring(bracePair(), 1, 1) }
 
 fun isBraceOpen(ch: String) -> Bool { return ch == openBrace() }
 
+fun isBraceClose(ch: String) -> Bool { return ch == closeBrace() }
+
 fun isCloseBrace(ch: String) -> Bool { return ch == closeBrace() }
 
 fun digitVal(ch: String) -> Int {
@@ -413,6 +415,7 @@ fun spanSessionReset() -> Int {
 fun slotImportSelective() -> Int { return 21 }
 fun slotImportScanHit() -> Int { return 22 }
 fun slotStructTypeNext() -> Int { return 23 }
+fun slotNoTrailingLambda() -> Int { return 35 }
 
 fun scalarSessionReset() -> Int {
     bsIntSet(slotTypeError(), 0)
@@ -426,6 +429,7 @@ fun scalarSessionReset() -> Int {
     bsIntSet(slotImportSelective(), 0)
     bsIntSet(slotImportScanHit(), 0)
     bsIntSet(slotStructTypeNext(), 8)
+    bsIntSet(slotNoTrailingLambda(), 0)
     return 0
 }
 

@@ -3,7 +3,7 @@
 
 import prelude
 
-type Token = {kind: String, start: Int, end: Int, line: Int, col: Int}
+type Token {kind: String, start: Int, end: Int, line: Int, col: Int}
 
 external fun readFile(path: String) -> String
 external fun bsIntSet(slot: Int, value: Int) -> Int
@@ -27,7 +27,7 @@ fun skipWsEnd(s: String, pos: Int) -> Int {
 }
 
 fun makeToken(kind: String, start: Int, end: Int, line: Int, col: Int) -> Token {
-    return {kind = kind, start = start, end = end, line = line, col = col}
+    return Token {kind = kind, start = start, end = end, line = line, col = col}
 }
 
 fun readWhileIdentEnd(s: String, pos: Int) -> Int {

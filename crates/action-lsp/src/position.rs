@@ -120,7 +120,8 @@ pub fn find_node_at(tokens: &[Token], source: &str, pos: &Position) -> Option<Fo
         | TokenKind::Or
         | TokenKind::Not
         | TokenKind::As
-        | TokenKind::Task => Some(FoundNode::Keyword(format!("{:?}", token.kind))),
+        | TokenKind::Task
+        | TokenKind::Lambda => Some(FoundNode::Keyword(format!("{:?}", token.kind))),
         TokenKind::LBrace
         | TokenKind::RBrace
         | TokenKind::LParen

@@ -341,7 +341,7 @@ fn expr_has_bare_propagating_inner(
         ExprKind::Copy(a) | ExprKind::Unsafe(a) => {
             expr_has_bare_propagating_inner(a, ctx, in_or, in_fn_or)
         }
-        ExprKind::StructLiteral(fields) => fields
+        ExprKind::StructLiteral { fields, .. } => fields
             .iter()
             .any(|(_, e)| expr_has_bare_propagating_inner(e, ctx, in_or, in_fn_or)),
         ExprKind::MapLiteral(entries) => entries.iter().any(|(k, v)| {
@@ -504,7 +504,7 @@ fn walk_expr(expr: &Expr, ctx: &mut FallibilityContext) {
             walk_expr(value, ctx);
         }
         ExprKind::Copy(a) | ExprKind::Unsafe(a) => walk_expr(a, ctx),
-        ExprKind::StructLiteral(fields) => {
+        ExprKind::StructLiteral { fields, .. } => {
             for (_, e) in fields {
                 walk_expr(e, ctx);
             }

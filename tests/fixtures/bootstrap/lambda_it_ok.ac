@@ -1,4 +1,4 @@
-// M119: implicit-it lambda call — `{ it * 2 }(21)` → 42.
+// M119: implicit-it lambda call — `lambda { it * 2 }(21)` → 42.
 fun main() -> Int {
-    return { it * 2 }(21)
+    return lambda { it * 2 }(21)
 }

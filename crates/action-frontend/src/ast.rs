@@ -358,8 +358,12 @@ pub enum ExprKind {
     For(Box<For>),
     /// Block: { stmt1; stmt2; expr }
     Block(Vec<Stmt>),
-    /// Struct literal: {x = 10, y = 20}
-    StructLiteral(Vec<(String, Expr)>),
+    /// Struct literal: `Point { x = 10, y = 20 }` (type_name required in Phase 1+;
+    /// `None` is legacy anonymous form during migration).
+    StructLiteral {
+        type_name: Option<String>,
+        fields: Vec<(String, Expr)>,
+    },
     /// Map literal: {"k": v, "k2": v2}, {:} for empty map
     MapLiteral(Vec<(Expr, Expr)>),
     /// Set literal: {1, 2, 3}, {} for empty set
@@ -560,7 +564,10 @@ impl fmt::Display for Expr {
                 }
                 write!(f, "}}")
             }
-            ExprKind::StructLiteral(fields) => {
+            ExprKind::StructLiteral { type_name, fields } => {
+                if let Some(tn) = type_name {
+                    write!(f, "{} ", tn)?;
+                }
                 write!(f, "{{")?;
                 for (i, (name, val)) in fields.iter().enumerate() {
                     if i > 0 {
@@ -760,11 +767,14 @@ pub enum Stmt {
     Break { span: Span },
     /// Continue statement
     Continue { span: Span },
-    /// Type alias: type Point = {x: Int, y: Int}
+    /// Type declaration: `type Point { x: Int, y: Int; fun … }` or alias `type UserId = Int`
+    /// (legacy `type Point = { … }` still parses to the same node).
     TypeAlias {
         name: String,
         type_params: Vec<String>,
         definition: Type,
+        /// Intrinsic methods (`fun` in the type body). Empty for pure aliases.
+        methods: Vec<Stmt>,
         span: Span,
     },
     /// Enum definition: enum Option[T] { Some(T), None }
@@ -980,16 +990,16 @@ impl fmt::Display for Stmt {
                 definition,
                 ..
             } => {
-                if type_params.is_empty() {
-                    write!(f, "type {} = {}", name, definition)
+                let params = if type_params.is_empty() {
+                    String::new()
                 } else {
-                    write!(
-                        f,
-                        "type {}[{}] = {}",
-                        name,
-                        type_params.join(", "),
-                        definition
-                    )
+                    format!("[{}]", type_params.join(", "))
+                };
+                // Record types print without `=`; pure aliases keep `=`.
+                if matches!(definition, Type::Struct(_)) {
+                    write!(f, "type {}{} {}", name, params, definition)
+                } else {
+                    write!(f, "type {}{} = {}", name, params, definition)
                 }
             }
             Stmt::Enum {

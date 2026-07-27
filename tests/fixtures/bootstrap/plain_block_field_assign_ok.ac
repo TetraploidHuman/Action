@@ -1,9 +1,9 @@
 // M142: PlainBlock field assign — mirror field_assign_ok → 7.
-type Point = {x: Int, y: Int}
+type Point {x: Int, y: Int}
 
 fun main() -> Int {
     return if true {
-        var p: Point = {x = 0, y = 0}
+        var p: Point = Point {x = 0, y = 0}
         p.x = 7
         p.x
     } else {

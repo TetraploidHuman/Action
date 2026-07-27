@@ -123,7 +123,7 @@ fn test_string_escapes() {
 #[test]
 fn test_keywords_extended() {
     let tokens = tokenize(
-        "enum type import module export const copy extension as lazy unsafe external null Task",
+        "enum type import module export const copy extension as lazy unsafe external null Task lambda",
     );
     assert_eq!(tokens[0], TokenKind::Enum);
     assert_eq!(tokens[1], TokenKind::Type);
@@ -139,6 +139,7 @@ fn test_keywords_extended() {
     assert_eq!(tokens[11], TokenKind::External);
     assert_eq!(tokens[12], TokenKind::Null);
     assert_eq!(tokens[13], TokenKind::Task);
+    assert_eq!(tokens[14], TokenKind::Lambda);
 }
 
 #[test]
@@ -419,7 +420,7 @@ proptest! {
             "val", "var", "fun", "when", "if", "else", "for", "in", "is", "break",
             "continue", "return", "enum", "type", "import", "module", "export", "const",
             "copy", "extension", "as", "true", "false", "and", "or", "not", "lazy",
-            "unsafe", "external", "null", "Task", "_",
+            "unsafe", "external", "null", "Task", "_", "lambda",
         ];
         prop_assume!(!KEYWORDS.contains(&name.as_str()));
         let s = format!("val {} = 42", name);

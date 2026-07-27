@@ -1219,7 +1219,7 @@ impl<'ctx> CodeGen<'ctx> {
             HirExprKind::Block(stmts) => stmts.iter().any(|s| Self::hir_stmt_refs_var(s, var)),
             HirExprKind::Lambda { body, .. } => Self::hir_expr_refs_var(body, var),
             HirExprKind::When(w) => Self::hir_when_refs_var(w, var),
-            HirExprKind::StructLiteral(fields) => {
+            HirExprKind::StructLiteral { fields, .. } => {
                 fields.iter().any(|(_, v)| Self::hir_expr_refs_var(v, var))
             }
             HirExprKind::MapLiteral(entries) => entries

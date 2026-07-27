@@ -282,7 +282,7 @@ fn find_hir_expr_at(expr: &HirExpr, offset: usize) -> Option<&HirExpr> {
                 best = pick_smaller_span(best, inner);
             }
         }
-        HirExprKind::StructLiteral(fields) => {
+        HirExprKind::StructLiteral { fields, .. } => {
             for (_, v) in fields {
                 if let Some(inner) = find_hir_expr_at(v, offset) {
                     best = pick_smaller_span(best, inner);
@@ -381,11 +381,11 @@ mod tests {
     #[test]
     fn find_call_param_names_extension_method() {
         let hir = lower_source(
-            "extension List { fun map(f: Int -> Int) -> List[Int] { this } }\nfun main() { println(0) }",
+            "extension List { fun map(self, f: (Int) -> Int) -> List[Int] { self } }\nfun main() { println(0) }",
         );
         assert_eq!(
             find_call_param_names(&hir, "List.map"),
-            Some(vec!["f".to_string()])
+            Some(vec!["self".to_string(), "f".to_string()])
         );
     }
 }

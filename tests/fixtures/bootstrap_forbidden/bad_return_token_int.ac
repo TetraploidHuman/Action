@@ -1,4 +1,4 @@
-type Token = {kind: String, start: Int, end: Int, line: Int, col: Int}
+type Token {kind: String, start: Int, end: Int, line: Int, col: Int}
 
 fun main() -> Token {
     return 0

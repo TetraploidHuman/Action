@@ -3,6 +3,7 @@
 | Document | Description |
 |----------|-------------|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Crate layout, pipeline, CI, dependency rules |
+| [syntax-reform.md](syntax-reform.md) | Active syntax reform plan (named structs, lambda, …) |
 | [tutorial.md](tutorial.md) | Language tutorial (long-form) |
 | [language-spec-outline.md](language-spec-outline.md) | Spec outline tied to integration tests |
 | [stdlib-layers.md](stdlib-layers.md) | Standard library layering |

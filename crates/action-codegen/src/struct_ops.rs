@@ -295,12 +295,19 @@ impl<'ctx> CodeGen<'ctx> {
         vec![]
     }
 
-    pub(super) fn compile_struct_lit_values(
+    pub(super) fn compile_struct_lit_values_named(
         &mut self,
+        type_name: Option<&str>,
         field_names: &[String],
         field_vals: Vec<TypedValue<'ctx>>,
     ) -> Result<TypedValue<'ctx>, String> {
-        let struct_ty = if let Some(info) = self.registry.find_struct_by_fields(&field_names) {
+        let struct_ty = if let Some(name) = type_name {
+            *self
+                .type_layout
+                .named_structs
+                .get(name)
+                .ok_or_else(|| format!("Struct '{}' not in LLVM type map", name))?
+        } else if let Some(info) = self.registry.find_struct_by_fields(field_names) {
             *self
                 .type_layout
                 .named_structs
@@ -327,6 +334,12 @@ impl<'ctx> CodeGen<'ctx> {
         let undef = struct_ty.get_undef();
         let mut result = undef;
 
+        // Insert by declaration field index when named; else by literal order.
+        let decl_names: Option<Vec<String>> = type_name
+            .and_then(|n| self.registry.get_struct(n))
+            .or_else(|| self.registry.find_struct_by_fields(field_names))
+            .map(|info| info.fields.iter().map(|(n, _)| n.clone()).collect());
+
         for (i, val) in field_vals.iter().enumerate() {
             let bv = match val {
                 TypedValue::Struct(ptr, ty) => {
@@ -341,9 +354,17 @@ impl<'ctx> CodeGen<'ctx> {
                     .to_bv()
                     .unwrap_or_else(|| self.i64_ty().const_int(0, false).as_basic_value_enum()),
             };
+            let insert_idx = if let Some(ref decls) = decl_names {
+                decls
+                    .iter()
+                    .position(|n| n == &field_names[i])
+                    .unwrap_or(i) as u32
+            } else {
+                i as u32
+            };
             result = self
                 .builder
-                .build_insert_value(result, bv, i as u32, "field")
+                .build_insert_value(result, bv, insert_idx, "field")
                 .map_err(llvm_err)?
                 .into_struct_value();
         }

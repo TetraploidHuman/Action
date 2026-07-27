@@ -299,7 +299,7 @@ impl<'a> ScopeWalker<'a> {
                     self.walk_expr(&e);
                 }
             }
-            ExprKind::StructLiteral(fields) => {
+            ExprKind::StructLiteral { fields, .. } => {
                 for (_, e) in fields {
                     self.walk_expr(&e);
                 }

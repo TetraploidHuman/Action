@@ -1,0 +1,9 @@
+// Regression: stmt for + var String reassignment in loop must not UAF/corrupt.
+fun main() {
+    var acc: String = ""
+    for i in 0..5 {
+        acc = acc + toString(i)
+    }
+    println(acc)
+    println(len(acc))
+}

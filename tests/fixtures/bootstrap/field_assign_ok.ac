@@ -1,7 +1,7 @@
-type Point = {x: Int, y: Int}
+type Point {x: Int, y: Int}
 
 fun main() -> Int {
-    var p: Point = {x = 0, y = 0}
+    var p: Point = Point {x = 0, y = 0}
     p.x = 7
     return p.x
 }

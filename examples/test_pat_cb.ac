@@ -1,5 +1,5 @@
 fun main() {
-    val f = { x -> x * 2 }
+    val f = lambda x { x * 2 }
     val result = head(List[21])
     print(f(result))
 }

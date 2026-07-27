@@ -101,3 +101,22 @@ fn test_lexer_golden_all_fixtures() {
         assert_lexer_golden(stem);
     }
 }
+
+#[test]
+#[ignore = "regen all lexer goldens"]
+fn write_all_lexer_golden_fixtures() {
+    let dir = fixtures_dir();
+    for entry in fs::read_dir(&dir).expect("read lexer fixtures dir") {
+        let entry = entry.expect("dir entry");
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("ac") {
+            continue;
+        }
+        let stem = path.file_stem().and_then(|s| s.to_str()).expect("stem");
+        let source = fs::read_to_string(&path).expect("read ac");
+        let json = tokenize_json(&source.replace("\r\n", "\n"));
+        let json_path = dir.join(format!("{stem}.tokens.json"));
+        fs::write(&json_path, json).expect("write golden");
+        eprintln!("wrote {}", json_path.display());
+    }
+}

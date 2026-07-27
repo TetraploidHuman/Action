@@ -132,6 +132,7 @@ impl<'ctx> CodeGen<'ctx> {
 
     pub(crate) fn compile_hir_struct_lit(
         &mut self,
+        ty: &Type,
         fields: &[(String, HirExpr)],
     ) -> Result<TypedValue<'ctx>, String> {
         let names: Vec<String> = fields.iter().map(|(n, _)| n.clone()).collect();
@@ -139,7 +140,11 @@ impl<'ctx> CodeGen<'ctx> {
         for (_, e) in fields {
             vals.push(self.compile_hir_expr(e)?);
         }
-        self.compile_struct_lit_values(&names, vals)
+        let preferred = match ty {
+            Type::Named(n) if self.registry.get_struct(n).is_some() => Some(n.as_str()),
+            _ => None,
+        };
+        self.compile_struct_lit_values_named(preferred, &names, vals)
     }
 
     pub(crate) fn compile_hir_map_lit(

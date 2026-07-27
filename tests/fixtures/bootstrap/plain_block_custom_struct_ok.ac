@@ -1,5 +1,5 @@
 // M179: PlainBlock custom struct — mirror custom_struct → 12.
-type Rect = {w: Int, h: Int}
+type Rect {w: Int, h: Int}
 
 fun area(r: Rect) -> Int {
     return r.w * r.h
@@ -7,7 +7,7 @@ fun area(r: Rect) -> Int {
 
 fun main() -> Int {
     return if true {
-        val r: Rect = {w = 3, h = 4}
+        val r: Rect = Rect {w = 3, h = 4}
         area(r)
     } else {
         0

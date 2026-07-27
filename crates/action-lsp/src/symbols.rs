@@ -118,7 +118,8 @@ fn classify_token(
         | TokenKind::Or
         | TokenKind::Not
         | TokenKind::As
-        | TokenKind::Task => Some((TYPE_KEYWORD, 0)),
+        | TokenKind::Task
+        | TokenKind::Lambda => Some((TYPE_KEYWORD, 0)),
 
         // Identifiers — type_env first, then keyword context
         TokenKind::Ident(name) => {
@@ -558,7 +559,7 @@ fn infer_value_type(value: &Expr) -> String {
         ExprKind::MapLiteral(_) => "map".to_string(),
         ExprKind::SetLiteral(_) => "set".to_string(),
         ExprKind::Lambda { .. } => "Function".to_string(),
-        ExprKind::StructLiteral(_) => "Struct".to_string(),
+        ExprKind::StructLiteral { .. } => "Struct".to_string(),
         ExprKind::Ident(name) => name.clone(),
         _ => "?".to_string(),
     }

@@ -120,11 +120,13 @@ impl<'a> Lowerer<'a> {
                 name,
                 type_params,
                 definition,
+                methods,
                 span,
             } => HirStmt::TypeAlias {
                 name: name.clone(),
                 type_params: type_params.clone(),
                 definition: definition.clone(),
+                methods: self.lower_stmts(methods),
                 span: *span,
             },
             Stmt::Enum {
@@ -260,12 +262,13 @@ impl<'a> Lowerer<'a> {
                 self.locals = saved;
                 block
             }
-            ExprKind::StructLiteral(fields) => HirExprKind::StructLiteral(
-                fields
+            ExprKind::StructLiteral { type_name, fields } => HirExprKind::StructLiteral {
+                type_name: type_name.clone(),
+                fields: fields
                     .iter()
                     .map(|(n, e)| (n.clone(), self.lower_expr(e)))
                     .collect(),
-            ),
+            },
             ExprKind::MapLiteral(entries) => HirExprKind::MapLiteral(
                 entries
                     .iter()

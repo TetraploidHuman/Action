@@ -1,6 +1,6 @@
-type Point = {x: Int, y: Int}
+type Point {x: Int, y: Int}
 
 fun main() -> Int {
-    val p: Point = {x = 1, y = 2, z = 3}
+    val p: Point = Point {x = 1, y = 2, z = 3}
     return p.x
 }

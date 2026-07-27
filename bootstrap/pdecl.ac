@@ -48,6 +48,20 @@ fun parseEnum(s: String, pos: Int, sep: Int) -> Int {
     return p
 }
 
+
+fun advanceTypeFieldSep(s: String, pos: Int) -> Int {
+    val tok: String = parser.cur(s, pos)
+    return if tok == "," {
+        parser.advance(s, pos)
+    } else {
+        if tok == ";" {
+            parser.advance(s, pos)
+        } else {
+            pos
+        }
+    }
+}
+
 fun parseTypeFields(s: String, pos: Int, sep: Int) -> Int {
     return if parser.isTok(s, pos, parser.closeBrace()) { parser.advance(s, pos) } else { parseTypeField(s, pos, sep) }
 }
@@ -65,7 +79,7 @@ fun parseTypeField(s: String, pos: Int, sep: Int) -> Int {
     emit.jTyNamed(fty)
     emit.jOut("]")
     p = parser.advance(s, p)
-    return parseTypeFields(s, parser.advanceIfComma(s, p), 1)
+    return parseTypeFields(s, advanceTypeFieldSep(s, p), 1)
 }
 
 fun parseTypeAlias(s: String, pos: Int, sep: Int) -> Int {
@@ -75,7 +89,12 @@ fun parseTypeAlias(s: String, pos: Int, sep: Int) -> Int {
     val name: String = parser.cur(s, p)
     emit.sessSet(emit.slotStructName(), name)
     p = parser.advance(s, p)
-    p = parser.expect(s, p, "=")
+    // Phase 6: `type Point { … }` or legacy `type Point = { … }`.
+    p = if parser.isBraceOpen(parser.cur(s, p)) {
+        p
+    } else {
+        parser.expect(s, p, "=")
+    }
     p = parser.expect(s, p, parser.openBrace())
     emit.jOut("{\"TypeAlias\": {\"name\": \"")
     emit.jOut(name)

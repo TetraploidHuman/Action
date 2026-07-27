@@ -1,4 +1,4 @@
 fun main() {
-    println(List[1, 2, 3].reduce { a, b -> a + b } or { -1 })
-    println(List[].reduce { a, b -> a + b } or { -1 })
+    println(List[1, 2, 3].reduce { a, b; a + b } or { -1 })
+    println(List[].reduce { a, b; a + b } or { -1 })
 }

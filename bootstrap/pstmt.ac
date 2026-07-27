@@ -14,6 +14,8 @@ import modload
 
 import pexpr
 
+external fun bsIntSet(slot: Int, value: Int) -> Int
+
 fun emitLetHdr(sep: Int, mut: Bool) -> Int {
     emit.jComma(sep)
     emit.jOut("{\"Let\": {\"mutable\": ")
@@ -101,7 +103,9 @@ fun parseReturn(s: String, pos: Int, sep: Int) -> Int {
 fun parseForCond(s: String, pos: Int, vname: String) -> Int {
     typeenv.envAddLocal(vname, 1, 0)
     emit.setExprIdent(vname, typeenv.lookupTag(vname))
+    bsIntSet(parser.slotNoTrailingLambda(), 1)
     var p: Int = pexpr.parseCmpLoop(s, pos, emit.getExpr())
+    bsIntSet(parser.slotNoTrailingLambda(), 0)
     // M103: for-condition must be Bool (reuse tyCheckGuard).
     typeenv.tyCheckGuard()
     val cond: String = emit.getExpr()

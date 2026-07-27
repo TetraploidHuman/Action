@@ -4,7 +4,7 @@ fun main() {
     var c = 0
     for c < 1000 {
         var self = zero
-        self = { x -> self(0) }
+        self = lambda x { self(0) }
         c = c + 1
     }
     println("Self-referential cycle: 1000 closures created")
@@ -13,8 +13,8 @@ fun main() {
     for d < 500 {
         var f = zero
         var g = zero
-        f = { x -> g(0) }
-        g = { x -> f(0) }
+        f = lambda x { g(0) }
+        g = lambda x { f(0) }
         d = d + 1
     }
     println("Mutual cycle: 500 closure pairs created")
@@ -24,9 +24,9 @@ fun main() {
         var p = zero
         var q = zero
         var r = zero
-        p = { x -> q(0) }
-        q = { x -> r(0) }
-        r = { x -> p(0) }
+        p = lambda x { q(0) }
+        q = lambda x { r(0) }
+        r = lambda x { p(0) }
         e = e + 1
     }
     println("Chain cycle: 300 closure triples created")

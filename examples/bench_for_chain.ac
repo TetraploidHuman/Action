@@ -5,11 +5,11 @@ fun main() {
     for outer < 50 {
         val evens = filter(lst) { it % 2 == 0 }
         val doubled = map(evens) { it * 2 }
-        val sum = fold(0, doubled) { acc, x -> acc + x }
+        val sum = fold(0, doubled) { acc, x; acc + x }
         outer = outer + 1
     }
     val evens = filter(lst) { it % 2 == 0 }
     val doubled = map(evens) { it * 2 }
-    val sum = fold(0, doubled) { acc, x -> acc + x }
+    val sum = fold(0, doubled) { acc, x; acc + x }
     println(sum)
 }

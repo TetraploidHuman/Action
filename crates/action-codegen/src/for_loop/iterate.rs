@@ -1043,7 +1043,7 @@ fn hir_body_uses_len_on_var(expr: &HirExpr, var: &str) -> bool {
         HirExprKind::Copy(inner) | HirExprKind::Unsafe(inner) => {
             hir_body_uses_len_on_var(inner, var)
         }
-        HirExprKind::StructLiteral(fields) => {
+        HirExprKind::StructLiteral { fields, .. } => {
             fields.iter().any(|(_, e)| hir_body_uses_len_on_var(e, var))
         }
         HirExprKind::MapLiteral(entries) => entries

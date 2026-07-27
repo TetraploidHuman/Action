@@ -1,8 +1,8 @@
 // TC6 positive: Token function may return struct literal.
-type Token = {kind: String, start: Int, end: Int, line: Int, col: Int}
+type Token {kind: String, start: Int, end: Int, line: Int, col: Int}
 
 fun makeToken(kind: String, start: Int, end: Int, line: Int, col: Int) -> Token {
-    return {kind = kind, start = start, end = end, line = line, col = col}
+    return Token {kind = kind, start = start, end = end, line = line, col = col}
 }
 
 fun main() -> Int {

@@ -115,10 +115,37 @@ impl Parser {
                     }
                 }
                 TokenKind::LBrace => {
-                    let is_callable = matches!(&left.kind, ExprKind::Ident(name)
-                        if name == "launch" || name == "coroutineScope")
-                        || matches!(&left.kind, ExprKind::FieldAccess(_, _));
-                    if is_callable {
+                    // Named struct: `Point { x = 1 }` — only PascalCase idents so
+                    // `for x { s = … }` / `if y { a = … }` stay statement blocks.
+                    if let ExprKind::Ident(ref name) = left.kind {
+                        if name
+                            .chars()
+                            .next()
+                            .is_some_and(|c| c.is_uppercase())
+                            && self.brace_starts_struct_literal()
+                        {
+                            let type_name = name.clone();
+                            self.advance(); // skip '{'
+                            left = self.parse_struct_literal(Some(type_name))?;
+                            true
+                        } else if name == "launch" || name == "coroutineScope" {
+                            let lambda = self.parse_lambda_or_struct()?;
+                            let lambda = self.coerce_trailing_lambda(lambda)?;
+                            if matches!(&lambda.kind, ExprKind::Lambda { .. }) {
+                                left = ExprKind::Call {
+                                    func: Box::new(left),
+                                    args: vec![],
+                                    trailing_lambda: Some(Box::new(lambda)),
+                                }
+                                .into();
+                                true
+                            } else {
+                                return Err(self.error("Expected lambda after call"));
+                            }
+                        } else {
+                            false
+                        }
+                    } else if matches!(&left.kind, ExprKind::FieldAccess(_, _)) {
                         let lambda = self.parse_lambda_or_struct()?;
                         let lambda = self.coerce_trailing_lambda(lambda)?;
                         if matches!(&lambda.kind, ExprKind::Lambda { .. }) {

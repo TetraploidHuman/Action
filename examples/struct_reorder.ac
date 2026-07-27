@@ -1,0 +1,9 @@
+type Point { x: Int, y: Int }
+
+fun main() {
+    val a = Point { y = 20, x = 10 }
+    print(a.x)
+    print(a.y)
+    val b: Point = Point { y = 2, x = 1 }
+    print(b.x + b.y)
+}

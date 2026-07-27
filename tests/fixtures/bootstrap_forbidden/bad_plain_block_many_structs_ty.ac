@@ -1,11 +1,11 @@
 // M180: T2 field String where Int expected inside PlainBlock (dual frontend).
-type T0 = {a: Int}
-type T1 = {a: Int}
-type T2 = {a: Int, c: String}
+type T0 {a: Int}
+type T1 {a: Int}
+type T2 {a: Int, c: String}
 
 fun main() -> Int {
     return if true {
-        val x: T2 = {a = "nope", c = "ab"}
+        val x: T2 = T2 {a = "nope", c = "ab"}
         x.a + len(x.c)
     } else {
         0

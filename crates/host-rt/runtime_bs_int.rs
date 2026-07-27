@@ -25,10 +25,11 @@
 //! - 32 — coll_index_tag (M75 index result / map value)
 //! - 33 — when_exh_has_else (0/1; M77)
 //! - 34 — when_exh_scr_tag (M77)
+//! - 35 — no_trailing_lambda (0/1; Phase 6 Path B)
 
 use std::sync::Mutex;
 
-const SLOT_COUNT: usize = 35;
+const SLOT_COUNT: usize = 36;
 
 struct BsInts {
     slots: [i64; SLOT_COUNT],
@@ -47,6 +48,7 @@ impl BsInts {
                 0, // 30 M73 funSig saw import
                 0, 0, // 31–32 M75 collection tags
                 0, 0, // 33–34 M77 when exhaustiveness
+                0, // 35 Phase 6 no_trailing_lambda
             ],
         }
     }

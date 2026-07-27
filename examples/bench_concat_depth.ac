@@ -41,7 +41,7 @@ fun main() {
     println(taken.len()) // 5
 
     // fold on deep tree
-    val sum = fold(0, lst) { acc, x -> acc + x }
+    val sum = fold(0, lst) { acc, x; acc + x }
     println(sum) // 0+1+...+1000 = 500500
 
     // map on deep tree
@@ -65,7 +65,7 @@ fun main() {
     println(chained.len()) // 500 (501-1000)
 
     // fold over mapped result
-    val mapped_sum = fold(0, map(lst) { it * 2 }) { acc, x -> acc + x }
+    val mapped_sum = fold(0, map(lst) { it * 2 }) { acc, x; acc + x }
     println(mapped_sum) // 2*(0+1+...+1000) = 1001000
 
     // Test with larger depth
@@ -73,13 +73,13 @@ fun main() {
     val big = gen_deep(10000)
     println(big.len()) // 10001
     val first3 = big.take(3)
-    println(fold(0, first3) { acc, x -> acc + x }) // 0+1+2 = 3
+    println(fold(0, first3) { acc, x; acc + x }) // 0+1+2 = 3
 
     // Nested chain on concat tree
     println("Testing nested chains on concat tree...")
     val deep_concat = gen_deep_concat(200)
     println(deep_concat.len()) // 201
     val mf = filter(map(deep_concat) { it * 3 }) { it % 2 == 0 }
-    println(fold(0, mf) { acc, x -> acc + x })
+    println(fold(0, mf) { acc, x; acc + x })
     // 0*3 + 2*3 + 4*3 + ... + 200*3 = 3 * (0+2+4+...+200) = 3 * 10100 = 30300
 }

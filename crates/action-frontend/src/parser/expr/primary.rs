@@ -135,7 +135,8 @@ impl Parser {
                 let body = self.run_block_parse_loop()?;
                 Ok(ExprKind::Unsafe(Box::new(body)).into())
             }
-            TokenKind::LBrace => self.parse_lambda_or_struct(),
+            TokenKind::Lambda => self.parse_lambda_keyword(),
+            TokenKind::LBrace => self.parse_immediate_block(),
             TokenKind::LParen => self.parse_paren_or_tuple(),
             // [ alone is no longer a list literal — use List[...] instead
             TokenKind::LBracket => Err(self.error(

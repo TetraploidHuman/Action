@@ -162,7 +162,8 @@ impl Parser {
     /// struct literal or block starting with `{`, so we route to the right parser.
     pub(crate) fn parse_when_arm_expr(&mut self) -> Result<Expr, ParseError> {
         if self.current_kind() == TokenKind::LBrace {
-            self.parse_lambda_or_struct()
+            // Phase 4: arm bodies are immediate blocks / structs, not expression lambdas.
+            self.parse_immediate_block()
         } else {
             self.parse_expr()
         }

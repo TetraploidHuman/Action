@@ -29,19 +29,19 @@
   {
     "kind": "x",
     "span": {
-      "start": 4,
+      "start": 5,
       "end": 6,
       "line": 1,
-      "col": 5
+      "col": 6
     }
   },
   {
     "kind": "..<",
     "span": {
-      "start": 6,
+      "start": 7,
       "end": 10,
       "line": 1,
-      "col": 7
+      "col": 8
     }
   }
 ]

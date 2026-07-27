@@ -66,21 +66,77 @@ impl Parser {
         }
     }
 
-    pub(crate) fn parse_lambda_or_struct(&mut self) -> Result<Expr, ParseError> {
-        self.advance(); // skip '{'
+    /// Phase 4: `lambda a, b { … }` / `lambda { }` / `lambda { it … }`.
+    pub(crate) fn parse_lambda_keyword(&mut self) -> Result<Expr, ParseError> {
+        self.advance(); // skip `lambda`
 
-        // {} → empty block returning unit ()
-        if self.skip(TokenKind::RBrace) {
-            return Ok(ExprKind::Tuple(vec![]).into()); // unit value
+        let mut params = Vec::new();
+        while matches!(self.current_kind(), TokenKind::Ident(_))
+            && (self.peek2() == TokenKind::Comma || self.peek2() == TokenKind::LBrace)
+        {
+            let TokenKind::Ident(name) = self.current_kind() else {
+                unreachable!();
+            };
+            params.push(name.clone());
+            self.advance();
+            if self.current_kind() == TokenKind::Comma {
+                self.advance();
+                continue;
+            }
+            break;
         }
 
-        // {:} is an error — use Map[] instead
+        self.expect(TokenKind::LBrace)?;
+
+        // `lambda { }` — empty body
+        if self.skip(TokenKind::RBrace) {
+            return Ok(ExprKind::Lambda {
+                params,
+                body: Box::new(ExprKind::Block(vec![]).into()),
+                implicit_it: false,
+            }
+            .into());
+        }
+
+        // `lambda { it … }` with no explicit params → implicit-it
+        if params.is_empty() {
+            if let TokenKind::Ident(ref id) = self.current_kind() {
+                if id == "it" && self.peek2() != TokenKind::Arrow {
+                    let body = self.parse_expr()?;
+                    self.expect(TokenKind::RBrace)?;
+                    return Ok(Expr::it_lambda(body));
+                }
+            }
+        }
+
+        // Body: statement block or single expression
+        let return_on_close = !self.block_parse_stack.is_empty();
+        self.block_parse_stack
+            .push(BlockFrame::new(BlockFrameKind::PlainBlock, return_on_close));
+        let body = self.run_block_parse_loop()?;
+        Ok(ExprKind::Lambda {
+            params,
+            body: Box::new(body),
+            implicit_it: false,
+        }
+        .into())
+    }
+
+    /// Phase 4: expression-position `{ … }` is an immediately-executed block (or deprecated
+    /// anonymous struct). Closures use `lambda … { }`. Trailing uses `parse_trailing_lambda_brace`.
+    pub(crate) fn parse_immediate_block(&mut self) -> Result<Expr, ParseError> {
+        self.advance(); // skip '{'
+
+        // `{}` → empty block, Unit
+        if self.skip(TokenKind::RBrace) {
+            return Ok(ExprKind::Block(vec![]).into());
+        }
+
         if self.skip(TokenKind::Colon) {
             self.expect(TokenKind::RBrace)?;
             return Err(self.error("Use Map[] for empty map literal, not {:}"));
         }
 
-        // `{ val ...; return x }` in expression position → plain block (supports `{ } or { }`).
         if self.brace_starts_statement_block() {
             let return_on_close = !self.block_parse_stack.is_empty();
             self.block_parse_stack
@@ -88,84 +144,195 @@ impl Parser {
             return self.run_block_parse_loop();
         }
 
-        // To distinguish struct literal from lambda:
-        // - {x = expr, ...} or {x: expr, ...} → struct (Ident + '=' or ':')
-        // - {x, y} → struct if no '->' before '}' (shorthand fields)
-        // - {x -> body} or {x, y -> body} → lambda (has '->')
+        // `{ x -> … }` / `{ a, b -> … }` no longer create closures in expression position.
+        if self.scan_ahead_for_arrow() {
+            return Err(self.error(
+                "Use `lambda params { body }` for closures; `{ x -> … }` is no longer valid in expression position",
+            ));
+        }
+
+        // Deprecated anonymous struct `{ x = … }` / `{ x, y }`
         let is_struct = if matches!(self.current_kind(), TokenKind::Ident(_)) {
             match self.peek2() {
                 TokenKind::Eq | TokenKind::Colon => true,
-                TokenKind::Comma => !self.scan_ahead_for_arrow(),
-                TokenKind::Arrow => false, // {x -> body} is lambda
-                _ => false,                // {expr} is lambda (block)
+                TokenKind::Comma => true,
+                _ => false,
             }
         } else {
             false
         };
-
         if is_struct {
-            return self.parse_struct_literal();
+            return self.parse_struct_literal(None);
         }
 
-        // Everything else in expression position with {} is a lambda
-        // Check for explicit params: { x, y -> body } or { x -> body }
-        let mut has_explicit_params = false;
-        let mut implicit_it = false;
+        // Immediate block (single expr or multi-stmt)
+        let return_on_close = !self.block_parse_stack.is_empty();
+        self.block_parse_stack
+            .push(BlockFrame::new(BlockFrameKind::PlainBlock, return_on_close));
+        self.run_block_parse_loop()
+    }
 
-        // Look for identifiers before ->
-        if let TokenKind::Ident(ref first_id) = self.current_kind() {
-            let first_id = first_id.clone();
-            // Peek ahead to see if we have -> after identifiers
-            let mut peek_pos = self.pos;
-            let mut found_arrow = false;
-            loop {
-                match self.tokens.get(peek_pos).map(|t| &t.kind) {
-                    Some(TokenKind::Arrow) => {
-                        found_arrow = true;
-                        break;
-                    }
-                    Some(TokenKind::Comma) => {
-                        peek_pos += 1;
-                        match self.tokens.get(peek_pos).map(|t| &t.kind) {
-                            Some(TokenKind::Ident(_)) => {
-                                peek_pos += 1;
-                            }
-                            _ => break,
-                        }
-                    }
-                    Some(TokenKind::Ident(_)) => {
-                        peek_pos += 1;
-                    }
-                    _ => break,
-                }
+    /// Trailing lambda after a call (Phase 5).
+    ///
+    /// - `{ it … }` — implicit-it
+    /// - `{ body }` — no-param / body-only
+    /// - `{ a, b` + newline + `body }` or `{ a, b; body }` — explicit param line
+    /// - `{ a, b -> body }` — **rejected** (migrate to param-line form)
+    pub(crate) fn parse_trailing_lambda_brace(&mut self) -> Result<Expr, ParseError> {
+        self.advance(); // skip '{'
+
+        if self.skip(TokenKind::RBrace) {
+            return Ok(ExprKind::Lambda {
+                params: vec![],
+                body: Box::new(ExprKind::Block(vec![]).into()),
+                implicit_it: false,
             }
-            has_explicit_params = found_arrow;
-
-            // If first ident is 'it' and not followed by ->, it's an implicit-it lambda
-            if !has_explicit_params && first_id == "it" {
-                implicit_it = true;
-            }
+            .into());
         }
 
-        if has_explicit_params {
-            return self.parse_lambda_body(false);
-        }
-
-        if implicit_it {
-            // { it ... } — body contains `it` reference
-            let body = self.parse_expr()?;
+        if self.skip(TokenKind::Colon) {
             self.expect(TokenKind::RBrace)?;
-            return Ok(Expr::it_lambda(body));
+            return Err(self.error("Use Map[] for empty map literal, not {:}"));
         }
 
-        // { stmts } — no-param lambda with block body (handles both single expr and multi-stmt)
+        if self.brace_starts_statement_block() {
+            let return_on_close = !self.block_parse_stack.is_empty();
+            self.block_parse_stack
+                .push(BlockFrame::new(BlockFrameKind::LambdaBody, return_on_close));
+            return self.run_block_parse_loop();
+        }
+
+        let is_struct = if matches!(self.current_kind(), TokenKind::Ident(_)) {
+            match self.peek2() {
+                TokenKind::Eq | TokenKind::Colon => true,
+                TokenKind::Comma => false, // may be param list; not struct in trailing
+                _ => false,
+            }
+        } else {
+            false
+        };
+        if is_struct {
+            return Err(self.error("Expected lambda after call, got struct literal"));
+        }
+
+        // Phase 5: abolish `{ a, b -> body }` in trailing position.
+        if self.scan_ahead_for_arrow() {
+            return Err(self.error(
+                "Use trailing param line `{ a, b` + newline + `body }` or `{ a, b; body }`; `{ a, b -> body }` is no longer valid",
+            ));
+        }
+
+        if let Some(params) = self.try_trailing_param_line() {
+            return self.parse_trailing_param_line_body(params);
+        }
+
+        // Multi-param start without separator → sticky parse, reject early.
+        if matches!(self.current_kind(), TokenKind::Ident(_)) && self.peek2() == TokenKind::Comma {
+            return Err(self.error(
+                "Trailing lambda multi-params need a newline or `;` after the param line (e.g. `{ a, b; body }`)",
+            ));
+        }
+
+        if let TokenKind::Ident(ref first_id) = self.current_kind() {
+            if first_id == "it" {
+                let body = self.parse_expr()?;
+                self.expect(TokenKind::RBrace)?;
+                return Ok(Expr::it_lambda(body));
+            }
+        }
+
         let return_on_close = !self.block_parse_stack.is_empty();
         self.block_parse_stack
             .push(BlockFrame::new(BlockFrameKind::LambdaBody, return_on_close));
         self.run_block_parse_loop()
     }
 
-    pub(crate) fn parse_struct_literal(&mut self) -> Result<Expr, ParseError> {
+    /// Peek whether `{` content (already past `{`) starts a Phase-5 param line.
+    /// Param line = `Ident (, Ident)*` followed by `;` or a token on the next source line.
+    fn try_trailing_param_line(&self) -> Option<Vec<String>> {
+        let mut peek = self.pos;
+        let mut params = Vec::new();
+        loop {
+            let Some(tok) = self.tokens.get(peek) else {
+                return None;
+            };
+            let TokenKind::Ident(name) = &tok.kind else {
+                return None;
+            };
+            params.push(name.clone());
+            let param_line = tok.span.line;
+            peek += 1;
+            let Some(next) = self.tokens.get(peek) else {
+                return None;
+            };
+            match &next.kind {
+                TokenKind::Comma => {
+                    peek += 1;
+                    continue;
+                }
+                TokenKind::Semicolon => return Some(params),
+                TokenKind::RBrace => {
+                    // `{ a, b }` with no body — treat as param line + empty body only if multi.
+                    return if params.len() > 1 { Some(params) } else { None };
+                }
+                _ => {
+                    if next.span.line > param_line {
+                        return Some(params);
+                    }
+                    // Same line continuation → expression body / `it`, not a param line.
+                    return None;
+                }
+            }
+        }
+    }
+
+    fn parse_trailing_param_line_body(&mut self, params: Vec<String>) -> Result<Expr, ParseError> {
+        // Consume `Ident (, Ident)*`
+        for (i, expected) in params.iter().enumerate() {
+            match &self.current_kind() {
+                TokenKind::Ident(name) if name == expected => self.advance(),
+                _ => return Err(self.error("Internal error: trailing param line mismatch")),
+            }
+            if i + 1 < params.len() {
+                self.expect(TokenKind::Comma)?;
+            }
+        }
+        // Separator: `;` or already on next line (no token to consume).
+        if self.current_kind() == TokenKind::Semicolon {
+            self.advance();
+        }
+
+        if self.skip(TokenKind::RBrace) {
+            return Ok(ExprKind::Lambda {
+                params,
+                body: Box::new(ExprKind::Block(vec![]).into()),
+                implicit_it: false,
+            }
+            .into());
+        }
+
+        let return_on_close = !self.block_parse_stack.is_empty();
+        self.block_parse_stack
+            .push(BlockFrame::new(BlockFrameKind::PlainBlock, return_on_close));
+        let body = self.run_block_parse_loop()?;
+        Ok(ExprKind::Lambda {
+            params,
+            body: Box::new(body),
+            implicit_it: false,
+        }
+        .into())
+    }
+
+    /// Back-compat name used by call/pratt trailing paths.
+    pub(crate) fn parse_lambda_or_struct(&mut self) -> Result<Expr, ParseError> {
+        self.parse_trailing_lambda_brace()
+    }
+
+    /// Parse struct fields; `{` must already have been consumed.
+    pub(crate) fn parse_struct_literal(
+        &mut self,
+        type_name: Option<String>,
+    ) -> Result<Expr, ParseError> {
         let mut fields = Vec::new();
         while self.current_kind() != TokenKind::RBrace {
             if !fields.is_empty() {
@@ -182,16 +349,40 @@ impl Parser {
                 self.advance();
                 let value = self.parse_expr()?;
                 fields.push((name, value));
+            } else if self.current_kind() == TokenKind::Colon {
+                // `{ x: expr }` field init (legacy colon form)
+                self.advance();
+                let value = self.parse_expr()?;
+                fields.push((name, value));
             } else {
-                // Shorthand: {x} becomes {x: x}
+                // Shorthand: {x} becomes {x = x}
                 fields.push((name.clone(), ExprKind::Ident(name).into()));
             }
         }
         self.expect(TokenKind::RBrace)?;
-        Ok(ExprKind::StructLiteral(fields).into())
+        Ok(ExprKind::StructLiteral { type_name, fields }.into())
+    }
+
+    /// Peek: current token is `{` and body looks like a struct literal (not lambda/block).
+    /// Note: `{ x }` alone is a block/lambda, NOT a struct — use `Point { x = x }` for
+    /// single-field shorthand so `if a < b { x }` is not parsed as `b { x }`.
+    pub(crate) fn brace_starts_struct_literal(&self) -> bool {
+        let Some(after_brace) = self.tokens.get(self.pos + 1) else {
+            return false;
+        };
+        match &after_brace.kind {
+            TokenKind::Ident(_) => match self.tokens.get(self.pos + 2).map(|t| &t.kind) {
+                Some(TokenKind::Eq | TokenKind::Colon) => true,
+                Some(TokenKind::Comma) => !self.scan_ahead_for_arrow_from(self.pos + 1),
+                _ => false,
+            },
+            _ => false,
+        }
     }
 
     /// Check if the token after the current one is a colon (for Map detection)
+    /// Legacy `{ params -> body }` parser (kept for potential diagnostics; unused after Phase 5).
+    #[allow(dead_code)]
     pub(crate) fn parse_lambda_body(&mut self, implicit_it: bool) -> Result<Expr, ParseError> {
         if implicit_it {
             // { expr } — single expression with implicit `it`

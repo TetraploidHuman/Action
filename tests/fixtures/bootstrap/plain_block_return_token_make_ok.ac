@@ -1,8 +1,8 @@
 // M176: PlainBlock Token return — mirror return_token_make → 3.
-type Token = {kind: String, start: Int, end: Int, line: Int, col: Int}
+type Token {kind: String, start: Int, end: Int, line: Int, col: Int}
 
 fun makeToken(kind: String, start: Int, end: Int, line: Int, col: Int) -> Token {
-    return {kind = kind, start = start, end = end, line = line, col = col}
+    return Token {kind = kind, start = start, end = end, line = line, col = col}
 }
 
 fun main() -> Int {

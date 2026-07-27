@@ -1,7 +1,7 @@
 // M185: PlainBlock lambda it — mirror lambda_it_ok → 42.
 fun main() -> Int {
     return if true {
-        { it * 2 }(21)
+        lambda { it * 2 }(21)
     } else {
         0
     }

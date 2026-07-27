@@ -1,10 +1,10 @@
 // M160: assign Point to Int inside PlainBlock (dual frontend).
-type Point = {x: Int, y: Int}
+type Point {x: Int, y: Int}
 
 fun main() -> Int {
     return if true {
         var n: Int = 0
-        n = {x = 1, y = 2}
+        n = Point {x = 1, y = 2}
         n
     } else {
         0

@@ -6,11 +6,11 @@ fun main() {
         lst = lst.append(i)
         i = i + 1
     }
-    val filtered = filter(lst) { x -> x % 2 == 0 }
-    val mapped = map(filtered) { x -> x * 3 }
-    val sum = fold(0, mapped) { acc, x -> acc + x }
+    val filtered = filter(lst) { x; x % 2 == 0 }
+    val mapped = map(filtered) { x; x * 3 }
+    val sum = fold(0, mapped) { acc, x; acc + x }
     print(sum)
-    val fused = fold(0, map(filter(lst) { x -> x % 2 == 0 }) { x -> x * 3 }) { acc, x -> acc + x }
+    val fused = fold(0, map(filter(lst) { x; x % 2 == 0 }) { x; x * 3 }) { acc, x; acc + x }
     print(fused)
     println("")
 }

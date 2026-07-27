@@ -29,6 +29,7 @@ pub fn builtin_types(program: &Program) -> Vec<Stmt> {
                 ("month".into(), Type::Named("Int".into())),
                 ("day".into(), Type::Named("Int".into())),
             ]),
+            methods: vec![],
             span: Span::default(),
         });
     }
@@ -44,6 +45,7 @@ pub fn builtin_types(program: &Program) -> Vec<Stmt> {
                 ("minute".into(), Type::Named("Int".into())),
                 ("second".into(), Type::Named("Int".into())),
             ]),
+            methods: vec![],
             span: Span::default(),
         });
     }
@@ -52,6 +54,7 @@ pub fn builtin_types(program: &Program) -> Vec<Stmt> {
             name: "Random".into(),
             type_params: vec![],
             definition: Type::Struct(vec![("seed".into(), Type::Named("Int".into()))]),
+            methods: vec![],
             span: Span::default(),
         });
     }
@@ -67,6 +70,7 @@ pub fn builtin_types(program: &Program) -> Vec<Stmt> {
                 ("status".into(), Type::Named("Int".into())),
                 ("body".into(), Type::Named("String".into())),
             ]),
+            methods: vec![],
             span: Span::default(),
         });
     }

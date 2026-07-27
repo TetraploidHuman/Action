@@ -1,0 +1,6 @@
+fun main() {
+    val p = nextInt(Random_new(42), 1, 10)
+    print(p[1])
+    val p2 = nextInt(p[0], 1, 10)
+    print(p2[1])
+}

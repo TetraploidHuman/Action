@@ -26,7 +26,8 @@ impl Parser {
             if self.current_kind() == TokenKind::LBrace && self.brace_starts_block_body() {
                 self.advance();
                 if self.skip(TokenKind::RBrace) {
-                    let unit: Expr = ExprKind::Tuple(vec![]).into();
+                    // Phase 4: nested `{}` is an empty block (Unit), not a Tuple/lambda.
+                    let unit: Expr = ExprKind::Block(vec![]).into();
                     let span = unit.span;
                     self.block_parse_stack
                         .last_mut()
@@ -36,7 +37,7 @@ impl Parser {
                     continue;
                 }
                 self.block_parse_stack
-                    .push(BlockFrame::new(BlockFrameKind::LambdaBody, false));
+                    .push(BlockFrame::new(BlockFrameKind::PlainBlock, false));
                 continue;
             }
 

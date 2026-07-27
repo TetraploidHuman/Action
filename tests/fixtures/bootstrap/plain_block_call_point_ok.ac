@@ -1,8 +1,8 @@
 // M173: PlainBlock Point call — mirror call_point_ok → 0.
-type Point = {x: Int, y: Int}
+type Point {x: Int, y: Int}
 
 fun origin() -> Point {
-    return {x = 0, y = 0}
+    return Point {x = 0, y = 0}
 }
 
 fun sumX(p: Point) -> Int {

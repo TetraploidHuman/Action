@@ -8,7 +8,7 @@ fun main() {
 
     // Test 2: drop then Map then filter
     // lazy_list(0){it+1}.drop(5).Map{it*2}.take(3) = [10,12,14]
-    val r2 = toList(lazyTake(3, lazyMap({it*2}, lazyDrop(5, lazy_list(0){it+1}))))
+    val r2 = toList(lazyTake(3, lazyMap(lambda { it*2 }, lazyDrop(5, lazy_list(0){it+1}))))
     print("drop_map_take: ")
     println(r2)
 

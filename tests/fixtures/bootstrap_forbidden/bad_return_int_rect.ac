@@ -1,6 +1,6 @@
-type Rect = {w: Int, h: Int}
+type Rect {w: Int, h: Int}
 
 fun main() -> Int {
-    val r: Rect = {w = 1, h = 2}
+    val r: Rect = Rect {w = 1, h = 2}
     return r
 }

@@ -1,7 +1,7 @@
 // M185: it and true inside PlainBlock lambda (dual frontend).
 fun main() -> Int {
     return if true {
-        { it and true }(1)
+        lambda { it and true }(1)
     } else {
         0
     }

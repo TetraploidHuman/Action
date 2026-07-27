@@ -17,6 +17,73 @@ impl<'ctx> CodeGen<'ctx> {
         self.compile_inner_hir(hir)
     }
 
+    fn declare_type_methods_hir(
+        &mut self,
+        type_name: &str,
+        methods: &[HirStmt],
+    ) -> Result<(), String> {
+        for m in methods {
+            if let HirStmt::Fun {
+                name,
+                params,
+                return_type,
+                body,
+                ..
+            } = m
+            {
+                let fn_name = format!("{}_{}", type_name, name);
+                self.extension_methods
+                    .insert(format!("{}.{}", type_name, name), fn_name.clone());
+                let param_llvm_tys: Vec<BasicMetadataTypeEnum> = params
+                    .iter()
+                    .map(|p| self.ast_type_to_llvm(p.ty.as_ref()))
+                    .collect::<Result<_, _>>()?;
+                let ret_type = return_type.clone().or_else(|| {
+                    if params.iter().all(|p| p.ty.is_some()) {
+                        Some(self.infer_hir_expr_type(body))
+                    } else {
+                        None
+                    }
+                });
+                let fn_type = self.build_fn_type(ret_type.as_ref(), &fn_name, &param_llvm_tys)?;
+                self.module.add_function(&fn_name, fn_type, None);
+                if let Some(rt) = ret_type {
+                    self.mono_cache.fun_return_types.insert(fn_name, rt);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn compile_type_methods_hir(
+        &mut self,
+        type_name: &str,
+        methods: &[HirStmt],
+    ) -> Result<(), String> {
+        for m in methods {
+            if let HirStmt::Fun {
+                name,
+                params,
+                return_type,
+                body,
+                fn_or_fallback,
+                ..
+            } = m
+            {
+                let fn_name = format!("{}_{}", type_name, name);
+                self.compile_fun_def_hir(
+                    &fn_name,
+                    name,
+                    params,
+                    return_type.as_ref(),
+                    body,
+                    fn_or_fallback.as_ref(),
+                )?;
+            }
+        }
+        Ok(())
+    }
+
     fn compile_inner_hir(&mut self, hir: &HirModule) -> Result<(), String> {
         self.define_runtime()?;
         self.detach_builder()?;
@@ -196,36 +263,14 @@ impl<'ctx> CodeGen<'ctx> {
                 type_name, methods, ..
             } = stmt
             {
-                for m in methods {
-                    if let HirStmt::Fun {
-                        name,
-                        params,
-                        return_type,
-                        body,
-                        ..
-                    } = m
-                    {
-                        let fn_name = format!("{}_{}", type_name, name);
-                        self.extension_methods
-                            .insert(format!("{}.{}", type_name, name), fn_name.clone());
-                        let param_llvm_tys: Vec<BasicMetadataTypeEnum> = params
-                            .iter()
-                            .map(|p| self.ast_type_to_llvm(p.ty.as_ref()))
-                            .collect::<Result<_, _>>()?;
-                        let ret_type = return_type.clone().or_else(|| {
-                            if params.iter().all(|p| p.ty.is_some()) {
-                                Some(self.infer_hir_expr_type(body))
-                            } else {
-                                None
-                            }
-                        });
-                        let fn_type =
-                            self.build_fn_type(ret_type.as_ref(), &fn_name, &param_llvm_tys)?;
-                        self.module.add_function(&fn_name, fn_type, None);
-                        if let Some(rt) = ret_type {
-                            self.mono_cache.fun_return_types.insert(fn_name, rt);
-                        }
-                    }
+                self.declare_type_methods_hir(type_name, methods)?;
+            }
+            if let HirStmt::TypeAlias {
+                name, methods, ..
+            } = stmt
+            {
+                if !methods.is_empty() {
+                    self.declare_type_methods_hir(name, methods)?;
                 }
             }
         }
@@ -395,26 +440,11 @@ impl<'ctx> CodeGen<'ctx> {
             HirStmt::Extension {
                 type_name, methods, ..
             } => {
-                for m in methods {
-                    if let HirStmt::Fun {
-                        name,
-                        params,
-                        return_type,
-                        body,
-                        fn_or_fallback,
-                        ..
-                    } = m
-                    {
-                        let fn_name = format!("{}_{}", type_name, name);
-                        self.compile_fun_def_hir(
-                            &fn_name,
-                            name,
-                            params,
-                            return_type.as_ref(),
-                            body,
-                            fn_or_fallback.as_ref(),
-                        )?;
-                    }
+                self.compile_type_methods_hir(type_name, methods)?;
+            }
+            HirStmt::TypeAlias { name, methods, .. } => {
+                if !methods.is_empty() {
+                    self.compile_type_methods_hir(name, methods)?;
                 }
             }
             HirStmt::Module { name, body, .. } => {
@@ -441,7 +471,7 @@ impl<'ctx> CodeGen<'ctx> {
             HirStmt::Const { name, value, .. } => {
                 self.compile_hir_const(name, value)?;
             }
-            HirStmt::TypeAlias { .. } | HirStmt::Enum { .. } | HirStmt::Import { .. } => {}
+            HirStmt::Enum { .. } | HirStmt::Import { .. } => {}
             HirStmt::Export { stmt, .. } => self.compile_hir_stmt(stmt)?,
             HirStmt::External { .. } => self.compile_hir_external(stmt)?,
             HirStmt::ExternalType { .. } => self.compile_hir_external_type(stmt)?,
@@ -488,7 +518,7 @@ impl<'ctx> CodeGen<'ctx> {
             HirExprKind::Assign { target, value } => self.compile_hir_assign(target, value),
             HirExprKind::StringInterpolate(parts) => self.compile_hir_string_interp(parts),
             HirExprKind::FieldAccess(obj, field) => self.compile_hir_field_access(obj, field),
-            HirExprKind::StructLiteral(fields) => self.compile_hir_struct_lit(fields),
+            HirExprKind::StructLiteral { fields, .. } => self.compile_hir_struct_lit(&expr.ty, fields),
             HirExprKind::MapLiteral(entries) => self.compile_hir_map_lit(entries),
             HirExprKind::SetLiteral(elements) => self.compile_hir_set_lit(elements),
             HirExprKind::Lambda { params, body, .. } => self.compile_hir_lambda(params, body),

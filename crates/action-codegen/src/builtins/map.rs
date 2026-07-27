@@ -586,7 +586,9 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(acc_alloca, new_acc)
             .map_err(llvm_err)?;
+        let _ = self.builder.build_unconditional_branch(loop_next);
 
+        self.builder.position_at_end(loop_next);
         let ni = self
             .builder
             .build_int_add(i_val, i64.const_int(1, false), "ni")

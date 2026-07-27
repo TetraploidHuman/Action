@@ -9,7 +9,7 @@ fun main() {
     print(r1)  // 20
 
     // Pass a lambda directly
-    val r2 = map_int({ it * 3 }, 7)
+    val r2 = map_int(lambda { it * 3 }, 7)
     print(r2)  // 21
 }
 

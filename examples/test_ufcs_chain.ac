@@ -22,13 +22,13 @@ fun main() {
 
     // ---- Chain: map then fold ----
     val doubled = map(lst) { it * 2 }
-    val sum1 = fold(0, doubled) { acc, x -> acc + x }
+    val sum1 = fold(0, doubled) { acc, x; acc + x }
     println(sum1) // 2+4+6 = 12
 
     // ---- Chain: filter then fold ----
     val gt2 = filter(lst) { it > 2 }
     println(gt2.len()) // 1
-    val sum2 = fold(0, gt2) { acc, x -> acc + x }
+    val sum2 = fold(0, gt2) { acc, x; acc + x }
     println(sum2) // 3
 
     // ---- map chain ----
@@ -51,7 +51,7 @@ fun main() {
     println(doubled_literal.get(2) or { -1 }) // 6
 
     // ---- fold after take ----
-    val take_sum = fold(0, lst.take(2)) { acc, x -> acc + x }
+    val take_sum = fold(0, lst.take(2)) { acc, x; acc + x }
     println(take_sum) // 1+2 = 3
 
     println(999) // sentinel

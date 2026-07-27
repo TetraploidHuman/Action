@@ -1,13 +1,13 @@
 // M171: PlainBlock Point assign — mirror assign_point_ok → 1.
-type Point = {x: Int, y: Int}
+type Point {x: Int, y: Int}
 
 fun origin() -> Point {
-    return {x = 1, y = 2}
+    return Point {x = 1, y = 2}
 }
 
 fun main() -> Int {
     return if true {
-        var p: Point = {x = 0, y = 0}
+        var p: Point = Point {x = 0, y = 0}
         p = origin()
         p.x
     } else {

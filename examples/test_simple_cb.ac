@@ -2,6 +2,6 @@
 fun call_it(f: (Int) -> Int, x: Int) -> Int = f(x)
 
 fun main() {
-    val result = call_it({ n -> n + 10 }, 5)
+    val result = call_it(lambda n { n + 10 }, 5)
     print(result)
 }

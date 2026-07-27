@@ -1,0 +1,11 @@
+fun main() {
+    val n = 3
+    val s = if n > 0 {
+        println("pos")
+        val t = n + 1
+        t
+    } else {
+        0
+    }
+    println(s)
+}

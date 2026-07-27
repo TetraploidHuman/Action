@@ -60,6 +60,8 @@ pub enum HirStmt {
         name: String,
         type_params: Vec<String>,
         definition: Type,
+        #[serde(default)]
+        methods: Vec<HirStmt>,
         span: Span,
     },
     Enum {
@@ -157,7 +159,11 @@ pub enum HirExprKind {
     When(Box<HirWhen>),
     For(Box<HirFor>),
     Block(Vec<HirStmt>),
-    StructLiteral(Vec<(String, HirExpr)>),
+    StructLiteral {
+        #[serde(default)]
+        type_name: Option<String>,
+        fields: Vec<(String, HirExpr)>,
+    },
     MapLiteral(Vec<(HirExpr, HirExpr)>),
     SetLiteral(Vec<HirExpr>),
     FieldAccess(Box<HirExpr>, String),

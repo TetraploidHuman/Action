@@ -38,7 +38,7 @@ fun main() {
     var n = 0
     for n < 500 {
         var captured = n
-        val f = { x -> x + captured }
+        val f = lambda x { x + captured }
         calls = calls + f(1)
         // closure + captured var cell are dropped — RC frees both
         n = n + 1

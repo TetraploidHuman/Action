@@ -117,7 +117,20 @@ fun parseSetLit(s: String, pos: Int) -> Int {
     return parsePostfix(s, p)
 }
 
-fun parseStructLit(s: String, pos: Int) -> Int {
+fun isUpperIdent(name: String) -> Bool {
+    val ch: String = prelude.charAtSafe(name, 0)
+    return prelude.containsAt("ABCDEFGHIJKLMNOPQRSTUVWXYZ", ch, 0)
+}
+
+fun structBraceLook(s: String, pos: Int) -> Bool {
+    // After `{`: `ident =` starts a struct literal (named or anonymous).
+    val p1: Int = parser.advance(s, pos)
+    val first: String = parser.cur(s, p1)
+    val second: String = parser.cur(s, parser.advance(s, p1))
+    return second == "="
+}
+
+fun parseStructLitEmit(s: String, pos: Int, typeNameJson: String) -> Int {
     parser.spanMarkBegin(s, pos)
     var p: Int = parser.advance(s, pos)
     typeenv.structLitNamesClear()
@@ -129,9 +142,19 @@ fun parseStructLit(s: String, pos: Int) -> Int {
     val litTy: String = typeenv.structLitTyResolve(typeenv.litTyName())
     typeenv.structLitCheckAgainst(litTy)
     val tag: Int = typeenv.tyAnnTag(litTy)
-    emit.setExpr("{\"ty\": {\"Named\": \"" + litTy + "\"}, \"span\": " + parser.spanJson() + ", \"kind\": {\"StructLiteral\": [" + fields + "]}}")
+    // Phase 6 / Rust HIR: object form with optional type_name (not bare field array).
+    emit.setExpr("{\"ty\": {\"Named\": \"" + litTy + "\"}, \"span\": " + parser.spanJson() + ", \"kind\": {\"StructLiteral\": {\"type_name\": " + typeNameJson + ", \"fields\": [" + fields + "]}}}")
     typeenv.lastExprTySet(tag)
     return p
+}
+
+fun parseStructLit(s: String, pos: Int) -> Int {
+    return parseStructLitEmit(s, pos, "null")
+}
+
+fun parseStructLitNamed(s: String, pos: Int, typeName: String) -> Int {
+    typeenv.setLitTy(typeName)
+    return parseStructLitEmit(s, pos, "\"" + typeName + "\"")
 }
 
 // M119: `{ it * 2 }` — implicit-it lambda (HIR params=["it"], implicit_it=true).
@@ -464,34 +487,142 @@ fun parsePlainBlockExpr(s: String, pos: Int) -> Int {
 }
 
 // M119/M122/M123: brace lambda (no postfix); used by trailing-lambda attach.
+fun isLambdaParamName(tok: String) -> Bool {
+    // Param-line `{ acc, x; body }` — first token must be an Ident, not `21;` stmts.
+    val ch: String = prelude.charAtSafe(tok, 0)
+    return prelude.containsAt("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_", ch, 0)
+}
+
+// Phase 6 trailing: `{ it }`, `{ body }`, `{ a, b; body }` / newline param-line.
+// Reject `{ a, b -> body }` (when/fun `->` unchanged).
 fun parseBraceLambda(s: String, pos: Int) -> Int {
     val p1: Int = parser.advance(s, pos)
     val first: String = parser.cur(s, p1)
     val second: String = parser.cur(s, parser.advance(s, p1))
     return when {
-        second == "->" -> parseLambdaArrow(s, pos)
-        second == "," -> parseLambdaArrow(s, pos)
+        second == "->" -> parseTrailingArrowReject(s, pos)
+        second == ";" -> parseBraceLambdaSemi(s, pos, first)
+        second == "," -> parseBraceLambdaComma(s, pos, first)
         first == "it" -> parseLambdaIt(s, pos)
+        parser.isBraceClose(first) -> parseTrailingEmpty(s, pos)
         else -> parseLambdaBlock(s, pos)
     }
 }
 
-// M119–M130: `{` — struct / lambda / PlainBlock (`val`/`var`/`return`/`for`).
+fun parseBraceLambdaSemi(s: String, pos: Int, first: String) -> Int {
+    return if isLambdaParamName(first) {
+        parseTrailingParamLine(s, pos)
+    } else {
+        parseLambdaBlock(s, pos)
+    }
+}
+
+fun parseBraceLambdaComma(s: String, pos: Int, first: String) -> Int {
+    return if isLambdaParamName(first) {
+        parseTrailingParamLine(s, pos)
+    } else {
+        parseLambdaBlock(s, pos)
+    }
+}
+
+fun parseTrailingArrowReject(s: String, pos: Int) -> Int {
+    // Consume like a lambda so recovery stays aligned; mark type error.
+    typeenv.typeErrorMark()
+    return parseLambdaArrow(s, pos)
+}
+
+fun parseTrailingEmpty(s: String, pos: Int) -> Int {
+    parser.spanMarkBegin(s, pos)
+    var p: Int = parser.advance(s, pos)
+    p = parser.expect(s, p, parser.closeBrace())
+    parser.spanMarkEnd(s, p)
+    emit.setExpr(emit.exprWrap(0, "{\"Lambda\": {\"params\": [], \"body\": {\"ty\": {\"Named\": \"Unit\"}, \"span\": " + parser.spanJson() + ", \"kind\": {\"Block\": []}}, \"implicit_it\": false}}"))
+    return p
+}
+
+fun parseTrailingParamLine(s: String, pos: Int) -> Int {
+    // pos at `{`; params then `;` or newline, then body (reuse arrow binder without `->`).
+    parser.spanMarkBegin(s, pos)
+    var p: Int = parser.advance(s, pos)
+    val snap: String = typeenv.envLocalSnapshot()
+    val fieldsSave: String = emit.accGet(emit.slotFields())
+    emit.accReset(emit.slotFields())
+    p = parseLambdaParamNames(s, p, 0)
+    val params: String = emit.accGet(emit.slotFields())
+    emit.accSet(emit.slotFields(), fieldsSave)
+    // Separator: `;` or already on next line (scannerless: skip `;` if present).
+    p = if parser.cur(s, p) == ";" { parser.advance(s, p) } else { p }
+    // Reject leftover `->` after params.
+    p = if parser.cur(s, p) == "->" {
+        typeenv.typeErrorMark()
+        parser.advance(s, p)
+    } else {
+        p
+    }
+    val saved: String = emit.accGet(emit.slotBlockStmts())
+    emit.accReset(emit.slotBlockStmts())
+    p = parsePlainBlockStmt(s, p, 0)
+    p = parsePlainBlockStmts(s, p, 1)
+    val bodyTag: Int = typeenv.lastExprTyTag()
+    val stmts: String = emit.accGet(emit.slotBlockStmts())
+    emit.accSet(emit.slotBlockStmts(), saved)
+    p = parser.expect(s, p, parser.closeBrace())
+    typeenv.envLocalRestore(snap)
+    parser.spanMarkEnd(s, p)
+    val block: String = emit.stmtsAsBlock(bodyTag, stmts)
+    emit.setExpr(emit.exprWrap(bodyTag, "{\"Lambda\": {\"params\": [" + params + "], \"body\": " + block + ", \"implicit_it\": false}}"))
+    return p
+}
+
+// Phase 6 hybrid brace expr
 fun parseBraceExpr(s: String, pos: Int) -> Int {
     val p1: Int = parser.advance(s, pos)
     val first: String = parser.cur(s, p1)
     val second: String = parser.cur(s, parser.advance(s, p1))
     return when {
+        parser.isBraceClose(first) -> parseEmptyBlockExpr(s, pos)
         second == "=" -> parseStructLit(s, pos)
-        second == "->" -> parsePostfix(s, parseLambdaArrow(s, pos))
-        second == "," -> parsePostfix(s, parseLambdaArrow(s, pos))
-        first == "it" -> parsePostfix(s, parseLambdaIt(s, pos))
+        second == "->" -> parseBraceArrowReject(s, pos)
         first == "val" -> parsePlainBlockExpr(s, pos)
         first == "var" -> parsePlainBlockExpr(s, pos)
         first == "return" -> parsePlainBlockExpr(s, pos)
         first == "for" -> parsePlainBlockExpr(s, pos)
+        first == "it" -> parsePostfix(s, parseLambdaIt(s, pos))
+        second == "," -> parseBraceExprComma(s, pos, first)
+        second == ";" -> parseBraceExprSemi(s, pos, first)
         else -> parsePostfix(s, parseLambdaBlock(s, pos))
     }
+}
+
+fun parseBraceExprComma(s: String, pos: Int, first: String) -> Int {
+    return if isLambdaParamName(first) {
+        parsePostfix(s, parseTrailingParamLine(s, pos))
+    } else {
+        parsePostfix(s, parseLambdaBlock(s, pos))
+    }
+}
+
+fun parseBraceExprSemi(s: String, pos: Int, first: String) -> Int {
+    return if isLambdaParamName(first) {
+        parsePostfix(s, parseTrailingParamLine(s, pos))
+    } else {
+        parsePostfix(s, parseLambdaBlock(s, pos))
+    }
+}
+
+fun parseEmptyBlockExpr(s: String, pos: Int) -> Int {
+    parser.spanMarkBegin(s, pos)
+    var p: Int = parser.advance(s, pos)
+    p = parser.expect(s, p, parser.closeBrace())
+    parser.spanMarkEnd(s, p)
+    emit.setExpr("{\"ty\": {\"Named\": \"Unit\"}, \"span\": " + parser.spanJson() + ", \"kind\": {\"Block\": []}}")
+    typeenv.lastExprTySet(0)
+    return parsePostfix(s, p)
+}
+
+fun parseBraceArrowReject(s: String, pos: Int) -> Int {
+    typeenv.typeErrorMark()
+    return parsePostfix(s, parseLambdaArrow(s, pos))
 }
 
 fun parseStructFields(s: String, pos: Int, sep: Int) -> Int {
@@ -607,10 +738,14 @@ fun parseCall(s: String, pos: Int) -> Int {
 }
 
 fun parseCallTrailingOk(s: String, pos: Int) -> Bool {
-    return if parser.cur(s, pos) != "{" {
+    return if bsIntGet(parser.slotNoTrailingLambda()) != 0 {
         false
     } else {
-        parseCallTrailingLook(s, parser.advance(s, pos))
+        if parser.cur(s, pos) != "{" {
+            false
+        } else {
+            parseCallTrailingLook(s, parser.advance(s, pos))
+        }
     }
 }
 
@@ -620,7 +755,7 @@ fun parseCallTrailingLook(s: String, p1: Int) -> Bool {
     // Keep narrow: do not treat `if f() { … }` then-braces as trailing lambdas.
     // (Rust disables trailing under if-conds via no_trailing_lambda.)
     return when {
-        second == "->" -> true
+        second == ";" -> true
         second == "," -> true
         first == "it" -> true
         else -> false
@@ -778,7 +913,9 @@ fun parseIfExpr(s: String, pos: Int) -> Int {
 }
 
 fun parseIfCondOneLine(s: String, pos: Int) -> Int {
+    bsIntSet(parser.slotNoTrailingLambda(), 1)
     var p: Int = parseCmp(s, pos)
+    bsIntSet(parser.slotNoTrailingLambda(), 0)
     val cond: String = emit.getExpr()
     p = parser.expect(s, p, parser.openBrace())
     typeenv.tyCheckGuard()
@@ -827,7 +964,9 @@ fun parseIfAfterElse(s: String, pos: Int, cond: String, thenE: String, thenTag: 
 }
 
 fun parseWhenCondOrMatch(s: String, pos: Int) -> Int {
+    bsIntSet(parser.slotNoTrailingLambda(), 1)
     var p: Int = parseCmp(s, pos)
+    bsIntSet(parser.slotNoTrailingLambda(), 0)
     val cond: String = emit.getExpr()
     p = parser.expect(s, p, parser.openBrace())
     return when {
@@ -922,10 +1061,27 @@ fun parseIdentExpr(s: String, pos: Int) -> Int {
     val name: String = parser.cur(s, pos)
     emit.sessSet(emit.slotLastIdent(), name)
     val tag: Int = typeenv.lookupTag(name)
-    typeenv.markUndefIdentUse(name, tag)
-    typeenv.collEnvRestore(name)
-    emit.setExprIdent(name, typeenv.tagForExpr(tag))
-    return parsePostfix(s, parser.advance(s, pos))
+    val after: Int = parser.advance(s, pos)
+    val isUp: Bool = isUpperIdent(name)
+    val isBrace: Bool = parser.isBraceOpen(parser.cur(s, after))
+    val looksStruct: Bool = structBraceLook(s, after)
+    val structCtor: Bool = if isUp {
+        if isBrace {
+            looksStruct
+        } else {
+            false
+        }
+    } else {
+        false
+    }
+    return if structCtor {
+        parsePostfix(s, parseStructLitNamed(s, after, name))
+    } else {
+        typeenv.markUndefIdentUse(name, tag)
+        typeenv.collEnvRestore(name)
+        emit.setExprIdent(name, typeenv.tagForExpr(tag))
+        parsePostfix(s, after)
+    }
 }
 
 fun parseBoolLit(s: String, pos: Int, b: Bool) -> Int {
@@ -953,6 +1109,59 @@ fun parseContinueExpr(s: String, pos: Int) -> Int {
     return parser.advance(s, pos)
 }
 
+fun parseLambdaKeywordWithParams(s: String, pos: Int) -> Int {
+    val snap: String = typeenv.envLocalSnapshot()
+    val fieldsSave: String = emit.accGet(emit.slotFields())
+    emit.accReset(emit.slotFields())
+    var p: Int = parseLambdaParamNames(s, pos, 0)
+    val params: String = emit.accGet(emit.slotFields())
+    emit.accSet(emit.slotFields(), fieldsSave)
+    p = parser.expect(s, p, parser.openBrace())
+    val saved: String = emit.accGet(emit.slotBlockStmts())
+    emit.accReset(emit.slotBlockStmts())
+    p = parsePlainBlockStmt(s, p, 0)
+    p = parsePlainBlockStmts(s, p, 1)
+    val bodyTag: Int = typeenv.lastExprTyTag()
+    val stmts: String = emit.accGet(emit.slotBlockStmts())
+    emit.accSet(emit.slotBlockStmts(), saved)
+    p = parser.expect(s, p, parser.closeBrace())
+    typeenv.envLocalRestore(snap)
+    parser.spanMarkEnd(s, p)
+    val block: String = emit.stmtsAsBlock(bodyTag, stmts)
+    emit.setExpr(emit.exprWrap(bodyTag, "{\"Lambda\": {\"params\": [" + params + "], \"body\": " + block + ", \"implicit_it\": false}}"))
+    return p
+}
+
+fun parseLambdaKeyword(s: String, pos: Int) -> Int {
+    parser.spanMarkBegin(s, pos)
+    var p: Int = parser.advance(s, pos)
+    return if parser.isBraceOpen(parser.cur(s, p)) {
+        parsePostfix(s, parseBraceLambda(s, p))
+    } else {
+        parsePostfix(s, parseLambdaKeywordWithParams(s, p))
+    }
+}
+
+fun parseLambdaKeywordOrIdent(s: String, pos: Int) -> Int {
+    val p1: Int = parser.advance(s, pos)
+    val n: String = parser.cur(s, p1)
+    return if parser.isBraceOpen(n) {
+        parseLambdaKeyword(s, pos)
+    } else {
+        val p2: Int = parser.advance(s, p1)
+        val n2: String = parser.cur(s, p2)
+        if n2 == "," {
+            parseLambdaKeyword(s, pos)
+        } else {
+            if parser.isBraceOpen(n2) {
+                parseLambdaKeyword(s, pos)
+            } else {
+                parseIdentExpr(s, pos)
+            }
+        }
+    }
+}
+
 fun parsePrimaryKw(s: String, pos: Int, k: String) -> Int {
     return when k {
         "List" -> parseListLit(s, pos)
@@ -963,6 +1172,7 @@ fun parsePrimaryKw(s: String, pos: Int, k: String) -> Int {
         "when" -> parseWhenExpr(s, pos)
         "if" -> parseIfExpr(s, pos)
         "(" -> parseParen(s, pos)
+        "lambda" -> parseLambdaKeywordOrIdent(s, pos)
         else -> parseIdentExpr(s, pos)
     }
 }

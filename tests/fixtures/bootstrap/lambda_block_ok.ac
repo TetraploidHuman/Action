@@ -1,4 +1,4 @@
-// M123: no-param brace lambda — `{ 21 * 2 }()` → 42.
+// M123: no-param brace lambda — `lambda { 21 * 2 }()` → 42.
 fun main() -> Int {
-    return { 21 * 2 }()
+    return lambda { 21 * 2 }()
 }

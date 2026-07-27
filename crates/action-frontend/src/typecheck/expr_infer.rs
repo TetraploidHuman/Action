@@ -524,12 +524,24 @@ impl TypeChecker {
                 }
                 Ok(engine.fresh_var())
             }
-            ExprKind::StructLiteral(fields) => {
-                let field_names: Vec<String> = fields.iter().map(|(n, _)| n.clone()).collect();
-                if let Some(struct_info) = self.registry.find_struct_by_fields(&field_names) {
-                    Ok(Type::Named(struct_info.name.clone()))
+            ExprKind::StructLiteral { type_name, fields } => {
+                if let Some(name) = type_name {
+                    if self.registry.get_struct(name).is_some() {
+                        Ok(Type::Named(name.clone()))
+                    } else {
+                        Err(CompilerError::new(format!(
+                            "Unknown struct type '{}'",
+                            name
+                        ))
+                        .with_span(expr.span))
+                    }
                 } else {
-                    Ok(engine.fresh_var())
+                    let field_names: Vec<String> = fields.iter().map(|(n, _)| n.clone()).collect();
+                    if let Some(struct_info) = self.registry.find_struct_by_fields(&field_names) {
+                        Ok(Type::Named(struct_info.name.clone()))
+                    } else {
+                        Ok(engine.fresh_var())
+                    }
                 }
             }
             ExprKind::Assign { value, .. } => self.hm_infer_expr(value, locals, engine),

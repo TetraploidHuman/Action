@@ -1,7 +1,7 @@
 // M189: PlainBlock multi-stmt brace lambda — mirror lambda_stmts_ok → 42.
-// Call site in PlainBlock; `{ 21; 21 * 2 }()` lives in helper (if-arm brace disambiguation).
+// Call site in PlainBlock; `lambda { 21; 21 * 2 }()` lives in helper (if-arm brace disambiguation).
 fun once() -> Int {
-    return { 21; 21 * 2 }()
+    return lambda { 21; 21 * 2 }()
 }
 
 fun main() -> Int {

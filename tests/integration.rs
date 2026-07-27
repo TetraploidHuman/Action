@@ -755,7 +755,7 @@ grade: B\n\
 max: 5\n\
 Color: red\n\
 unwrap: 42\n\
-lambda(10, 20) = 30\n\
+addFn(10, 20) = 30\n\
 mapped len: 5\n\
 addBase(5): 15\n\
 first: 1, empty list head fallback: -1\n\
@@ -1308,6 +1308,19 @@ fn test_ufcs_chain() {
 #[test]
 fn test_extension() {
     assert_eq!(run_example("extension.ac"), "108");
+}
+
+#[test]
+fn test_type_methods() {
+    assert_eq!(run_example("type_methods.ac"), "30112200");
+}
+
+#[test]
+fn test_error_self_field_assign() {
+    assert_compile_error(
+        "test_error_self_field_assign.ac",
+        "Cannot assign to fields of 'self'",
+    );
 }
 
 #[test]

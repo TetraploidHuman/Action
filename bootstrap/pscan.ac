@@ -155,7 +155,12 @@ fun preScanTypeAlias(s: String, pos: Int) -> Int {
     val name: String = parser.cur(s, p)
     p = parser.advance(s, p)
     typeenv.structTypeRegister(name)
-    p = parser.expect(s, p, "=")
+    // Phase 6: `type Name { … }` or legacy `type Name = { … }`.
+    p = if parser.isBraceOpen(parser.cur(s, p)) {
+        p
+    } else {
+        parser.expect(s, p, "=")
+    }
     p = skipBalancedBlock(s, p)
     return p
 }

@@ -1,5 +1,5 @@
 fun main() {
     val x = 10
-    val f = { a -> x + a }
+    val f = lambda a { x + a }
     print(f(32))
 }

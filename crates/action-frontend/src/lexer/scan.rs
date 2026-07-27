@@ -738,6 +738,7 @@ impl Lexer {
             "const" => TokenKind::Const,
             "copy" => TokenKind::Copy,
             "extension" => TokenKind::Extension,
+            "lambda" => TokenKind::Lambda,
             "as" => TokenKind::As,
             "true" => TokenKind::BoolLiteral(true),
             "false" => TokenKind::BoolLiteral(false),
@@ -991,6 +992,30 @@ impl Lexer {
 
     /// Get the next token
     pub fn next_token(&mut self) -> Token {
+        // Skip leading trivia first so `span` points at the lexeme (not prior
+        // whitespace/newlines). Needed for Phase 5 trailing param-line detection.
+        loop {
+            self.skip_whitespace();
+            if self.is_eof() {
+                break;
+            }
+            if self.current() == Some('/') && self.peek_next() == Some('/') {
+                self.advance();
+                self.advance();
+                self.skip_line_comment();
+                continue;
+            }
+            if self.current() == Some('/') && self.peek_next() == Some('*') {
+                self.advance();
+                self.advance();
+                if self.current() == Some('*') && self.peek_next() != Some('/') {
+                    self.advance();
+                }
+                self.skip_block_comment();
+                continue;
+            }
+            break;
+        }
         let start = self.span_start();
         let kind = self.next_token_kind();
         let end = self.span_start();

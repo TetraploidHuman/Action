@@ -243,6 +243,7 @@ pub fn resolve_imports(program: &Program, search_dirs: &[PathBuf]) -> Result<Vec
                             name: imported_name,
                             type_params: type_params.clone(),
                             definition: definition.clone(),
+                            methods: vec![],
                             span: Span::default(),
                         });
                     }
@@ -474,7 +475,7 @@ pub fn transform_module_access(program: &mut Program) {
                     transform_expr(e, flat, prefixed);
                 }
             }
-            ExprKind::StructLiteral(fields) => {
+            ExprKind::StructLiteral { fields, .. } => {
                 for (_, e) in fields.iter_mut() {
                     transform_expr(e, flat, prefixed);
                 }

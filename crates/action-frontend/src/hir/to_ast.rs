@@ -89,11 +89,13 @@ impl HirStmt {
                 name,
                 type_params,
                 definition,
+                methods,
                 span,
             } => Stmt::TypeAlias {
                 name: name.clone(),
                 type_params: type_params.clone(),
                 definition: definition.clone(),
+                methods: methods.iter().map(|m| m.to_stmt()).collect(),
                 span: *span,
             },
             HirStmt::Enum {
@@ -209,12 +211,13 @@ impl HirExpr {
             HirExprKind::Block(stmts) => {
                 ExprKind::Block(stmts.iter().map(HirStmt::to_stmt).collect()).into()
             }
-            HirExprKind::StructLiteral(fields) => ExprKind::StructLiteral(
-                fields
+            HirExprKind::StructLiteral { type_name, fields } => ExprKind::StructLiteral {
+                type_name: type_name.clone(),
+                fields: fields
                     .iter()
                     .map(|(n, e)| (n.clone(), e.to_expr()))
                     .collect(),
-            )
+            }
             .into(),
             HirExprKind::MapLiteral(entries) => ExprKind::MapLiteral(
                 entries

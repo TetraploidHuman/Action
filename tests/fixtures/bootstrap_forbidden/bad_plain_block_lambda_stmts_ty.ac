@@ -1,6 +1,6 @@
 // M189: multi-stmt lambda last expr type error (call site in PlainBlock; dual frontend).
 fun once() -> Int {
-    return { 21; 1 and true }()
+    return lambda { 21; 1 and true }()
 }
 
 fun main() -> Int {

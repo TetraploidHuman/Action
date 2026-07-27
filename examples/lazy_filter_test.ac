@@ -4,28 +4,28 @@ fun main() {
     // lazy_list(0){it+1} generates 0,1,2,3,...
     // Map{it*it} transforms to 0,1,4,9,...
     // take(5) takes first 5 -> [0,1,4,9,16]
-    val squares = toList(lazyTake(5, lazyMap({it*it}, lazy_list(0){it+1})))
+    val squares = toList(lazyTake(5, lazyMap(lambda { it*it }, lazy_list(0){it+1})))
     print("squares: ")
     println(squares)
 
     // Test 2: infinite sequence with filter (even numbers)
     // lazy_list(0){it+1}.filter{it%2==0}.take(5)
     // should produce [0,2,4,6,8]
-    val evens = toList(lazyTake(5, lazyFilter({it%2==0}, lazy_list(0){it+1})))
+    val evens = toList(lazyTake(5, lazyFilter(lambda { it%2==0 }, lazy_list(0){it+1})))
     print("evens: ")
     println(evens)
 
     // Test 3: Map then filter
     // lazy_list(1){it+1}.Map{it*it}.filter{it>10}.take(3)
     // 1,4,9,16,25,... filtered >10: 16,25,36
-    val r1 = toList(lazyTake(3, lazyFilter({it>10}, lazyMap({it*it}, lazy_list(1){it+1}))))
+    val r1 = toList(lazyTake(3, lazyFilter(lambda { it>10 }, lazyMap(lambda { it*it }, lazy_list(1){it+1}))))
     print("mapFilter: ")
     println(r1)
 
     // Test 4: filter then Map
     // lazy_list(0){it+1}.filter{it%2==0}.Map{it*it}.take(4)
     // 0,1,2,3,4,5,6,7... filter even: 0,2,4,6... Map: 0,4,16,36
-    val r2 = toList(lazyTake(4, lazyMap({it*it}, lazyFilter({it%2==0}, lazy_list(0){it+1}))))
+    val r2 = toList(lazyTake(4, lazyMap(lambda { it*it }, lazyFilter(lambda { it%2==0 }, lazy_list(0){it+1}))))
     print("filter_map: ")
     println(r2)
 

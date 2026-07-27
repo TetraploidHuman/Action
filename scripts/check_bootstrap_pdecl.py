@@ -14,6 +14,7 @@ FIXTURE_MODLOAD = ROOT / "tests" / "fixtures" / "bootstrap" / "modload.ac"
 
 FUN_START = re.compile(r"^fun\s+(\w+)\s*\(")
 EXPECTED_FUNS = {
+    "advanceTypeFieldSep",
     "parseEnumVars",
     "parseEnumVar",
     "parseEnum",

@@ -1,18 +1,18 @@
 fun main() {
     val nums = List[1, 2, 3, 4, 5]
 
-    val hit = findIndex({ x -> x == 3 }, nums) or { -1 }
+    val hit = findIndex(lambda x { x == 3 }, nums) or { -1 }
     if hit == 2 { print(1) } else { print(0) }
 
-    val flat = flatMap(nums) { x -> List[x] }
+    val flat = flatMap(nums) { x; List[x] }
     print(flat.len())
 
-    val sorted = sortedBy(nums) { x -> -x }
+    val sorted = sortedBy(nums) { x; -x }
     print(sorted[0] or { 0 })
     print(sorted[4] or { 0 })
 
     // partition returns {evens, odds}; slot index is safe, list index needs or {}
-    val parts = partition(nums) { x -> x % 2 == 0 }
+    val parts = partition(nums) { x; x % 2 == 0 }
     print(parts[0][0] or { 0 })
     print(parts[0][1] or { 0 })
     print(parts[1][0] or { 0 })
