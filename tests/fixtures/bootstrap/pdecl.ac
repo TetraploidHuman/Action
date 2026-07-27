@@ -89,13 +89,47 @@ fun parseTypeAlias(s: String, pos: Int, sep: Int) -> Int {
     val name: String = parser.cur(s, p)
     emit.sessSet(emit.slotStructName(), name)
     p = parser.advance(s, p)
-    // Phase 6: `type Point { … }` or legacy `type Point = { … }`.
-    p = if parser.isBraceOpen(parser.cur(s, p)) {
-        p
+    // `type Point { … }` record, or `type UserId = Int` pure alias.
+    // Legacy `type Name = { … }` is rejected (typeError).
+    return if parser.isBraceOpen(parser.cur(s, p)) {
+        parseTypeAliasStruct(s, p, name)
     } else {
-        parser.expect(s, p, "=")
+        parseTypeAliasAfterEq(s, p, name)
     }
-    p = parser.expect(s, p, parser.openBrace())
+}
+
+fun parseTypeAliasAfterEq(s: String, pos: Int, name: String) -> Int {
+    var p: Int = parser.expect(s, pos, "=")
+    return if parser.isBraceOpen(parser.cur(s, p)) {
+        parseTypeAliasLegacyReject(s, p, name)
+    } else {
+        parseTypeAliasNamed(s, p, name)
+    }
+}
+
+fun parseTypeAliasLegacyReject(s: String, pos: Int, name: String) -> Int {
+    typeenv.typeErrorMark()
+    // Recover by parsing as struct body so the rest of the file can continue.
+    return parseTypeAliasStruct(s, pos, name)
+}
+
+fun parseTypeAliasNamed(s: String, pos: Int, name: String) -> Int {
+    val target: String = parser.cur(s, pos)
+    var p: Int = parser.advance(s, pos)
+    parser.spanMarkEnd(s, p)
+    emit.jOut("{\"TypeAlias\": {\"name\": \"")
+    emit.jOut(name)
+    emit.jOut("\", \"type_params\": [], \"definition\": ")
+    emit.jTyNamed(target)
+    emit.jOut(", \"span\": ")
+    emit.jSpan()
+    emit.jOut("}}")
+    return p
+}
+
+fun parseTypeAliasStruct(s: String, pos: Int, name: String) -> Int {
+    var p: Int = parser.expect(s, pos, parser.openBrace())
+    typeenv.structTypeRegister(name)
     emit.jOut("{\"TypeAlias\": {\"name\": \"")
     emit.jOut(name)
     emit.jOut("\", \"type_params\": [], \"definition\": {\"Struct\": [")
@@ -104,7 +138,6 @@ fun parseTypeAlias(s: String, pos: Int, sep: Int) -> Int {
     emit.jOut("]}, \"span\": ")
     emit.jSpan()
     emit.jOut("}}")
-    typeenv.structTypeRegister(name)
     return p
 }
 

@@ -1,6 +1,6 @@
 # 语法改革契约（Syntax Reform）
 
-> 状态：Phase 0–7 已完成（Rust 前端 + Path B 对齐 + 文档清理）。  
+> 状态：Phase 0–7 已完成；旧语法清理（匿名构造 / `type Name = { }`）已落地；Path B 方法与 `or`/`and` 条件挂起仍延后。  
 > 制定：2026-07-26
 
 ## 终态摘要
@@ -139,8 +139,15 @@
 - 用户可见示例与 `doc/syntax-reform.md` 终态摘要一致
 - 无代码变更；语义以 Phase 0–6 测试为准
 
+## 旧语法清理（Phase 7 后）
+
+- **匿名构造废除**：`{ x = … }` / `{ x, y }` → 解析错误（提示 `TypeName { field = … }`）
+- **旧 record typedef 废除**：`type Name = { … }` → 解析错误（提示 `type Name { fields }`）；`type A = Int` 保留
+- **Path B**：同步拒收匿名构造与 `type = { }`；支持纯别名 `type UserId = Int` 解析
+- **仍延后**：Path B type 体内方法；`if a or b {` / `and` 条件挂起根因（继续用嵌套 `if`）
+
 ## 刻意不做（本轮改革）
 
 - class / 继承 / `var self`
 - Action 侧 codegen（除上述 mapFold terminator 修复）
-- 匿名与 `TypeName { }` 长期双轨（Phase 1 结束删除匿名构造）
+- ~~匿名与 `TypeName { }` 长期双轨~~（已删除匿名构造）

@@ -1,7 +1,7 @@
 fun main() {
     // Connect to a port where nothing is listening — transport error (status 0)
     val result = httpRequest("GET", "http://localhost:1/", "", "") or {
-        { status = 0, body = "" }
+        HttpResponse { status = 0, body = "" }
     }
     println(result.status)
 }

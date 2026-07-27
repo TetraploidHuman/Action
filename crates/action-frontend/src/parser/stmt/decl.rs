@@ -31,11 +31,16 @@ impl Parser {
         };
 
         // Phase 2/3: `type Point { fields…; fun … }`
-        // Legacy: `type Point = { … }` / `type UserId = Int`
+        // Pure alias: `type UserId = Int` (record form `type Name = { … }` abolished)
         let (definition, methods) = if self.current_kind() == TokenKind::LBrace {
             self.parse_type_body(&name, &type_params)?
         } else {
             self.expect(TokenKind::Eq)?;
+            if self.current_kind() == TokenKind::LBrace {
+                return Err(self.error(
+                    "Use `type Name { fields }` for record types; `type Name = { … }` is no longer valid",
+                ));
+            }
             (self.parse_type()?, vec![])
         };
 

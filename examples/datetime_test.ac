@@ -1,21 +1,21 @@
 // Test Date/DateTime/Random builtin types
 fun main() {
-    // Create Date using struct literal
-    val d = {year = 2026, month = 6, day = 1}
+    // Create Date using named struct literal
+    val d = Date { year = 2026, month = 6, day = 1 }
     print("date year: ")
     print(d.year)
     print(" month: ")
     print(d.month)
     println("")
 
-    // Create DateTime using struct literal
-    val dt = {year = 2026, month = 6, day = 1, hour = 12, minute = 30, second = 0}
+    // Create DateTime using named struct literal
+    val dt = DateTime { year = 2026, month = 6, day = 1, hour = 12, minute = 30, second = 0 }
     print("datetime hour: ")
     print(dt.hour)
     println("")
 
-    // Create Random using struct literal
-    val rng = {seed = 42}
+    // Create Random using named struct literal
+    val rng = Random { seed = 42 }
     print("random seed: ")
     print(rng.seed)
     println("")

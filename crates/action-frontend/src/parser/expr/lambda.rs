@@ -122,8 +122,8 @@ impl Parser {
         .into())
     }
 
-    /// Phase 4: expression-position `{ … }` is an immediately-executed block (or deprecated
-    /// anonymous struct). Closures use `lambda … { }`. Trailing uses `parse_trailing_lambda_brace`.
+    /// Phase 4+: expression-position `{ … }` is an immediately-executed block.
+    /// Closures use `lambda … { }`. Struct construction requires `TypeName { … }`.
     pub(crate) fn parse_immediate_block(&mut self) -> Result<Expr, ParseError> {
         self.advance(); // skip '{'
 
@@ -151,8 +151,8 @@ impl Parser {
             ));
         }
 
-        // Deprecated anonymous struct `{ x = … }` / `{ x, y }`
-        let is_struct = if matches!(self.current_kind(), TokenKind::Ident(_)) {
+        // Anonymous `{ x = … }` / `{ x, y }` construction abolished — require `TypeName { … }`.
+        let looks_like_anon_struct = if matches!(self.current_kind(), TokenKind::Ident(_)) {
             match self.peek2() {
                 TokenKind::Eq | TokenKind::Colon => true,
                 TokenKind::Comma => true,
@@ -161,8 +161,10 @@ impl Parser {
         } else {
             false
         };
-        if is_struct {
-            return self.parse_struct_literal(None);
+        if looks_like_anon_struct {
+            return Err(self.error(
+                "Use `TypeName { field = … }` for struct construction; anonymous `{ x = … }` / `{ x, y }` is no longer valid",
+            ));
         }
 
         // Immediate block (single expr or multi-stmt)

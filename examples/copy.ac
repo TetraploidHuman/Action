@@ -1,4 +1,6 @@
 // Copy expression: creates a shallow copy of a value
+type Point { x: Int, y: Int }
+
 fun main() {
     // Copy of basic types (no-op, values are already copied)
     val a = 42
@@ -6,7 +8,7 @@ fun main() {
     print(b)  // 42
 
     // Copy of a struct
-    val point = {x = 10, y = 20}
+    val point = Point { x = 10, y = 20 }
     val p2 = copy point
     print(p2.x)  // 10
     print(p2.y)  // 20

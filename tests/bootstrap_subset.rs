@@ -6130,3 +6130,29 @@ fn test_bootstrap_hir_codegen_compiler_ac() {
         "compiler.ac",
     );
 }
+
+/// Syntax cleanup: reject anonymous `{ x = }` / legacy `type Name = { }` on Path B;
+/// accept pure alias `type UserId = Int`.
+#[test]
+fn test_bootstrap_rejects_anon_struct_and_type_eq_struct() {
+    for name in ["bad_anon_struct", "bad_type_eq_struct"] {
+        let path = fixtures_root().join(format!("bootstrap_forbidden/{name}.ac"));
+        let output = run_bootstrap_compiler_on(&path);
+        assert!(
+            !output.status.success(),
+            "bootstrap compiler should exit 1 on {name}.ac (stderr: {})",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
+#[test]
+fn test_bootstrap_accepts_type_alias_int_ok() {
+    let path = fixtures_root().join("bootstrap/type_alias_int_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept type_alias_int_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}

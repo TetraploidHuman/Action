@@ -1,46 +1,46 @@
 // Deterministic datetime call APIs with calendar-correct addDays/addHours
 // and format-honoring parseDate (sscanf three-%d formats).
 fun main() {
-    val ok = date(2026, 6, 1) or { {year = 0, month = 0, day = 0} }
-    val bad = date(2026, 13, 1) or { {year = 0, month = 0, day = 0} }
+    val ok = date(2026, 6, 1) or { Date { year = 0, month = 0, day = 0 } }
+    val bad = date(2026, 13, 1) or { Date { year = 0, month = 0, day = 0 } }
     print(ok.year)
     print(bad.year)
     print(weekday(ok))
 
     // Month rollover: 2026-06-20 + 14 → 2026-07-04
-    val roll = date(2026, 6, 20) or { {year = 0, month = 0, day = 0} }
+    val roll = date(2026, 6, 20) or { Date { year = 0, month = 0, day = 0 } }
     val roll2 = addDays(roll, 14)
     print(roll2.year)
     print(roll2.month)
     print(roll2.day)
 
     // Leap vs non-leap: Feb 28 + 1
-    val leap = addDays(date(2024, 2, 28) or { {year = 0, month = 0, day = 0} }, 1)
+    val leap = addDays(date(2024, 2, 28) or { Date { year = 0, month = 0, day = 0 } }, 1)
     print(leap.month)
     print(leap.day)
-    val nonleap = addDays(date(2025, 2, 28) or { {year = 0, month = 0, day = 0} }, 1)
+    val nonleap = addDays(date(2025, 2, 28) or { Date { year = 0, month = 0, day = 0 } }, 1)
     print(nonleap.month)
     print(nonleap.day)
 
     val d2 = addDays(ok, 14)
     print(diffDays(ok, d2))
 
-    val p = parseDate("%d-%d-%d", "2026-06-15") or { {year = 0, month = 0, day = 0} }
+    val p = parseDate("%d-%d-%d", "2026-06-15") or { Date { year = 0, month = 0, day = 0 } }
     print(p.year)
     print(p.day)
 
     // Format string is honored: slash separator + mismatch → fallback
-    val q = parseDate("%d/%d/%d", "2026/07/04") or { {year = 0, month = 0, day = 0} }
+    val q = parseDate("%d/%d/%d", "2026/07/04") or { Date { year = 0, month = 0, day = 0 } }
     print(q.year)
     print(q.month)
     print(q.day)
-    val mism = parseDate("%d/%d/%d", "2026-06-15") or { {year = 9, month = 9, day = 9} }
+    val mism = parseDate("%d/%d/%d", "2026-06-15") or { Date { year = 9, month = 9, day = 9 } }
     print(mism.year)
     print(mism.day)
 
     // Hour overnight carry: 20:00 + 8h → 04:00 next day
     val dt = datetime(2026, 6, 1, 20, 0, 0) or {
-        {year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0}
+        DateTime { year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0 }
     }
     val dt2 = addHours(dt, 8)
     print(dt2.day)

@@ -35,7 +35,7 @@ fun chatOnce(input: String, msgs: String) -> String = {
     val body = "{\"model\": \"deepseek-chat\", \"messages\": [" + newMsgs + "]}"
     val headers = "Authorization: Bearer " + apiToken() + "\nContent-Type: application/json"
     val resp = httpRequest("POST", "https://api.deepseek.com/chat/completions", headers, body) or {
-        { status = 0, body = "" }
+        HttpResponse { status = 0, body = "" }
     }
     extractContent(resp.body)
 }

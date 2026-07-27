@@ -1,0 +1,5 @@
+type UserId = Int
+
+fun main() -> Int {
+    return 1
+}

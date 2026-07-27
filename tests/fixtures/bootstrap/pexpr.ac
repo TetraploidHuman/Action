@@ -123,7 +123,7 @@ fun isUpperIdent(name: String) -> Bool {
 }
 
 fun structBraceLook(s: String, pos: Int) -> Bool {
-    // After `{`: `ident =` starts a struct literal (named or anonymous).
+    // After `{`: `ident =` starts a named struct literal (`TypeName { … }` only).
     val p1: Int = parser.advance(s, pos)
     val first: String = parser.cur(s, p1)
     val second: String = parser.cur(s, parser.advance(s, p1))
@@ -581,7 +581,7 @@ fun parseBraceExpr(s: String, pos: Int) -> Int {
     val second: String = parser.cur(s, parser.advance(s, p1))
     return when {
         parser.isBraceClose(first) -> parseEmptyBlockExpr(s, pos)
-        second == "=" -> parseStructLit(s, pos)
+        second == "=" -> parseAnonStructReject(s, pos)
         second == "->" -> parseBraceArrowReject(s, pos)
         first == "val" -> parsePlainBlockExpr(s, pos)
         first == "var" -> parsePlainBlockExpr(s, pos)
@@ -623,6 +623,12 @@ fun parseEmptyBlockExpr(s: String, pos: Int) -> Int {
 fun parseBraceArrowReject(s: String, pos: Int) -> Int {
     typeenv.typeErrorMark()
     return parsePostfix(s, parseLambdaArrow(s, pos))
+}
+
+// Anonymous `{ x = … }` abolished — require `TypeName { … }` (Rust Phase A).
+fun parseAnonStructReject(s: String, pos: Int) -> Int {
+    typeenv.typeErrorMark()
+    return parsePostfix(s, parseStructLit(s, pos))
 }
 
 fun parseStructFields(s: String, pos: Int, sep: Int) -> Int {

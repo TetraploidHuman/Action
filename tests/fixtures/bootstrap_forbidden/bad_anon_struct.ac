@@ -1,0 +1,6 @@
+type Point { x: Int, y: Int }
+
+fun main() -> Int {
+    val p = { x = 1, y = 2 }
+    return p.x
+}

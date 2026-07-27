@@ -841,11 +841,11 @@ mod tests {
     fn test_m57_datetime_apis_typecheck() {
         let errors = check_source(
             r#"fun main() {
-                val d = date(2026, 6, 1) or { {year = 0, month = 0, day = 0} }
+                val d = date(2026, 6, 1) or { Date { year = 0, month = 0, day = 0 } }
                 val dt = datetime(2026, 6, 1, 12, 0, 0) or {
-                    {year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0}
+                    DateTime { year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0 }
                 }
-                val p = parseDate("%d-%d-%d", "2026-06-15") or { {year = 0, month = 0, day = 0} }
+                val p = parseDate("%d-%d-%d", "2026-06-15") or { Date { year = 0, month = 0, day = 0 } }
                 val _t = today()
                 val _n = now()
                 println(year(d))
@@ -1013,9 +1013,9 @@ mod tests {
     fn test_m65_unknown_struct_field_e013() {
         let bad = check_source(
             r#"
-            type Point = { x: Int, y: Int }
+            type Point { x: Int, y: Int }
             fun main() {
-                val p = { x = 1, y = 2 }
+                val p = Point { x = 1, y = 2 }
                 println(p.z)
             }
             "#,
@@ -1029,9 +1029,9 @@ mod tests {
 
         let ok = check_source(
             r#"
-            type Point = { x: Int, y: Int }
+            type Point { x: Int, y: Int }
             fun main() {
-                val p = { x = 1, y = 2 }
+                val p = Point { x = 1, y = 2 }
                 println(p.x + p.y)
             }
             "#,
@@ -1046,10 +1046,10 @@ mod tests {
         // UFCS on a named struct must not be misdiagnosed as missing field.
         let ufcs = check_source(
             r#"
-            type Point = { x: Int, y: Int }
+            type Point { x: Int, y: Int }
             fun doubleX(p: Point) -> Int { p.x * 2 }
             fun main() {
-                val p = { x = 3, y = 4 }
+                val p = Point { x = 3, y = 4 }
                 println(p.doubleX())
             }
             "#,
@@ -1068,9 +1068,9 @@ mod tests {
     fn test_m67_struct_literal_and_assign_hygiene() {
         let missing = check_source(
             r#"
-            type Point = { x: Int, y: Int }
+            type Point { x: Int, y: Int }
             fun main() {
-                val p: Point = { x = 1 }
+                val p: Point = Point { x = 1 }
             }
             "#,
         );
@@ -1084,9 +1084,9 @@ mod tests {
 
         let extra = check_source(
             r#"
-            type Point = { x: Int, y: Int }
+            type Point { x: Int, y: Int }
             fun main() {
-                val p: Point = { x = 1, y = 2, z = 3 }
+                val p: Point = Point { x = 1, y = 2, z = 3 }
             }
             "#,
         );
@@ -1100,9 +1100,9 @@ mod tests {
 
         let ok = check_source(
             r#"
-            type Point = { x: Int, y: Int }
+            type Point { x: Int, y: Int }
             fun main() {
-                val p: Point = { y = 2, x = 1 }
+                val p: Point = Point { y = 2, x = 1 }
                 println(p.x + p.y)
             }
             "#,
@@ -1118,9 +1118,9 @@ mod tests {
 
         let assign = check_source(
             r#"
-            type Point = { x: Int, y: Int }
+            type Point { x: Int, y: Int }
             fun main() {
-                var p: Point = { x = 1, y = 2 }
+                var p: Point = Point { x = 1, y = 2 }
                 p.z = 3
             }
             "#,
@@ -1138,8 +1138,8 @@ mod tests {
     fn test_m68_struct_literal_return_and_args() {
         let ret_missing = check_source(
             r#"
-            type Point = { x: Int, y: Int }
-            fun make() -> Point { { x = 1 } }
+            type Point { x: Int, y: Int }
+            fun make() -> Point { Point { x = 1 } }
             fun main() { }
             "#,
         );
@@ -1153,8 +1153,8 @@ mod tests {
 
         let ret_stmt = check_source(
             r#"
-            type Point = { x: Int, y: Int }
-            fun make() -> Point { return { x = 1 } }
+            type Point { x: Int, y: Int }
+            fun make() -> Point { return Point { x = 1 } }
             fun main() { }
             "#,
         );
@@ -1168,9 +1168,9 @@ mod tests {
 
         let arg_missing = check_source(
             r#"
-            type Point = { x: Int, y: Int }
+            type Point { x: Int, y: Int }
             fun take(p: Point) -> Int { p.x }
-            fun main() { println(take({ x = 1 })) }
+            fun main() { println(take(Point { x = 1 })) }
             "#,
         );
         assert!(
@@ -1183,9 +1183,9 @@ mod tests {
 
         let arg_extra = check_source(
             r#"
-            type Point = { x: Int, y: Int }
+            type Point { x: Int, y: Int }
             fun take(p: Point) -> Int { p.x }
-            fun main() { println(take({ x = 1, y = 2, z = 3 })) }
+            fun main() { println(take(Point { x = 1, y = 2, z = 3 })) }
             "#,
         );
         assert!(
@@ -1198,13 +1198,13 @@ mod tests {
 
         let ok = check_source(
             r#"
-            type Point = { x: Int, y: Int }
-            fun make() -> Point { { y = 2, x = 1 } }
+            type Point { x: Int, y: Int }
+            fun make() -> Point { Point { y = 2, x = 1 } }
             fun take(p: Point) -> Int { p.x + p.y }
             fun main() {
                 println(take(make()))
-                var p: Point = { x = 0, y = 0 }
-                p = { y = 9, x = 8 }
+                var p: Point = Point { x = 0, y = 0 }
+                p = Point { y = 9, x = 8 }
                 println(p.x)
             }
             "#,
@@ -1343,9 +1343,9 @@ mod tests {
     fn test_field_index_assign_rejects_immutable_root() {
         let errors = check_source(
             r#"
-            type Point = {x: Int, y: Int}
+            type Point { x: Int, y: Int }
             fun main() -> Int {
-                val p: Point = {x = 0, y = 0}
+                val p: Point = Point { x = 0, y = 0 }
                 p.x = 1
                 return p.x
             }
@@ -1496,7 +1496,7 @@ mod tests {
     #[test]
     fn test_let_named_init_mismatch() {
         let errors = check_source(
-            "type Point = {x: Int, y: Int}\n\
+            "type Point { x: Int, y: Int }\n\
              fun main() -> Int {\n\
                  val p: Point = 1\n\
                  return 0\n\
@@ -1514,9 +1514,9 @@ mod tests {
     #[test]
     fn test_assign_named_rhs_mismatch() {
         let errors = check_source(
-            "type Point = {x: Int, y: Int}\n\
+            "type Point { x: Int, y: Int }\n\
              fun main() -> Int {\n\
-                 var p: Point = {x = 0, y = 0}\n\
+                 var p: Point = Point { x = 0, y = 0 }\n\
                  p = 1\n\
                  return 0\n\
              }",
@@ -1536,9 +1536,9 @@ mod tests {
     #[test]
     fn test_field_assign_type_mismatch() {
         let errors = check_source(
-            "type Point = {x: Int, y: Int}\n\
+            "type Point { x: Int, y: Int }\n\
              fun main() -> Int {\n\
-                 var p: Point = {x = 0, y = 0}\n\
+                 var p: Point = Point { x = 0, y = 0 }\n\
                  p.x = true\n\
                  return 0\n\
              }",
@@ -1555,9 +1555,9 @@ mod tests {
     #[test]
     fn test_field_assign_unknown() {
         let errors = check_source(
-            "type Point = {x: Int, y: Int}\n\
+            "type Point { x: Int, y: Int }\n\
              fun main() -> Int {\n\
-                 var p: Point = {x = 0, y = 0}\n\
+                 var p: Point = Point { x = 0, y = 0 }\n\
                  p.z = 1\n\
                  return 0\n\
              }",
@@ -1959,9 +1959,9 @@ mod tests {
     fn test_struct_field_type_mismatch() {
         // M70: brace literal under Named annotation (not the stale `Person { … }` form).
         let src = r#"
-            type Person = { name: String, age: Int }
+            type Person { name: String, age: Int }
             fun main() {
-                val p: Person = { name = "Alice", age = "twenty" }
+                val p: Person = Person { name = "Alice", age = "twenty" }
             }
             "#;
         let errors = check_source(src);
@@ -1978,9 +1978,9 @@ mod tests {
     fn test_m70_struct_literal_field_value_types() {
         let bad = check_source(
             r#"
-            type Point = { x: Int, y: Int }
+            type Point { x: Int, y: Int }
             fun main() {
-                val p: Point = { y = 1, x = "hi" }
+                val p: Point = Point { y = 1, x = "hi" }
             }
             "#,
         );
@@ -1993,8 +1993,8 @@ mod tests {
 
         let ret = check_source(
             r#"
-            type Point = { x: Int, y: Int }
-            fun make() -> Point { { x = true, y = 2 } }
+            type Point { x: Int, y: Int }
+            fun make() -> Point { Point { x = true, y = 2 } }
             fun main() { }
             "#,
         );
@@ -2007,11 +2007,11 @@ mod tests {
 
         let ok = check_source(
             r#"
-            type Person = { name: String, age: Int }
+            type Person { name: String, age: Int }
             fun take(p: Person) -> Int { p.age }
             fun main() {
-                val p: Person = { age = 20, name = "Alice" }
-                println(take({ name = "Bob", age = 21 }))
+                val p: Person = Person { age = 20, name = "Alice" }
+                println(take(Person { name = "Bob", age = 21 }))
             }
             "#,
         );
@@ -2027,9 +2027,9 @@ mod tests {
     fn test_m71_untyped_unique_shape_field_value_types() {
         let bad = check_source(
             r#"
-            type Point = { x: Int, y: Int }
+            type Point { x: Int, y: Int }
             fun main() {
-                val p = { x = "a", y = 1 }
+                val p = Point { x = "a", y = 1 }
                 println(p.x)
             }
             "#,
@@ -2043,9 +2043,9 @@ mod tests {
 
         let ok = check_source(
             r#"
-            type Point = { x: Int, y: Int }
+            type Point { x: Int, y: Int }
             fun main() {
-                val p = { y = 2, x = 1 }
+                val p = Point { y = 2, x = 1 }
                 println(p.x + p.y)
             }
             "#,

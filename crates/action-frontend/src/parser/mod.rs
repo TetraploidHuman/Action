@@ -871,16 +871,30 @@ mod tests {
 
     #[test]
     fn test_type_alias() {
-        let prog = parse("type Point = {x: Int, y: Int}").unwrap();
+        let prog = parse("type UserId = Int").unwrap();
         match &prog.stmts[0] {
             Stmt::TypeAlias {
-                name, type_params, ..
+                name,
+                definition: Type::Named(n),
+                type_params,
+                ..
             } => {
-                assert_eq!(name, "Point");
+                assert_eq!(name, "UserId");
+                assert_eq!(n, "Int");
                 assert!(type_params.is_empty());
             }
-            _ => panic!("Expected TypeAlias"),
+            _ => panic!("Expected pure TypeAlias"),
         }
+    }
+
+    #[test]
+    fn test_legacy_type_eq_struct_rejected() {
+        let err = parse("type Point = {x: Int, y: Int}").unwrap_err();
+        assert!(
+            err.message.contains("type Name { fields }"),
+            "expected migration hint, got {:?}",
+            err.message
+        );
     }
 
     #[test]
@@ -945,19 +959,13 @@ mod tests {
     }
 
     #[test]
-    fn test_struct_literal() {
-        let expr = parse_expr("{x = 10, y = 20}").unwrap();
-        match expr.kind {
-            ExprKind::StructLiteral {
-                type_name: None,
-                fields,
-            } => {
-                assert_eq!(fields.len(), 2);
-                assert_eq!(fields[0].0, "x");
-                assert_eq!(fields[1].0, "y");
-            }
-            _ => panic!("Expected struct literal"),
-        }
+    fn test_anonymous_struct_literal_rejected() {
+        let err = parse_expr("{x = 10, y = 20}").unwrap_err();
+        assert!(
+            err.message.contains("TypeName { field ="),
+            "expected migration hint, got {:?}",
+            err.message
+        );
     }
 
     #[test]

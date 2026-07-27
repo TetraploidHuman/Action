@@ -154,15 +154,24 @@ fun preScanTypeAlias(s: String, pos: Int) -> Int {
     var p: Int = parser.advance(s, pos)
     val name: String = parser.cur(s, p)
     p = parser.advance(s, p)
-    typeenv.structTypeRegister(name)
-    // Phase 6: `type Name { … }` or legacy `type Name = { … }`.
-    p = if parser.isBraceOpen(parser.cur(s, p)) {
-        p
+    // `type Name { … }` registers a struct; `type Name = Int` does not.
+    // Legacy `type Name = { … }` still skips the brace (and marks error in parse).
+    return if parser.isBraceOpen(parser.cur(s, p)) {
+        typeenv.structTypeRegister(name)
+        skipBalancedBlock(s, p)
     } else {
-        parser.expect(s, p, "=")
+        preScanTypeAliasAfterEq(s, p, name)
     }
-    p = skipBalancedBlock(s, p)
-    return p
+}
+
+fun preScanTypeAliasAfterEq(s: String, pos: Int, name: String) -> Int {
+    var p: Int = parser.expect(s, pos, "=")
+    return if parser.isBraceOpen(parser.cur(s, p)) {
+        typeenv.structTypeRegister(name)
+        skipBalancedBlock(s, p)
+    } else {
+        parser.advance(s, p)
+    }
 }
 
 fun preScanImportLoadModule(modName: String) -> Int {

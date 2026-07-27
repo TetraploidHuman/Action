@@ -358,8 +358,8 @@ pub enum ExprKind {
     For(Box<For>),
     /// Block: { stmt1; stmt2; expr }
     Block(Vec<Stmt>),
-    /// Struct literal: `Point { x = 10, y = 20 }` (type_name required in Phase 1+;
-    /// `None` is legacy anonymous form during migration).
+    /// Struct literal: `Point { x = 10, y = 20 }` (`type_name` required).
+    /// `None` is retained on the AST for HIR compatibility but is rejected by the parser.
     StructLiteral {
         type_name: Option<String>,
         fields: Vec<(String, Expr)>,
@@ -768,7 +768,8 @@ pub enum Stmt {
     /// Continue statement
     Continue { span: Span },
     /// Type declaration: `type Point { x: Int, y: Int; fun … }` or alias `type UserId = Int`
-    /// (legacy `type Point = { … }` still parses to the same node).
+    /// Named record: `type Point { x: Int, y: Int }` (methods optional).
+    /// Pure alias: `type UserId = Int`.
     TypeAlias {
         name: String,
         type_params: Vec<String>,
