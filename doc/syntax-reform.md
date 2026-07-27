@@ -1,6 +1,6 @@
 # 语法改革契约（Syntax Reform）
 
-> 状态：Phase 0–6 已落地（Rust 前端 + Path B 对齐）；Phase 7 文档清理待定。  
+> 状态：Phase 0–7 已完成（Rust 前端 + Path B 对齐 + 文档清理）。  
 > 制定：2026-07-26
 
 ## 终态摘要
@@ -12,7 +12,7 @@
 | 方法 | type 体内 `fun`；`self` 只读；可无 `self` 关联函数 | — |
 | `extension` | 保留 | — |
 | 闭包 | `lambda a, b { }` / `lambda { }` / `lambda { it }` | `{ a, b -> }` 匿名闭包 |
-| Trailing | 末位形参为函数类型；`fold(xs, 0) { acc, x⏎ body }` | 依赖 `->` 的 trailing |
+| Trailing | 末位形参为函数类型；`fold(xs, 0) { acc, x; body }` | 依赖 `->` 的 trailing |
 | 裸块 | `{}` → 立刻执行，`Unit`；非空 `{ stmts }` → 立刻执行块（末值） | `{}` 作为空元组 / 匿名空闭包 |
 
 ## 分期
@@ -26,7 +26,7 @@
 | 4 | `lambda` + 裸块语义 | ✅ |
 | 5 | Trailing 形参行 + 类型驱动 | ✅ |
 | 6 | Bootstrap Path B 对齐 | ✅ |
-| 7 | 文档清理 | 待定 |
+| 7 | 文档清理 | ✅ |
 
 ## Phase 1 触达清单（构造）
 
@@ -127,6 +127,17 @@
 - `cargo test --test bootstrap_subset`：315 passed（17 ignored subprocess twins）
 - `cargo test --test integration`：208 passed
 - `bench_cow.ac` → `11`；bootstrap HIR goldens 已 `--write` 刷新（`StructLiteral` 对象形）
+
+## Phase 7 细节（已落地）
+
+- **`README.md` / `doc/tutorial.md`**：结构体、`lambda`、多参 trailing、HTTP/Date 构造示例迁到终态写法
+- **`doc/bootstrap-subset.md`**：允许表表达式行对齐 `lambda` / trailing `{ acc, x; … }`（里程碑验收行保留历史写法）
+- 历史计划稿（`bootstrap-m72-plan.md` 等）不改写
+
+## 验证（Phase 7）
+
+- 用户可见示例与 `doc/syntax-reform.md` 终态摘要一致
+- 无代码变更；语义以 Phase 0–6 测试为准
 
 ## 刻意不做（本轮改革）
 

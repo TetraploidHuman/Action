@@ -180,14 +180,14 @@ fun sum(n: Int, acc: Int) -> Int {
 ### Lambda 表达式
 
 ```action
-val double = { x -> x * 2 }       // 显式参数
-val triple = { it * 3 }           // 隐式 it 参数
+val double = lambda x { x * 2 }   // 显式参数
+val triple = lambda { it * 3 }    // 隐式 it 参数
 
-// 高阶函数
+// 高阶函数（单参 trailing 仍可用 `{ it … }`）
 val nums = List[1, 2, 3, 4, 5]
 val doubled = nums.map { it * 2 }
 val evens = nums.filter { it % 2 == 0 }
-val sum = nums.fold(0) { acc, x -> acc + x }
+val sum = nums.fold(0) { acc, x; acc + x }  // 多参 trailing：形参行用 `;`，无 `->`
 val all_positive = nums.all { it > 0 }
 val has_even = nums.any { it % 2 == 0 }
 ```
@@ -262,14 +262,14 @@ val c = when color {
 ### 结构体
 
 ```action
-type Point = { x: Int, y: Int }
+type Point { x: Int, y: Int }
 
-// 字面量构造（字段顺序无关）
-val p = { x = 10, y = 20 }
+// 命名构造（字段顺序无关；须带类型名）
+val p = Point { x = 10, y = 20 }
 
-// 简写构造
+// 字段与局部同名时仍须 `field = expr`
 val x = 10; val y = 20
-val p2 = { x, y }
+val p2 = Point { x = x, y = y }
 
 // 字段访问
 val px = p.x
@@ -296,7 +296,7 @@ extension Int {
 
 ```action
 type UserId = Int
-type Person   = { id: UserId, name: String }
+type Person { id: UserId, name: String }
 type Callback = (Int) -> Bool   // 函数类型别名
 ```
 
@@ -361,7 +361,7 @@ prepend(list, 0)        // List[0, 1, 2, 3, 4, 5]
 // 高阶函数（lambda 作为最后一个参数）
 map(list) { it * 2 }        // List[2, 4, 6, 8, 10]
 filter(list) { it % 2 == 0 }// List[2, 4]
-fold(list, 0) { acc, x -> acc + x }  // 15
+fold(list, 0) { acc, x; acc + x }  // 15
 any(list) { it > 3 }        // true
 all(list) { it > 0 }        // true
 find(list) { it == 3 } or { -1 }  // 3
@@ -422,7 +422,7 @@ val resp = httpRequest(
     "https://httpbin.org/get",
     "Accept: application/json",
     ""
-) or { { status = 0, body = "" } }
+) or { HttpResponse { status = 0, body = "" } }
 println(resp.status)
 println(resp.body)
 ```

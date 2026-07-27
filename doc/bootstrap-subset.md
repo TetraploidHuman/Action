@@ -9,7 +9,7 @@
 | 绑定 | `val` / `var` / `fun` |
 | 类型 | 基本类型、`struct` / `enum`、显式类型标注 |
 | 控制流 | `when`（…）、`for`（含 `for v in map` 值、`for k in map` 键（`len(k)` 启发式）、`for x in set`、`for k, v in map`、**break** / **continue**）、`return` |
-| 表达式 | 二元 `+ - * / %`、逻辑 **`and` / `or`**、一元 `+ - not`、下标 `m["k"]`、字段 `.x`（可链式）、**nullary UFCS**（`x.len()` / `x.isEmpty()`，M117）、fallible **`or { … }`**（M118）、**lambda / `it` / 多参 / trailing / 无参块**（`{ it * 2 }(21)` / `{ x, y -> … }` / `map(xs) { it }` / `{ 21 * 2 }()`，M119–M123） |
+| 表达式 | 二元 `+ - * / %`、逻辑 **`and` / `or`**、一元 `+ - not`、下标 `m["k"]`、字段 `.x`（可链式）、**nullary UFCS**（`x.len()` / `x.isEmpty()`，M117）、fallible **`or { … }`**（M118）、**`lambda` / `it` / 多参 / trailing / 裸块**（`lambda { it * 2 }` / `lambda x, y { … }` / `map(xs) { it }` / trailing `{ acc, x; … }`；Path B 仍保留部分旧 brace 闭包供自举，见 Phase 6） |
 | 集合 | `List` / `Map` / `Set` / `String` |
 | 模块 | 单文件；flat 自举模块（`prelude`…`pscan`）裸名；**M120** 起亦可 `import` 其它 path-safe 的 `bootstrap/{name}.ac`（非 flat → `mod.fn()` / `mod_` 前缀）；环与缺文件拒绝 |
 | 输出 | `print` / `println`（bootstrap 编译器均已实现） |

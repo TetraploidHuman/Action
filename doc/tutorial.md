@@ -199,7 +199,7 @@ println("${name} is ${age} years old") // World is 42 years old
 
 ```action
 type UserId = Int
-type Person = { id: UserId, name: String }
+type Person { id: UserId, name: String }
 type Callback = (Int) -> Bool   // 函数类型别名
 ```
 
@@ -561,52 +561,49 @@ export fun helper() -> Int = 42
 
 ## 6.1 Lambda 表达式
 
+表达式位的闭包须用 `lambda`；裸 `{ … }` 是立刻执行的块（末值），不再是匿名闭包。
+
 ### 无参 Lambda
 
 ```action
-val answer = { 42 }
+val answer = lambda { 42 }
 print(answer())   // 调用时使用 ()
 ```
 
 ### 显式参数 Lambda
 
 ```action
-val add = { x, y -> x + y }
+val add = lambda x, y { x + y }
 print(add(10, 20))  // 30
 ```
 
-带类型标注的参数：
-
-```action
-val add = { x: Int, y: Int -> x + y }
-print(add(10, 20))  // 30
-```
+参数类型由调用处 / 高阶函数期望推断；需要显式签名时用 `fun`。
 
 ### 隐式 it 参数
 
 当 Lambda 只有一个参数时，可以用 `it` 代替：
 
 ```action
-val double = { it * 2 }
+val double = lambda { it * 2 }
 print(double(21))   // 42
 ```
 
 ### 直接调用
 
 ```action
-print({ x, y -> x * y }(6, 7))  // 42
+print((lambda x, y { x * y })(6, 7))  // 42
 ```
 
 ## 6.2 集合高阶函数
 
-Action 使用顶层函数进行集合操作，lambda 作为最后一个参数：
+Action 使用顶层函数进行集合操作；末位为函数类型时可写 trailing 块（单参仍可用 `{ it … }`；多参形参行用 `;`，无 `->`）：
 
 ```action
 val nums = List[1, 2, 3, 4, 5]
 
 val doubled = map(nums) { it * 2 }
 val evens = filter(nums) { it % 2 == 0 }
-val sum = fold(nums, 0) { acc, x -> acc + x }
+val sum = fold(nums, 0) { acc, x; acc + x }
 val allPositive = all(nums) { it > 0 }
 val hasEven = any(nums) { it % 2 == 0 }
 val firstEven = find(nums) { it % 2 == 0 }
@@ -625,7 +622,7 @@ nums.take(2)
 
 ```action
 var count = 0
-val increment = { count += 1 }
+val increment = lambda { count += 1 }
 increment()
 increment()
 println(count)  // 2
@@ -718,8 +715,8 @@ remove(list, 0)     // 删除索引 0 的元素
 ```action
 map(list) { it * 2 }          // 映射
 filter(list) { it % 2 == 0 }  // 过滤
-fold(list, init) { acc, x -> ... }  // 折叠
-reduce(list) { acc, x -> ... }  // 归约（无初始值）
+fold(list, init) { acc, x; ... }  // 折叠（多参 trailing：`;`，无 `->`）
+reduce(list) { acc, x; ... }  // 归约（无初始值）
 any(list) { it > 3 }          // 任一满足
 all(list) { it > 0 }          // 全部满足
 find(list) { it == 3 }        // 查找第一个
@@ -889,19 +886,21 @@ val msg = "Hello, ${name}!"  // "Hello, World!"
 ## 9.1 类型定义
 
 ```action
-type Point = { x: Int, y: Int }
+type Point { x: Int, y: Int }
 ```
+
+纯别名仍用 `=`：`type UserId = Int`。
 
 ## 9.2 构造
 
-```action
-// 完整字段构造
-val p = { x = 10, y = 20 }
+须带类型名（字段顺序无关）。局部变量与字段同名时仍写 `field = expr`（不支持匿名 `{ x, y }` / `{ x = }`）：
 
-// 简写构造（变量名与字段名一致时）
+```action
+val p = Point { x = 10, y = 20 }
+
 val x = 10
 val y = 20
-val p2 = { x, y }
+val p2 = Point { x = x, y = y }
 ```
 
 ## 9.3 字段访问
@@ -921,12 +920,12 @@ val {x as px, y as py} = p  // 重命名
 ## 9.5 嵌套结构体
 
 ```action
-type Address = { city: String, street: String }
-type Person = { name: String, addr: Address }
+type Address { city: String, street: String }
+type Person { name: String, addr: Address }
 
-val p = {
+val p = Person {
     name = "Alice",
-    addr = { city = "Beijing", street = "Main St" }
+    addr = Address { city = "Beijing", street = "Main St" }
 }
 
 val city = p.addr.city  // 嵌套访问
@@ -1281,7 +1280,7 @@ val resp = httpRequest(
     "https://httpbin.org/get",
     "Accept: application/json",
     ""
-) or { { status = 0, body = "" } }
+) or { HttpResponse { status = 0, body = "" } }
 
 println(resp.status)
 println(resp.body)
@@ -1289,7 +1288,7 @@ println(resp.body)
 // 函数级回退
 fun safeGet(url: String) -> HttpResponse {
     httpRequest("GET", url, "", "")
-} or { { status = 0, body = "unreachable" } }
+} or { HttpResponse { status = 0, body = "unreachable" } }
 ```
 
 `stdlib/http.atom` 提供 `httpGet` / `httpPost` 包装（内部已带 `or {}` 回退）。
@@ -1451,10 +1450,12 @@ val now = now()              // 当前时间
 val today = today()          // 当前日期
 val utc = nowUtc()           // UTC 时间
 
-// 日期构造（使用结构体字面量）
-val d = {year = 2026, month = 6, day = 1}
-val dt = {year = 2026, month = 6, day = 1,
-          hour = 12, minute = 30, second = 0}
+// 日期构造（命名结构体字面量）
+val d = Date { year = 2026, month = 6, day = 1 }
+val dt = DateTime {
+    year = 2026, month = 6, day = 1,
+    hour = 12, minute = 30, second = 0
+}
 
 // 日期操作
 year(d)     month(d)    day(d)
@@ -1550,7 +1551,7 @@ toList(ll)            // 转回普通 List
 
 使用 Pratt 解析算法，支持：
 - 前缀和中缀运算符解析
-- Lambda 与结构体字面量的消歧
+- 消歧：`lambda … { }` 为闭包；`TypeName { … }` 为构造；裸 `{ … }` 为立刻执行块（`{}` → Unit）
 - 模式匹配语法
 
 ## 23.4 类型检查（TypeChecker）
