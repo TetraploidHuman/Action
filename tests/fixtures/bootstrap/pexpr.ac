@@ -248,7 +248,11 @@ fun parsePlainBlockStmts(s: String, pos: Int, sep: Int) -> Int {
     return if parser.isTok(s, pos, parser.closeBrace()) {
         pos
     } else {
-        parsePlainBlockStmt(s, pos, sep)
+        if parser.cur(s, pos) == "" {
+            pos
+        } else {
+            parsePlainBlockStmt(s, pos, sep)
+        }
     }
 }
 
@@ -649,10 +653,15 @@ fun parseStructField(s: String, pos: Int, sep: Int) -> Int {
 }
 
 // M117: nullary UFCS — `.method(` skips structFieldRequire; Call wraps FieldAccess.
-// Ret tag from seeded builtins (`len`→Int); unknown method → typeError via callCheckUndefCallee.
+// Type methods registered as `Type.method` (ret tag + funSig); builtins stay bare names.
 fun parseFieldUfcs(s: String, pos: Int, field: String, recv: String) -> Int {
-    emit.sessSet(emit.slotLastIdent(), field)
-    val retTag: Int = typeenv.tagForExpr(typeenv.lookupTag(field))
+    val recvTag: Int = typeenv.lastExprTyTag()
+    val structName: String = typeenv.tyTagName(recvTag)
+    val qual: String = structName + "." + field
+    val qualTag: Int = typeenv.lookupTag(qual)
+    val key: String = if qualTag == typeenv.tagUndef() { field } else { qual }
+    emit.sessSet(emit.slotLastIdent(), key)
+    val retTag: Int = typeenv.tagForExpr(typeenv.lookupTag(key))
     emit.setExpr(emit.exprWrap(retTag, "{\"FieldAccess\": [" + recv + ", \"" + field + "\"" + "]}"))
     return parsePostfix(s, pos)
 }
@@ -920,7 +929,9 @@ fun parseIfExpr(s: String, pos: Int) -> Int {
 
 fun parseIfCondOneLine(s: String, pos: Int) -> Int {
     bsIntSet(parser.slotNoTrailingLambda(), 1)
-    var p: Int = parseCmp(s, pos)
+    // Include `and` / `or` (not assign). Stopping at parseCmp left `or` on the
+    // stream so expect('{') soft-failed and stmt loops hung at EOF.
+    var p: Int = parseOr(s, pos)
     bsIntSet(parser.slotNoTrailingLambda(), 0)
     val cond: String = emit.getExpr()
     p = parser.expect(s, p, parser.openBrace())
@@ -971,7 +982,7 @@ fun parseIfAfterElse(s: String, pos: Int, cond: String, thenE: String, thenTag: 
 
 fun parseWhenCondOrMatch(s: String, pos: Int) -> Int {
     bsIntSet(parser.slotNoTrailingLambda(), 1)
-    var p: Int = parseCmp(s, pos)
+    var p: Int = parseOr(s, pos)
     bsIntSet(parser.slotNoTrailingLambda(), 0)
     val cond: String = emit.getExpr()
     p = parser.expect(s, p, parser.openBrace())

@@ -1,6 +1,6 @@
 # 语法改革契约（Syntax Reform）
 
-> 状态：Phase 0–7 已完成；旧语法清理（匿名构造 / `type Name = { }`）已落地；Path B 方法与 `or`/`and` 条件挂起仍延后。  
+> 状态：Phase 0–7 已完成；旧语法清理已落地；Path B type 体内方法 + `if a or b`/`and` 条件已对齐。  
 > 制定：2026-07-26
 
 ## 终态摘要
@@ -119,7 +119,8 @@
 - **自举迁移**：`bootstrap/token.ac`、`bootstrap/lexer.ac` 已迁 `type Token { … }`
 - **`no_trailing_lambda`**：`if` / `when` / `for` 禁止 trailing 闭包（host slot 35）
 - **踩坑**：Path B 在自举源码中对 `if a || b {` 与 `if a && b && c {` 会挂起——改用嵌套 `if` 或 `val` 绑定拆分条件
-- **延后**：type 体内方法、纯别名 `type A = Int` 在 Path B 的完整对齐、Rust 侧 brace-else PlainBlock 完全 parity
+- **延后**：`Point::origin()`（`::` / FunctionRef）、Rust 侧 brace-else PlainBlock 完全 parity
+- **已补**：type 体内实例方法（`p.sum()`）；`if a or b {` / `and`（cond 用 `parseOr`）
 
 ## 验证（Phase 6）
 
@@ -144,7 +145,7 @@
 - **匿名构造废除**：`{ x = … }` / `{ x, y }` → 解析错误（提示 `TypeName { field = … }`）
 - **旧 record typedef 废除**：`type Name = { … }` → 解析错误（提示 `type Name { fields }`）；`type A = Int` 保留
 - **Path B**：同步拒收匿名构造与 `type = { }`；支持纯别名 `type UserId = Int` 解析
-- **仍延后**：Path B type 体内方法；`if a or b {` / `and` 条件挂起根因（继续用嵌套 `if`）
+- **仍延后**：Path B `Point::origin()`（`::` / FunctionRef）；brace-else PlainBlock 完全 parity
 
 ## 刻意不做（本轮改革）
 

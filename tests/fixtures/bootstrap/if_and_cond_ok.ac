@@ -1,0 +1,6 @@
+// Path B: if-condition includes `and`.
+fun main() -> Int {
+    val a: Bool = true
+    val b: Bool = true
+    return if a and b { 1 } else { 0 }
+}

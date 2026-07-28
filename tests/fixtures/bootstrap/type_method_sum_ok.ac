@@ -1,0 +1,10 @@
+type Point {
+    x: Int
+    y: Int
+    fun sum(self) -> Int { self.x + self.y }
+}
+
+fun main() -> Int {
+    val p: Point = Point { x = 10, y = 20 }
+    return p.sum()
+}

@@ -1,0 +1,9 @@
+type Point {
+    x: Int
+    y: Int
+    fun sum(self) -> Int { self.x + self.y }
+}
+
+fun main() -> Int {
+    return Point { x = 1, y = 2 }.sum(1)
+}

@@ -6156,3 +6156,66 @@ fn test_bootstrap_accepts_type_alias_int_ok() {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+#[test]
+fn test_bootstrap_accepts_if_or_and_cond() {
+    for name in ["if_or_cond_ok", "if_and_cond_ok"] {
+        let path = fixtures_root().join(format!("bootstrap/{name}.ac"));
+        let output = run_bootstrap_compiler_on(&path);
+        assert!(
+            output.status.success(),
+            "bootstrap compiler should accept {name}.ac (stderr: {})",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
+#[test]
+fn test_bootstrap_if_or_cond_jit() {
+    let path = fixtures_root().join("bootstrap/if_or_cond_ok.ac");
+    let code = run_bootstrap_hir_jit(&path, "if_or_cond_ok");
+    assert_eq!(code, 1, "if x == 1 or x == 2 should return 1");
+}
+
+#[test]
+fn test_bootstrap_if_and_cond_jit() {
+    let path = fixtures_root().join("bootstrap/if_and_cond_ok.ac");
+    let code = run_bootstrap_hir_jit(&path, "if_and_cond_ok");
+    assert_eq!(code, 1, "if a and b should return 1");
+}
+
+#[test]
+fn test_bootstrap_accepts_type_method_sum_ok() {
+    let path = fixtures_root().join("bootstrap/type_method_sum_ok.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        output.status.success(),
+        "bootstrap compiler should accept type_method_sum_ok.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn test_bootstrap_type_method_sum_jit() {
+    let path = fixtures_root().join("bootstrap/type_method_sum_ok.ac");
+    let code = run_bootstrap_hir_jit(&path, "type_method_sum_ok");
+    assert_eq!(code, 30, "Point{{10,20}}.sum() should return 30");
+}
+
+#[test]
+fn test_bootstrap_type_method_translate_jit() {
+    let path = fixtures_root().join("bootstrap/type_method_translate_ok.ac");
+    let code = run_bootstrap_hir_jit(&path, "type_method_translate_ok");
+    assert_eq!(code, 4, "Point{{1,2}}.translate(3,4).x should return 4");
+}
+
+#[test]
+fn test_bootstrap_rejects_bad_type_method_arity() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_type_method_arity.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_type_method_arity.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}

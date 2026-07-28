@@ -158,7 +158,7 @@ fun preScanTypeAlias(s: String, pos: Int) -> Int {
     // Legacy `type Name = { … }` still skips the brace (and marks error in parse).
     return if parser.isBraceOpen(parser.cur(s, p)) {
         typeenv.structTypeRegister(name)
-        skipBalancedBlock(s, p)
+        preScanTypeBody(s, p, name)
     } else {
         preScanTypeAliasAfterEq(s, p, name)
     }
@@ -168,10 +168,107 @@ fun preScanTypeAliasAfterEq(s: String, pos: Int, name: String) -> Int {
     var p: Int = parser.expect(s, pos, "=")
     return if parser.isBraceOpen(parser.cur(s, p)) {
         typeenv.structTypeRegister(name)
-        skipBalancedBlock(s, p)
+        preScanTypeBody(s, p, name)
     } else {
         parser.advance(s, p)
     }
+}
+
+fun preScanTypeBody(s: String, pos: Int, typeName: String) -> Int {
+    var p: Int = parser.expect(s, pos, parser.openBrace())
+    return preScanTypeBodyItems(s, p, typeName)
+}
+
+fun preScanTypeBodyItems(s: String, pos: Int, typeName: String) -> Int {
+    return if parser.isTok(s, pos, parser.closeBrace()) {
+        parser.advance(s, pos)
+    } else {
+        preScanTypeBodyItem(s, pos, typeName)
+    }
+}
+
+fun preScanTypeBodyItem(s: String, pos: Int, typeName: String) -> Int {
+    return if parser.cur(s, pos) == "fun" {
+        preScanTypeMethod(s, pos, typeName)
+    } else {
+        preScanTypeField(s, pos, typeName)
+    }
+}
+
+fun preScanTypeField(s: String, pos: Int, typeName: String) -> Int {
+    var p: Int = parser.advance(s, pos)
+    p = parser.expect(s, p, ":")
+    p = parser.advance(s, p)
+    return preScanTypeBodyItems(s, preScanTypeFieldSep(s, p), typeName)
+}
+
+fun preScanTypeFieldSep(s: String, pos: Int) -> Int {
+    val tok: String = parser.cur(s, pos)
+    return if tok == "," {
+        parser.advance(s, pos)
+    } else {
+        if tok == ";" {
+            parser.advance(s, pos)
+        } else {
+            pos
+        }
+    }
+}
+
+// Register `Type.method` funSig without `self` in arity (UFCS call args exclude receiver).
+fun preScanTypeMethod(s: String, pos: Int, typeName: String) -> Int {
+    var p: Int = parser.advance(s, pos)
+    val mname: String = parser.cur(s, p)
+    p = parser.advance(s, p)
+    p = parser.expect(s, p, "(")
+    typeenv.funSigBegin()
+    p = preScanTypeMethodParams(s, p, 1)
+    typeenv.funSigCommit(typeName + "." + mname)
+    p = parser.expect(s, p, ")")
+    p = parser.expect(s, p, "->")
+    val retTy: String = parser.cur(s, p)
+    typeenv.envAddGlobal(typeName + "." + mname, typeenv.tyAnnTag(retTy))
+    p = parser.advance(s, p)
+    p = skipBalancedBlock(s, p)
+    return preScanTypeBodyItems(s, preScanTypeFieldSep(s, p), typeName)
+}
+
+fun preScanTypeMethodParams(s: String, pos: Int, isFirst: Int) -> Int {
+    return if parser.cur(s, pos) == ")" {
+        pos
+    } else {
+        preScanTypeMethodParam(s, pos, isFirst)
+    }
+}
+
+fun preScanTypeMethodParam(s: String, pos: Int, isFirst: Int) -> Int {
+    val pname: String = parser.cur(s, pos)
+    var p: Int = parser.advance(s, pos)
+    return if pname == "self" {
+        preScanTypeMethodSelf(s, p, isFirst)
+    } else {
+        preScanTypeMethodTyped(s, p)
+    }
+}
+
+fun preScanTypeMethodSelf(s: String, pos: Int, isFirst: Int) -> Int {
+    var p: Int = pos
+    // Bare `self` or `self: Type` — never counted in UFCS arity.
+    p = if parser.cur(s, p) == ":" {
+        p = parser.advance(s, p)
+        parser.advance(s, p)
+    } else {
+        p
+    }
+    return preScanTypeMethodParams(s, parser.advanceIfComma(s, p), 0)
+}
+
+fun preScanTypeMethodTyped(s: String, pos: Int) -> Int {
+    var p: Int = parser.expect(s, pos, ":")
+    val tyName: String = parser.cur(s, p)
+    typeenv.funSigParamAdd(typeenv.tyAnnTag(tyName))
+    p = parser.advance(s, p)
+    return preScanTypeMethodParams(s, parser.advanceIfComma(s, p), 0)
 }
 
 fun preScanImportLoadModule(modName: String) -> Int {

@@ -62,24 +62,115 @@ fun advanceTypeFieldSep(s: String, pos: Int) -> Int {
     }
 }
 
-fun parseTypeFields(s: String, pos: Int, sep: Int) -> Int {
-    return if parser.isTok(s, pos, parser.closeBrace()) { parser.advance(s, pos) } else { parseTypeField(s, pos, sep) }
+fun parseTypeFields(s: String, pos: Int, fieldSep: Int, methodSep: Int) -> Int {
+    return if parser.isTok(s, pos, parser.closeBrace()) {
+        parser.advance(s, pos)
+    } else {
+        parseTypeBodyItem(s, pos, fieldSep, methodSep)
+    }
 }
 
-fun parseTypeField(s: String, pos: Int, sep: Int) -> Int {
-    emit.jComma(sep)
+fun parseTypeBodyItem(s: String, pos: Int, fieldSep: Int, methodSep: Int) -> Int {
+    return if parser.cur(s, pos) == "fun" {
+        parseTypeMethod(s, pos, methodSep, fieldSep)
+    } else {
+        parseTypeField(s, pos, fieldSep, methodSep)
+    }
+}
+
+fun parseTypeField(s: String, pos: Int, fieldSep: Int, methodSep: Int) -> Int {
     val fname: String = parser.cur(s, pos)
     var p: Int = parser.advance(s, pos)
     p = parser.expect(s, p, ":")
     val fty: String = parser.cur(s, p)
     typeenv.structFieldAdd(emit.sessGet(emit.slotStructName()), fname, fty)
-    emit.jOut("[\"")
-    emit.jOut(fname)
-    emit.jOut("\", ")
-    emit.jTyNamed(fty)
-    emit.jOut("]")
+    emit.accAdd(emit.slotFields(), "[\"" + fname + "\", {\"Named\": \"" + fty + "\"}]", fieldSep)
     p = parser.advance(s, p)
-    return parseTypeFields(s, advanceTypeFieldSep(s, p), 1)
+    return parseTypeFields(s, advanceTypeFieldSep(s, p), 1, methodSep)
+}
+
+fun parseTypeMethod(s: String, pos: Int, methodSep: Int, fieldSep: Int) -> Int {
+    parser.spanMarkBegin(s, pos)
+    typeenv.envLocalClear()
+    var p: Int = parser.advance(s, pos)
+    val mname: String = parser.cur(s, p)
+    emit.sessSet(emit.slotFnName(), mname)
+    p = parser.advance(s, p)
+    p = parser.expect(s, p, "(")
+    val typeName: String = emit.sessGet(emit.slotStructName())
+    // Struct-lit parsing reuses slotFields — save type-body field JSON across the method body.
+    val savedFields: String = emit.accGet(emit.slotFields())
+    val hirBefore: String = emit.accGet(emit.slotHirOut())
+    emit.jOut("{\"Fun\": {\"name\": \"")
+    emit.jOut(mname)
+    emit.jOut("\", \"params\": [")
+    p = parseTypeMethodParams(s, p, 0, typeName)
+    emit.jOut("], \"return_type\": ")
+    p = parser.expect(s, p, ")")
+    p = parser.expect(s, p, "->")
+    emit.sessSet(emit.slotFnRetTy(), parser.cur(s, p))
+    p = parser.advance(s, p)
+    val retTy: String = emit.sessGet(emit.slotFnRetTy())
+    val qname: String = typeName + "." + mname
+    typeenv.envAddGlobal(qname, typeenv.tyAnnTag(retTy))
+    emit.jTyNamed(retTy)
+    emit.jOut(", \"body\": ")
+    typeenv.setLitTy(retTy)
+    p = parseBlockRet(s, p)
+    parser.spanMarkEnd(s, p)
+    emit.jOut(", \"type_params\": [], \"is_single_expr\": false, \"is_test\": false, \"fn_or_fallback\": null, \"span\": ")
+    emit.jSpan()
+    emit.jOut("}}")
+    val hirAfter: String = emit.accGet(emit.slotHirOut())
+    val methodJson: String = substring(hirAfter, len(hirBefore), len(hirAfter) - len(hirBefore))
+    emit.accSet(emit.slotHirOut(), hirBefore)
+    emit.accSet(emit.slotFields(), savedFields)
+    emit.accAdd(emit.slotMethods(), methodJson, methodSep)
+    return parseTypeFields(s, advanceTypeFieldSep(s, p), fieldSep, 1)
+}
+
+fun parseTypeMethodParams(s: String, pos: Int, sep: Int, typeName: String) -> Int {
+    return if parser.cur(s, pos) == ")" {
+        pos
+    } else {
+        parseTypeMethodParam(s, pos, sep, typeName)
+    }
+}
+
+fun parseTypeMethodParam(s: String, pos: Int, sep: Int, typeName: String) -> Int {
+    emit.jComma(sep)
+    val pname: String = parser.cur(s, pos)
+    var p: Int = parser.advance(s, pos)
+    return if pname == "self" {
+        parseTypeMethodSelfParam(s, p, typeName)
+    } else {
+        parseTypeMethodNamedParam(s, p, pname, typeName)
+    }
+}
+
+fun parseTypeMethodSelfParam(s: String, pos: Int, typeName: String) -> Int {
+    return if parser.cur(s, pos) == ":" {
+        parseTypeMethodNamedParam(s, pos, "self", typeName)
+    } else {
+        emit.jOut("{\"name\": \"self\", \"ty\": ")
+        emit.jTyNamed(typeName)
+        emit.jOut("}")
+        typeenv.envAddLocal("self", typeenv.tyAnnTag(typeName), 0)
+        parseTypeMethodParams(s, parser.advanceIfComma(s, pos), 1, typeName)
+    }
+}
+
+fun parseTypeMethodNamedParam(s: String, pos: Int, pname: String, typeName: String) -> Int {
+    var p: Int = parser.expect(s, pos, ":")
+    val pty: String = parser.cur(s, p)
+    emit.jOut("{\"name\": \"")
+    emit.jOut(pname)
+    emit.jOut("\", \"ty\": ")
+    emit.jTyNamed(pty)
+    emit.jOut("}")
+    typeenv.envAddLocal(pname, typeenv.tyAnnTag(pty), 0)
+    p = parser.advance(s, p)
+    return parseTypeMethodParams(s, parser.advanceIfComma(s, p), 1, typeName)
 }
 
 fun parseTypeAlias(s: String, pos: Int, sep: Int) -> Int {
@@ -130,15 +221,32 @@ fun parseTypeAliasNamed(s: String, pos: Int, name: String) -> Int {
 fun parseTypeAliasStruct(s: String, pos: Int, name: String) -> Int {
     var p: Int = parser.expect(s, pos, parser.openBrace())
     typeenv.structTypeRegister(name)
+    emit.accReset(emit.slotFields())
+    emit.accReset(emit.slotMethods())
+    p = parseTypeFields(s, p, 0, 0)
+    parser.spanMarkEnd(s, p)
     emit.jOut("{\"TypeAlias\": {\"name\": \"")
     emit.jOut(name)
     emit.jOut("\", \"type_params\": [], \"definition\": {\"Struct\": [")
-    p = parseTypeFields(s, p, 0)
-    parser.spanMarkEnd(s, p)
-    emit.jOut("]}, \"span\": ")
+    emit.jOut(emit.accGet(emit.slotFields()))
+    emit.jOut("]}")
+    emitTypeAliasMethodsTail()
+    emit.jOut(", \"span\": ")
     emit.jSpan()
     emit.jOut("}}")
     return p
+}
+
+fun emitTypeAliasMethodsTail() -> Int {
+    val methods: String = emit.accGet(emit.slotMethods())
+    return if methods == "" {
+        0
+    } else {
+        emit.jOut(", \"methods\": [")
+        emit.jOut(methods)
+        emit.jOut("]")
+        0
+    }
 }
 
 fun parseBlockRet(s: String, pos: Int) -> Int {

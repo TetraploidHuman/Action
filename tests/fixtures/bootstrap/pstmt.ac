@@ -105,6 +105,8 @@ fun parseForCond(s: String, pos: Int, vname: String) -> Int {
     emit.setExprIdent(vname, typeenv.lookupTag(vname))
     bsIntSet(parser.slotNoTrailingLambda(), 1)
     var p: Int = pexpr.parseCmpLoop(s, pos, emit.getExpr())
+    p = pexpr.parseAndLoop(s, p, emit.getExpr())
+    p = pexpr.parseOrLoop(s, p, emit.getExpr())
     bsIntSet(parser.slotNoTrailingLambda(), 0)
     // M103: for-condition must be Bool (reuse tyCheckGuard).
     typeenv.tyCheckGuard()
@@ -322,5 +324,13 @@ fun parseStmt(s: String, pos: Int, sep: Int) -> Int {
 }
 
 fun parseStmts(s: String, pos: Int, sep: Int) -> Int {
-    return if parser.isTok(s, pos, parser.closeBrace()) { pos } else { parseStmt(s, pos, sep) }
+    return if parser.isTok(s, pos, parser.closeBrace()) {
+        pos
+    } else {
+        if parser.cur(s, pos) == "" {
+            pos
+        } else {
+            parseStmt(s, pos, sep)
+        }
+    }
 }

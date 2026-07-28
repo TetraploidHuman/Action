@@ -24,6 +24,8 @@ fun slotArgsSave(d: Int) -> Int { return 11 + d }
 fun slotHirOut() -> Int { return 19 }
 // M125: multi-stmt brace lambda / block body accumulator
 fun slotBlockStmts() -> Int { return 44 }
+// Path B: methods nested in `type Name { … fun … }`
+fun slotMethods() -> Int { return 45 }
 // M48 short string session mailboxes
 fun slotRecv() -> Int { return 20 }
 fun slotPat() -> Int { return 21 }

@@ -871,7 +871,15 @@ fn test_error_e001_user_fn_fallible() {
 
 #[test]
 fn test_bootstrap_lexer_keywords() {
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("bootstrap/lexer.ac");
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let keywords = root.join("tests/fixtures/lexer/keywords.ac");
+    let run_source = root.join("bootstrap/_run_source.txt");
+    std::fs::write(
+        &run_source,
+        std::fs::read_to_string(&keywords).expect("read keywords fixture"),
+    )
+    .expect("write bootstrap/_run_source.txt");
+    let path = root.join("bootstrap/lexer.ac");
     assert_eq!(
         run_action_file(&path),
         "fun\nmain\n(\n)\n{\nval\nx\n=\n1\nvar\ny\n=\n2\n}\n"

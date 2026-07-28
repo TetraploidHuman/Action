@@ -1129,7 +1129,7 @@ fun collIndexTagGet() -> Int {
 fun collEnvBind(name: String) -> Int {
     val ft: Int = collForTagGet()
     val it: Int = collIndexTagGet()
-    // Bootstrap `if cond { a } else { b }` does not accept `&&` in cond (use nested if).
+    // Bootstrap `if cond { a } else { b }` accepts `and`/`or` in cond (Path B fix).
     return if ft != 0 { collEnvBindDo(name, ft, it) } else { if it != 0 { collEnvBindDo(name, ft, it) } else { 0 } }
 }
 
