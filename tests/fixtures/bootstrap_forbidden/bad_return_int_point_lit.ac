@@ -1,5 +1,5 @@
-type Point {x: Int, y: Int}
+type Point {x Int, y Int}
 
-fun main() -> Int {
+fun main() Int {
     return Point {x = 1, y = 2}
 }

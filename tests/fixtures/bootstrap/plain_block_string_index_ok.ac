@@ -1,8 +1,8 @@
 // M153: PlainBlock String index — mirror string_index_ok → 0.
-fun main() -> Int {
+fun main() Int {
     return if true {
-        val s: String = "ab"
-        val c: Int = s[0]
+        val s String = "ab"
+        val c Int = s[0]
         c - c
     } else {
         1

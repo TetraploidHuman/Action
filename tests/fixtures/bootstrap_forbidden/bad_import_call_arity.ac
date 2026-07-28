@@ -1,5 +1,5 @@
 import prelude
 
-fun main() -> Int {
+fun main() Int {
     return if prelude.keywordKind("fun", "extra") == "fun" { 1 } else { 0 }
 }

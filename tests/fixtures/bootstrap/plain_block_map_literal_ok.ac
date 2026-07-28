@@ -1,7 +1,7 @@
 // M168: PlainBlock Map lit — mirror map_literal → 0.
-fun main() -> Int {
+fun main() Int {
     return if true {
-        val m: Map = Map["a": 10, "b": 5]
+        val m Map = Map["a": 10, "b": 5]
         0
     } else {
         1

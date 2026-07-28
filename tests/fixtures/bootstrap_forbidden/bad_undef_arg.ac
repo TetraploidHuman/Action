@@ -1,5 +1,5 @@
 // M112: undefined Ident as call arg rejected.
-fun main() -> Int {
+fun main() Int {
     println(leaked)
     return 0
 }

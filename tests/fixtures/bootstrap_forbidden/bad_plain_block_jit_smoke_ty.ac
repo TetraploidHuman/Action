@@ -1,5 +1,5 @@
 // M195: Bool vs Int in PlainBlock jit smoke shape (dual frontend).
-fun main() -> Int {
+fun main() Int {
     return if true {
         true
     } else {

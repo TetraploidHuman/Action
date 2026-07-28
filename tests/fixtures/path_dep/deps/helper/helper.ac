@@ -1,1 +1,1 @@
-fun helperAnswer() -> Int = 42
+fun helperAnswer() Int = 42

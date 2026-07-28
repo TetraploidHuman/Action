@@ -1,5 +1,5 @@
 // Error: conflicting type inference for generic parameter T
-fun <T> first(a: T, b: T) -> T {
+fun <T> first(a T, b T) T {
     a
 }
 

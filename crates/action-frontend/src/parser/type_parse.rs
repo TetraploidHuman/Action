@@ -1,6 +1,51 @@
 use super::*;
 
 impl Parser {
+    /// Type starts after a binding/param name (`val a Int`, `fun f(x Int)`).
+    /// Includes anonymous struct types `{ x Int }`.
+    pub(crate) fn looks_like_type_start(&self) -> bool {
+        matches!(
+            self.current_kind(),
+            TokenKind::Ident(_) | TokenKind::LParen | TokenKind::Task | TokenKind::LBrace
+        )
+    }
+
+    /// Return type after `)` — `{` is always the function body, never a struct return type.
+    pub(crate) fn looks_like_return_type_start(&self) -> bool {
+        matches!(
+            self.current_kind(),
+            TokenKind::Ident(_) | TokenKind::LParen | TokenKind::Task
+        )
+    }
+
+    /// Optional type annotation without colon: `name Type` (rejects legacy `name: Type`).
+    pub(crate) fn parse_optional_type_ann(&mut self) -> Result<Option<Type>, ParseError> {
+        if self.current_kind() == TokenKind::Colon {
+            return Err(self.error(
+                "Use `name Type` without colon; `name: Type` is no longer valid",
+            ));
+        }
+        if self.looks_like_type_start() {
+            Ok(Some(self.parse_type()?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Optional return type without arrow: `fun f() Int` (rejects legacy `->`).
+    pub(crate) fn parse_optional_return_type(&mut self) -> Result<Option<Type>, ParseError> {
+        if self.current_kind() == TokenKind::Arrow {
+            return Err(self.error(
+                "Use `fun name() RetTy` without `->`; `fun name() -> RetTy` is no longer valid",
+            ));
+        }
+        if self.looks_like_return_type_start() {
+            Ok(Some(self.parse_type()?))
+        } else {
+            Ok(None)
+        }
+    }
+
     pub(crate) fn parse_type(&mut self) -> Result<Type, ParseError> {
         let ty = self.parse_type_primary()?;
 
@@ -108,7 +153,11 @@ impl Parser {
                         _ => return Err(self.error("Expected field name")),
                     };
                     self.advance();
-                    self.expect(TokenKind::Colon)?;
+                    if self.current_kind() == TokenKind::Colon {
+                        return Err(self.error(
+                            "Use `field Type` without colon; `field: Type` is no longer valid",
+                        ));
+                    }
                     let ty = self.parse_type()?;
                     fields.push((name, ty));
                 }

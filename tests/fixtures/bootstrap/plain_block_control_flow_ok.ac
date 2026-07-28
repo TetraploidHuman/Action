@@ -1,8 +1,8 @@
 // M193: PlainBlock control flow — mirror control_flow → 0.
-fun main() -> Int {
+fun main() Int {
     return if true {
-        var sum: Int = 0
-        var i: Int = 0
+        var sum Int = 0
+        var i Int = 0
         for i < 10 {
             sum = sum + i
             i = i + 1

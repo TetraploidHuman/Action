@@ -1,5 +1,5 @@
 // Lambda/closure creation and invocation
-fun apply(f: (Int) -> Int, x: Int) -> Int { f(x) }
+fun apply(f (Int) -> Int, x Int) Int { f(x) }
 fun main() {
     var sum = 0; var i = 0
     for i < 1000 { val d = lambda x { x * 2 }; sum = sum + d(i); i = i + 1 }

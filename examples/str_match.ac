@@ -4,29 +4,29 @@ fun main() {
 
     // Same length, different content ("world" = 5 chars, "hello" = 5 chars)
     when s {
-        "world" -> print(0)
-        "hello" -> print(1)
-        else -> print(0)
+        "world" { print(0) }
+        "hello" { print(1) }
+        else { print(0) }
     }
 
     // Different length - should correctly not match
     when s {
-        "hell" -> print(0)
-        else -> print(2)
+        "hell" { print(0) }
+        else { print(2) }
     }
 
     // Same length, different content again
     val x = "abcde"
     when x {
-        "abcdf" -> print(0)
-        "abcde" -> print(3)
-        else -> print(0)
+        "abcdf" { print(0) }
+        "abcde" { print(3) }
+        else { print(0) }
     }
 
     // Empty String test
     val e = ""
     when e {
-        "" -> print(4)
-        else -> print(0)
+        "" { print(4) }
+        else { print(0) }
     }
 }

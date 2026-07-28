@@ -1,4 +1,4 @@
-fun zero(x: Int) -> Int { 0 }
+fun zero(x Int) Int { 0 }
 
 fun main() {
     var c = 0

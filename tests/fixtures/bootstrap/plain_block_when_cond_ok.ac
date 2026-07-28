@@ -1,5 +1,5 @@
 // M178: PlainBlock when/if cond — mirror when_cond_ok → 0.
-fun main() -> Int {
+fun main() Int {
     return if true {
         if true { 0 } else { 1 }
     } else {

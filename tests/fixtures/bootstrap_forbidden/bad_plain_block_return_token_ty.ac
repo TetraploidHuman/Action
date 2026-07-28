@@ -1,13 +1,13 @@
 // M176: Token fun returns Int inside PlainBlock call site (dual frontend).
-type Token {kind: String, start: Int, end: Int, line: Int, col: Int}
+type Token {kind String, start Int, end Int, line Int, col Int}
 
-fun makeToken(kind: String, start: Int, end: Int, line: Int, col: Int) -> Token {
+fun makeToken(kind String, start Int, end Int, line Int, col Int) Token {
     return 1
 }
 
-fun main() -> Int {
+fun main() Int {
     return if true {
-        val t: Token = makeToken("fun", 0, 3, 1, 1)
+        val t Token = makeToken("fun", 0, 3, 1, 1)
         len(t.kind)
     } else {
         0

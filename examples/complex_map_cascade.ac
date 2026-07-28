@@ -4,7 +4,7 @@ fun main() {
     val snapshot = m
     m = m.insert("b", 2).insert("c", 3)
     val m2 = Map["c": 30, "d": 4]
-    val merged: Map[String, Int] = m.union(m2)
+    val merged Map[String, Int] = m.union(m2)
 
     print(len(snapshot))
     print(len(m))

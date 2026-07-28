@@ -1,8 +1,8 @@
 // Bootstrap forbidden: external fun (gate import ensures compile-error oracle)
 import bootstrap_subset_forbidden_gate
 
-external fun host_echo(x: Int) -> Int
+external fun host_echo(x Int) Int
 
-fun main() -> Int {
+fun main() Int {
     return 0
 }

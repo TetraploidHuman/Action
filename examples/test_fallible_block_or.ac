@@ -1,4 +1,4 @@
-fun safeParse(s: String) -> Int {
+fun safeParse(s String) Int {
     {
         val n = parseInt(s)
         return n

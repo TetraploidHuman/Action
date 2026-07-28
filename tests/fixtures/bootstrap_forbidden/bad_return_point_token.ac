@@ -1,10 +1,10 @@
-type Point {x: Int, y: Int}
-type Token {kind: String, start: Int, end: Int, line: Int, col: Int}
+type Point {x Int, y Int}
+type Token {kind String, start Int, end Int, line Int, col Int}
 
-fun mkPoint() -> Point {
+fun mkPoint() Point {
     return Point {x = 1, y = 2}
 }
 
-fun main() -> Token {
+fun main() Token {
     return mkPoint()
 }

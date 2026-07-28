@@ -1,8 +1,8 @@
 // M194: val init type error inside PlainBlock keywords shape (dual frontend).
-fun main() -> Int {
+fun main() Int {
     return if true {
-        val x: Int = true
-        var y: Int = 2
+        val x Int = true
+        var y Int = 2
         0
     } else {
         1

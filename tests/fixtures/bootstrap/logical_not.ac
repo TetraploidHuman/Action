@@ -1,4 +1,4 @@
-fun main() -> Int {
-    val x: Bool = not false
+fun main() Int {
+    val x Bool = not false
     if x { 0 } else { 1 }
 }

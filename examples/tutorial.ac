@@ -17,16 +17,16 @@ fun main() {
     count = count + 2
     println("Count: ${count}")
 
-    val typed: Int = 42
-    val message: String = "typed string"
+    val typed Int = 42
+    val message String = "typed string"
     println("Typed: ${typed}, ${message}")
 
     // ---- 3. Basic Types ----
-    val i: Int = 42
-    val f: Float = 3.14
-    val b: Bool = true
-    val c: Char = 'A'
-    val s: String = "hello"
+    val i Int = 42
+    val f Float = 3.14
+    val b Bool = true
+    val c Char = 'A'
+    val s String = "hello"
     println("Int: ${i}, Float: ${toString(f)}, Bool: ${b}, String: ${s}")
 
     val parsed = parseInt("42") or { -1 }
@@ -88,19 +88,19 @@ fun main() {
     // ---- 9. Pattern Matching ----
     val x = 3
     val desc = when x {
-        1 -> "one"
-        2 -> "two"
-        3 -> "three"
-        else -> "many"
+        1 { "one" }
+        2 { "two" }
+        3 { "three" }
+        else { "many" }
     }
     println("when value: ${desc}")
 
     val score = 85
     val grade = when {
-        score >= 90 -> "A"
-        score >= 80 -> "B"
-        score >= 70 -> "C"
-        else -> "D"
+        score >= 90 { "A" }
+        score >= 80 { "B" }
+        score >= 70 { "C" }
+        else { "D" }
     }
     println("grade: ${grade}")
 
@@ -113,8 +113,8 @@ fun main() {
 
     val opt = Some(42)
     val valOr = when opt {
-        Some(v) -> v
-        None -> -1
+        Some(v) { v }
+        None { -1 }
     }
     println("unwrap: ${valOr}")
 
@@ -150,23 +150,23 @@ fun main() {
     println("=== Tutorial Complete ===")
 }
 
-fun add(x: Int, y: Int) -> Int = x + y
+fun add(x Int, y Int) Int = x + y
 
-fun factorial(n: Int) -> Int {
+fun factorial(n Int) Int {
     when n {
-        0 -> 1
-        else -> n * factorial(n - 1)
+        0 { 1 }
+        else { n * factorial(n - 1) }
     }
 }
 
-fun <T> identity(x: T) -> T = x
+fun <T> identity(x T) T = x
 
 enum Color { Red, Green, Blue }
 
-fun describe(c: Color) -> String = when c {
-    Red -> "red"
-    Green -> "green"
-    Blue -> "blue"
+fun describe(c Color) String = when c {
+    Red { "red" }
+    Green { "green" }
+    Blue { "blue" }
 }
 
 enum Option { Some(Int), None }

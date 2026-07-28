@@ -1,12 +1,12 @@
 // M184: PlainBlock custom enum — mirror custom_enum → 1.
 enum Shape { Circle, Square }
 
-fun main() -> Int {
+fun main() Int {
     return if true {
-        val s: Shape = Circle
-        val code: Int = when s {
-            Circle -> 1
-            Square -> 2
+        val s Shape = Circle
+        val code Int = when s {
+            Circle { 1 }
+            Square { 2 }
         }
         println(code)
         code

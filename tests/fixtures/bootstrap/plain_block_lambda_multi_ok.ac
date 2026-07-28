@@ -1,5 +1,5 @@
 // M187: PlainBlock multi-param lambda — mirror lambda_multi_ok → 42.
-fun main() -> Int {
+fun main() Int {
     return if true {
         lambda x, y { x + y }(20, 22)
     } else {

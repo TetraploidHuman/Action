@@ -6,44 +6,44 @@ import parser
 
 import typeenv
 
-external fun writeFile(path: String, content: String) -> Bool
-external fun bsBufClear(slot: Int) -> Int
-external fun bsBufAppend(slot: Int, content: String) -> Int
-external fun bsBufSet(slot: Int, content: String) -> Int
-external fun bsBufGet(slot: Int) -> String
-external fun bsIntSet(slot: Int, value: Int) -> Int
+external fun writeFile(path String, content String) Bool
+external fun bsBufClear(slot Int) Int
+external fun bsBufAppend(slot Int, content String) Int
+external fun bsBufSet(slot Int, content String) Int
+external fun bsBufGet(slot Int) String
+external fun bsIntSet(slot Int, value Int) Int
 
 // M44 accumulator slots (see host-rt/runtime_bs_buf.rs).
-fun slotArms() -> Int { return 5 }
-fun slotArgs() -> Int { return 6 }
-fun slotList() -> Int { return 7 }
-fun slotMap() -> Int { return 8 }
-fun slotSet() -> Int { return 9 }
-fun slotFields() -> Int { return 10 }
-fun slotArgsSave(d: Int) -> Int { return 11 + d }
-fun slotHirOut() -> Int { return 19 }
+fun slotArms() Int { return 5 }
+fun slotArgs() Int { return 6 }
+fun slotList() Int { return 7 }
+fun slotMap() Int { return 8 }
+fun slotSet() Int { return 9 }
+fun slotFields() Int { return 10 }
+fun slotArgsSave(d Int) Int { return 11 + d }
+fun slotHirOut() Int { return 19 }
 // M125: multi-stmt brace lambda / block body accumulator
-fun slotBlockStmts() -> Int { return 44 }
+fun slotBlockStmts() Int { return 44 }
 // Path B: methods nested in `type Name { … fun … }`
-fun slotMethods() -> Int { return 45 }
+fun slotMethods() Int { return 45 }
 // M48 short string session mailboxes
-fun slotRecv() -> Int { return 20 }
-fun slotPat() -> Int { return 21 }
-fun slotGuard() -> Int { return 22 }
-fun slotLastIdent() -> Int { return 23 }
-fun slotLitTy() -> Int { return 24 }
-fun slotUndefIdent() -> Int { return 25 }
-fun slotFnName() -> Int { return 26 }
-fun slotFnRetTy() -> Int { return 27 }
-fun slotBindName() -> Int { return 28 }
-fun slotBindTy() -> Int { return 29 }
-fun slotStructName() -> Int { return 30 }
+fun slotRecv() Int { return 20 }
+fun slotPat() Int { return 21 }
+fun slotGuard() Int { return 22 }
+fun slotLastIdent() Int { return 23 }
+fun slotLitTy() Int { return 24 }
+fun slotUndefIdent() Int { return 25 }
+fun slotFnName() Int { return 26 }
+fun slotFnRetTy() Int { return 27 }
+fun slotBindName() Int { return 28 }
+fun slotBindTy() Int { return 29 }
+fun slotStructName() Int { return 30 }
 
-fun sessGet(slot: Int) -> String { return bsBufGet(slot) }
+fun sessGet(slot Int) String { return bsBufGet(slot) }
 
-fun sessSet(slot: Int, content: String) -> Int { bsBufSet(slot, content); return 0 }
+fun sessSet(slot Int, content String) Int { bsBufSet(slot, content); return 0 }
 
-fun strSessionClear() -> Int {
+fun strSessionClear() Int {
     bsBufClear(slotRecv())
     bsBufClear(slotPat())
     bsBufSet(slotGuard(), "null")
@@ -58,214 +58,214 @@ fun strSessionClear() -> Int {
     return 0
 }
 
-fun jEscapeChar(ch: String) -> String {
+fun jEscapeChar(ch String) String {
     return when ch {
-        "\\" -> "\\\\"
-        "\"" -> "\\\""
-        "\n" -> "\\n"
-        "\r" -> "\\r"
-        "\t" -> "\\t"
-        else -> ch
+        "\\" { "\\\\" }
+        "\"" { "\\\"" }
+        "\n" { "\\n" }
+        "\r" { "\\r" }
+        "\t" { "\\t" }
+        else { ch }
     }
 }
 
-fun jEscapeFrom(s: String, i: Int) -> String {
+fun jEscapeFrom(s String, i Int) String {
     return if i >= len(s) { "" } else { jEscapeChar(charAt(s, i)) + jEscapeFrom(s, i + 1) }
 }
 
-fun jEscape(s: String) -> String {
+fun jEscape(s String) String {
     return jEscapeFrom(s, 0)
 }
 
-fun jQuotedInner(token: String) -> String {
+fun jQuotedInner(token String) String {
     return substring(token, 1, len(token) - 2)
 }
 
-fun jQuotedString(token: String) -> String {
+fun jQuotedString(token String) String {
     return "\"" + jQuotedInner(token) + "\""
 }
 
-fun jOut(t: String) -> Int { bsBufAppend(slotHirOut(), t); return 0 }
+fun jOut(t String) Int { bsBufAppend(slotHirOut(), t); return 0 }
 
-fun jOutReset() -> Int { bsBufClear(slotHirOut()); return 0 }
+fun jOutReset() Int { bsBufClear(slotHirOut()); return 0 }
 
-fun jOutGet() -> String { return bsBufGet(slotHirOut()) }
+fun jOutGet() String { return bsBufGet(slotHirOut()) }
 
-fun jOutBegin() -> Int {
+fun jOutBegin() Int {
     bsBufSet(slotHirOut(), "{\n  \"stmts\": [")
     return 0
 }
 
-fun jOutFlush() -> Int {
+fun jOutFlush() Int {
     writeFile("bootstrap/_hir_out.json", jOutGet())
     return 0
 }
 
-fun jSpan() -> Int {
+fun jSpan() Int {
     jOut(parser.spanJson())
     return 0
 }
 
-fun jTyNamed(name: String) -> Int {
+fun jTyNamed(name String) Int {
     return jOut("{\"Named\": \"" + name + "\"}")
 }
 
-fun jComma(sep: Int) -> Int {
+fun jComma(sep Int) Int {
     return if sep == 1 { jOut(",") } else { 0 }
 }
 
-fun markStmtEmitted() -> Int {
+fun markStmtEmitted() Int {
     bsIntSet(parser.slotPpHirEmitted(), 1)
     return 0
 }
 
-fun jCommaStmt(sep: Int) -> Int {
+fun jCommaStmt(sep Int) Int {
     jComma(sep)
     markStmtEmitted()
     return 0
 }
 
-fun jOutBool(b: Bool) -> Int {
+fun jOutBool(b Bool) Int {
     return if b { jOut("true") } else { jOut("false") }
 }
 
-fun tyJson(tag: Int) -> String {
+fun tyJson(tag Int) String {
     return if tag == 0 { "\"Unit\"" } else { "{\"Named\": \"" + typeenv.tyTagName(tag) + "\"}" }
 }
 
-fun exprWrap(tag: Int, kind: String) -> String {
+fun exprWrap(tag Int, kind String) String {
     typeenv.lastExprTySet(tag)
     return "{\"ty\": " + tyJson(tag) + ", \"span\": " + parser.spanJson() + ", \"kind\": " + kind + "}"
 }
 
 // Wrap a full expr JSON as a singleton statement block (Kotlin-style if arms).
 // Break/Continue exprs become Break/Continue stmts (Rust `parse_block_expr` parity).
-fun exprAsBlock(tag: Int, inner: String) -> String {
+fun exprAsBlock(tag Int, inner String) String {
     typeenv.lastExprTySet(tag)
-    val span: String = parser.spanJson()
+    val span String = parser.spanJson()
     return "{\"ty\": " + tyJson(tag) + ", \"span\": " + span + ", \"kind\": {\"Block\": [" + exprAsStmt(inner) + "]}}"
 }
 
 // M125: multi-stmt Block from pre-built stmt JSON list (comma-separated).
-fun stmtsAsBlock(tag: Int, stmts: String) -> String {
+fun stmtsAsBlock(tag Int, stmts String) String {
     typeenv.lastExprTySet(tag)
-    val span: String = parser.spanJson()
+    val span String = parser.spanJson()
     return "{\"ty\": " + tyJson(tag) + ", \"span\": " + span + ", \"kind\": {\"Block\": [" + stmts + "]}}"
 }
 
-fun exprAsStmt(inner: String) -> String {
-    val span: String = parser.spanJson()
+fun exprAsStmt(inner String) String {
+    val span String = parser.spanJson()
     return when {
-        isKindBreak(inner) -> "{\"Break\": {\"span\": " + span + "}}"
-        isKindContinue(inner) -> "{\"Continue\": {\"span\": " + span + "}}"
-        else -> "{\"Expr\": {\"expr\": " + inner + ", \"span\": " + span + "}}"
+        isKindBreak(inner) { "{\"Break\": {\"span\": " + span + "}}" }
+        isKindContinue(inner) { "{\"Continue\": {\"span\": " + span + "}}" }
+        else { "{\"Expr\": {\"expr\": " + inner + ", \"span\": " + span + "}}" }
     }
 }
 
 // M127: Let stmt JSON for PlainBlock accumulator (not jOut).
-fun letAsStmt(mut: Bool, name: String, ty: String, value: String) -> String {
-    val mutJ: String = if mut { "true" } else { "false" }
-    val span: String = parser.spanJson()
+fun letAsStmt(mut Bool, name String, ty String, value String) String {
+    val mutJ String = if mut { "true" } else { "false" }
+    val span String = parser.spanJson()
     return "{\"Let\": {\"mutable\": " + mutJ + ", \"lazy_init\": false, \"name\": \"" + name + "\", \"type_ann\": {\"Named\": \"" + ty + "\"}, \"value\": " + value + ", \"span\": " + span + "}}"
 }
 
 // M129: Return stmt JSON for PlainBlock accumulator (not jOut).
-fun returnAsStmt(value: String) -> String {
-    val span: String = parser.spanJson()
+fun returnAsStmt(value String) String {
+    val span String = parser.spanJson()
     return "{\"Return\": {\"value\": " + value + ", \"span\": " + span + "}}"
 }
 
 // M130: For-in Iterate stmt JSON for PlainBlock accumulator (not jOut).
-fun forAsStmt(vname: String, iterable: String, bodyStmts: String) -> String {
-    val span: String = parser.spanJson()
-    val body: String = "{\"ty\": \"Unit\", \"span\": " + span + ", \"kind\": {\"Block\": [" + bodyStmts + "]}}"
-    val kind: String = "{\"Iterate\": {\"var\": \"" + vname + "\", \"iterable\": " + iterable + ", \"body\": " + body + ", \"collect\": true}}"
-    val forExpr: String = "{\"ty\": \"Unit\", \"span\": " + span + ", \"kind\": {\"For\": {\"kind\": " + kind + "}}}"
+fun forAsStmt(vname String, iterable String, bodyStmts String) String {
+    val span String = parser.spanJson()
+    val body String = "{\"ty\": \"Unit\", \"span\": " + span + ", \"kind\": {\"Block\": [" + bodyStmts + "]}}"
+    val kind String = "{\"Iterate\": {\"var\": \"" + vname + "\", \"iterable\": " + iterable + ", \"body\": " + body + ", \"collect\": true}}"
+    val forExpr String = "{\"ty\": \"Unit\", \"span\": " + span + ", \"kind\": {\"For\": {\"kind\": " + kind + "}}}"
     return "{\"Expr\": {\"expr\": " + forExpr + ", \"span\": " + span + "}}"
 }
 
 // M131: For-condition stmt JSON for PlainBlock accumulator (body Unit, match Iterate path).
-fun forCondAsStmt(cond: String, bodyStmts: String) -> String {
-    val span: String = parser.spanJson()
-    val body: String = "{\"ty\": \"Unit\", \"span\": " + span + ", \"kind\": {\"Block\": [" + bodyStmts + "]}}"
-    val kind: String = "{\"Condition\": {\"condition\": " + cond + ", \"body\": " + body + "}}"
-    val forExpr: String = "{\"ty\": \"Unit\", \"span\": " + span + ", \"kind\": {\"For\": {\"kind\": " + kind + "}}}"
+fun forCondAsStmt(cond String, bodyStmts String) String {
+    val span String = parser.spanJson()
+    val body String = "{\"ty\": \"Unit\", \"span\": " + span + ", \"kind\": {\"Block\": [" + bodyStmts + "]}}"
+    val kind String = "{\"Condition\": {\"condition\": " + cond + ", \"body\": " + body + "}}"
+    val forExpr String = "{\"ty\": \"Unit\", \"span\": " + span + ", \"kind\": {\"For\": {\"kind\": " + kind + "}}}"
     return "{\"Expr\": {\"expr\": " + forExpr + ", \"span\": " + span + "}}"
 }
 
 // M132: For-with-index IterateWithIndex stmt JSON for PlainBlock accumulator.
-fun forWithIndexAsStmt(v0: String, v1: String, iterable: String, bodyStmts: String) -> String {
-    val span: String = parser.spanJson()
-    val body: String = "{\"ty\": \"Unit\", \"span\": " + span + ", \"kind\": {\"Block\": [" + bodyStmts + "]}}"
-    val kind: String = "{\"IterateWithIndex\": {\"vars\": [\"" + v0 + "\", \"" + v1 + "\"], \"iterable\": " + iterable + ", \"body\": " + body + "}}"
-    val forExpr: String = "{\"ty\": \"Unit\", \"span\": " + span + ", \"kind\": {\"For\": {\"kind\": " + kind + "}}}"
+fun forWithIndexAsStmt(v0 String, v1 String, iterable String, bodyStmts String) String {
+    val span String = parser.spanJson()
+    val body String = "{\"ty\": \"Unit\", \"span\": " + span + ", \"kind\": {\"Block\": [" + bodyStmts + "]}}"
+    val kind String = "{\"IterateWithIndex\": {\"vars\": [\"" + v0 + "\", \"" + v1 + "\"], \"iterable\": " + iterable + ", \"body\": " + body + "}}"
+    val forExpr String = "{\"ty\": \"Unit\", \"span\": " + span + ", \"kind\": {\"For\": {\"kind\": " + kind + "}}}"
     return "{\"Expr\": {\"expr\": " + forExpr + ", \"span\": " + span + "}}"
 }
 
 // M133: Infinite for stmt JSON for PlainBlock accumulator (body must early-exit for oracles).
-fun forInfiniteAsStmt(bodyStmts: String) -> String {
-    val span: String = parser.spanJson()
-    val body: String = "{\"ty\": \"Unit\", \"span\": " + span + ", \"kind\": {\"Block\": [" + bodyStmts + "]}}"
-    val kind: String = "{\"Infinite\": {\"body\": " + body + "}}"
-    val forExpr: String = "{\"ty\": \"Unit\", \"span\": " + span + ", \"kind\": {\"For\": {\"kind\": " + kind + "}}}"
+fun forInfiniteAsStmt(bodyStmts String) String {
+    val span String = parser.spanJson()
+    val body String = "{\"ty\": \"Unit\", \"span\": " + span + ", \"kind\": {\"Block\": [" + bodyStmts + "]}}"
+    val kind String = "{\"Infinite\": {\"body\": " + body + "}}"
+    val forExpr String = "{\"ty\": \"Unit\", \"span\": " + span + ", \"kind\": {\"For\": {\"kind\": " + kind + "}}}"
     return "{\"Expr\": {\"expr\": " + forExpr + ", \"span\": " + span + "}}"
 }
 
-fun isKindBreak(j: String) -> Bool {
-    val suf: String = "\"kind\": \"Break\"}"
+fun isKindBreak(j String) Bool {
+    val suf String = "\"kind\": \"Break\"}"
     return if len(j) < len(suf) { false } else { substring(j, len(j) - len(suf), len(suf)) == suf }
 }
 
-fun isKindContinue(j: String) -> Bool {
-    val suf: String = "\"kind\": \"Continue\"}"
+fun isKindContinue(j String) Bool {
+    val suf String = "\"kind\": \"Continue\"}"
     return if len(j) < len(suf) { false } else { substring(j, len(j) - len(suf), len(suf)) == suf }
 }
 
-fun setExpr(j: String) -> Int { bsBufSet(3, j); return 0 }
+fun setExpr(j String) Int { bsBufSet(3, j); return 0 }
 
-fun getExpr() -> String { return bsBufGet(3) }
+fun getExpr() String { return bsBufGet(3) }
 
-fun setExprBool(b: Bool) -> Int {
+fun setExprBool(b Bool) Int {
     return if b { setExpr(exprWrap(2, "{\"Literal\": {\"Bool\": true}}")) } else { setExpr(exprWrap(2, "{\"Literal\": {\"Bool\": false}}")) }
 }
 
-fun setExprLitInt(n: Int) -> Int {
+fun setExprLitInt(n Int) Int {
     setExpr(exprWrap(1, "{\"Literal\": {\"Int\": " + toString(n) + "}}"))
     return 0
 }
 
-fun setExprIdent(name: String, tag: Int) -> Int {
+fun setExprIdent(name String, tag Int) Int {
     setExpr(exprWrap(tag, "{\"Ident\": \"" + name + "\"}"))
     return 0
 }
 
-fun setExprBinary(op: String, left: String, right: String, tag: Int) -> Int {
+fun setExprBinary(op String, left String, right String, tag Int) Int {
     setExpr(exprWrap(tag, "{\"Binary\": [" + left + ", \"" + op + "\", " + right + "]}"))
     return 0
 }
 
-fun accReset(slot: Int) -> Int { bsBufClear(slot); return 0 }
+fun accReset(slot Int) Int { bsBufClear(slot); return 0 }
 
-fun accGet(slot: Int) -> String { return bsBufGet(slot) }
+fun accGet(slot Int) String { return bsBufGet(slot) }
 
-fun accSet(slot: Int, content: String) -> Int { bsBufSet(slot, content); return 0 }
+fun accSet(slot Int, content String) Int { bsBufSet(slot, content); return 0 }
 
-fun accAdd(slot: Int, part: String, sep: Int) -> Int {
+fun accAdd(slot Int, part String, sep Int) Int {
     accAddSep(slot, sep)
     bsBufAppend(slot, part)
     return 0
 }
 
-fun accComma(slot: Int) -> Int {
+fun accComma(slot Int) Int {
     bsBufAppend(slot, ", ")
     return 0
 }
 
-fun accAddSep(slot: Int, sep: Int) -> Int {
+fun accAddSep(slot Int, sep Int) Int {
     return if sep == 1 { accComma(slot) } else { 0 }
 }
 
-fun accSessionClear() -> Int {
+fun accSessionClear() Int {
     bsBufClear(5)
     bsBufClear(6)
     bsBufClear(7)

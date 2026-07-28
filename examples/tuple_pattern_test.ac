@@ -3,13 +3,13 @@ fun main() { val pair = (1, 2)
 
     // Match with wildcard
     when pair {
-        (x, _) -> print(x)
+        (x, _) { print(x) }
     }
     println("")
 
     // Match with both bindings
     when pair {
-        (x, y) -> {
+        (x, y) { { }
             print(x)
             print(y)
         }
@@ -18,16 +18,16 @@ fun main() { val pair = (1, 2)
 
     // Match with specific values
     val r = when pair {
-        (1, 2) -> "ab"
-        (3, 4) -> "cd"
-        else -> "other"
+        (1, 2) { "ab" }
+        (3, 4) { "cd" }
+        else { "other" }
     }
     println(r)
 
     // Match with wildcard on second
     val r2 = when pair {
-        (1, _) -> "first"
-        (2, _) -> "second"
-        else -> "other"
+        (1, _) { "first" }
+        (2, _) { "second" }
+        else { "other" }
     }
     println(r2) }

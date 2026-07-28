@@ -1,8 +1,8 @@
 // M134: heterogeneous Map values in PlainBlock for-in (dual frontend).
-fun main() -> Int {
+fun main() Int {
     return if true {
-        val m: Map = Map["a": 10, "b": true]
-        var sum: Int = 0
+        val m Map = Map["a": 10, "b": true]
+        var sum Int = 0
         for v in m {
             sum = sum + v
         }

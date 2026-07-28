@@ -58,7 +58,7 @@ mod tests {
     #[test]
     fn hir_when_round_trip() {
         let (program, hir) = check_and_lower(
-            "fun main() {\n  println(when 1 {\n    0 -> 10\n    else -> 20\n  })\n}",
+            "fun main() {\n  println(when 1 {\n    0 { 10 }\n    else { 20 }\n  })\n}",
         );
         assert_eq!(hir.to_program(), program);
     }
@@ -67,8 +67,8 @@ mod tests {
     #[test]
     fn hir_fun_params_seed_when_call_string_ty() {
         let src = r#"
-fun wrap(s: String) -> String { return s }
-fun pick(s: String, b: Bool) -> String {
+fun wrap(s String) String { return s }
+fun pick(s String, b Bool) String {
   return if b { wrap(s) } else { "x" }
 }
 "#;

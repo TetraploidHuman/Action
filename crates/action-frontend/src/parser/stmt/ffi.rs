@@ -70,11 +70,7 @@ impl Parser {
             };
             self.advance();
 
-            let ty = if self.skip(TokenKind::Colon) {
-                Some(self.parse_type()?)
-            } else {
-                None
-            };
+            let ty = self.parse_optional_type_ann()?;
             params.push(Param {
                 name: param_name,
                 ty,
@@ -82,12 +78,8 @@ impl Parser {
         }
         self.expect(TokenKind::RParen)?;
 
-        // Optional return type (-> syntax)
-        let return_type = if self.skip(TokenKind::Arrow) {
-            Some(self.parse_type()?)
-        } else {
-            None
-        };
+        // Optional return type without arrow: external fun f() Int
+        let return_type = self.parse_optional_return_type()?;
 
         Ok(Stmt::External {
             name,

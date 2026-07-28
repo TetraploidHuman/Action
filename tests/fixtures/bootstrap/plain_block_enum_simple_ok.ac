@@ -1,13 +1,13 @@
 // M183: PlainBlock enum+when — mirror enum_simple → 0.
 enum Color { Red, Green, Blue }
 
-fun main() -> Int {
+fun main() Int {
     return if true {
-        val c: Color = Red
-        val code: Int = when c {
-            Red -> 1
-            Green -> 2
-            else -> 0
+        val c Color = Red
+        val code Int = when c {
+            Red { 1 }
+            Green { 2 }
+            else { 0 }
         }
         println(code)
         0

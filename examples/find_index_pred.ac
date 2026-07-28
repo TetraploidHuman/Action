@@ -1,4 +1,4 @@
-fun pred(x: Int) -> Bool { x == 2 }
+fun pred(x Int) Bool { x == 2 }
 fun main() {
     val lst = List[1, 2, 3]
     println(lst.findIndex(pred) or { -1 })

@@ -1,10 +1,10 @@
 // M190: PlainBlock lambda body mid-stmt val — mirror lambda_val_ok → 42.
 // Call site in PlainBlock; `lambda { 21; val a: Int = 21; a * 2 }()` in helper.
-fun once() -> Int {
-    return lambda { 21; val a: Int = 21; a * 2 }()
+fun once() Int {
+    return lambda { 21; val a Int = 21; a * 2 }()
 }
 
-fun main() -> Int {
+fun main() Int {
     return if true {
         once()
     } else {

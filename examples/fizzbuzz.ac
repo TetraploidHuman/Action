@@ -1,9 +1,9 @@
 // FizzBuzz in Atomic (v7 syntax)
-fun fizzbuzz(n: Int) -> String {
+fun fizzbuzz(n Int) String {
     if n % 3 == 0 and n % 5 == 0 { "FizzBuzz" } else { if n % 3 == 0 { "Fizz" } else { if n % 5 == 0 { "Buzz" } else { toString(n) } } }
 }
 
-fun toString(n: Int) -> String {
+fun toString(n Int) String {
     // simple: just print the number via print
     print(n)
     ""

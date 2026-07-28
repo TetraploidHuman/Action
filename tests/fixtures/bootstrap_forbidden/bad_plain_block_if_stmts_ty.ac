@@ -1,5 +1,5 @@
 // M191: multi-stmt if then arm type error inside PlainBlock (dual frontend).
-fun main() -> Int {
+fun main() Int {
     return if true {
         if true { 21; 1 and true } else { 0 }
     } else {

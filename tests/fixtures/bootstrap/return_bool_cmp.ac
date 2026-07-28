@@ -1,8 +1,8 @@
 // TC5 positive: Bool function may return comparison expression.
-fun isOne(n: Int) -> Bool {
+fun isOne(n Int) Bool {
     return n == 1
 }
 
-fun main() -> Int {
+fun main() Int {
     return if isOne(1) { 1 } else { 0 }
 }

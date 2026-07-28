@@ -1,7 +1,7 @@
 // M135: PlainBlock for-break — sum 1..5 before break → 15.
-fun main() -> Int {
+fun main() Int {
     return if true {
-        var sum: Int = 0
+        var sum Int = 0
         for i in 1..100 {
             if i > 5 { break } else { sum = sum + i }
         }

@@ -2,7 +2,12 @@
 fun main() {
     var i = 0; var sum = 0
     for i < 1000 {
-        val label = when i % 4 { 0 -> "a"; 1 -> "b"; 2 -> "c"; _ -> "d" }
+        val label = when i % 4 {
+            0 { "a" }
+            1 { "b" }
+            2 { "c" }
+            _ { "d" }
+        }
         sum = sum + len(label); i = i + 1
     }
     println(sum)

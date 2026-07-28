@@ -1,11 +1,11 @@
 // Test: untyped callback parameter used inside if pattern
-fun apply(opt: Option, f) -> Option { when opt {
-        Some(v) -> f(v)
-        None -> None
+fun apply(opt Option, f) Option { when opt {
+        Some(v) { f(v) }
+        None { None }
     } }fun main() {
     val doubled = apply(Some(21)) { x; x * 2 }
     when doubled {
-        Some(v) -> print(v)
-        None -> print(0)
+        Some(v) { print(v) }
+        None { print(0) }
     }
 }

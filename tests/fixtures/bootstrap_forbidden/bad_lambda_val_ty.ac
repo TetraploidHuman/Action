@@ -1,4 +1,4 @@
 // M128: lambda body val init type error (dual frontend).
-fun main() -> Int {
-    return lambda { 0; val a: Int = true; a }()
+fun main() Int {
+    return lambda { 0; val a Int = true; a }()
 }

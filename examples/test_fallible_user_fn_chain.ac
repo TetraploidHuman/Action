@@ -1,8 +1,8 @@
-fun inner(s: String) -> Int {
+fun inner(s String) Int {
     parseInt(s)
 }
 
-fun outer(s: String) -> Int {
+fun outer(s String) Int {
     inner(s)
 }
 

@@ -1,4 +1,4 @@
 // M118: fallible `or {}` — parseInt fails → fallback 0.
-fun main() -> Int {
+fun main() Int {
     return parseInt("x") or { 0 }
 }

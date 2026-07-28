@@ -1,4 +1,4 @@
-fun mustParse(s: String) -> Int {
+fun mustParse(s String) Int {
     parseInt(s)
 }
 

@@ -21,16 +21,16 @@ import pdecl
 
 import pscan
 
-external fun readFile(path: String) -> String
-external fun bsIntSet(slot: Int, value: Int) -> Int
-external fun bsIntGet(slot: Int) -> Int
+external fun readFile(path String) String
+external fun bsIntSet(slot Int, value Int) Int
+external fun bsIntGet(slot Int) Int
 
-fun keywordKindOpsTail(text: String) -> String {
+fun keywordKindOpsTail(text String) String {
     return when text {
-        "and" -> "and"
-        "or" -> "or"
-        "not" -> "not"
-        else -> text
+        "and" { "and" }
+        "or" { "or" }
+        "not" { "not" }
+        else { text }
     }
 }
 
@@ -38,16 +38,16 @@ fun keywordKindOpsTail(text: String) -> String {
 
 // ── Top level ────────────────────────────────────────────────────────────
 
-fun parseImportLoadModule(modName: String, sep: Int) -> Int {
+fun parseImportLoadModule(modName String, sep Int) Int {
     modload.importMarkLoaded(modName)
     modload.parseImportApplyPrefix(modName)
-    val modPath: String = modload.importModulePath(modName)
-    val modSrc: String = readFile(modPath)
+    val modPath String = modload.importModulePath(modName)
+    val modSrc String = readFile(modPath)
     modload.importSrcSet(modSrc)
     whenty.whenUnifyDisable()
     parseProgramSave()
     parseProgram(modload.importSrcGet(), 0, sep)
-    val nestedSep: Int = bsIntGet(parser.slotPpSep())
+    val nestedSep Int = bsIntGet(parser.slotPpSep())
     parseProgramRestore()
     maybeMarkStmtEmitted(nestedSep)
     whenty.whenUnifyEnable()
@@ -55,22 +55,22 @@ fun parseImportLoadModule(modName: String, sep: Int) -> Int {
     return 1
 }
 
-fun maybeMarkStmtEmitted(nestedSep: Int) -> Int {
+fun maybeMarkStmtEmitted(nestedSep Int) Int {
     return if nestedSep == 1 { emit.markStmtEmitted() } else { 0 }
 }
 
-fun parseImportLoadFresh(modName: String, sep: Int) -> Int {
+fun parseImportLoadFresh(modName String, sep Int) Int {
     return if modload.importAllowed(modName) { parseImportLoadModule(modName, sep) } else { modload.parseImportReject(sep) }
 }
 
-fun parseImportLoad(modName: String, sep: Int) -> Int {
+fun parseImportLoad(modName String, sep Int) Int {
     return if modload.importIsLoaded(modName) { sep } else { parseImportLoadFresh(modName, sep) }
 }
 
-fun parseImport(s: String, pos: Int, sep: Int) -> Int {
+fun parseImport(s String, pos Int, sep Int) Int {
     modload.importSelectiveClear()
-    var p: Int = parser.advance(s, pos)
-    val modName: String = parser.cur(s, p)
+    var p Int = parser.advance(s, pos)
+    val modName String = parser.cur(s, p)
     p = parser.advance(s, p)
     p = modload.parseImportSkipItems(s, p)
     p = pexpr.skipOptionalSemi(s, p)
@@ -80,45 +80,45 @@ fun parseImport(s: String, pos: Int, sep: Int) -> Int {
 
 // ── Pre-scan top-level fun signatures (forward / mutual recursion) ──
 
-fun parseProgramReject(s: String, pos: Int) -> Int {
+fun parseProgramReject(s String, pos Int) Int {
     typeenv.typeErrorMark()
     return parser.advance(s, pos)
 }
 
-fun parseTopLevel(s: String, pos: Int, sep: Int) -> Int {
-    val k: String = parser.cur(s, pos)
+fun parseTopLevel(s String, pos Int, sep Int) Int {
+    val k String = parser.cur(s, pos)
     return when k {
-        "import" -> parseImport(s, pos, sep)
-        "enum" -> pdecl.parseEnum(s, pos, sep)
-        "type" -> pdecl.parseTypeAlias(s, pos, sep)
-        "external" -> pdecl.parseExternal(s, pos, sep)
-        "fun" -> pdecl.parseFun(s, pos, sep)
-        else -> parseProgramReject(s, pos)
+        "import" { parseImport(s, pos, sep) }
+        "enum" { pdecl.parseEnum(s, pos, sep) }
+        "type" { pdecl.parseTypeAlias(s, pos, sep) }
+        "external" { pdecl.parseExternal(s, pos, sep) }
+        "fun" { pdecl.parseFun(s, pos, sep) }
+        else { parseProgramReject(s, pos) }
     }
 }
 
 // Nest save/restore for parser span/line-col (M45: host bsInt nest slots).
 // Loop state (pos/sep/done) lives in parseProgram locals (M34).
-fun parseProgramSave() -> Int {
+fun parseProgramSave() Int {
     return parser.spanNestSave()
 }
 
-fun parseProgramRestore() -> Int {
+fun parseProgramRestore() Int {
     return parser.spanNestRestore()
 }
 
-fun parseProgramAdvance(s: String, pos: Int, sep: Int) -> Int {
+fun parseProgramAdvance(s String, pos Int, sep Int) Int {
     bsIntSet(parser.slotPpHirEmitted(), 0)
-    val np: Int = parseTopLevel(s, pos, sep)
+    val np Int = parseTopLevel(s, pos, sep)
     bsIntSet(parser.slotPpSep(), if bsIntGet(parser.slotPpHirEmitted()) == 1 { 1 } else { sep })
     return np
 }
 
-fun parseProgram(s: String, pos: Int, sep: Int) -> Int {
+fun parseProgram(s String, pos Int, sep Int) Int {
     parser.spanBindSrc(s)
-    var p: Int = pos
-    var sp: Int = sep
-    var done: Int = 0
+    var p Int = pos
+    var sp Int = sep
+    var done Int = 0
     for n in 0..512 {
         if done == 1 { break } else { if parser.cur(s, p) == "" { done = 1 } else { p = parseProgramAdvance(s, p, sp) } }
         if done == 1 { continue } else { sp = bsIntGet(parser.slotPpSep()) }
@@ -127,20 +127,20 @@ fun parseProgram(s: String, pos: Int, sep: Int) -> Int {
     return p
 }
 
-fun loadSource() -> String {
+fun loadSource() String {
     return readFile("bootstrap/_compile_input.txt")
 }
 
-fun emitHirTail() -> Int {
+fun emitHirTail() Int {
     emit.jOut("\n  ]\n}")
     // M46: one disk write for harness Path B; stdout from the in-memory buffer.
-    val out: String = emit.jOutGet()
+    val out String = emit.jOutGet()
     emit.jOutFlush()
     println(out)
     return 0
 }
 
-fun sessionReset() -> Int {
+fun sessionReset() Int {
     // M43: expr JSON + last expr ty tag live in bsBuf slots 3/4.
     emit.setExpr("")
     typeenv.lastExprTySet(0)
@@ -165,9 +165,9 @@ fun sessionReset() -> Int {
     return 0
 }
 
-fun main() -> Int {
+fun main() Int {
     sessionReset()
-    val src: String = loadSource()
+    val src String = loadSource()
     parser.spanBindSrc(src)
     pscan.preScanProgram(src, 0)
     emit.jOutBegin()

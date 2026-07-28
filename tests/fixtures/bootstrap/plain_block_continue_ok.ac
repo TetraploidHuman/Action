@@ -1,7 +1,7 @@
 // M135: PlainBlock for-continue — skip i==3 → 12.
-fun main() -> Int {
+fun main() Int {
     return if true {
-        var sum: Int = 0
+        var sum Int = 0
         for i in List[1, 2, 3, 4, 5] {
             if i == 3 { continue } else { sum = sum + i }
         }

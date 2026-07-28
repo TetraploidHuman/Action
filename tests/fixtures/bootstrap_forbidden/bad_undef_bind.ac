@@ -1,5 +1,5 @@
 // M112: undefined Ident in let init rejected.
-fun main() -> Int {
-    val x: Int = leaked
+fun main() Int {
+    val x Int = leaked
     return 0
 }

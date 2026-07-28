@@ -1,6 +1,6 @@
-fun main() -> Int {
-    var x: Int = 1
-    var s: Int = 0
+fun main() Int {
+    var x Int = 1
+    var s Int = 0
     for x {
         s = s + 1
         break

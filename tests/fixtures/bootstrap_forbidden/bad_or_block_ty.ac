@@ -1,4 +1,4 @@
 // M118: OrBlock fallback type must match fallible payload (Int vs Bool).
-fun main() -> Int {
+fun main() Int {
     return parseInt("x") or { true }
 }

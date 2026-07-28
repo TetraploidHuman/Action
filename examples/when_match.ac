@@ -3,14 +3,14 @@ fun main() {
     // Match integer literals
     val x = 42
     when x {
-        0 -> print("zero")
-        1 -> print("one")
-        42 -> print("the answer")
-        else -> print("something else")
+        0 { print("zero") }
+        1 { print("one") }
+        42 { print("the answer") }
+        else { print("something else") }
     }
 
     // Match with variable binding (binds matched value)
     when x {
-        n -> print(n)
+        n { print(n) }
     }
 }

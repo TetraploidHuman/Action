@@ -1,5 +1,5 @@
-fun main() -> Int {
-    var xs: List = List[1, 2, 3]
+fun main() Int {
+    var xs List = List[1, 2, 3]
     xs[0] = true
     return 0
 }

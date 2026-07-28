@@ -1,4 +1,4 @@
 // M129: PlainBlock return in if arm — early return 42.
-fun main() -> Int {
+fun main() Int {
     return if true { return 42; 0 } else { 0 }
 }

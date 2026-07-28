@@ -1,9 +1,9 @@
 // M160: PlainBlock assign — mirror assign_expr → 0.
-fun main() -> Int {
+fun main() Int {
     return if true {
-        var x: Int = 0
+        var x Int = 0
         if x == 0 { x = 10 } else { x = 0 }
-        val bump: Int = if x == 0 { 10 } else { 0 }
+        val bump Int = if x == 0 { 10 } else { 0 }
         x - x + bump - bump
     } else {
         1

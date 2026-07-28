@@ -1,15 +1,15 @@
 // M192: PlainBlock env scope + shadowing — mirror env_scope_good → 154.
-fun inner() -> Int {
-    val secret: Int = 55
+fun inner() Int {
+    val secret Int = 55
     return secret
 }
 
-fun shadowLen() -> Int {
-    val len: Int = 99
+fun shadowLen() Int {
+    val len Int = 99
     return len
 }
 
-fun main() -> Int {
+fun main() Int {
     return if true {
         inner() + shadowLen()
     } else {

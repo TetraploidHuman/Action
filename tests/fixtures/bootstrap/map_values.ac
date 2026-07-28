@@ -1,6 +1,6 @@
-fun main() -> Int {
-    val m: Map = Map["a": 10, "b": 5]
-    var sum: Int = 0
+fun main() Int {
+    val m Map = Map["a": 10, "b": 5]
+    var sum Int = 0
     for v in m {
         sum = sum + v
     }

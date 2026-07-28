@@ -1,4 +1,4 @@
 // M112: undefined Ident in arithmetic rejected (not only bare return).
-fun main() -> Int {
+fun main() Int {
     return leaked + 1
 }

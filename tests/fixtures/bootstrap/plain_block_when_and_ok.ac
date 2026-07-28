@@ -1,9 +1,9 @@
 // M151: PlainBlock when ConditionChain + and — mirror when_guard → 0.
-fun main() -> Int {
+fun main() Int {
     return if true {
         when {
-            5 > 0 and 5 < 10 -> 0
-            else -> 1
+            5 > 0 and 5 < 10 { 0 }
+            else { 1 }
         }
     } else {
         1

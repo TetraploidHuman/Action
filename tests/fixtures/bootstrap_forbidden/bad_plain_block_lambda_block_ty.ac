@@ -1,9 +1,9 @@
 // M188: no-param lambda body type error (call site in PlainBlock; dual frontend).
-fun once() -> Int {
+fun once() Int {
     return lambda { 1 and true }()
 }
 
-fun main() -> Int {
+fun main() Int {
     return if true {
         once()
     } else {

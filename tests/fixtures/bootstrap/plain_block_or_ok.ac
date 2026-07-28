@@ -1,5 +1,5 @@
 // M148: PlainBlock fallible or {} — mirror or_block_ok → 0.
-fun main() -> Int {
+fun main() Int {
     return if true {
         parseInt("x") or { 0 }
     } else {

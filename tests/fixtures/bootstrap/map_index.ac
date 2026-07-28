@@ -1,4 +1,4 @@
-fun main() -> Int {
-    val m: Map = Map["a": 10, "b": 5]
+fun main() Int {
+    val m Map = Map["a": 10, "b": 5]
     return m["a"]
 }

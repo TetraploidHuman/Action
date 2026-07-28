@@ -1,5 +1,5 @@
 // M157: unary + on Bool inside PlainBlock (dual frontend).
-fun main() -> Int {
+fun main() Int {
     return if true {
         +true
     } else {

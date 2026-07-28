@@ -1,7 +1,7 @@
-type Point {x: Int, y: Int}
+type Point {x Int, y Int}
 
-fun main() -> Int {
-    var p: Point = Point {x = 0, y = 0}
+fun main() Int {
+    var p Point = Point {x = 0, y = 0}
     p.x = true
     return p.x
 }

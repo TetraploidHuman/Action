@@ -1,5 +1,5 @@
 // M133: return-value type error inside PlainBlock infinite for (dual frontend).
-fun main() -> Int {
+fun main() Int {
     return if true {
         for {
             return 1 and true

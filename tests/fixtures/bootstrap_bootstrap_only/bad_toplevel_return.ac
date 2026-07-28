@@ -1,5 +1,5 @@
 return 0
 
-fun main() -> Int {
+fun main() Int {
     return 0
 }

@@ -1,13 +1,13 @@
-type Point {x: Int, y: Int}
+type Point {x Int, y Int}
 
-fun origin() -> Point {
+fun origin() Point {
     return Point {x = 0, y = 0}
 }
 
-fun sumX(p: Point) -> Int {
+fun sumX(p Point) Int {
     return p.x
 }
 
-fun main() -> Int {
+fun main() Int {
     return sumX(origin())
 }

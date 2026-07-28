@@ -1,7 +1,7 @@
 fun main() {
     for i in 1..5 {
         when {
-            i/2 == 1 -> print(i)
+            i/2 == 1 { print(i) }
         }
     }
 }

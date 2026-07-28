@@ -1,9 +1,9 @@
 // M151: ConditionChain and-operand not Bool inside PlainBlock (dual frontend).
-fun main() -> Int {
+fun main() Int {
     return if true {
         when {
-            1 and true -> 0
-            else -> 1
+            1 and true { 0 }
+            else { 1 }
         }
     } else {
         0

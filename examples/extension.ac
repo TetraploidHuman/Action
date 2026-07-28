@@ -1,7 +1,7 @@
 // Extension blocks: add methods to existing types
 extension Int {
     fun double(self) = self * 2
-    fun add(self, other: Int) = self + other
+    fun add(self, other Int) = self + other
 }
 
 fun main() {

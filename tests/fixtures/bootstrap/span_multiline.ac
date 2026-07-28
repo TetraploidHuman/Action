@@ -1,8 +1,8 @@
 // M28 span oracle: second `fun` must not keep stub line/col (1,1).
-fun a() -> Int {
+fun a() Int {
   return 1
 }
 
-fun b() -> Int {
+fun b() Int {
   return 2
 }

@@ -3,70 +3,70 @@
 //   lexer.ac:    not → "!"  (Display / M4 golden)
 //   compiler.ac: not → "not" (Parse)
 
-fun atEnd(s: String, pos: Int) -> Bool {
+fun atEnd(s String, pos Int) Bool {
     return pos == len(s)
 }
 
-fun charAtSafe(s: String, pos: Int) -> String {
+fun charAtSafe(s String, pos Int) String {
     return if atEnd(s, pos) { "" } else { charAt(s, pos) }
 }
 
-fun containsAt(alphabet: String, ch: String, i: Int) -> Bool {
+fun containsAt(alphabet String, ch String, i Int) Bool {
     return if atEnd(alphabet, i) { false } else { containsAtStep(alphabet, ch, i) }
 }
 
-fun containsAtStep(alphabet: String, ch: String, i: Int) -> Bool {
+fun containsAtStep(alphabet String, ch String, i Int) Bool {
     return when {
-        ch == charAt(alphabet, i) -> true
-        else -> containsAt(alphabet, ch, i + 1)
+        ch == charAt(alphabet, i) { true }
+        else { containsAt(alphabet, ch, i + 1) }
     }
 }
 
-fun isDigit(ch: String) -> Bool {
+fun isDigit(ch String) Bool {
     return containsAt("0123456789", ch, 0)
 }
 
-fun isIdentPart(ch: String) -> Bool {
+fun isIdentPart(ch String) Bool {
     return containsAt("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_", ch, 0) or isDigit(ch)
 }
 
-fun skipLineComment(s: String, pos: Int) -> Int {
+fun skipLineComment(s String, pos Int) Int {
     return skipLineCommentMore(s, pos + 2)
 }
 
-fun skipLineCommentMore(s: String, pos: Int) -> Int {
+fun skipLineCommentMore(s String, pos Int) Int {
     return when {
-        atEnd(s, pos) -> pos
-        charAtSafe(s, pos) == "\n" -> pos + 1
-        else -> skipLineCommentMore(s, pos + 1)
+        atEnd(s, pos) { pos }
+        charAtSafe(s, pos) == "\n" { pos + 1 }
+        else { skipLineCommentMore(s, pos + 1) }
     }
 }
 
-fun skipWsWhitespace(s: String, pos: Int) -> Int {
+fun skipWsWhitespace(s String, pos Int) Int {
     return if atEnd(s, pos) { pos } else { skipWsWhitespaceStep(s, pos) }
 }
 
-fun skipWsWhitespaceStep(s: String, pos: Int) -> Int {
-    val ch: String = charAtSafe(s, pos)
+fun skipWsWhitespaceStep(s String, pos Int) Int {
+    val ch String = charAtSafe(s, pos)
     return if containsAt(" \t\n\r", ch, 0) { skipWsWhitespace(s, pos + 1) } else { pos }
 }
 
-fun keywordKind(text: String) -> String {
+fun keywordKind(text String) String {
     return when text {
-        "val" -> "val"
-        "var" -> "var"
-        "fun" -> "fun"
-        "if" -> "if"
-        "when" -> "when"
-        "else" -> "else"
-        "enum" -> "enum"
-        "for" -> "for"
-        "in" -> "in"
-        "return" -> "return"
-        "type" -> "type"
-        "external" -> "external"
-        "true" -> "true"
-        "false" -> "false"
-        else -> keywordKindOpsTail(text)
+        "val" { "val" }
+        "var" { "var" }
+        "fun" { "fun" }
+        "if" { "if" }
+        "when" { "when" }
+        "else" { "else" }
+        "enum" { "enum" }
+        "for" { "for" }
+        "in" { "in" }
+        "return" { "return" }
+        "type" { "type" }
+        "external" { "external" }
+        "true" { "true" }
+        "false" { "false" }
+        else { keywordKindOpsTail(text) }
     }
 }

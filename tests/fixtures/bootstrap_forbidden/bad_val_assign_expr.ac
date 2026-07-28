@@ -1,6 +1,6 @@
 // M109: cannot assign to val in expression position (if arm).
-fun main() -> Int {
-    val x: Int = 0
+fun main() Int {
+    val x Int = 0
     if x == 0 { x = 1 } else { x = 0 }
     return x
 }

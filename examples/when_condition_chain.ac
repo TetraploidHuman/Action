@@ -1,9 +1,9 @@
 fun main() {
     for i in 1..5 {
         when {
-            i == 1 -> println("one")
-            i == 2 -> println("two")
-            else -> println(i)
+            i == 1 { println("one") }
+            i == 2 { println("two") }
+            else { println(i) }
         }
     }
 }

@@ -10,15 +10,15 @@ fun main() {
     // Simple enum construction and matching
     val c = Red
     when c {
-        Red -> print("Red")
-        Green -> print("Green")
-        else -> print("Other")
+        Red { print("Red") }
+        Green { print("Green") }
+        else { print("Other") }
     }
 
     // Data-carrying enum construction and destructuring
     val s = Some(42)
     when s {
-        Some(v) -> print(v)
-        None -> print("nothing")
+        Some(v) { print(v) }
+        None { print("nothing") }
     }
 }

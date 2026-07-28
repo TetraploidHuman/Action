@@ -1,9 +1,9 @@
 // M175: PlainBlock Bool return/cmp — mirror return_bool_cmp → 1.
-fun isOne(n: Int) -> Bool {
+fun isOne(n Int) Bool {
     return n == 1
 }
 
-fun main() -> Int {
+fun main() Int {
     return if true {
         if isOne(1) { 1 } else { 0 }
     } else {

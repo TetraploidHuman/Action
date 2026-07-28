@@ -1,4 +1,4 @@
-type Point { x: Int, y: Int }
+type Point { x Int, y Int }
 
 fun main() {
     val x = 10

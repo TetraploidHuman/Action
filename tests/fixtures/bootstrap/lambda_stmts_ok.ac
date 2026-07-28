@@ -1,4 +1,4 @@
 // M125: multi-stmt no-param brace lambda — `lambda { 21; 21 * 2 }()` → 42.
-fun main() -> Int {
+fun main() Int {
     return lambda { 21; 21 * 2 }()
 }

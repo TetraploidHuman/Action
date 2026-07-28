@@ -1,4 +1,4 @@
-fun main() -> Int {
+fun main() Int {
     println("ok")
     return 0
 }

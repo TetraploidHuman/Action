@@ -1,8 +1,8 @@
-fun parseLine(s: String) -> Int {
+fun parseLine(s String) Int {
     parseInt(s)
 } or { -1 }
 
-fun parseBad(s: String) -> Int {
+fun parseBad(s String) Int {
     parseInt(s)
 } or { 0 }
 

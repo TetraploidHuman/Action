@@ -1,4 +1,4 @@
-fun main() -> Int {
-    val s: Set = Set[1, true]
+fun main() Int {
+    val s Set = Set[1, true]
     return 0
 }

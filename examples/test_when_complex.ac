@@ -6,32 +6,32 @@ fun main() {
     // Test 1: Guards with compound conditions
     val x = 15
     val r1 = when x {
-        n and n > 10 and n < 20 -> n + 5
-        n -> n
+        n and n > 10 and n < 20 { n + 5 }
+        n { n }
     }
     print(r1)
 
     // Test 2: Or-patterns
     val y = 2
     val r2 = when y {
-        0, 1, 2 -> 100
-        3, 4, 5 -> 200
-        else -> 300
+        0, 1, 2 { 100 }
+        3, 4, 5 { 200 }
+        else { 300 }
     }
     print(r2)
 
     // Test 3: is-patterns with enum
     val opt = Some(42)
     when opt {
-        is Some -> print(1)
-        is None -> print(0)
+        is Some { print(1) }
+        is None { print(0) }
     }
 
     // Test 4: is-patterns with primitive types
     val z = 42
     when z {
-        is Int -> print(2)
-        else -> print(9)
+        is Int { print(2) }
+        else { print(9) }
     }
 
     // Test 5: Condition chain (expression-based when)
@@ -42,7 +42,7 @@ fun main() {
     // Test 6: Destructuring with variable binding in when arm
     val opt2 = Some(99)
     when opt2 {
-        Some(v) -> print(v)
-        None -> print(0)
+        Some(v) { print(v) }
+        None { print(0) }
     }
 }

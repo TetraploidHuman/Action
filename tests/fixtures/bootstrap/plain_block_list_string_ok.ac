@@ -1,7 +1,7 @@
 // M166: PlainBlock List[String] lit — mirror list_string → 3.
-fun main() -> Int {
+fun main() Int {
     return if true {
-        val xs: List = List["a", "bb", "ccc"]
+        val xs List = List["a", "bb", "ccc"]
         len(xs)
     } else {
         0

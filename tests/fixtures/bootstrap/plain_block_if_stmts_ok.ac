@@ -1,5 +1,5 @@
 // M191: nested multi-stmt if PlainBlock — mirror if_stmts_ok → 42.
-fun main() -> Int {
+fun main() Int {
     return if true {
         if true { 21; 21 * 2 } else { 0 }
     } else {

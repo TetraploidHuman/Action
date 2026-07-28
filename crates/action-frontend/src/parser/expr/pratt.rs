@@ -7,7 +7,7 @@ impl Parser {
 
     /// Peek ahead to check if a `(` starts a when-arm pattern rather than a function call.
     /// Returns true if the parenthesized content parses as comma-separated patterns
-    /// followed by `)` then `->`.
+    /// followed by `)` then `{` (arm body).
     pub(crate) fn peek_when_arm_pattern(&mut self) -> bool {
         let saved = self.pos;
         self.advance(); // (
@@ -19,7 +19,7 @@ impl Parser {
         ok = ok && self.current_kind() == TokenKind::RParen;
         if ok {
             self.advance(); // )
-            ok = self.current_kind() == TokenKind::Arrow;
+            ok = self.current_kind() == TokenKind::LBrace;
         }
         self.pos = saved;
         ok

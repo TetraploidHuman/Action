@@ -1,5 +1,5 @@
 // M150: PlainBlock trailing lambda — mirror trailing_lambda_ok → 42.
-fun main() -> Int {
+fun main() Int {
     return if true {
         map(List[21]) { it * 2 }[0] or { 0 }
     } else {

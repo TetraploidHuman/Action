@@ -1,14 +1,14 @@
 // Test: Option enum operations - pattern matching, unwrapping, chaining
 enum Option { Some(Int), None }
 
-fun safe_div(a: Int, b: Int) -> Option {
+fun safe_div(a Int, b Int) Option {
     if b == 0 { None } else { Some(a / b) }
 }
 
-fun add_one(opt: Option) -> Option {
+fun add_one(opt Option) Option {
     when opt {
-        Some(v) -> Some(v + 1)
-        None -> None
+        Some(v) { Some(v + 1) }
+        None { None }
     }
 }
 
@@ -16,35 +16,35 @@ fun main() {
     // Test 1: Successful division and unwrap
     val r1 = safe_div(100, 5)
     when r1 {
-        Some(v) -> print(v)
-        None -> print(0)
+        Some(v) { print(v) }
+        None { print(0) }
     }
 
     // Test 2: Division by zero returns None
     val r2 = safe_div(10, 0)
     when r2 {
-        Some(v) -> print(0)
-        None -> print(1)
+        Some(v) { print(0) }
+        None { print(1) }
     }
 
     // Test 3: Chained operations
     val r3 = add_one(safe_div(84, 2))
     when r3 {
-        Some(v) -> print(v)
-        None -> print(0)
+        Some(v) { print(v) }
+        None { print(0) }
     }
 
     // Test 4: Empty Option (None) chained
     val r4 = add_one(safe_div(10, 0))
     when r4 {
-        Some(v) -> print(0)
-        None -> print(2)
+        Some(v) { print(0) }
+        None { print(2) }
     }
 
     // Test 5: Nested pattern matching on Option
     val r5 = safe_div(50, 3)
     when r5 {
-        Some(v) -> if v > 15 { print(5) } else { print(6) }
-        None -> print(0)
+        Some(v) { if v > 15 { print(5) } else { print(6) } }
+        None { print(0) }
     }
 }

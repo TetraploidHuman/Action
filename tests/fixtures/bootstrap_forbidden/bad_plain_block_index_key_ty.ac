@@ -1,7 +1,7 @@
 // M167: Map index key not String inside PlainBlock (dual frontend).
-fun main() -> Int {
+fun main() Int {
     return if true {
-        var m: Map = Map["a": 1]
+        var m Map = Map["a": 1]
         m[1] = 2
         0
     } else {

@@ -1,10 +1,10 @@
 // M181: Point field Bool where Int expected inside PlainBlock (dual frontend).
-type Point {x: Int, y: Int}
+type Point {x Int, y Int}
 
-fun main() -> Int {
+fun main() Int {
     return if true {
-        val p: Point = Point {x = true, y = 20}
-        val tag: Int = if p.x == 10 { 1 } else { 0 }
+        val p Point = Point {x = true, y = 20}
+        val tag Int = if p.x == 10 { 1 } else { 0 }
         println(tag)
         0
     } else {

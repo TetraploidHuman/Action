@@ -1,12 +1,12 @@
 type Point {
-    x: Int
-    y: Int
-    fun translate(self, dx: Int, dy: Int) -> Point {
+    x Int
+    y Int
+    fun translate(self, dx Int, dy Int) Point {
         Point { x = self.x + dx, y = self.y + dy }
     }
 }
 
-fun main() -> Int {
-    val q: Point = Point { x = 1, y = 2 }.translate(3, 4)
+fun main() Int {
+    val q Point = Point { x = 1, y = 2 }.translate(3, 4)
     return q.x
 }

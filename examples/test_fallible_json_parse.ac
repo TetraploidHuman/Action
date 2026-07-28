@@ -1,6 +1,6 @@
 external type JsonNode
-external fun action_json_type(node: Ptr[JsonNode]) -> Int
-external fun action_json_parse(s: CString) -> Ptr[JsonNode]
+external fun action_json_type(node Ptr[JsonNode]) Int
+external fun action_json_parse(s CString) Ptr[JsonNode]
 
 fun main() {
     val ok = __jsonParse(toCString("{\"n\":7}")) or { action_json_parse(toCString("{}")) }

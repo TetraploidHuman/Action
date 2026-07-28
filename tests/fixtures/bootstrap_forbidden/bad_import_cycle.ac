@@ -1,6 +1,6 @@
 // M120: A↔B circular import must be rejected.
 import m120_cycle_a
 
-fun main() -> Int {
+fun main() Int {
     return 0
 }

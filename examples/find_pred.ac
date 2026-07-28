@@ -1,4 +1,4 @@
-fun pred(x: Int) -> Bool { x == 2 }
+fun pred(x Int) Bool { x == 2 }
 fun main() {
     var lst = List[1, 2, 3]
     println((findIndex(pred, lst) or { -1 }) == 1)

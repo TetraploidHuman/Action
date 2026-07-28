@@ -1,5 +1,5 @@
 // M150: trailing lambda body type error inside PlainBlock (dual frontend).
-fun main() -> Int {
+fun main() Int {
     return if true {
         map(List[1]) { it and true }[0]
     } else {

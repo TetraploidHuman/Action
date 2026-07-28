@@ -1,5 +1,5 @@
 // M154: PlainBlock logical not — mirror logical_not → 0.
-fun main() -> Int {
+fun main() Int {
     return if true {
         if not false { 0 } else { 1 }
     } else {

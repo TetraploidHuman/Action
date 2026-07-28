@@ -1,8 +1,8 @@
 // M139: PlainBlock Set for-in — sum elements → 6.
-fun main() -> Int {
+fun main() Int {
     return if true {
-        val s: Set = Set[1, 2, 3]
-        var sum: Int = 0
+        val s Set = Set[1, 2, 3]
+        var sum Int = 0
         for x in s {
             sum = sum + x
         }

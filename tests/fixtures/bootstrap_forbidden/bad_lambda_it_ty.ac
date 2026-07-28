@@ -1,4 +1,4 @@
 // M119: `it` is Int; `and` requires Bool → type error.
-fun main() -> Int {
+fun main() Int {
     return lambda { it and true }(1)
 }

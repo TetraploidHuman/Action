@@ -1,12 +1,12 @@
-fun classify(n: Int) -> Int {
+fun classify(n Int) Int {
     return when {
-        n < 0 -> 0
-        n == 0 -> 1
-        else -> 2
+        n < 0 { 0 }
+        n == 0 { 1 }
+        else { 2 }
     }
 }
 
-fun main() -> Int {
+fun main() Int {
     println(classify(-1))
     println(classify(0))
     println(classify(5))

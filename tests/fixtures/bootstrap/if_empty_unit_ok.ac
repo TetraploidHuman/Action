@@ -1,5 +1,5 @@
 // Path B: empty `{}` if/else arms → Unit Block (Rust parity).
-fun main() -> Int {
+fun main() Int {
     if true {} else {}
     return 0
 }

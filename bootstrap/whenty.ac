@@ -8,96 +8,96 @@ import typeenv
 
 import emit
 
-external fun bsIntSet(slot: Int, value: Int) -> Int
-external fun bsIntGet(slot: Int) -> Int
-external fun bsBufSet(slot: Int, content: String) -> Int
-external fun bsBufGet(slot: Int) -> String
+external fun bsIntSet(slot Int, value Int) Int
+external fun bsIntGet(slot Int) Int
+external fun bsBufSet(slot Int, content String) Int
+external fun bsBufGet(slot Int) String
 
-fun whenUnifyDisable() -> Int { bsIntSet(parser.slotWhenUnifyOff(), 1)
-    return 0 }fun whenUnifyEnable() -> Int {
+fun whenUnifyDisable() Int { bsIntSet(parser.slotWhenUnifyOff(), 1)
+    return 0 }fun whenUnifyEnable() Int {
     bsIntSet(parser.slotWhenUnifyOff(), 0)
     return 0
 }
 
-fun whenUnifyActive() -> Bool {
+fun whenUnifyActive() Bool {
     return bsIntGet(parser.slotWhenUnifyOff()) == 0
 }
 
-fun whenTagUnifyCheck(a: Int, b: Int) -> Int {
+fun whenTagUnifyCheck(a Int, b Int) Int {
     return when {
-        whenUnifyActive() == false -> 0
-        a == b -> 0
-        else -> typeenv.typeErrorMark()
+        whenUnifyActive() == false { 0 }
+        a == b { 0 }
+        else { typeenv.typeErrorMark() }
     }
 }
 
-fun whenTagUnify(a: Int, b: Int) -> Int {
+fun whenTagUnify(a Int, b Int) Int {
     whenTagUnifyCheck(a, b)
     return a
 }
 
-fun snapWhenTag0(slot: Int) -> Int {
+fun snapWhenTag0(slot Int) Int {
     bsIntSet(slot, typeenv.lastExprTyTag())
     return 0
 }
 
-fun whenTagCheck(slot: Int) -> Int {
-    val expected: Int = bsIntGet(slot)
-    val got: Int = typeenv.lastExprTyTag()
+fun whenTagCheck(slot Int) Int {
+    val expected Int = bsIntGet(slot)
+    val got Int = typeenv.lastExprTyTag()
     whenTagUnify(expected, got)
     return 0
 }
 
-fun whenTagSnap(sep: Int, slot: Int) -> Int {
+fun whenTagSnap(sep Int, slot Int) Int {
     return when sep {
-        0 -> snapWhenTag0(slot)
-        else -> whenTagCheck(slot)
+        0 { snapWhenTag0(slot) }
+        else { whenTagCheck(slot) }
     }
 }
 
-fun whenChainTagSnap(sep: Int) -> Int {
+fun whenChainTagSnap(sep Int) Int {
     return whenTagSnap(sep, parser.slotWhenChainTag())
 }
 
-fun whenMatchTagSnap(sep: Int) -> Int {
+fun whenMatchTagSnap(sep Int) Int {
     return whenTagSnap(sep, parser.slotWhenMatchTag())
 }
 
-fun isStringLit(k: String) -> Bool {
+fun isStringLit(k String) Bool {
     return prelude.charAtSafe(k, 0) == "\""
 }
 
-fun patJsonWriteConstructor(pat: String) -> Int {
+fun patJsonWriteConstructor(pat String) Int {
     emit.sessSet(emit.slotPat(), "{\"Constructor\": {\"name\": \"" + pat + "\", \"args\": [], \"named_fields\": []}}")
     return 0
 }
 
-fun patJsonWriteString(pat: String) -> Int {
+fun patJsonWriteString(pat String) Int {
     emit.sessSet(emit.slotPat(), "{\"Literal\": {\"String\": " + emit.jQuotedString(pat) + "}}")
     return 0
 }
 
-fun patJsonWriteBool(b: Bool) -> Int {
+fun patJsonWriteBool(b Bool) Int {
     if b { emit.sessSet(emit.slotPat(), "{\"Literal\": {\"Bool\": true}}") } else { emit.sessSet(emit.slotPat(), "{\"Literal\": {\"Bool\": false}}") }
     return 0
 }
 
-fun patJsonWriteInt(pat: String) -> Int {
+fun patJsonWriteInt(pat String) Int {
     emit.sessSet(emit.slotPat(), "{\"Literal\": {\"Int\": " + pat + "}}")
     return 0
 }
 
-fun patJsonWrite(pat: String) -> Int {
+fun patJsonWrite(pat String) Int {
     return when {
-        isStringLit(pat) -> patJsonWriteString(pat)
-        pat == "true" -> patJsonWriteBool(true)
-        pat == "false" -> patJsonWriteBool(false)
-        prelude.isDigit(prelude.charAtSafe(pat, 0)) -> patJsonWriteInt(pat)
-        else -> patJsonWriteConstructor(pat)
+        isStringLit(pat) { patJsonWriteString(pat) }
+        pat == "true" { patJsonWriteBool(true) }
+        pat == "false" { patJsonWriteBool(false) }
+        prelude.isDigit(prelude.charAtSafe(pat, 0)) { patJsonWriteInt(pat) }
+        else { patJsonWriteConstructor(pat) }
     }
 }
 
-fun patJson(pat: String) -> String {
+fun patJson(pat String) String {
     patJsonWrite(pat)
     return emit.sessGet(emit.slotPat())
 }

@@ -1,5 +1,5 @@
-fun main() -> Int {
-    val x: Int = 1
-    var y: Int = 2
+fun main() Int {
+    val x Int = 1
+    var y Int = 2
     return 0
 }

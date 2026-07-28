@@ -1,5 +1,5 @@
 import cycle_b
 
-fun cycle_a_helper() -> Int {
+fun cycle_a_helper() Int {
     1
 }

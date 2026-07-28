@@ -695,7 +695,7 @@ mod tests {
     #[test]
     fn test_narrowing_for_i_lt_len_no_or() {
         let errors = check_source(
-            "fun f(lst: List[Int]) -> Int { var i = 0; for i < len(lst) { val x = lst.get(i); i = i + 1 }; 0 }",
+            "fun f(lst List[Int]) Int { var i = 0; for i < len(lst) { val x = lst.get(i); i = i + 1 }; 0 }",
         );
         assert!(
             !errors
@@ -709,7 +709,7 @@ mod tests {
     #[test]
     fn test_block_or_region_no_inner_or() {
         let errors =
-            check_source("fun f() -> Int { { val n = parseInt(\"42\"); return n } or { -1 } }");
+            check_source("fun f() Int { { val n = parseInt(\"42\"); return n } or { -1 } }");
         assert!(
             !errors
                 .iter()
@@ -1013,7 +1013,7 @@ mod tests {
     fn test_m65_unknown_struct_field_e013() {
         let bad = check_source(
             r#"
-            type Point { x: Int, y: Int }
+            type Point {  x Int, y Int  }
             fun main() {
                 val p = Point { x = 1, y = 2 }
                 println(p.z)
@@ -1029,7 +1029,7 @@ mod tests {
 
         let ok = check_source(
             r#"
-            type Point { x: Int, y: Int }
+            type Point {  x Int, y Int  }
             fun main() {
                 val p = Point { x = 1, y = 2 }
                 println(p.x + p.y)
@@ -1046,8 +1046,8 @@ mod tests {
         // UFCS on a named struct must not be misdiagnosed as missing field.
         let ufcs = check_source(
             r#"
-            type Point { x: Int, y: Int }
-            fun doubleX(p: Point) -> Int { p.x * 2 }
+            type Point {  x Int, y Int  }
+            fun doubleX(p Point) Int { p.x * 2 }
             fun main() {
                 val p = Point { x = 3, y = 4 }
                 println(p.doubleX())
@@ -1068,9 +1068,9 @@ mod tests {
     fn test_m67_struct_literal_and_assign_hygiene() {
         let missing = check_source(
             r#"
-            type Point { x: Int, y: Int }
+            type Point {  x Int, y Int  }
             fun main() {
-                val p: Point = Point { x = 1 }
+                val p Point = Point { x = 1 }
             }
             "#,
         );
@@ -1084,9 +1084,9 @@ mod tests {
 
         let extra = check_source(
             r#"
-            type Point { x: Int, y: Int }
+            type Point {  x Int, y Int  }
             fun main() {
-                val p: Point = Point { x = 1, y = 2, z = 3 }
+                val p Point = Point { x = 1, y = 2, z = 3 }
             }
             "#,
         );
@@ -1100,9 +1100,9 @@ mod tests {
 
         let ok = check_source(
             r#"
-            type Point { x: Int, y: Int }
+            type Point {  x Int, y Int  }
             fun main() {
-                val p: Point = Point { y = 2, x = 1 }
+                val p Point = Point { y = 2, x = 1 }
                 println(p.x + p.y)
             }
             "#,
@@ -1118,9 +1118,9 @@ mod tests {
 
         let assign = check_source(
             r#"
-            type Point { x: Int, y: Int }
+            type Point {  x Int, y Int  }
             fun main() {
-                var p: Point = Point { x = 1, y = 2 }
+                var p Point = Point { x = 1, y = 2 }
                 p.z = 3
             }
             "#,
@@ -1138,8 +1138,8 @@ mod tests {
     fn test_m68_struct_literal_return_and_args() {
         let ret_missing = check_source(
             r#"
-            type Point { x: Int, y: Int }
-            fun make() -> Point { Point { x = 1 } }
+            type Point {  x Int, y Int  }
+            fun make() Point { Point { x = 1 } }
             fun main() { }
             "#,
         );
@@ -1153,8 +1153,8 @@ mod tests {
 
         let ret_stmt = check_source(
             r#"
-            type Point { x: Int, y: Int }
-            fun make() -> Point { return Point { x = 1 } }
+            type Point {  x Int, y Int  }
+            fun make() Point { return Point { x = 1 } }
             fun main() { }
             "#,
         );
@@ -1168,8 +1168,8 @@ mod tests {
 
         let arg_missing = check_source(
             r#"
-            type Point { x: Int, y: Int }
-            fun take(p: Point) -> Int { p.x }
+            type Point {  x Int, y Int  }
+            fun take(p Point) Int { p.x }
             fun main() { println(take(Point { x = 1 })) }
             "#,
         );
@@ -1183,8 +1183,8 @@ mod tests {
 
         let arg_extra = check_source(
             r#"
-            type Point { x: Int, y: Int }
-            fun take(p: Point) -> Int { p.x }
+            type Point {  x Int, y Int  }
+            fun take(p Point) Int { p.x }
             fun main() { println(take(Point { x = 1, y = 2, z = 3 })) }
             "#,
         );
@@ -1198,12 +1198,12 @@ mod tests {
 
         let ok = check_source(
             r#"
-            type Point { x: Int, y: Int }
-            fun make() -> Point { Point { y = 2, x = 1 } }
-            fun take(p: Point) -> Int { p.x + p.y }
+            type Point {  x Int, y Int  }
+            fun make() Point { Point { y = 2, x = 1 } }
+            fun take(p Point) Int { p.x + p.y }
             fun main() {
                 println(take(make()))
-                var p: Point = Point { x = 0, y = 0 }
+                var p Point = Point { x = 0, y = 0 }
                 p = Point { y = 9, x = 8 }
                 println(p.x)
             }
@@ -1343,9 +1343,9 @@ mod tests {
     fn test_field_index_assign_rejects_immutable_root() {
         let errors = check_source(
             r#"
-            type Point { x: Int, y: Int }
-            fun main() -> Int {
-                val p: Point = Point { x = 0, y = 0 }
+            type Point {  x Int, y Int  }
+            fun main() Int {
+                val p Point = Point { x = 0, y = 0 }
                 p.x = 1
                 return p.x
             }
@@ -1359,8 +1359,8 @@ mod tests {
         );
         let errors = check_source(
             r#"
-            fun main() -> Int {
-                val xs: List = List[1, 2, 3]
+            fun main() Int {
+                val xs List = List[1, 2, 3]
                 xs[0] = 9
                 return 0
             }
@@ -1377,8 +1377,8 @@ mod tests {
     #[test]
     fn test_range_bounds_must_be_int() {
         let errors = check_source(
-            "fun main() -> Int {\n\
-                 var s: Int = 0\n\
+            "fun main() Int {\n\
+                 var s Int = 0\n\
                  for i in 1..true { s = s + 1 }\n\
                  return s\n\
              }",
@@ -1391,8 +1391,8 @@ mod tests {
             errors[0].message
         );
         let errors = check_source(
-            "fun main() -> Int {\n\
-                 var s: Int = 0\n\
+            "fun main() Int {\n\
+                 var s Int = 0\n\
                  for i in \"a\"..5 { s = s + 1 }\n\
                  return s\n\
              }",
@@ -1411,7 +1411,7 @@ mod tests {
 
     #[test]
     fn test_when_condition_must_be_bool() {
-        let errors = check_source("fun main() -> Int { return if 1 { 0 } else { 1 } }");
+        let errors = check_source("fun main() Int { return if 1 { 0 } else { 1 } }");
         assert!(
             !errors.is_empty(),
             "Expected type error for Int if condition"
@@ -1430,10 +1430,10 @@ mod tests {
             errors[0].message
         );
         let errors = check_source(
-            "fun main() -> Int {\n\
+            "fun main() Int {\n\
                  return when {\n\
-                     1 -> 0\n\
-                     else -> 1\n\
+                     1 { 0 }\n\
+                     else { 1 }\n\
                  }\n\
              }",
         );
@@ -1452,9 +1452,9 @@ mod tests {
     #[test]
     fn test_for_condition_must_be_bool() {
         let errors = check_source(
-            "fun main() -> Int {\n\
-                 var x: Int = 1\n\
-                 var s: Int = 0\n\
+            "fun main() Int {\n\
+                 var x Int = 1\n\
+                 var s Int = 0\n\
                  for x { s = s + 1; break }\n\
                  return s\n\
              }",
@@ -1475,9 +1475,9 @@ mod tests {
     fn test_when_guard_non_bool() {
         let errors = check_source(
             "enum Color { Red, Green, Blue }\n\
-             fun main() -> Int {\n\
-                 val c: Color = Red\n\
-                 val code: Int = when c { Red and 1 -> 0 else -> 1 }\n\
+             fun main() Int {\n\
+                 val c Color = Red\n\
+                 val code Int = when c { Red and 1 { 0 } else { 1 } }\n\
                  return code\n\
              }",
         );
@@ -1496,9 +1496,9 @@ mod tests {
     #[test]
     fn test_let_named_init_mismatch() {
         let errors = check_source(
-            "type Point { x: Int, y: Int }\n\
-             fun main() -> Int {\n\
-                 val p: Point = 1\n\
+            "type Point {  x Int, y Int  }\n\
+             fun main() Int {\n\
+                 val p Point = 1\n\
                  return 0\n\
              }",
         );
@@ -1514,9 +1514,9 @@ mod tests {
     #[test]
     fn test_assign_named_rhs_mismatch() {
         let errors = check_source(
-            "type Point { x: Int, y: Int }\n\
-             fun main() -> Int {\n\
-                 var p: Point = Point { x = 0, y = 0 }\n\
+            "type Point {  x Int, y Int  }\n\
+             fun main() Int {\n\
+                 var p Point = Point { x = 0, y = 0 }\n\
                  p = 1\n\
                  return 0\n\
              }",
@@ -1536,9 +1536,9 @@ mod tests {
     #[test]
     fn test_field_assign_type_mismatch() {
         let errors = check_source(
-            "type Point { x: Int, y: Int }\n\
-             fun main() -> Int {\n\
-                 var p: Point = Point { x = 0, y = 0 }\n\
+            "type Point {  x Int, y Int  }\n\
+             fun main() Int {\n\
+                 var p Point = Point { x = 0, y = 0 }\n\
                  p.x = true\n\
                  return 0\n\
              }",
@@ -1555,9 +1555,9 @@ mod tests {
     #[test]
     fn test_field_assign_unknown() {
         let errors = check_source(
-            "type Point { x: Int, y: Int }\n\
-             fun main() -> Int {\n\
-                 var p: Point = Point { x = 0, y = 0 }\n\
+            "type Point {  x Int, y Int  }\n\
+             fun main() Int {\n\
+                 var p Point = Point { x = 0, y = 0 }\n\
                  p.z = 1\n\
                  return 0\n\
              }",
@@ -1576,7 +1576,7 @@ mod tests {
 
     #[test]
     fn test_list_mixed_element_types() {
-        let errors = check_source("fun main() -> Int { val xs: List = List[1, \"a\"]; return 0 }");
+        let errors = check_source("fun main() Int { val xs List = List[1, \"a\"]; return 0 }");
         assert!(
             !errors.is_empty(),
             "Expected type error for mixed List elems"
@@ -1594,7 +1594,7 @@ mod tests {
     #[test]
     fn test_map_mixed_value_types() {
         let errors =
-            check_source("fun main() -> Int { val m: Map = Map[\"a\": 1, \"b\": true]; return 0 }");
+            check_source("fun main() Int { val m Map = Map[\"a\": 1, \"b\": true]; return 0 }");
         assert!(
             !errors.is_empty(),
             "Expected type error for mixed Map values"
@@ -1612,8 +1612,8 @@ mod tests {
     #[test]
     fn test_list_index_assign_type_mismatch() {
         let errors = check_source(
-            "fun main() -> Int {\n\
-                 var xs: List = List[1, 2, 3]\n\
+            "fun main() Int {\n\
+                 var xs List = List[1, 2, 3]\n\
                  xs[0] = true\n\
                  return 0\n\
              }",
@@ -1630,8 +1630,8 @@ mod tests {
     #[test]
     fn test_map_index_assign_type_mismatch() {
         let errors = check_source(
-            "fun main() -> Int {\n\
-                 var m: Map = Map[\"a\": 1]\n\
+            "fun main() Int {\n\
+                 var m Map = Map[\"a\": 1]\n\
                  m[\"a\"] = true\n\
                  return 0\n\
              }",
@@ -1648,8 +1648,8 @@ mod tests {
     #[test]
     fn test_list_index_key_must_be_int() {
         let errors = check_source(
-            "fun main() -> Int {\n\
-                 var xs: List = List[1, 2, 3]\n\
+            "fun main() Int {\n\
+                 var xs List = List[1, 2, 3]\n\
                  xs[true] = 1\n\
                  return 0\n\
              }",
@@ -1666,8 +1666,8 @@ mod tests {
     #[test]
     fn test_string_index_key_must_be_int() {
         let errors = check_source(
-            "fun main() -> Int {\n\
-                 val s: String = \"ab\"\n\
+            "fun main() Int {\n\
+                 val s String = \"ab\"\n\
                  return s[true]\n\
              }",
         );
@@ -1679,8 +1679,8 @@ mod tests {
             errors[0].message
         );
         let errors = check_source(
-            "fun main() -> Int {\n\
-                 val s: String = \"ab\"\n\
+            "fun main() Int {\n\
+                 val s String = \"ab\"\n\
                  return s[\"x\"]\n\
              }",
         );
@@ -1696,8 +1696,8 @@ mod tests {
     #[test]
     fn test_map_index_key_must_be_string() {
         let errors = check_source(
-            "fun main() -> Int {\n\
-                 var m: Map = Map[\"a\": 1]\n\
+            "fun main() Int {\n\
+                 var m Map = Map[\"a\": 1]\n\
                  m[1] = 2\n\
                  return 0\n\
              }",
@@ -1740,7 +1740,7 @@ mod tests {
 
     #[test]
     fn test_return_type_mismatch() {
-        let errors = check_source("fun f() -> String { 42 }");
+        let errors = check_source("fun f() String { 42 }");
         assert!(!errors.is_empty(), "Expected return type mismatch error");
         let msg = errors[0].message.to_lowercase();
         assert!(
@@ -1752,7 +1752,7 @@ mod tests {
 
     #[test]
     fn test_variable_type_annotation_mismatch() {
-        let errors = check_source("val x: Int = \"hello\"");
+        let errors = check_source("val x Int = \"hello\"");
         assert!(!errors.is_empty(), "Expected variable type mismatch error");
         let msg = errors[0].message.to_lowercase();
         assert!(
@@ -1764,7 +1764,7 @@ mod tests {
 
     #[test]
     fn test_function_arg_count_mismatch() {
-        let errors = check_source("fun f(x: Int) {} val y = f()");
+        let errors = check_source("fun f(x Int) {} val y = f()");
         assert!(!errors.is_empty(), "Expected arg count mismatch error");
         let msg = errors[0].message.to_lowercase();
         assert!(
@@ -1797,7 +1797,7 @@ mod tests {
     #[test]
     fn test_non_exhaustive_when() {
         let errors =
-            check_source("enum Color { Red, Blue } fun f(c: Color) -> Int { when c { Red -> 1 } }");
+            check_source("enum Color { Red, Blue } fun f(c Color) Int { when c { Red { 1 }} }");
         // Check that at least one error mentions non-exhaustive
         let has_nex = errors.iter().any(|e| {
             e.message.to_lowercase().contains("non-exhaustive")
@@ -1813,7 +1813,7 @@ mod tests {
     #[test]
     fn test_m66_unknown_enum_constructor_e014() {
         let alone = check_source(
-            "enum Color { Red, Blue } fun f(c: Color) -> Int { when c { Fake -> 1 } }",
+            "enum Color { Red, Blue } fun f(c Color) Int { when c { Fake { 1 }} }",
         );
         assert!(
             alone
@@ -1824,7 +1824,7 @@ mod tests {
         );
 
         let with_real = check_source(
-            "enum Color { Red, Blue } fun f(c: Color) -> Int { when c { Red -> 1; Blue -> 2; Fake -> 3 } }",
+            "enum Color { Red, Blue } fun f(c Color) Int { when c { Red { 1 }; Blue { 2 }; Fake { 3 }} }",
         );
         assert!(
             with_real
@@ -1842,7 +1842,7 @@ mod tests {
         );
 
         let ok = check_source(
-            "enum Color { Red, Blue } fun f(c: Color) -> Int { when c { Red -> 1; Blue -> 2 } }",
+            "enum Color { Red, Blue } fun f(c Color) Int { when c { Red { 1 }; Blue { 2 }} }",
         );
         assert!(
             !ok.iter()
@@ -1908,7 +1908,7 @@ mod tests {
     #[test]
     fn test_if_multi_stmt_block_types() {
         let errors = check_source(
-            "fun main() -> Int {\n\
+            "fun main() Int {\n\
                  return if true { val x = 1; x } else { 0 }\n\
              }",
         );
@@ -1918,7 +1918,7 @@ mod tests {
             errors
         );
         let errors = check_source(
-            "fun main() -> Int {\n\
+            "fun main() Int {\n\
                  return if true { val x = 1; x } else { \"no\" }\n\
              }",
         );
@@ -1933,7 +1933,7 @@ mod tests {
 
     #[test]
     fn test_type_mismatch_in_when_arms() {
-        let errors = check_source("when true { 1 -> \"one\"; true -> 42 }");
+        let errors = check_source("when true { 1 { \"one\" }; true { 42 }}");
         assert!(
             !errors.is_empty(),
             "expected type error for mismatched when arms"
@@ -1949,7 +1949,7 @@ mod tests {
 
     #[test]
     fn test_invalid_generic_instantiation() {
-        let errors = check_source("val x: List = List[1, 2, 3]");
+        let errors = check_source("val x List = List[1, 2, 3]");
         // List without type parameter - may warn or error
         // Just ensure no panic
         let _ = errors;
@@ -1959,9 +1959,9 @@ mod tests {
     fn test_struct_field_type_mismatch() {
         // M70: brace literal under Named annotation (not the stale `Person { … }` form).
         let src = r#"
-            type Person { name: String, age: Int }
+            type Person {  name String, age Int  }
             fun main() {
-                val p: Person = Person { name = "Alice", age = "twenty" }
+                val p Person = Person { name = "Alice", age = "twenty" }
             }
             "#;
         let errors = check_source(src);
@@ -1978,9 +1978,9 @@ mod tests {
     fn test_m70_struct_literal_field_value_types() {
         let bad = check_source(
             r#"
-            type Point { x: Int, y: Int }
+            type Point {  x Int, y Int  }
             fun main() {
-                val p: Point = Point { y = 1, x = "hi" }
+                val p Point = Point { y = 1, x = "hi" }
             }
             "#,
         );
@@ -1993,8 +1993,8 @@ mod tests {
 
         let ret = check_source(
             r#"
-            type Point { x: Int, y: Int }
-            fun make() -> Point { Point { x = true, y = 2 } }
+            type Point {  x Int, y Int  }
+            fun make() Point { Point { x = true, y = 2 } }
             fun main() { }
             "#,
         );
@@ -2007,10 +2007,10 @@ mod tests {
 
         let ok = check_source(
             r#"
-            type Person { name: String, age: Int }
-            fun take(p: Person) -> Int { p.age }
+            type Person {  name String, age Int  }
+            fun take(p Person) Int { p.age }
             fun main() {
-                val p: Person = Person { age = 20, name = "Alice" }
+                val p Person = Person { age = 20, name = "Alice" }
                 println(take(Person { name = "Bob", age = 21 }))
             }
             "#,
@@ -2027,7 +2027,7 @@ mod tests {
     fn test_m71_untyped_unique_shape_field_value_types() {
         let bad = check_source(
             r#"
-            type Point { x: Int, y: Int }
+            type Point {  x Int, y Int  }
             fun main() {
                 val p = Point { x = "a", y = 1 }
                 println(p.x)
@@ -2043,7 +2043,7 @@ mod tests {
 
         let ok = check_source(
             r#"
-            type Point { x: Int, y: Int }
+            type Point {  x Int, y Int  }
             fun main() {
                 val p = Point { y = 2, x = 1 }
                 println(p.x + p.y)
@@ -2060,7 +2060,7 @@ mod tests {
 
     #[test]
     fn test_null_literal_rejected_at_parse_e010() {
-        let mut lexer = Lexer::new("val x: Int = null");
+        let mut lexer = Lexer::new("val x Int = null");
         let tokens = lexer.tokenize();
         let mut parser = Parser::new(tokens);
         let result = parser.parse_program();
@@ -2084,7 +2084,7 @@ mod tests {
     #[test]
     fn test_complex_recursive_type_annotation() {
         // List of lists - should type check without panic
-        let errors = check_source("val x: List[List[Int]] = List[List[1, 2], List[3, 4]]");
+        let errors = check_source("val x List[List[Int]] = List[List[1, 2], List[3, 4]]");
         // This may or may not error depending on generics support
         let _ = errors;
     }
@@ -2099,7 +2099,7 @@ mod tests {
 
     #[test]
     fn test_return_type_mismatch_complex() {
-        let errors = check_source("fun f(x: Int) -> String { x + 1 }");
+        let errors = check_source("fun f(x Int) String { x + 1 }");
         assert!(!errors.is_empty(), "expected return type mismatch error");
     }
 
@@ -2112,7 +2112,7 @@ mod tests {
 
     #[test]
     fn test_char_type_mismatch() {
-        let errors = check_source("val x: Int = 'a'");
+        let errors = check_source("val x Int = 'a'");
         assert!(
             !errors.is_empty(),
             "expected type error for char-to-int assignment"

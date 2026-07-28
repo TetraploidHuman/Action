@@ -1,4 +1,4 @@
 // M125: multi-stmt lambda last expr type error (dual frontend).
-fun main() -> Int {
+fun main() Int {
     return lambda { 21; 1 and true }()
 }

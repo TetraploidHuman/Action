@@ -1,5 +1,5 @@
-fun main() -> Int {
-    var s: Int = 0
+fun main() Int {
+    var s Int = 0
     for i in 1..true {
         s = s + 1
     }

@@ -2,9 +2,9 @@
 // Set DEEPSEEK_API_KEY in the environment before running.
 import json.{jsonParse, jsonGet, jsonGetIdx, jsonAsStr, jsonFree, jsonEscape}
 
-external fun getenv(name: CString) -> CString
+external fun getenv(name CString) CString
 
-fun apiToken() -> String = fromCString(getenv(toCString("DEEPSEEK_API_KEY")))
+fun apiToken() String = fromCString(getenv(toCString("DEEPSEEK_API_KEY")))
 
 fun main() {
     println("=== DeepSeek AI Chat ===")
@@ -22,32 +22,32 @@ fun main() {
     println("Goodbye!")
 }
 
-fun handleChat(input: String, msgs: String) -> String = {
+fun handleChat(input String, msgs String) String = {
     print("AI: ")
     val content = chatOnce(input, msgs)
     println(content)
     storeMessages(input, content, msgs)
 }
 
-fun chatOnce(input: String, msgs: String) -> String = {
+fun chatOnce(input String, msgs String) String = {
     val userMsg = "{\"role\": \"user\", \"content\": \"" + jsonEscape(input) + "\"}"
     val newMsgs = if msgs == "" { userMsg } else { msgs + ", " + userMsg }
     val body = "{\"model\": \"deepseek-chat\", \"messages\": [" + newMsgs + "]}"
-    val headers = "Authorization: Bearer " + apiToken() + "\nContent-Type: application/json"
+    val headers = "Authorization Bearer " + apiToken() + "\nContent-Type: application/json"
     val resp = httpRequest("POST", "https://api.deepseek.com/chat/completions", headers, body) or {
         HttpResponse { status = 0, body = "" }
     }
     extractContent(resp.body)
 }
 
-fun storeMessages(input: String, content: String, msgs: String) -> String = {
+fun storeMessages(input String, content String, msgs String) String = {
     val userMsg = "{\"role\": \"user\", \"content\": \"" + jsonEscape(input) + "\"}"
     val assistantMsg = "{\"role\": \"assistant\", \"content\": \"" + jsonEscape(content) + "\"}"
     if msgs == "" { userMsg + ", " + assistantMsg } else { msgs + ", " + userMsg + ", " + assistantMsg }
 }
 
 // Parse DeepSeek API response using the JSON library
-fun extractContent(jsonStr: String) -> String = {
+fun extractContent(jsonStr String) String = {
     val root = jsonParse(jsonStr)
     val choices = jsonGet(root, "choices")
     val first = jsonGetIdx(choices, 0)

@@ -1,4 +1,4 @@
-fun <T> pickParse(s: String) -> Int {
+fun <T> pickParse(s String) Int {
     parseInt(s)
 }
 

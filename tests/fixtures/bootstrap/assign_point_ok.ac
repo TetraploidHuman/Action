@@ -1,11 +1,11 @@
-type Point {x: Int, y: Int}
+type Point {x Int, y Int}
 
-fun origin() -> Point {
+fun origin() Point {
     return Point {x = 1, y = 2}
 }
 
-fun main() -> Int {
-    var p: Point = Point {x = 0, y = 0}
+fun main() Int {
+    var p Point = Point {x = 0, y = 0}
     p = origin()
     return p.x
 }

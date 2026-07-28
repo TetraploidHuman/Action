@@ -1,4 +1,4 @@
 // M127: PlainBlock with typed val — `{ val a: Int = 21; a * 2 }` → 42.
-fun main() -> Int {
-    return { val a: Int = 21; a * 2 }
+fun main() Int {
+    return { val a Int = 21; a * 2 }
 }

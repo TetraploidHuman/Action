@@ -1,5 +1,5 @@
 // M187: multi-param lambda body type error inside PlainBlock (dual frontend).
-fun main() -> Int {
+fun main() Int {
     return if true {
         lambda x, y { x and y }(1, 2)
     } else {

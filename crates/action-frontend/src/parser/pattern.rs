@@ -35,7 +35,7 @@ impl Parser {
     pub(crate) fn parse_when(&mut self) -> Result<Expr, ParseError> {
         self.advance(); // skip 'when'
 
-        // Check for: when { cond -> body; ... }
+        // Check for: when { cond { body }; ... }
         if self.current_kind() == TokenKind::LBrace {
             self.advance(); // skip '{'
             let mut arms = Vec::new();
@@ -43,15 +43,15 @@ impl Parser {
                 if !arms.is_empty() {
                     self.skip(TokenKind::Semicolon);
                 }
-                // Handle `else -> body` as wildcard (always matches)
+                // Handle `else { body }` as wildcard (always matches)
                 let pattern = if self.current_kind() == TokenKind::Else {
                     self.advance(); // skip 'else'
                     Pattern::Wildcard
                 } else {
-                    // Try parsing as expression first — condition chains use expressions
-                    // like `x < 0 -> "negative"`. If it's a simple identifier or pattern,
-                    // the expression will parse correctly too.
+                    // Condition must not absorb `{ body }` as a trailing lambda.
+                    self.no_trailing_lambda = true;
                     let expr = self.parse_expr()?;
+                    self.no_trailing_lambda = false;
                     Pattern::Expr(Box::new(expr))
                 };
                 let guard = if self.current_kind() == TokenKind::And {
@@ -60,10 +60,15 @@ impl Parser {
                 } else {
                     None
                 };
-                self.expect(TokenKind::Arrow)?;
-                self.no_postfix_call = true;
-                let body = self.parse_expr()?;
-                self.no_postfix_call = false;
+                if self.current_kind() == TokenKind::Arrow {
+                    return Err(self.error(
+                        "Use `cond { body }` for when arms; `cond -> body` is no longer valid",
+                    ));
+                }
+                if self.current_kind() != TokenKind::LBrace {
+                    return Err(self.error("Expected '{' for when arm body"));
+                }
+                let body = self.parse_block_expr()?;
                 arms.push(WhenArm {
                     pattern,
                     guard,
@@ -78,7 +83,7 @@ impl Parser {
             .into());
         }
 
-        // Parse the subject value for value-match: when value { Pat -> expr, ... }
+        // Parse the subject value for value-match: when value { Pat { body }, ... }
         self.no_trailing_lambda = true;
         let first = self.parse_expr()?;
         self.no_trailing_lambda = false;
@@ -86,7 +91,7 @@ impl Parser {
         if self.current_kind() == TokenKind::LBrace {
             self.advance(); // skip '{'
 
-            // Distinguish value-match { Pat -> expr } from the removed ternary form.
+            // Distinguish value-match { Pat { body } } from invalid forms.
             let saved_pos = self.pos;
             let is_value_match = self.parse_pattern().ok().map_or(false, |_| {
                 while self.current_kind() == TokenKind::Comma {
@@ -99,7 +104,8 @@ impl Parser {
                     self.advance();
                     let _ = self.parse_expr();
                 }
-                self.current_kind() == TokenKind::Arrow
+                self.current_kind() == TokenKind::LBrace
+                    || self.current_kind() == TokenKind::Arrow
             });
             self.pos = saved_pos;
 
@@ -126,10 +132,15 @@ impl Parser {
                     } else {
                         None
                     };
-                    self.expect(TokenKind::Arrow)?;
-                    self.no_postfix_call = true;
-                    let body = self.parse_pratt(Precedence::Shift)?;
-                    self.no_postfix_call = false;
+                    if self.current_kind() == TokenKind::Arrow {
+                        return Err(self.error(
+                            "Use `Pat { body }` for when arms; `Pat -> body` is no longer valid",
+                        ));
+                    }
+                    if self.current_kind() != TokenKind::LBrace {
+                        return Err(self.error("Expected '{' for when arm body"));
+                    }
+                    let body = self.parse_block_expr()?;
                     arms.push(WhenArm {
                         pattern,
                         guard,
@@ -149,8 +160,8 @@ impl Parser {
 
             return Err(self.error(
                 "Boolean ternary uses `if cond { then } else { else }`; \
-                 `when` is only for pattern match (`when x { … -> … }`) \
-                 or condition chains (`when { cond -> … }`)",
+                 `when` is only for pattern match (`when x { Pat { … } }`) \
+                 or condition chains (`when { cond { … } }`)",
             ));
         }
 

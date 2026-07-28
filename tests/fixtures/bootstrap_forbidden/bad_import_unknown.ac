@@ -1,6 +1,6 @@
 // M120: missing module under bootstrap/ → reject.
 import m120_no_such_module
 
-fun main() -> Int {
+fun main() Int {
     return 0
 }

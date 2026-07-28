@@ -2,11 +2,11 @@
 import bootstrap_subset_forbidden_gate
 
 extension Int {
-    fun double(self) -> Int {
+    fun double(self) Int {
         self * 2
     }
 }
 
-fun main() -> Int {
+fun main() Int {
     return 0
 }

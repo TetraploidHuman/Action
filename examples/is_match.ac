@@ -7,20 +7,20 @@ fun main() {
 
     // is with enum variants
     when s {
-        is Some -> print(1)
-        is None -> print(0)
+        is Some { print(1) }
+        is None { print(0) }
     }
 
     // is with primitive types
     val x = 42
     when x {
-        is Int -> print(2)
-        else -> print(9)
+        is Int { print(2) }
+        else { print(9) }
     }
 
     // is with None
     when n {
-        is Some -> print(9)
-        is None -> print(3)
+        is Some { print(9) }
+        is None { print(3) }
     }
 }

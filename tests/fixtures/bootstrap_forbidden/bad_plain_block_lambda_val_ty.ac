@@ -1,9 +1,9 @@
 // M190: lambda body val init type error (call site in PlainBlock; dual frontend).
-fun once() -> Int {
-    return lambda { 0; val a: Int = true; a }()
+fun once() Int {
+    return lambda { 0; val a Int = true; a }()
 }
 
-fun main() -> Int {
+fun main() Int {
     return if true {
         once()
     } else {

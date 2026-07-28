@@ -444,7 +444,7 @@ mod tests {
 
     #[test]
     fn test_fun_single_expr() {
-        let prog = parse("fun add(x: int, y: int) -> int = x + y").unwrap();
+        let prog = parse("fun add(x int, y int) int = x + y").unwrap();
         match &prog.stmts[0] {
             Stmt::Fun {
                 name,
@@ -618,7 +618,7 @@ mod tests {
 
     #[test]
     fn test_when_value_match() {
-        let prog = parse("when x { 0 -> \"zero\"; 1 -> \"one\"; else -> \"many\" }").unwrap();
+        let prog = parse("when x { 0 { \"zero\" }; 1 { \"one\" }; else { \"many\" } }").unwrap();
         match &prog.stmts[0] {
             Stmt::Expr { ref expr, .. } => match &expr.kind {
                 ExprKind::When(w) => match &w.kind {
@@ -899,7 +899,7 @@ mod tests {
 
     #[test]
     fn test_type_def_brace() {
-        let prog = parse("type Point { x: Int, y: Int }").unwrap();
+        let prog = parse("type Point { x Int, y Int }").unwrap();
         match &prog.stmts[0] {
             Stmt::TypeAlias {
                 name,
@@ -917,7 +917,7 @@ mod tests {
 
     #[test]
     fn test_type_def_semicolon_fields() {
-        let prog = parse("type Point { x: Int; y: Int }").unwrap();
+        let prog = parse("type Point { x Int; y Int }").unwrap();
         match &prog.stmts[0] {
             Stmt::TypeAlias {
                 definition: Type::Struct(fields),
@@ -932,7 +932,7 @@ mod tests {
     #[test]
     fn test_type_def_with_method() {
         let prog = parse(
-            "type Point { x: Int, y: Int\n fun sum(self) -> Int { self.x + self.y } }",
+            "type Point { x Int, y Int\n fun sum(self) Int { self.x + self.y } }",
         )
         .unwrap();
         match &prog.stmts[0] {
@@ -1001,13 +1001,17 @@ mod tests {
     }
 
     #[test]
-    fn test_type_ann_requires_colon() {
+    fn test_type_ann_space_no_colon() {
         assert!(
-            parse("val x Int = 1").is_err(),
-            "space-separated type annotation should be rejected"
+            parse("val x Int = 1").is_ok(),
+            "space-separated type annotation should be accepted"
         );
-        assert!(parse("val x: Int = 1").is_ok());
-        assert!(parse("const MAX: Int = 1").is_ok());
+        assert!(
+            parse("val x: Int = 1").is_err(),
+            "colon type annotation should be rejected"
+        );
+        assert!(parse("const MAX Int = 1").is_ok());
+        assert!(parse("const MAX: Int = 1").is_err());
     }
 
     #[test]
@@ -1020,7 +1024,7 @@ mod tests {
 
     #[test]
     fn test_nullable_type_rejected_e011() {
-        let result = parse("val x: Int? = 1");
+        let result = parse("val x Int? = 1");
         assert!(result.is_err(), "Int? should be rejected");
         let err = result.unwrap_err();
         assert_eq!(err.code, Some(crate::error::DiagnosticCode::E011));
@@ -1091,7 +1095,7 @@ mod tests {
     fn test_parse_incomplete_fun_def() {
         // Missing body should produce error
         let mut parser =
-            crate::parser::Parser::new(crate::lexer::Lexer::new("fun foo() -> Int").tokenize());
+            crate::parser::Parser::new(crate::lexer::Lexer::new("fun foo() Int").tokenize());
         let result = parser.parse_program();
         assert!(result.is_err(), "incomplete function def should error");
     }

@@ -3,310 +3,310 @@
 import prelude
 
 // M45: host Int slots for span/line-col (see host-rt/runtime_bs_int.rs).
-external fun bsIntSet(slot: Int, value: Int) -> Int
-external fun bsIntGet(slot: Int) -> Int
+external fun bsIntSet(slot Int, value Int) Int
+external fun bsIntGet(slot Int) Int
 
-fun slotSpanStart() -> Int { return 0 }
-fun slotSpanEnd() -> Int { return 1 }
-fun slotSpanLine() -> Int { return 2 }
-fun slotSpanCol() -> Int { return 3 }
-fun slotLcPos() -> Int { return 4 }
-fun slotMarkStart() -> Int { return 5 }
-fun slotMarkLine() -> Int { return 6 }
-fun slotMarkCol() -> Int { return 7 }
-fun slotNestLcPos() -> Int { return 8 }
-fun slotNestSpanLine() -> Int { return 9 }
-fun slotNestSpanCol() -> Int { return 10 }
-fun slotNestMarkLine() -> Int { return 11 }
-fun slotNestMarkCol() -> Int { return 12 }
+fun slotSpanStart() Int { return 0 }
+fun slotSpanEnd() Int { return 1 }
+fun slotSpanLine() Int { return 2 }
+fun slotSpanCol() Int { return 3 }
+fun slotLcPos() Int { return 4 }
+fun slotMarkStart() Int { return 5 }
+fun slotMarkLine() Int { return 6 }
+fun slotMarkCol() Int { return 7 }
+fun slotNestLcPos() Int { return 8 }
+fun slotNestSpanLine() Int { return 9 }
+fun slotNestSpanCol() Int { return 10 }
+fun slotNestMarkLine() Int { return 11 }
+fun slotNestMarkCol() Int { return 12 }
 // M47 session scalars
-fun slotTypeError() -> Int { return 13 }
-fun slotCallDepth() -> Int { return 14 }
-fun slotAddLeftTy() -> Int { return 15 }
-fun slotPpSep() -> Int { return 16 }
-fun slotPpHirEmitted() -> Int { return 17 }
-fun slotWhenChainTag() -> Int { return 18 }
-fun slotWhenMatchTag() -> Int { return 19 }
-fun slotWhenUnifyOff() -> Int { return 20 }
+fun slotTypeError() Int { return 13 }
+fun slotCallDepth() Int { return 14 }
+fun slotAddLeftTy() Int { return 15 }
+fun slotPpSep() Int { return 16 }
+fun slotPpHirEmitted() Int { return 17 }
+fun slotWhenChainTag() Int { return 18 }
+fun slotWhenMatchTag() Int { return 19 }
+fun slotWhenUnifyOff() Int { return 20 }
 
-fun keywordKindOpsTail(text: String) -> String {
+fun keywordKindOpsTail(text String) String {
     return text
 }
 
-fun skipWs(s: String, pos: Int) -> Int {
+fun skipWs(s String, pos Int) Int {
     return if prelude.atEnd(s, pos) { pos } else { skipWsStep(s, pos) }
 }
 
-fun skipWsStep(s: String, pos: Int) -> Int {
-    val ch: String = prelude.charAtSafe(s, pos)
+fun skipWsStep(s String, pos Int) Int {
+    val ch String = prelude.charAtSafe(s, pos)
     return when {
-        prelude.containsAt(" \t\n\r", ch, 0) -> skipWs(s, pos + 1)
-        prelude.charAtSafe(s, pos) == "/" and prelude.charAtSafe(s, pos + 1) == "/" -> skipWs(s, prelude.skipLineComment(s, pos))
-        else -> pos
+        prelude.containsAt(" \t\n\r", ch, 0) { skipWs(s, pos + 1) }
+        prelude.charAtSafe(s, pos) == "/" and prelude.charAtSafe(s, pos + 1) == "/" { skipWs(s, prelude.skipLineComment(s, pos)) }
+        else { pos }
     }
 }
 
-fun bracePair() -> String { return substring("{}", 0, 2) }
+fun bracePair() String { return substring("{}", 0, 2) }
 
-fun openBrace() -> String { return substring(bracePair(), 0, 1) }
+fun openBrace() String { return substring(bracePair(), 0, 1) }
 
-fun closeBrace() -> String { return substring(bracePair(), 1, 1) }
+fun closeBrace() String { return substring(bracePair(), 1, 1) }
 
-fun isBraceOpen(ch: String) -> Bool { return ch == openBrace() }
+fun isBraceOpen(ch String) Bool { return ch == openBrace() }
 
-fun isBraceClose(ch: String) -> Bool { return ch == closeBrace() }
+fun isBraceClose(ch String) Bool { return ch == closeBrace() }
 
-fun isCloseBrace(ch: String) -> Bool { return ch == closeBrace() }
+fun isCloseBrace(ch String) Bool { return ch == closeBrace() }
 
-fun digitVal(ch: String) -> Int {
+fun digitVal(ch String) Int {
     return when ch {
-        "0" -> 0
-        "1" -> 1
-        "2" -> 2
-        "3" -> 3
-        "4" -> 4
-        "5" -> 5
-        "6" -> 6
-        "7" -> 7
-        "8" -> 8
-        "9" -> 9
-        else -> 0
+        "0" { 0 }
+        "1" { 1 }
+        "2" { 2 }
+        "3" { 3 }
+        "4" { 4 }
+        "5" { 5 }
+        "6" { 6 }
+        "7" { 7 }
+        "8" { 8 }
+        "9" { 9 }
+        else { 0 }
     }
 }
 
-fun atoiAt(s: String, i: Int, acc: Int) -> Int {
-    val ch: String = prelude.charAtSafe(s, i)
+fun atoiAt(s String, i Int, acc Int) Int {
+    val ch String = prelude.charAtSafe(s, i)
     return if ch == "" { acc } else { atoiAt(s, i + 1, acc * 10 + digitVal(ch)) }
 }
 
-fun atoi(s: String) -> Int { return atoiAt(s, 0, 0) }
+fun atoi(s String) Int { return atoiAt(s, 0, 0) }
 
-fun tokEq(a: String, b: String) -> Int { return if a == b { 1 } else { 0 } }
+fun tokEq(a String, b String) Int { return if a == b { 1 } else { 0 } }
 
-fun endIfNext(s: String, pos: Int, ch: String) -> Int {
+fun endIfNext(s String, pos Int, ch String) Int {
     return if prelude.charAtSafe(s, pos + 1) == ch { pos + 2 } else { pos + 1 }
 }
 
-fun saveLexIfNext(s: String, pos: Int, ch: String, pair: String, single: String) -> String {
+fun saveLexIfNext(s String, pos Int, ch String, pair String, single String) String {
     return if prelude.charAtSafe(s, pos + 1) == ch { pair } else { single }
 }
 
-fun readWhileIdent(s: String, pos: Int) -> Int {
+fun readWhileIdent(s String, pos Int) Int {
     return when {
-        prelude.atEnd(s, pos) -> pos
-        prelude.isIdentPart(prelude.charAtSafe(s, pos)) -> readWhileIdent(s, pos + 1)
-        else -> pos
+        prelude.atEnd(s, pos) { pos }
+        prelude.isIdentPart(prelude.charAtSafe(s, pos)) { readWhileIdent(s, pos + 1) }
+        else { pos }
     }
 }
 
-fun readWhileDigit(s: String, pos: Int) -> Int {
+fun readWhileDigit(s String, pos Int) Int {
     return when {
-        prelude.atEnd(s, pos) -> pos
-        prelude.isDigit(prelude.charAtSafe(s, pos)) -> readWhileDigit(s, pos + 1)
-        else -> pos
+        prelude.atEnd(s, pos) { pos }
+        prelude.isDigit(prelude.charAtSafe(s, pos)) { readWhileDigit(s, pos + 1) }
+        else { pos }
     }
 }
 
-fun readStringLit(s: String, pos: Int) -> Int {
+fun readStringLit(s String, pos Int) Int {
     return when {
-        prelude.atEnd(s, pos) -> pos
-        prelude.charAtSafe(s, pos) == "\\" -> readStringLit(s, pos + 2)
-        prelude.charAtSafe(s, pos) == "\"" -> pos + 1
-        else -> readStringLit(s, pos + 1)
+        prelude.atEnd(s, pos) { pos }
+        prelude.charAtSafe(s, pos) == "\\" { readStringLit(s, pos + 2) }
+        prelude.charAtSafe(s, pos) == "\"" { pos + 1 }
+        else { readStringLit(s, pos + 1) }
     }
 }
 
 // M39: token text is a pure String (no _lex.txt mailbox).
-fun saveLex(text: String) -> String { return text }
+fun saveLex(text String) String { return text }
 
-fun saveLexSlice(s: String, start: Int, stop: Int) -> String {
+fun saveLexSlice(s String, start Int, stop Int) String {
     // Prefer binary stop - start; host Pratt is left-assoc (a - b - c ≡ (a - b) - c).
     return s.substring(start, stop - start)
 }
 
-fun saveLexString(s: String, start: Int, stop: Int) -> String {
+fun saveLexString(s String, start Int, stop Int) String {
     return saveLexSlice(s, start, stop)
 }
 
-fun lexEndEq(s: String, pos: Int) -> Int {
-    val n: String = prelude.charAtSafe(s, pos + 1)
+fun lexEndEq(s String, pos Int) Int {
+    val n String = prelude.charAtSafe(s, pos + 1)
     return when n {
-        "=" -> pos + 2
-        ">" -> pos + 2
-        else -> pos + 1
+        "=" { pos + 2 }
+        ">" { pos + 2 }
+        else { pos + 1 }
     }
 }
 
-fun lexEndDotDot(s: String, pos: Int) -> Int {
+fun lexEndDotDot(s String, pos Int) Int {
     return if prelude.charAtSafe(s, pos + 2) == "<" { pos + 3 } else { pos + 2 }
 }
 
-fun lexEndDot(s: String, pos: Int) -> Int {
+fun lexEndDot(s String, pos Int) Int {
     return if prelude.charAtSafe(s, pos + 1) == "." { lexEndDotDot(s, pos) } else { pos + 1 }
 }
 
-fun lexEndPunct(s: String, pos: Int, ch: String) -> Int {
+fun lexEndPunct(s String, pos Int, ch String) Int {
     return when ch {
-        "!" -> endIfNext(s, pos, "=")
-        "=" -> lexEndEq(s, pos)
-        "<" -> endIfNext(s, pos, "=")
-        ">" -> endIfNext(s, pos, "=")
-        "-" -> endIfNext(s, pos, ">")
-        "." -> lexEndDot(s, pos)
-        "&" -> endIfNext(s, pos, "&")
-        "|" -> endIfNext(s, pos, "|")
-        else -> pos + 1
+        "!" { endIfNext(s, pos, "=") }
+        "=" { lexEndEq(s, pos) }
+        "<" { endIfNext(s, pos, "=") }
+        ">" { endIfNext(s, pos, "=") }
+        "-" { endIfNext(s, pos, ">") }
+        "." { lexEndDot(s, pos) }
+        "&" { endIfNext(s, pos, "&") }
+        "|" { endIfNext(s, pos, "|") }
+        else { pos + 1 }
     }
 }
 
-fun lexEndNumber(s: String, pos: Int) -> Int {
-    val d: Int = readWhileDigit(s, pos)
+fun lexEndNumber(s String, pos Int) Int {
+    val d Int = readWhileDigit(s, pos)
     return if prelude.charAtSafe(s, d) == "." { lexEndNumberAfterDot(s, d) } else { d }
 }
 
-fun lexEndNumberAfterDot(s: String, pos: Int) -> Int {
+fun lexEndNumberAfterDot(s String, pos Int) Int {
     return if prelude.charAtSafe(s, pos + 1) == "." { pos } else { readWhileDigit(s, pos + 1) }
 }
 
-fun lexEndRaw(s: String, pos: Int) -> Int {
-    val ch: String = prelude.charAtSafe(s, pos)
+fun lexEndRaw(s String, pos Int) Int {
+    val ch String = prelude.charAtSafe(s, pos)
     return when {
-        ch == "\"" -> readStringLit(s, pos + 1)
-        else -> lexEndRaw2(s, pos, ch)
+        ch == "\"" { readStringLit(s, pos + 1) }
+        else { lexEndRaw2(s, pos, ch) }
     }
 }
 
-fun lexEndRaw2(s: String, pos: Int, ch: String) -> Int {
+fun lexEndRaw2(s String, pos Int, ch String) Int {
     return when {
-        prelude.containsAt("(){}[]=+-*/%<>!&|,;:.", ch, 0) -> lexEndPunct(s, pos, ch)
-        prelude.isDigit(ch) -> lexEndNumber(s, pos)
-        else -> readWhileIdent(s, pos)
+        prelude.containsAt("(){}[]=+-*/%<>!&|,;:.", ch, 0) { lexEndPunct(s, pos, ch) }
+        prelude.isDigit(ch) { lexEndNumber(s, pos) }
+        else { readWhileIdent(s, pos) }
     }
 }
 
-fun lexEndAt(s: String, pos: Int) -> Int {
-    val p: Int = skipWs(s, pos)
+fun lexEndAt(s String, pos Int) Int {
+    val p Int = skipWs(s, pos)
     return if prelude.atEnd(s, p) { p } else { lexEndRaw(s, p) }
 }
 
-fun lexKindEq(s: String, pos: Int) -> String {
-    val n: String = prelude.charAtSafe(s, pos + 1)
+fun lexKindEq(s String, pos Int) String {
+    val n String = prelude.charAtSafe(s, pos + 1)
     return when n {
-        "=" -> "=="
-        ">" -> "=>"
-        else -> "="
+        "=" { "==" }
+        ">" { "=>" }
+        else { "=" }
     }
 }
 
-fun lexKindDotDot(s: String, pos: Int) -> String {
+fun lexKindDotDot(s String, pos Int) String {
     return if prelude.charAtSafe(s, pos + 2) == "<" { "..<" } else { ".." }
 }
 
-fun lexKindDot(s: String, pos: Int) -> String {
+fun lexKindDot(s String, pos Int) String {
     return if prelude.charAtSafe(s, pos + 1) == "." { lexKindDotDot(s, pos) } else { "." }
 }
 
-fun lexKindPunct(s: String, pos: Int, ch: String) -> String {
+fun lexKindPunct(s String, pos Int, ch String) String {
     return when ch {
-        "!" -> saveLexIfNext(s, pos, "=", "!=", "!")
-        "=" -> lexKindEq(s, pos)
-        "<" -> saveLexIfNext(s, pos, "=", "<=", "<")
-        ">" -> saveLexIfNext(s, pos, "=", ">=", ">")
-        "-" -> saveLexIfNext(s, pos, ">", "->", "-")
-        "." -> lexKindDot(s, pos)
-        "&" -> saveLexIfNext(s, pos, "&", "and", "&")
-        "|" -> saveLexIfNext(s, pos, "|", "or", "|")
-        else -> ch
+        "!" { saveLexIfNext(s, pos, "=", "!=", "!") }
+        "=" { lexKindEq(s, pos) }
+        "<" { saveLexIfNext(s, pos, "=", "<=", "<") }
+        ">" { saveLexIfNext(s, pos, "=", ">=", ">") }
+        "-" { saveLexIfNext(s, pos, ">", "->", "-") }
+        "." { lexKindDot(s, pos) }
+        "&" { saveLexIfNext(s, pos, "&", "and", "&") }
+        "|" { saveLexIfNext(s, pos, "|", "or", "|") }
+        else { ch }
     }
 }
 
-fun lexKindAt(s: String, pos: Int) -> String {
+fun lexKindAt(s String, pos Int) String {
     // M37/M39: no per-peek span IO; no _lex.txt — return token text directly.
-    val p: Int = skipWs(s, pos)
+    val p Int = skipWs(s, pos)
     return if prelude.atEnd(s, p) { "" } else { lexKindRaw(s, p) }
 }
 
-fun lexKindRaw(s: String, pos: Int) -> String {
-    val ch: String = prelude.charAtSafe(s, pos)
+fun lexKindRaw(s String, pos Int) String {
+    val ch String = prelude.charAtSafe(s, pos)
     return when {
-        ch == "\"" -> lexKindString(s, pos)
-        prelude.containsAt("(){}[]=+-*/%<>!&|,;:.", ch, 0) -> lexKindPunct(s, pos, ch)
-        prelude.isDigit(ch) -> lexKindNumber(s, pos)
-        else -> lexKindIdent(s, pos)
+        ch == "\"" { lexKindString(s, pos) }
+        prelude.containsAt("(){}[]=+-*/%<>!&|,;:.", ch, 0) { lexKindPunct(s, pos, ch) }
+        prelude.isDigit(ch) { lexKindNumber(s, pos) }
+        else { lexKindIdent(s, pos) }
     }
 }
 
-fun lexKindString(s: String, pos: Int) -> String {
-    val stop: Int = readStringLit(s, pos + 1)
+fun lexKindString(s String, pos Int) String {
+    val stop Int = readStringLit(s, pos + 1)
     return saveLexString(s, pos, stop)
 }
 
-fun lexKindNumberStopAfterDot(s: String, pos: Int) -> Int {
+fun lexKindNumberStopAfterDot(s String, pos Int) Int {
     return if prelude.charAtSafe(s, pos + 1) == "." { pos } else { readWhileDigit(s, pos + 1) }
 }
 
-fun lexKindNumber(s: String, pos: Int) -> String {
-    val d: Int = readWhileDigit(s, pos)
-    val stop: Int = if prelude.charAtSafe(s, d) == "." { lexKindNumberStopAfterDot(s, d) } else { d }
+fun lexKindNumber(s String, pos Int) String {
+    val d Int = readWhileDigit(s, pos)
+    val stop Int = if prelude.charAtSafe(s, d) == "." { lexKindNumberStopAfterDot(s, d) } else { d }
     return saveLexSlice(s, pos, stop)
 }
 
-fun lexKindIdent(s: String, pos: Int) -> String {
-    val stop: Int = readWhileIdent(s, pos)
+fun lexKindIdent(s String, pos Int) String {
+    val stop Int = readWhileIdent(s, pos)
     return prelude.keywordKind(saveLexSlice(s, pos, stop))
 }
 
-fun advance(s: String, pos: Int) -> Int {
+fun advance(s String, pos Int) Int {
     // M37: do not write _span_end on every consume — seal/mark own start/end.
     return lexEndAt(s, pos)
 }
 
-fun spanSetStart(p: Int) -> Int {
+fun spanSetStart(p Int) Int {
     bsIntSet(slotSpanStart(), p)
     return 0
 }
 
-fun spanSetEnd(p: Int) -> Int {
+fun spanSetEnd(p Int) Int {
     bsIntSet(slotSpanEnd(), p)
     return 0
 }
 
 // M35: pack (i, line, col) so the advance for-loop can update three locals without per-char session IO.
-fun lineColPack(i: Int, line: Int, col: Int) -> Int {
+fun lineColPack(i Int, line Int, col Int) Int {
     return i * 4294967296 + line * 65536 + col
 }
 
-fun lineColUnpackI(packed: Int) -> Int {
+fun lineColUnpackI(packed Int) Int {
     return packed / 4294967296
 }
 
-fun lineColUnpackLine(packed: Int) -> Int {
-    val r: Int = packed - lineColUnpackI(packed) * 4294967296
+fun lineColUnpackLine(packed Int) Int {
+    val r Int = packed - lineColUnpackI(packed) * 4294967296
     return r / 65536
 }
 
-fun lineColUnpackCol(packed: Int) -> Int {
-    val r: Int = packed - lineColUnpackI(packed) * 4294967296
+fun lineColUnpackCol(packed Int) Int {
+    val r Int = packed - lineColUnpackI(packed) * 4294967296
     return r - (r / 65536) * 65536
 }
 
-fun lineColStepPacked(s: String, i: Int, line: Int, col: Int) -> Int {
+fun lineColStepPacked(s String, i Int, line Int, col Int) Int {
     return if prelude.charAtSafe(s, i) == "\n" { lineColPack(i + 1, line + 1, 1) } else { lineColPack(i + 1, line, col + 1) }
 }
 
-fun lineColFlush(i: Int, line: Int, col: Int) -> Int {
+fun lineColFlush(i Int, line Int, col Int) Int {
     bsIntSet(slotLcPos(), i)
     bsIntSet(slotSpanLine(), line)
     bsIntSet(slotSpanCol(), col)
     return 0
 }
 
-fun lineColAdvanceLocal(s: String, i0: Int, line0: Int, col0: Int, target: Int) -> Int {
-    var i: Int = i0
-    var line: Int = line0
-    var col: Int = col0
-    var st: Int = 0
-    val lim: Int = if target < i0 { 1 } else { target - i0 + 1 }
+fun lineColAdvanceLocal(s String, i0 Int, line0 Int, col0 Int, target Int) Int {
+    var i Int = i0
+    var line Int = line0
+    var col Int = col0
+    var st Int = 0
+    val lim Int = if target < i0 { 1 } else { target - i0 + 1 }
     for n in 0..lim {
         if i >= target { break } else { st = lineColStepPacked(s, i, line, col) }
         if i >= target { continue } else { i = lineColUnpackI(st) }
@@ -316,37 +316,37 @@ fun lineColAdvanceLocal(s: String, i0: Int, line0: Int, col0: Int, target: Int) 
     return lineColFlush(i, line, col)
 }
 
-fun lineColSaveMark() -> Int {
+fun lineColSaveMark() Int {
     bsIntSet(slotMarkLine(), bsIntGet(slotSpanLine()))
     bsIntSet(slotMarkCol(), bsIntGet(slotSpanCol()))
     return 0
 }
 
-fun lineColRestoreMark() -> Int {
+fun lineColRestoreMark() Int {
     bsIntSet(slotSpanLine(), bsIntGet(slotMarkLine()))
     bsIntSet(slotSpanCol(), bsIntGet(slotMarkCol()))
     return 0
 }
 
-fun lineColReset() -> Int {
+fun lineColReset() Int {
     return lineColFlush(0, 1, 1)
 }
 
-fun lineColEnsure(s: String, pos: Int) -> Int {
-    val cur: Int = bsIntGet(slotLcPos())
-    val line: Int = bsIntGet(slotSpanLine())
-    val col: Int = bsIntGet(slotSpanCol())
+fun lineColEnsure(s String, pos Int) Int {
+    val cur Int = bsIntGet(slotLcPos())
+    val line Int = bsIntGet(slotSpanLine())
+    val col Int = bsIntGet(slotSpanCol())
     return if pos < cur { lineColAdvanceLocal(s, 0, 1, 1, pos) } else { lineColAdvanceLocal(s, cur, line, col, pos) }
 }
 
-fun spanBindSrc(s: String) -> Int {
+fun spanBindSrc(s String) Int {
     // M45: source lives in parseProgram locals; only reset line/col cursor.
     lineColReset()
     return 0
 }
 
-fun spanMarkBegin(s: String, pos: Int) -> Int {
-    val start: Int = skipWs(s, pos)
+fun spanMarkBegin(s String, pos Int) Int {
+    val start Int = skipWs(s, pos)
     spanSetStart(start)
     bsIntSet(slotMarkStart(), start)
     lineColEnsure(s, start)
@@ -354,30 +354,30 @@ fun spanMarkBegin(s: String, pos: Int) -> Int {
     return 0
 }
 
-fun spanMarkEnd(s: String, end: Int) -> Int {
+fun spanMarkEnd(s String, end Int) Int {
     spanSetStart(bsIntGet(slotMarkStart()))
     lineColRestoreMark()
     spanSetEnd(end)
     return 0
 }
 
-fun spanSeal(s: String, pos: Int) -> Int {
-    val start: Int = skipWs(s, pos)
+fun spanSeal(s String, pos Int) Int {
+    val start Int = skipWs(s, pos)
     spanSetStart(start)
     spanSetEnd(lexEndAt(s, pos))
     lineColEnsure(s, start)
     return 0
 }
 
-fun spanJson() -> String {
-    val start: Int = bsIntGet(slotSpanStart())
-    val end: Int = bsIntGet(slotSpanEnd())
-    val line: Int = bsIntGet(slotSpanLine())
-    val col: Int = bsIntGet(slotSpanCol())
+fun spanJson() String {
+    val start Int = bsIntGet(slotSpanStart())
+    val end Int = bsIntGet(slotSpanEnd())
+    val line Int = bsIntGet(slotSpanLine())
+    val col Int = bsIntGet(slotSpanCol())
     return "{\"start\": " + toString(start) + ", \"end\": " + toString(end) + ", \"line\": " + toString(line) + ", \"col\": " + toString(col) + "}"
 }
 
-fun spanNestSave() -> Int {
+fun spanNestSave() Int {
     bsIntSet(slotNestLcPos(), bsIntGet(slotLcPos()))
     bsIntSet(slotNestSpanLine(), bsIntGet(slotSpanLine()))
     bsIntSet(slotNestSpanCol(), bsIntGet(slotSpanCol()))
@@ -386,7 +386,7 @@ fun spanNestSave() -> Int {
     return 0
 }
 
-fun spanNestRestore() -> Int {
+fun spanNestRestore() Int {
     bsIntSet(slotLcPos(), bsIntGet(slotNestLcPos()))
     bsIntSet(slotSpanLine(), bsIntGet(slotNestSpanLine()))
     bsIntSet(slotSpanCol(), bsIntGet(slotNestSpanCol()))
@@ -395,7 +395,7 @@ fun spanNestRestore() -> Int {
     return 0
 }
 
-fun spanSessionReset() -> Int {
+fun spanSessionReset() Int {
     bsIntSet(slotSpanStart(), 0)
     bsIntSet(slotSpanEnd(), 0)
     bsIntSet(slotSpanLine(), 1)
@@ -412,12 +412,12 @@ fun spanSessionReset() -> Int {
     return 0
 }
 
-fun slotImportSelective() -> Int { return 21 }
-fun slotImportScanHit() -> Int { return 22 }
-fun slotStructTypeNext() -> Int { return 23 }
-fun slotNoTrailingLambda() -> Int { return 35 }
+fun slotImportSelective() Int { return 21 }
+fun slotImportScanHit() Int { return 22 }
+fun slotStructTypeNext() Int { return 23 }
+fun slotNoTrailingLambda() Int { return 35 }
 
-fun scalarSessionReset() -> Int {
+fun scalarSessionReset() Int {
     bsIntSet(slotTypeError(), 0)
     bsIntSet(slotCallDepth(), 0)
     bsIntSet(slotAddLeftTy(), 0)
@@ -433,21 +433,75 @@ fun scalarSessionReset() -> Int {
     return 0
 }
 
-fun cur(s: String, pos: Int) -> String { return lexKindAt(s, pos) }
+fun cur(s String, pos Int) String { return lexKindAt(s, pos) }
 
-fun isTok(s: String, pos: Int, want: String) -> Bool {
+fun isTok(s String, pos Int, want String) Bool {
     return tokEq(cur(s, pos), want) == 1
 }
 
-fun expect(s: String, pos: Int, want: String) -> Int {
+fun expect(s String, pos Int, want String) Int {
     return if cur(s, pos) == want { advance(s, pos) } else { parseExpectFail(pos) }
 }
 
-fun parseExpectFail(pos: Int) -> Int {
+fun parseExpectFail(pos Int) Int {
     bsIntSet(slotTypeError(), 1)
     return pos
 }
 
-fun advanceIfComma(s: String, pos: Int) -> Int {
+fun advanceIfComma(s String, pos Int) Int {
     return if cur(s, pos) == "," { advance(s, pos) } else { pos }
+}
+
+// Type annotation without colon: `val a Int`, `fun f(x Int)`, field `x Int`.
+fun isTypeNameTok(tok String) Bool {
+    return when tok {
+        "" { false }
+        "=" { false }
+        "," { false }
+        ")" { false }
+        ";" { false }
+        ":" { false }
+        "->" { false }
+        "{" { false }
+        "}" { false }
+        "val" { false }
+        "var" { false }
+        "fun" { false }
+        "if" { false }
+        "when" { false }
+        "for" { false }
+        "return" { false }
+        "else" { false }
+        "and" { false }
+        "or" { false }
+        else { true }
+    }
+}
+
+fun looksLikeTypeStart(s String, pos Int) Bool {
+    return isTypeNameTok(cur(s, pos))
+}
+
+// Return type after `)` — `{` is the function body, never a struct return type.
+fun looksLikeReturnTypeStart(s String, pos Int) Bool {
+    val tok String = cur(s, pos)
+    return tok == "(" || isTypeNameTok(tok)
+}
+
+fun rejectLegacyColon(s String, pos Int) Int {
+    return if cur(s, pos) == ":" {
+        bsIntSet(slotTypeError(), 1)
+        pos
+    } else {
+        pos
+    }
+}
+
+fun rejectLegacyArrow(s String, pos Int) Int {
+    return if cur(s, pos) == "->" {
+        bsIntSet(slotTypeError(), 1)
+        pos
+    } else {
+        pos
+    }
 }

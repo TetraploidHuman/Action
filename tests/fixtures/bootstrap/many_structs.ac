@@ -1,10 +1,10 @@
 // M72: multi-digit custom tags (T2 → tag 10) + String field via tyTagName reverse lookup.
 
-type T0 {a: Int}
-type T1 {a: Int}
-type T2 {a: Int, c: String}
+type T0 {a Int}
+type T1 {a Int}
+type T2 {a Int, c String}
 
-fun main() -> Int {
-    val x: T2 = T2 {a = 7, c = "ab"}
+fun main() Int {
+    val x T2 = T2 {a = 7, c = "ab"}
     return x.a + len(x.c)
 }

@@ -70,7 +70,7 @@ impl fmt::Display for Type {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}: {}", name, ty)?;
+                    write!(f, "{} {}", name, ty)?;
                 }
                 write!(f, "}}")
             }
@@ -658,14 +658,14 @@ impl fmt::Display for When {
             WhenKind::ValueMatch { value, arms } => {
                 write!(f, "when {} {{\n", value)?;
                 for arm in arms {
-                    write!(f, "    {} -> {}\n", arm.pattern, arm.body)?;
+                    write!(f, "    {} {{ {} }}\n", arm.pattern, arm.body)?;
                 }
                 write!(f, "}}")
             }
             WhenKind::ConditionChain { arms } => {
                 write!(f, "when {{\n")?;
                 for arm in arms {
-                    write!(f, "    {} -> {}\n", arm.pattern, arm.body)?;
+                    write!(f, "    {} {{ {} }}\n", arm.pattern, arm.body)?;
                 }
                 write!(f, "}}")
             }
@@ -873,7 +873,7 @@ pub enum ExportItem {
 impl fmt::Display for Param {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.ty {
-            Some(ty) => write!(f, "{}: {}", self.name, ty),
+            Some(ty) => write!(f, "{} {}", self.name, ty),
             None => write!(f, "{}", self.name),
         }
     }
@@ -974,7 +974,7 @@ impl fmt::Display for Stmt {
                 }
                 write!(f, ")")?;
                 if let Some(ty) = return_type {
-                    write!(f, ": {}", ty)?;
+                    write!(f, " {}", ty)?;
                 }
                 write!(f, " = {}", body)
             }
@@ -1026,7 +1026,7 @@ impl fmt::Display for Stmt {
                             match p {
                                 EnumVariantParam::Positional(ty) => write!(f, "{}", ty)?,
                                 EnumVariantParam::Named { name, ty } => {
-                                    write!(f, "{}: {}", name, ty)?
+                                    write!(f, "{} {}", name, ty)?
                                 }
                             }
                         }
@@ -1104,12 +1104,12 @@ impl fmt::Display for Stmt {
                     }
                     write!(f, "{}", p.name)?;
                     if let Some(ref ty) = p.ty {
-                        write!(f, ": {}", ty)?;
+                        write!(f, " {}", ty)?;
                     }
                 }
                 write!(f, ")")?;
                 if let Some(rt) = return_type {
-                    write!(f, ": {}", rt)?;
+                    write!(f, " {}", rt)?;
                 }
                 write!(f, ";")
             }

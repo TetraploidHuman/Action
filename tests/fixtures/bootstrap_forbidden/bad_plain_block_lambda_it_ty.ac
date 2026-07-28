@@ -1,5 +1,5 @@
 // M185: it and true inside PlainBlock lambda (dual frontend).
-fun main() -> Int {
+fun main() Int {
     return if true {
         lambda { it and true }(1)
     } else {

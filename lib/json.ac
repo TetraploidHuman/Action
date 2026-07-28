@@ -8,16 +8,16 @@
 external type JsonNode
 
 // ---- FFI declarations (non-fallible helpers) ----
-external fun action_json_parse(s: CString) -> Ptr[JsonNode]
-external fun action_json_stringify(node: Ptr[JsonNode]) -> CString
-external fun action_json_free(node: Ptr[JsonNode])
-external fun action_json_type(node: Ptr[JsonNode]) -> Int
-external fun action_json_get(node: Ptr[JsonNode], key: CString) -> Ptr[JsonNode]
-external fun action_json_get_idx(node: Ptr[JsonNode], idx: Int) -> Ptr[JsonNode]
-external fun action_json_as_str(node: Ptr[JsonNode]) -> CString
-external fun action_json_as_float(node: Ptr[JsonNode]) -> Float
-external fun action_json_as_bool(node: Ptr[JsonNode]) -> Int
-external fun action_json_len(node: Ptr[JsonNode]) -> Int
+external fun action_json_parse(s CString) Ptr[JsonNode]
+external fun action_json_stringify(node Ptr[JsonNode]) CString
+external fun action_json_free(node Ptr[JsonNode])
+external fun action_json_type(node Ptr[JsonNode]) Int
+external fun action_json_get(node Ptr[JsonNode], key CString) Ptr[JsonNode]
+external fun action_json_get_idx(node Ptr[JsonNode], idx Int) Ptr[JsonNode]
+external fun action_json_as_str(node Ptr[JsonNode]) CString
+external fun action_json_as_float(node Ptr[JsonNode]) Float
+external fun action_json_as_bool(node Ptr[JsonNode]) Int
+external fun action_json_len(node Ptr[JsonNode]) Int
 
 // ---- Type constants ----
 val JSON_NULL   = 0
@@ -30,63 +30,63 @@ val JSON_OBJECT = 5
 // ---- Public API wrappers ----
 
 // Parse a JSON String. Returns invalid sentinel on parse error (check with jsonIsNull).
-fun jsonParse(s: String) -> Ptr[JsonNode] = {
+fun jsonParse(s String) Ptr[JsonNode] = {
     val cstr = toCString(s)
     return __jsonParse(cstr) or { action_json_parse(toCString("not json")) }
 }
 
 // Serialize a JsonNode to JSON String
-fun jsonStringify(node: Ptr[JsonNode]) -> String = {
+fun jsonStringify(node Ptr[JsonNode]) String = {
     val cstr = action_json_stringify(node)
     return fromCString(cstr)
 }
 
 // Free a JsonNode tree
-fun jsonFree(node: Ptr[JsonNode]) = {
+fun jsonFree(node Ptr[JsonNode]) = {
     action_json_free(node)
 }
 
 // Get the type of a JsonNode: 0=null, 1=Bool, 2=number, 3=String, 4=array, 5=object, -1=error
-fun jsonType(node: Ptr[JsonNode]) -> Int = action_json_type(node)
+fun jsonType(node Ptr[JsonNode]) Int = action_json_type(node)
 
 // Check if a JsonNode is null or invalid
-fun jsonIsNull(node: Ptr[JsonNode]) -> Bool = {
+fun jsonIsNull(node Ptr[JsonNode]) Bool = {
     val t = action_json_type(node)
     return t == 0 or t == -1
 }
 
 // Get an object field by key. Returns invalid sentinel if not found (check with jsonIsNull).
-fun jsonGet(node: Ptr[JsonNode], key: String) -> Ptr[JsonNode] = {
+fun jsonGet(node Ptr[JsonNode], key String) Ptr[JsonNode] = {
     val k = toCString(key)
     return __jsonGet(node, k) or { action_json_parse(toCString("not json")) }
 }
 
 // Get an array element by index. Returns invalid sentinel if out of bounds.
-fun jsonGetIdx(node: Ptr[JsonNode], idx: Int) -> Ptr[JsonNode] = {
+fun jsonGetIdx(node Ptr[JsonNode], idx Int) Ptr[JsonNode] = {
     return __jsonGetIdx(node, idx) or { action_json_parse(toCString("not json")) }
 }
 
 // Extract String value from a JsonNode
-fun jsonAsStr(node: Ptr[JsonNode]) -> String = {
+fun jsonAsStr(node Ptr[JsonNode]) String = {
     val cstr = action_json_as_str(node)
     return fromCString(cstr)
 }
 
 // Extract numeric value from a JsonNode (as Float; use Int when needed — numbers convert implicitly)
-fun jsonAsFloat(node: Ptr[JsonNode]) -> Float = action_json_as_float(node)
+fun jsonAsFloat(node Ptr[JsonNode]) Float = action_json_as_float(node)
 
 // Extract boolean value from a JsonNode
-fun jsonAsBool(node: Ptr[JsonNode]) -> Bool = {
+fun jsonAsBool(node Ptr[JsonNode]) Bool = {
     val v = action_json_as_bool(node)
     return v != 0
 }
 
 // Get length of array or object. Returns -1 for other types.
-fun jsonLen(node: Ptr[JsonNode]) -> Int = action_json_len(node)
+fun jsonLen(node Ptr[JsonNode]) Int = action_json_len(node)
 
 // Escape special characters for safe inclusion in a JSON String.
 // Escapes: " \ \n \r \t
-fun jsonEscape(s: String) -> String = {
+fun jsonEscape(s String) String = {
     var r = ""
     var i = 0
     for i < len(s) {

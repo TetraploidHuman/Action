@@ -7,13 +7,18 @@
 
 | 领域 | 终态写法 | 废除 |
 |------|----------|------|
-| 记录类型 | `type Point { x: Int; y: Int; fun … }` | `type Point = { … }`（记录）；纯别名 `type A = Int` 保留 |
+| 记录类型 | `type Point { x Int; y Int; fun … }` | `type Point = { … }`（记录）；纯别名 `type A = Int` 保留；字段 `x: Int` |
 | 构造 | `Point { x = 1, y = 2 }` | 匿名 `{ x = 1, y = 2 }` / `{ x, y }` |
 | 方法 | type 体内 `fun`；`self` 只读；可无 `self` 关联函数 | — |
 | `extension` | 保留 | — |
+| 绑定/形参类型 | `val a Int = 0`；`fun f(x Int)` | `val a: Int`；`x: Int` |
+| 返回类型 | `fun f() Int { }` | `fun f() -> Int` |
+| `when` 臂 | `when a { Red { … } }`；`when { cond { … } }` | `Pat -> body`；`cond -> body` |
 | 闭包 | `lambda a, b { }` / `lambda { }` / `lambda { it }` | `{ a, b -> }` 匿名闭包 |
 | Trailing | 末位形参为函数类型；`fold(xs, 0) { acc, x; body }` | 依赖 `->` 的 trailing |
 | 裸块 | `{}` → 立刻执行，`Unit`；非空 `{ stmts }` → 立刻执行块（末值） | `{}` 作为空元组 / 匿名空闭包 |
+
+> **Phase 8（进行中）**：去掉类型标注冒号、函数返回 `->`、`when` 臂 `->`；函数类型 `(Int) -> Bool` 暂保留 `->`。
 
 ## 分期
 
@@ -27,6 +32,7 @@
 | 5 | Trailing 形参行 + 类型驱动 | ✅ |
 | 6 | Bootstrap Path B 对齐 | ✅ |
 | 7 | 文档清理 | ✅ |
+| 8 | 无冒号类型标注 + 无箭头返回/`when` 块臂 | 🔄 |
 
 ## Phase 1 触达清单（构造）
 

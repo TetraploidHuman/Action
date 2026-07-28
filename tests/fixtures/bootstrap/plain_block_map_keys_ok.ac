@@ -1,8 +1,8 @@
 // M136: PlainBlock Map for-in key bind (len heuristic) — sum len(keys) → 3.
-fun main() -> Int {
+fun main() Int {
     return if true {
-        val m: Map = Map["a": 10, "bb": 5]
-        var sum: Int = 0
+        val m Map = Map["a": 10, "bb": 5]
+        var sum Int = 0
         for k in m {
             sum = sum + len(k)
         }

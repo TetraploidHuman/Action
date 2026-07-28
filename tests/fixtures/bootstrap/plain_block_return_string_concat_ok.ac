@@ -1,11 +1,11 @@
 // M170: PlainBlock string return/concat — mirror return_string_concat → 11.
-fun greet() -> String {
+fun greet() String {
     return "hello" + " world"
 }
 
-fun main() -> Int {
+fun main() Int {
     return if true {
-        val s: String = greet()
+        val s String = greet()
         len(s)
     } else {
         0

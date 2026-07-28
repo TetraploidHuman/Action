@@ -176,12 +176,8 @@ impl Parser {
         };
         self.advance();
 
-        // Type annotation requires colon: val x: Int = 0
-        let type_ann = if self.skip(TokenKind::Colon) {
-            Some(self.parse_type()?)
-        } else {
-            None
-        };
+        // Type annotation without colon: val x Int = 0
+        let type_ann = self.parse_optional_type_ann()?;
 
         // Assignment
         self.expect(TokenKind::Eq)?;
@@ -207,12 +203,8 @@ impl Parser {
         };
         self.advance();
 
-        // Type annotation requires colon: val x: Int = 0
-        let type_ann = if self.skip(TokenKind::Colon) {
-            Some(self.parse_type()?)
-        } else {
-            None
-        };
+        // Type annotation without colon: const x Int = 0
+        let type_ann = self.parse_optional_type_ann()?;
 
         // Assignment
         self.expect(TokenKind::Eq)?;

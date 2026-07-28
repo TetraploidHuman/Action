@@ -1,13 +1,13 @@
 // M183: unknown enum variant in PlainBlock when (dual frontend).
 enum Color { Red, Green, Blue }
 
-fun main() -> Int {
+fun main() Int {
     return if true {
-        val c: Color = Red
-        val code: Int = when c {
-            Red -> 1
-            Green -> 2
-            Purple -> 3
+        val c Color = Red
+        val code Int = when c {
+            Red { 1 }
+            Green { 2 }
+            Purple { 3 }
         }
         println(code)
         0

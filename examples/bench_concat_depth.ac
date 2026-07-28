@@ -2,7 +2,7 @@
 // Exercises the ConcatNode (height == -1) path through repeated appends
 // which creates deeply nested concat trees.
 
-fun gen_deep(n: Int) {
+fun gen_deep(n Int) {
     var lst = List[0]
     var i = 1
     for i <= n {
@@ -12,7 +12,7 @@ fun gen_deep(n: Int) {
     lst
 }
 
-fun gen_deep_concat(n: Int) {
+fun gen_deep_concat(n Int) {
     var lst = List[0]
     var i = 1
     for i <= n {

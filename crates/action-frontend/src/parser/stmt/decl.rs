@@ -81,9 +81,15 @@ impl Parser {
                     continue;
                 }
                 if matches!(self.current_kind(), TokenKind::Ident(_))
-                    && self.peek2() == TokenKind::Colon
+                    && matches!(
+                        self.peek2(),
+                        TokenKind::Ident(_)
+                            | TokenKind::LParen
+                            | TokenKind::Task
+                            | TokenKind::LBrace
+                    )
                 {
-                    // next field — newline-separated OK
+                    // next field — newline-separated OK (`x Int`)
                 } else if matches!(self.current_kind(), TokenKind::Ident(_))
                     || self.current_kind() == TokenKind::Fun
                 {
@@ -102,7 +108,11 @@ impl Parser {
                 }
             };
             self.advance();
-            self.expect(TokenKind::Colon)?;
+            if self.current_kind() == TokenKind::Colon {
+                return Err(self.error(
+                    "Use `field Type` without colon; `field: Type` is no longer valid",
+                ));
+            }
             let ty = self.parse_type()?;
             fields.push((field_name, ty));
         }
@@ -185,15 +195,31 @@ impl Parser {
                     if !variant_params.is_empty() {
                         self.expect(TokenKind::Comma)?;
                     }
-                    // Check for named param: name: Type
+                    // Check for named param: name Type (no colon)
                     if let TokenKind::Ident(ref pname) = self.current_kind() {
                         let pname = pname.clone();
-                        if self.peek2() == TokenKind::Colon {
+                        let next = self.peek2();
+                        if matches!(
+                            next,
+                            TokenKind::Ident(_)
+                                | TokenKind::LParen
+                                | TokenKind::Task
+                                | TokenKind::LBrace
+                        ) {
                             self.advance(); // param name
-                            self.advance(); // ':'
+                            if self.current_kind() == TokenKind::Colon {
+                                return Err(self.error(
+                                    "Use `name Type` without colon; `name: Type` is no longer valid",
+                                ));
+                            }
                             let ty = self.parse_type()?;
                             variant_params.push(EnumVariantParam::Named { name: pname, ty });
                             continue;
+                        }
+                        if next == TokenKind::Colon {
+                            return Err(self.error(
+                                "Use `name Type` without colon; `name: Type` is no longer valid",
+                            ));
                         }
                     }
                     let ty = self.parse_type()?;

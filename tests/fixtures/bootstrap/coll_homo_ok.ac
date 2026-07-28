@@ -1,6 +1,6 @@
-fun main() -> Int {
-    val xs: List = List[1, 2, 3]
-    val s: Set = Set[10, 20]
-    val m: Map = Map["a": 1, "b": 2]
+fun main() Int {
+    val xs List = List[1, 2, 3]
+    val s Set = Set[10, 20]
+    val m Map = Map["a": 1, "b": 2]
     return 0
 }

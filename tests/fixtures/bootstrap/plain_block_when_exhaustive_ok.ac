@@ -1,13 +1,13 @@
 // M146: PlainBlock when exhaustive — mirror when_exhaustive → 3.
 enum Color { Red, Green, Blue }
 
-fun main() -> Int {
+fun main() Int {
     return if true {
-        val c: Color = Blue
+        val c Color = Blue
         when c {
-            Red -> 1
-            Green -> 2
-            Blue -> 3
+            Red { 1 }
+            Green { 2 }
+            Blue { 3 }
         }
     } else {
         0

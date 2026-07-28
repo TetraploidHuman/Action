@@ -1,7 +1,7 @@
 // M137: nested for-in range type error inside PlainBlock (dual frontend).
-fun main() -> Int {
+fun main() Int {
     return if true {
-        var sum: Int = 0
+        var sum Int = 0
         for i in 1..3 {
             for j in 0..true {
                 sum = sum + i

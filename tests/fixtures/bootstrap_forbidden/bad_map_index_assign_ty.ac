@@ -1,5 +1,5 @@
-fun main() -> Int {
-    var m: Map = Map["a": 1, "b": 2]
+fun main() Int {
+    var m Map = Map["a": 1, "b": 2]
     m["a"] = true
     return 0
 }

@@ -1,11 +1,11 @@
-fun both(a: Bool, b: Bool) -> Bool {
+fun both(a Bool, b Bool) Bool {
     return a and b
 }
 
-fun either(a: Bool, b: Bool) -> Bool {
+fun either(a Bool, b Bool) Bool {
     return a or b
 }
 
-fun main() -> Int {
+fun main() Int {
     if both(true, false) { 1 } else { 0 }
 }

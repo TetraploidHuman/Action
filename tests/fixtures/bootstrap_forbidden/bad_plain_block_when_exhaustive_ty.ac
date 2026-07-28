@@ -1,12 +1,12 @@
 // M146: non-exhaustive when inside PlainBlock (dual frontend).
 enum Color { Red, Green, Blue }
 
-fun main() -> Int {
+fun main() Int {
     return if true {
-        val c: Color = Red
+        val c Color = Red
         when c {
-            Red -> 1
-            Green -> 2
+            Red { 1 }
+            Green { 2 }
         }
     } else {
         0

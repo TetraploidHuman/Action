@@ -1,8 +1,8 @@
 // M194: PlainBlock keywords subset — mirror keywords_subset → 0.
-fun main() -> Int {
+fun main() Int {
     return if true {
-        val x: Int = 1
-        var y: Int = 2
+        val x Int = 1
+        var y Int = 2
         0
     } else {
         1

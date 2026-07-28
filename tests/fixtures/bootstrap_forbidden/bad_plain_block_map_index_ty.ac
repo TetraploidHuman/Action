@@ -1,7 +1,7 @@
 // M152: Map index key not String inside PlainBlock (dual frontend).
-fun main() -> Int {
+fun main() Int {
     return if true {
-        val m: Map = Map["a": 1]
+        val m Map = Map["a": 1]
         m[1]
     } else {
         0

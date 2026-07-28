@@ -16,25 +16,25 @@ import pexpr
 
 import pstmt
 
-fun parseEnumVars(s: String, pos: Int, sep: Int) -> Int {
+fun parseEnumVars(s String, pos Int, sep Int) Int {
     return if parser.isTok(s, pos, parser.closeBrace()) { parser.advance(s, pos) } else { parseEnumVar(s, pos, sep) }
 }
 
-fun parseEnumVar(s: String, pos: Int, sep: Int) -> Int {
+fun parseEnumVar(s String, pos Int, sep Int) Int {
     emit.jComma(sep)
-    val v: String = parser.cur(s, pos)
+    val v String = parser.cur(s, pos)
     emit.jOut("{\"name\": \"")
     emit.jOut(v)
     emit.jOut("\", \"params\": []"); emit.jOut("}")
-    var p: Int = parser.advance(s, pos)
+    var p Int = parser.advance(s, pos)
     return parseEnumVars(s, parser.advanceIfComma(s, p), 1)
 }
 
-fun parseEnum(s: String, pos: Int, sep: Int) -> Int {
+fun parseEnum(s String, pos Int, sep Int) Int {
     parser.spanMarkBegin(s, pos)
     emit.jCommaStmt(sep)
-    var p: Int = parser.advance(s, pos)
-    val name: String = parser.cur(s, p)
+    var p Int = parser.advance(s, pos)
+    val name String = parser.cur(s, p)
     p = parser.advance(s, p)
     p = parser.expect(s, p, parser.openBrace())
     emit.jOut("{\"Enum\": {\"name\": \"")
@@ -49,8 +49,8 @@ fun parseEnum(s: String, pos: Int, sep: Int) -> Int {
 }
 
 
-fun advanceTypeFieldSep(s: String, pos: Int) -> Int {
-    val tok: String = parser.cur(s, pos)
+fun advanceTypeFieldSep(s String, pos Int) Int {
+    val tok String = parser.cur(s, pos)
     return if tok == "," {
         parser.advance(s, pos)
     } else {
@@ -62,7 +62,7 @@ fun advanceTypeFieldSep(s: String, pos: Int) -> Int {
     }
 }
 
-fun parseTypeFields(s: String, pos: Int, fieldSep: Int, methodSep: Int) -> Int {
+fun parseTypeFields(s String, pos Int, fieldSep Int, methodSep Int) Int {
     return if parser.isTok(s, pos, parser.closeBrace()) {
         parser.advance(s, pos)
     } else {
@@ -70,7 +70,7 @@ fun parseTypeFields(s: String, pos: Int, fieldSep: Int, methodSep: Int) -> Int {
     }
 }
 
-fun parseTypeBodyItem(s: String, pos: Int, fieldSep: Int, methodSep: Int) -> Int {
+fun parseTypeBodyItem(s String, pos Int, fieldSep Int, methodSep Int) Int {
     return if parser.cur(s, pos) == "fun" {
         parseTypeMethod(s, pos, methodSep, fieldSep)
     } else {
@@ -78,40 +78,49 @@ fun parseTypeBodyItem(s: String, pos: Int, fieldSep: Int, methodSep: Int) -> Int
     }
 }
 
-fun parseTypeField(s: String, pos: Int, fieldSep: Int, methodSep: Int) -> Int {
-    val fname: String = parser.cur(s, pos)
-    var p: Int = parser.advance(s, pos)
-    p = parser.expect(s, p, ":")
-    val fty: String = parser.cur(s, p)
+fun parseTypeField(s String, pos Int, fieldSep Int, methodSep Int) Int {
+    val fname String = parser.cur(s, pos)
+    var p Int = parser.advance(s, pos)
+    p = parser.rejectLegacyColon(s, p)
+    if parser.looksLikeTypeStart(s, p) {
+        0
+    } else {
+        typeenv.typeErrorMark()
+    }
+    val fty String = parser.cur(s, p)
     typeenv.structFieldAdd(emit.sessGet(emit.slotStructName()), fname, fty)
     emit.accAdd(emit.slotFields(), "[\"" + fname + "\", {\"Named\": \"" + fty + "\"}]", fieldSep)
     p = parser.advance(s, p)
     return parseTypeFields(s, advanceTypeFieldSep(s, p), 1, methodSep)
 }
 
-fun parseTypeMethod(s: String, pos: Int, methodSep: Int, fieldSep: Int) -> Int {
+fun parseTypeMethod(s String, pos Int, methodSep Int, fieldSep Int) Int {
     parser.spanMarkBegin(s, pos)
     typeenv.envLocalClear()
-    var p: Int = parser.advance(s, pos)
-    val mname: String = parser.cur(s, p)
+    var p Int = parser.advance(s, pos)
+    val mname String = parser.cur(s, p)
     emit.sessSet(emit.slotFnName(), mname)
     p = parser.advance(s, p)
     p = parser.expect(s, p, "(")
-    val typeName: String = emit.sessGet(emit.slotStructName())
+    val typeName String = emit.sessGet(emit.slotStructName())
     // Struct-lit parsing reuses slotFields — save type-body field JSON across the method body.
-    val savedFields: String = emit.accGet(emit.slotFields())
-    val hirBefore: String = emit.accGet(emit.slotHirOut())
+    val savedFields String = emit.accGet(emit.slotFields())
+    val hirBefore String = emit.accGet(emit.slotHirOut())
     emit.jOut("{\"Fun\": {\"name\": \"")
     emit.jOut(mname)
     emit.jOut("\", \"params\": [")
     p = parseTypeMethodParams(s, p, 0, typeName)
     emit.jOut("], \"return_type\": ")
     p = parser.expect(s, p, ")")
-    p = parser.expect(s, p, "->")
-    emit.sessSet(emit.slotFnRetTy(), parser.cur(s, p))
-    p = parser.advance(s, p)
-    val retTy: String = emit.sessGet(emit.slotFnRetTy())
-    val qname: String = typeName + "." + mname
+    p = parser.rejectLegacyArrow(s, p)
+    if parser.looksLikeReturnTypeStart(s, p) {
+        emit.sessSet(emit.slotFnRetTy(), parser.cur(s, p))
+        p = parser.advance(s, p)
+    } else {
+        emit.sessSet(emit.slotFnRetTy(), "Unit")
+    }
+    val retTy String = emit.sessGet(emit.slotFnRetTy())
+    val qname String = typeName + "." + mname
     typeenv.envAddGlobal(qname, typeenv.tyAnnTag(retTy))
     emit.jTyNamed(retTy)
     emit.jOut(", \"body\": ")
@@ -121,15 +130,15 @@ fun parseTypeMethod(s: String, pos: Int, methodSep: Int, fieldSep: Int) -> Int {
     emit.jOut(", \"type_params\": [], \"is_single_expr\": false, \"is_test\": false, \"fn_or_fallback\": null, \"span\": ")
     emit.jSpan()
     emit.jOut("}}")
-    val hirAfter: String = emit.accGet(emit.slotHirOut())
-    val methodJson: String = substring(hirAfter, len(hirBefore), len(hirAfter) - len(hirBefore))
+    val hirAfter String = emit.accGet(emit.slotHirOut())
+    val methodJson String = substring(hirAfter, len(hirBefore), len(hirAfter) - len(hirBefore))
     emit.accSet(emit.slotHirOut(), hirBefore)
     emit.accSet(emit.slotFields(), savedFields)
     emit.accAdd(emit.slotMethods(), methodJson, methodSep)
     return parseTypeFields(s, advanceTypeFieldSep(s, p), fieldSep, 1)
 }
 
-fun parseTypeMethodParams(s: String, pos: Int, sep: Int, typeName: String) -> Int {
+fun parseTypeMethodParams(s String, pos Int, sep Int, typeName String) Int {
     return if parser.cur(s, pos) == ")" {
         pos
     } else {
@@ -137,10 +146,10 @@ fun parseTypeMethodParams(s: String, pos: Int, sep: Int, typeName: String) -> In
     }
 }
 
-fun parseTypeMethodParam(s: String, pos: Int, sep: Int, typeName: String) -> Int {
+fun parseTypeMethodParam(s String, pos Int, sep Int, typeName String) Int {
     emit.jComma(sep)
-    val pname: String = parser.cur(s, pos)
-    var p: Int = parser.advance(s, pos)
+    val pname String = parser.cur(s, pos)
+    var p Int = parser.advance(s, pos)
     return if pname == "self" {
         parseTypeMethodSelfParam(s, p, typeName)
     } else {
@@ -148,8 +157,11 @@ fun parseTypeMethodParam(s: String, pos: Int, sep: Int, typeName: String) -> Int
     }
 }
 
-fun parseTypeMethodSelfParam(s: String, pos: Int, typeName: String) -> Int {
+fun parseTypeMethodSelfParam(s String, pos Int, typeName String) Int {
     return if parser.cur(s, pos) == ":" {
+        typeenv.typeErrorMark()
+        parseTypeMethodNamedParam(s, parser.advance(s, pos), "self", typeName)
+    } else if parser.looksLikeTypeStart(s, pos) {
         parseTypeMethodNamedParam(s, pos, "self", typeName)
     } else {
         emit.jOut("{\"name\": \"self\", \"ty\": ")
@@ -160,9 +172,14 @@ fun parseTypeMethodSelfParam(s: String, pos: Int, typeName: String) -> Int {
     }
 }
 
-fun parseTypeMethodNamedParam(s: String, pos: Int, pname: String, typeName: String) -> Int {
-    var p: Int = parser.expect(s, pos, ":")
-    val pty: String = parser.cur(s, p)
+fun parseTypeMethodNamedParam(s String, pos Int, pname String, typeName String) Int {
+    var p Int = parser.rejectLegacyColon(s, pos)
+    if parser.looksLikeTypeStart(s, p) {
+        0
+    } else {
+        typeenv.typeErrorMark()
+    }
+    val pty String = parser.cur(s, p)
     emit.jOut("{\"name\": \"")
     emit.jOut(pname)
     emit.jOut("\", \"ty\": ")
@@ -173,11 +190,11 @@ fun parseTypeMethodNamedParam(s: String, pos: Int, pname: String, typeName: Stri
     return parseTypeMethodParams(s, parser.advanceIfComma(s, p), 1, typeName)
 }
 
-fun parseTypeAlias(s: String, pos: Int, sep: Int) -> Int {
+fun parseTypeAlias(s String, pos Int, sep Int) Int {
     parser.spanMarkBegin(s, pos)
     emit.jCommaStmt(sep)
-    var p: Int = parser.advance(s, pos)
-    val name: String = parser.cur(s, p)
+    var p Int = parser.advance(s, pos)
+    val name String = parser.cur(s, p)
     emit.sessSet(emit.slotStructName(), name)
     p = parser.advance(s, p)
     // `type Point { … }` record, or `type UserId = Int` pure alias.
@@ -189,8 +206,8 @@ fun parseTypeAlias(s: String, pos: Int, sep: Int) -> Int {
     }
 }
 
-fun parseTypeAliasAfterEq(s: String, pos: Int, name: String) -> Int {
-    var p: Int = parser.expect(s, pos, "=")
+fun parseTypeAliasAfterEq(s String, pos Int, name String) Int {
+    var p Int = parser.expect(s, pos, "=")
     return if parser.isBraceOpen(parser.cur(s, p)) {
         parseTypeAliasLegacyReject(s, p, name)
     } else {
@@ -198,15 +215,15 @@ fun parseTypeAliasAfterEq(s: String, pos: Int, name: String) -> Int {
     }
 }
 
-fun parseTypeAliasLegacyReject(s: String, pos: Int, name: String) -> Int {
+fun parseTypeAliasLegacyReject(s String, pos Int, name String) Int {
     typeenv.typeErrorMark()
     // Recover by parsing as struct body so the rest of the file can continue.
     return parseTypeAliasStruct(s, pos, name)
 }
 
-fun parseTypeAliasNamed(s: String, pos: Int, name: String) -> Int {
-    val target: String = parser.cur(s, pos)
-    var p: Int = parser.advance(s, pos)
+fun parseTypeAliasNamed(s String, pos Int, name String) Int {
+    val target String = parser.cur(s, pos)
+    var p Int = parser.advance(s, pos)
     parser.spanMarkEnd(s, p)
     emit.jOut("{\"TypeAlias\": {\"name\": \"")
     emit.jOut(name)
@@ -218,8 +235,8 @@ fun parseTypeAliasNamed(s: String, pos: Int, name: String) -> Int {
     return p
 }
 
-fun parseTypeAliasStruct(s: String, pos: Int, name: String) -> Int {
-    var p: Int = parser.expect(s, pos, parser.openBrace())
+fun parseTypeAliasStruct(s String, pos Int, name String) Int {
+    var p Int = parser.expect(s, pos, parser.openBrace())
     typeenv.structTypeRegister(name)
     emit.accReset(emit.slotFields())
     emit.accReset(emit.slotMethods())
@@ -237,8 +254,8 @@ fun parseTypeAliasStruct(s: String, pos: Int, name: String) -> Int {
     return p
 }
 
-fun emitTypeAliasMethodsTail() -> Int {
-    val methods: String = emit.accGet(emit.slotMethods())
+fun emitTypeAliasMethodsTail() Int {
+    val methods String = emit.accGet(emit.slotMethods())
     return if methods == "" {
         0
     } else {
@@ -249,8 +266,8 @@ fun emitTypeAliasMethodsTail() -> Int {
     }
 }
 
-fun parseBlockRet(s: String, pos: Int) -> Int {
-    var p: Int = parser.expect(s, pos, parser.openBrace())
+fun parseBlockRet(s String, pos Int) Int {
+    var p Int = parser.expect(s, pos, parser.openBrace())
     emit.jOut("{\"ty\": ")
     emit.jTyNamed(emit.sessGet(emit.slotFnRetTy()))
     emit.jOut(", \"span\": ")
@@ -262,12 +279,17 @@ fun parseBlockRet(s: String, pos: Int) -> Int {
     return parser.expect(s, p, parser.closeBrace())
 }
 
-fun parseFunParam(s: String, pos: Int, sep: Int) -> Int {
+fun parseFunParam(s String, pos Int, sep Int) Int {
     emit.jComma(sep)
-    val pname: String = parser.cur(s, pos)
-    var p: Int = parser.advance(s, pos)
-    p = parser.expect(s, p, ":")
-    val pty: String = parser.cur(s, p)
+    val pname String = parser.cur(s, pos)
+    var p Int = parser.advance(s, pos)
+    p = parser.rejectLegacyColon(s, p)
+    if parser.looksLikeTypeStart(s, p) {
+        0
+    } else {
+        typeenv.typeErrorMark()
+    }
+    val pty String = parser.cur(s, p)
     emit.jOut("{\"name\": \"")
     emit.jOut(pname)
     emit.jOut("\", \"ty\": ")
@@ -278,29 +300,33 @@ fun parseFunParam(s: String, pos: Int, sep: Int) -> Int {
     return parseFunParams(s, parser.advanceIfComma(s, p), 1)
 }
 
-fun parseFunParams(s: String, pos: Int, sep: Int) -> Int {
+fun parseFunParams(s String, pos Int, sep Int) Int {
     return if parser.cur(s, pos) == ")" { pos } else { parseFunParam(s, pos, sep) }
 }
 
-fun parseFun(s: String, pos: Int, sep: Int) -> Int {
+fun parseFun(s String, pos Int, sep Int) Int {
     parser.spanMarkBegin(s, pos)
     emit.jCommaStmt(sep)
     typeenv.envLocalClear()
-    var p: Int = parser.advance(s, pos)
+    var p Int = parser.advance(s, pos)
     emit.sessSet(emit.slotFnName(), parser.cur(s, p))
     p = parser.advance(s, p)
     p = parser.expect(s, p, "(")
-    val qname: String = modload.importQualifiedName(emit.sessGet(emit.slotFnName()))
+    val qname String = modload.importQualifiedName(emit.sessGet(emit.slotFnName()))
     emit.jOut("{\"Fun\": {\"name\": \"")
     emit.jOut(qname)
     emit.jOut("\", \"params\": [")
     p = parseFunParams(s, p, 0)
     emit.jOut("], \"return_type\": ")
     p = parser.expect(s, p, ")")
-    p = parser.expect(s, p, "->")
-    emit.sessSet(emit.slotFnRetTy(), parser.cur(s, p))
-    p = parser.advance(s, p)
-    val retTy: String = emit.sessGet(emit.slotFnRetTy())
+    p = parser.rejectLegacyArrow(s, p)
+    if parser.looksLikeReturnTypeStart(s, p) {
+        emit.sessSet(emit.slotFnRetTy(), parser.cur(s, p))
+        p = parser.advance(s, p)
+    } else {
+        emit.sessSet(emit.slotFnRetTy(), "Unit")
+    }
+    val retTy String = emit.sessGet(emit.slotFnRetTy())
     typeenv.envAddGlobal(qname, typeenv.tyAnnTag(retTy))
     emit.jTyNamed(retTy)
     emit.jOut(", \"body\": ")
@@ -313,28 +339,36 @@ fun parseFun(s: String, pos: Int, sep: Int) -> Int {
     return p
 }
 
-fun skipExternalParams(s: String, pos: Int) -> Int {
+fun skipExternalParams(s String, pos Int) Int {
     return if parser.cur(s, pos) == ")" { pos } else { skipExternalParam(s, pos) }
 }
 
-fun skipExternalParam(s: String, pos: Int) -> Int {
-    var p: Int = parser.advance(s, pos)
-    p = parser.expect(s, p, ":")
-    p = parser.advance(s, p)
+fun skipExternalParam(s String, pos Int) Int {
+    var p Int = parser.advance(s, pos)
+    p = parser.rejectLegacyColon(s, p)
+    if parser.looksLikeTypeStart(s, p) {
+        p = parser.advance(s, p)
+    } else {
+        typeenv.typeErrorMark()
+    }
     return skipExternalParams(s, parser.advanceIfComma(s, p))
 }
 
-fun parseExternal(s: String, pos: Int, sep: Int) -> Int {
-    var p: Int = parser.advance(s, pos)
+fun parseExternal(s String, pos Int, sep Int) Int {
+    var p Int = parser.advance(s, pos)
     p = parser.advance(s, p)
     emit.sessSet(emit.slotFnName(), parser.cur(s, p))
     p = parser.advance(s, p)
     p = parser.expect(s, p, "(")
     p = skipExternalParams(s, p)
     p = parser.expect(s, p, ")")
-    p = parser.expect(s, p, "->")
-    emit.sessSet(emit.slotFnRetTy(), parser.cur(s, p))
+    p = parser.rejectLegacyArrow(s, p)
+    if parser.looksLikeReturnTypeStart(s, p) {
+        emit.sessSet(emit.slotFnRetTy(), parser.cur(s, p))
+        p = parser.advance(s, p)
+    } else {
+        emit.sessSet(emit.slotFnRetTy(), "Unit")
+    }
     typeenv.envAddGlobal(emit.sessGet(emit.slotFnName()), typeenv.tyAnnTag(emit.sessGet(emit.slotFnRetTy())))
-    p = parser.advance(s, p)
     return p
 }

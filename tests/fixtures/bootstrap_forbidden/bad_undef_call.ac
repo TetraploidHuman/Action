@@ -1,4 +1,4 @@
 // M111: undefined call rejected (single-file; aligns Rust E004).
-fun main() -> Int {
+fun main() Int {
     return foo(1)
 }

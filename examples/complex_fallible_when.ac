@@ -1,5 +1,5 @@
 // Fallible flow: or {}, if , findIndex
-fun pred(x: Int) -> Bool { x == 2 }fun main() {
+fun pred(x Int) Bool { x == 2 }fun main() {
     val maybe = 42
     val n = maybe
     print(n)
@@ -8,9 +8,9 @@ fun pred(x: Int) -> Bool { x == 2 }fun main() {
     print(fallback)
 
     val tag = when {
-        n > 40 -> "high"
-        n > 10 -> "mid"
-        else -> "low"
+        n > 40 { "high" }
+        n > 10 { "mid" }
+        else { "low" }
     }
     print(tag)
 

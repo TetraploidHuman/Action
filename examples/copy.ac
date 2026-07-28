@@ -1,5 +1,5 @@
 // Copy expression: creates a shallow copy of a value
-type Point { x: Int, y: Int }
+type Point { x Int, y Int }
 
 fun main() {
     // Copy of basic types (no-op, values are already copied)

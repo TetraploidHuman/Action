@@ -1,7 +1,7 @@
 // M153: String index key not Int inside PlainBlock (dual frontend).
-fun main() -> Int {
+fun main() Int {
     return if true {
-        val s: String = "ab"
+        val s String = "ab"
         s[true]
     } else {
         0

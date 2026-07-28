@@ -1,6 +1,6 @@
-type Point {x: Int, y: Int}
+type Point {x Int, y Int}
 
-fun main() -> Int {
-    val p: Point = 1
+fun main() Int {
+    val p Point = 1
     return p.x
 }

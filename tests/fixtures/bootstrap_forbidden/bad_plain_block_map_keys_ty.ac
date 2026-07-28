@@ -1,8 +1,8 @@
 // M136: key-bound String misused as Int after len(k) (dual frontend).
-fun main() -> Int {
+fun main() Int {
     return if true {
-        val m: Map = Map["a": 10, "bb": 5]
-        var sum: Int = 0
+        val m Map = Map["a": 10, "bb": 5]
+        var sum Int = 0
         for k in m {
             sum = sum + len(k)
             sum = sum + k

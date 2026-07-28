@@ -1,17 +1,17 @@
 // Phase 3: methods inside type body + associated function.
 type Point {
-    x: Int
-    y: Int
+    x Int
+    y Int
 
-    fun sum(self) -> Int {
+    fun sum(self) Int {
         self.x + self.y
     }
 
-    fun translate(self, dx: Int, dy: Int) -> Point {
+    fun translate(self, dx Int, dy Int) Point {
         Point { x = self.x + dx, y = self.y + dy }
     }
 
-    fun origin() -> Point {
+    fun origin() Point {
         Point { x = 0, y = 0 }
     }
 }

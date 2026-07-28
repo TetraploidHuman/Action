@@ -1,7 +1,7 @@
 // M168: heterogeneous Map values inside PlainBlock (dual frontend).
-fun main() -> Int {
+fun main() Int {
     return if true {
-        val m: Map = Map["a": 1, "b": true]
+        val m Map = Map["a": 1, "b": true]
         0
     } else {
         1

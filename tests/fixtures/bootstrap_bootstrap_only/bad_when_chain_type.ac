@@ -1,6 +1,6 @@
-fun main() -> Int {
+fun main() Int {
     return when {
-        true -> 1
-        else -> false
+        true { 1 }
+        else { false }
     }
 }

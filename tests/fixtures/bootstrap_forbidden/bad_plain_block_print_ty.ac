@@ -1,5 +1,5 @@
 // M145: undefined print arg inside PlainBlock (dual frontend).
-fun main() -> Int {
+fun main() Int {
     return if true {
         print(missing)
         0

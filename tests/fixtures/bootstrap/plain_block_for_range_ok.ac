@@ -1,7 +1,7 @@
 // M163: PlainBlock inclusive range for — mirror for_range → 10.
-fun main() -> Int {
+fun main() Int {
     return if true {
-        var sum: Int = 0
+        var sum Int = 0
         for i in 1..5 {
             sum = sum + i
         }

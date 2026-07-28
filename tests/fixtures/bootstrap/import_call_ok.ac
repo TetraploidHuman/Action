@@ -1,9 +1,9 @@
 import prelude
 
-fun keywordKindOpsTail(text: String) -> String {
+fun keywordKindOpsTail(text String) String {
     return text
 }
 
-fun main() -> Int {
+fun main() Int {
     return if prelude.keywordKind("fun") == "fun" { 7 } else { 0 }
 }

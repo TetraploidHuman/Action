@@ -1,7 +1,7 @@
 // M131: for-condition must be Bool inside PlainBlock (dual frontend).
-fun main() -> Int {
+fun main() Int {
     return if true {
-        var s: Int = 0
+        var s Int = 0
         for s {
             s = s + 1
         }

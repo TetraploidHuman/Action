@@ -1,12 +1,12 @@
 // M186: PlainBlock infinite for return — mirror infinite_for_return → 1.
-fun once() -> Int {
+fun once() Int {
     for {
         return 1
     }
     return 0
 }
 
-fun main() -> Int {
+fun main() Int {
     return if true {
         once()
     } else {

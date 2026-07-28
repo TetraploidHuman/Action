@@ -7,55 +7,55 @@ import parser
 
 import typeenv
 
-external fun bsBufClear(slot: Int) -> Int
-external fun bsBufAppend(slot: Int, content: String) -> Int
-external fun bsBufSet(slot: Int, content: String) -> Int
-external fun bsBufGet(slot: Int) -> String
-external fun bsIntSet(slot: Int, value: Int) -> Int
-external fun bsIntGet(slot: Int) -> Int
+external fun bsBufClear(slot Int) Int
+external fun bsBufAppend(slot Int, content String) Int
+external fun bsBufSet(slot Int, content String) Int
+external fun bsBufGet(slot Int) String
+external fun bsIntSet(slot Int, value Int) Int
+external fun bsIntGet(slot Int) Int
 
-fun slotImports() -> Int { return 31 }
-fun slotImportsPrescanned() -> Int { return 32 }
-fun slotImportPrefix() -> Int { return 33 }
-fun slotImportSrc() -> Int { return 36 }
-fun slotImportSelective() -> Int { return 21 }
-fun slotImportScanHit() -> Int { return 22 }
-fun slotImportsVisiting() -> Int { return 43 }
+fun slotImports() Int { return 31 }
+fun slotImportsPrescanned() Int { return 32 }
+fun slotImportPrefix() Int { return 33 }
+fun slotImportSrc() Int { return 36 }
+fun slotImportSelective() Int { return 21 }
+fun slotImportScanHit() Int { return 22 }
+fun slotImportsVisiting() Int { return 43 }
 
-fun importPrefixClear() -> Int {
+fun importPrefixClear() Int {
     bsBufClear(slotImportPrefix())
     return 0
 }
 
-fun importPrefixSet(name: String) -> Int {
+fun importPrefixSet(name String) Int {
     bsBufSet(slotImportPrefix(), name)
     return 0
 }
 
-fun importPrefix() -> String {
+fun importPrefix() String {
     return bsBufGet(slotImportPrefix())
 }
 
-fun importQualifiedName(name: String) -> String {
-    val p: String = importPrefix()
+fun importQualifiedName(name String) String {
+    val p String = importPrefix()
     return if p == "" { name } else { p + "_" + name }
 }
 
-fun importSelectiveClear() -> Int {
+fun importSelectiveClear() Int {
     bsIntSet(slotImportSelective(), 0)
     return 0
 }
 
-fun importSelectiveMark() -> Int {
+fun importSelectiveMark() Int {
     bsIntSet(slotImportSelective(), 1)
     return 0
 }
 
-fun importSelective() -> Bool {
+fun importSelective() Bool {
     return bsIntGet(slotImportSelective()) == 1
 }
 
-fun importClear() -> Int {
+fun importClear() Int {
     bsBufClear(slotImports())
     bsBufClear(slotImportsPrescanned())
     bsBufClear(slotImportsVisiting())
@@ -66,85 +66,85 @@ fun importClear() -> Int {
     return 0
 }
 
-fun importMarkPrescanned(name: String) -> Int {
+fun importMarkPrescanned(name String) Int {
     bsBufAppend(slotImportsPrescanned(), name + "|")
     return 0
 }
 
-fun importIsPrescanned(name: String) -> Bool {
+fun importIsPrescanned(name String) Bool {
     importIsLoadedInit()
     importIsLoadedFor(bsBufGet(slotImportsPrescanned()), name)
     return bsIntGet(slotImportScanHit()) == 1
 }
 
-fun importMarkLoaded(name: String) -> Int {
+fun importMarkLoaded(name String) Int {
     bsBufAppend(slotImports(), name + "|")
     return 0
 }
 
-fun importNameAt(buf: String, name: String, pos: Int) -> Bool {
+fun importNameAt(buf String, name String, pos Int) Bool {
     return when {
-        typeenv.envEntryStart(buf, pos) == false -> false
-        prelude.charAtSafe(buf, pos + len(name)) != "|" -> false
-        else -> typeenv.nameEqStep(buf, name, pos, 0)
+        typeenv.envEntryStart(buf, pos) == false { false }
+        prelude.charAtSafe(buf, pos + len(name)) != "|" { false }
+        else { typeenv.nameEqStep(buf, name, pos, 0) }
     }
 }
 
-fun importIsLoadedInit() -> Int {
+fun importIsLoadedInit() Int {
     bsIntSet(slotImportScanHit(), 0)
     return 0
 }
 
-fun importIsLoadedMark() -> Int {
+fun importIsLoadedMark() Int {
     bsIntSet(slotImportScanHit(), 1)
     return 0
 }
 
-fun importIsLoadedStep(buf: String, name: String, pos: Int) -> Int {
+fun importIsLoadedStep(buf String, name String, pos Int) Int {
     return if bsIntGet(slotImportScanHit()) == 1 { 0 } else { importIsLoadedStep2(buf, name, pos) }
 }
 
-fun importIsLoadedStep2(buf: String, name: String, pos: Int) -> Int {
+fun importIsLoadedStep2(buf String, name String, pos Int) Int {
     return if importNameAt(buf, name, pos) { importIsLoadedMark() } else { 0 }
 }
 
-fun importIsLoadedFor(buf: String, name: String) -> Int {
-    val end: Int = len(buf)
+fun importIsLoadedFor(buf String, name String) Int {
+    val end Int = len(buf)
     for pos in 0..end {
         importIsLoadedStep(buf, name, pos)
     }
     return 0
 }
 
-fun importIsLoaded(name: String) -> Bool {
+fun importIsLoaded(name String) Bool {
     importIsLoadedInit()
     importIsLoadedFor(bsBufGet(slotImports()), name)
     return bsIntGet(slotImportScanHit()) == 1
 }
 
 
-fun importIsVisiting(name: String) -> Bool {
+fun importIsVisiting(name String) Bool {
     importIsLoadedInit()
     importIsLoadedFor(bsBufGet(slotImportsVisiting()), name)
     return bsIntGet(slotImportScanHit()) == 1
 }
 
-fun importVisitEnter(name: String) -> Int {
+fun importVisitEnter(name String) Int {
     bsBufAppend(slotImportsVisiting(), name + "|")
     return 0
 }
 
-fun importVisitLeave(name: String) -> Int {
+fun importVisitLeave(name String) Int {
     return importVisitLeaveDo(bsBufGet(slotImportsVisiting()), name + "|")
 }
 
-fun importVisitLeaveDo(buf: String, needle: String) -> Int {
-    val nlen: Int = len(needle)
-    val blen: Int = len(buf)
+fun importVisitLeaveDo(buf String, needle String) Int {
+    val nlen Int = len(needle)
+    val blen Int = len(buf)
     return if blen < nlen { 0 } else { importVisitLeaveTail(buf, needle, nlen, blen) }
 }
 
-fun importVisitLeaveTail(buf: String, needle: String, nlen: Int, blen: Int) -> Int {
+fun importVisitLeaveTail(buf String, needle String, nlen Int, blen Int) Int {
     return if substring(buf, blen - nlen, nlen) == needle {
         importVisitLeaveCommit(substring(buf, 0, blen - nlen))
     } else {
@@ -152,116 +152,116 @@ fun importVisitLeaveTail(buf: String, needle: String, nlen: Int, blen: Int) -> I
     }
 }
 
-fun importVisitLeaveCommit(rest: String) -> Int {
+fun importVisitLeaveCommit(rest String) Int {
     bsBufSet(slotImportsVisiting(), rest)
     return 0
 }
 
-fun importNamePathSafe(name: String) -> Bool {
+fun importNamePathSafe(name String) Bool {
     return when {
-        name == "" -> false
-        else -> importNamePathSafeChars(name, 0)
+        name == "" { false }
+        else { importNamePathSafeChars(name, 0) }
     }
 }
 
-fun importNamePathSafeChars(name: String, i: Int) -> Bool {
+fun importNamePathSafeChars(name String, i Int) Bool {
     return when {
-        i >= len(name) -> true
-        prelude.charAtSafe(name, i) == "/" -> false
-        prelude.charAtSafe(name, i) == "." -> importNamePathSafeDot(name, i)
-        else -> importNamePathSafeChars(name, i + 1)
+        i >= len(name) { true }
+        prelude.charAtSafe(name, i) == "/" { false }
+        prelude.charAtSafe(name, i) == "." { importNamePathSafeDot(name, i) }
+        else { importNamePathSafeChars(name, i + 1) }
     }
 }
 
-fun importNamePathSafeDot(name: String, i: Int) -> Bool {
+fun importNamePathSafeDot(name String, i Int) Bool {
     return when {
-        prelude.charAtSafe(name, i + 1) == "." -> false
-        else -> importNamePathSafeChars(name, i + 1)
+        prelude.charAtSafe(name, i + 1) == "." { false }
+        else { importNamePathSafeChars(name, i + 1) }
     }
 }
 
-fun importSrcSet(src: String) -> Int {
+fun importSrcSet(src String) Int {
     bsBufSet(slotImportSrc(), src)
     return 0
 }
 
-fun importSrcGet() -> String {
+fun importSrcGet() String {
     return bsBufGet(slotImportSrc())
 }
 
-fun importAllowed(name: String) -> Bool {
+fun importAllowed(name String) Bool {
     return when name {
-        "prelude" -> true
-        "parser" -> true
-        "emit" -> true
-        "typeenv" -> true
-        "whenty" -> true
-        "modload" -> true
-        "pexpr" -> true
-        "pstmt" -> true
-        "pdecl" -> true
-        "pscan" -> true
-        else -> false
+        "prelude" { true }
+        "parser" { true }
+        "emit" { true }
+        "typeenv" { true }
+        "whenty" { true }
+        "modload" { true }
+        "pexpr" { true }
+        "pstmt" { true }
+        "pdecl" { true }
+        "pscan" { true }
+        else { false }
     }
 }
 
-fun parseImportApplyPrefix(modName: String) -> Int {
+fun parseImportApplyPrefix(modName String) Int {
     return when {
-        importSelective() -> importPrefixClear()
-        importAllowed(modName) -> importPrefixClear()
-        else -> importPrefixSet(modName)
+        importSelective() { importPrefixClear() }
+        importAllowed(modName) { importPrefixClear() }
+        else { importPrefixSet(modName) }
     }
 }
 
-external fun exists(path: String) -> Bool
+external fun exists(path String) Bool
 
 // M124: fixed roots only — bootstrap/ then tests/fixtures/bootstrap/ (no escape).
-fun importModulePathBootstrap(name: String) -> String {
+fun importModulePathBootstrap(name String) String {
     return "bootstrap/" + name + ".ac"
 }
 
-fun importModulePathFixtures(name: String) -> String {
+fun importModulePathFixtures(name String) String {
     return "tests/fixtures/bootstrap/" + name + ".ac"
 }
 
-fun importModulePath(name: String) -> String {
-    val p0: String = importModulePathBootstrap(name)
+fun importModulePath(name String) String {
+    val p0 String = importModulePathBootstrap(name)
     // Bind before return: `return if { String }` hits a host RC footgun (glibc malloc abort).
-    val ok0: Bool = exists(p0)
-    val out0: String = if ok0 { p0 } else { importModulePathPickFixtures(name) }
+    val ok0 Bool = exists(p0)
+    val out0 String = if ok0 { p0 } else { importModulePathPickFixtures(name) }
     return out0
 }
 
-fun importModulePathPickFixtures(name: String) -> String {
-    val p1: String = importModulePathFixtures(name)
-    val ok1: Bool = exists(p1)
-    val out1: String = if ok1 { p1 } else { "" }
+fun importModulePathPickFixtures(name String) String {
+    val p1 String = importModulePathFixtures(name)
+    val ok1 Bool = exists(p1)
+    val out1 String = if ok1 { p1 } else { "" }
     return out1
 }
 
-fun parseImportReject(sep: Int) -> Int {
+fun parseImportReject(sep Int) Int {
     typeenv.typeErrorMark()
     return sep
 }
 
-fun parseImportSkipItemsList(s: String, pos: Int) -> Int {
+fun parseImportSkipItemsList(s String, pos Int) Int {
     return if parser.isTok(s, pos, parser.closeBrace()) { pos } else { parseImportSkipOneItem(s, pos) }
 }
 
-fun parseImportSkipOneItem(s: String, pos: Int) -> Int {
-    var p: Int = parser.advance(s, pos)
+fun parseImportSkipOneItem(s String, pos Int) Int {
+    var p Int = parser.advance(s, pos)
     p = parser.advanceIfComma(s, p)
     return parseImportSkipItemsList(s, p)
 }
 
-fun parseImportSkipItemsDot(s: String, pos: Int) -> Int {
+fun parseImportSkipItemsDot(s String, pos Int) Int {
     importSelectiveMark()
-    var p: Int = parser.advance(s, pos)
+    var p Int = parser.advance(s, pos)
     p = parser.expect(s, p, parser.openBrace())
     p = parseImportSkipItemsList(s, p)
     return parser.expect(s, p, parser.closeBrace())
 }
 
-fun parseImportSkipItems(s: String, pos: Int) -> Int {
+fun parseImportSkipItems(s String, pos Int) Int {
     return if parser.isTok(s, pos, ".") { parseImportSkipItemsDot(s, pos) } else { pos }
 }

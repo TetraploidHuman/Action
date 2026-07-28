@@ -1,6 +1,6 @@
-fun main() -> Int {
-    var sum: Int = 0
-    var i: Int = 0
+fun main() Int {
+    var sum Int = 0
+    var i Int = 0
     for i < 10 {
         sum = sum + i
         i = i + 1

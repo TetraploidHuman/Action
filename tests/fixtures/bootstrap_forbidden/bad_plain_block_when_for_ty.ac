@@ -1,12 +1,12 @@
 // M182: when guard not Bool inside PlainBlock for+when (dual frontend).
-fun main() -> Int {
+fun main() Int {
     return if true {
-        var sum: Int = 0
+        var sum Int = 0
         for n in List[1, 2, 3, 4] {
             sum = sum + when n {
-                1 and 1 -> 10
-                2 -> 20
-                else -> n
+                1 and 1 { 10 }
+                2 { 20 }
+                else { n }
             }
         }
         sum

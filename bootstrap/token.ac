@@ -1,21 +1,21 @@
 // Bootstrap: Token record for lexer/parser pipeline (B0 subset, single-file).
 
-type Token {kind: String, start: Int, end: Int, line: Int, col: Int}
+type Token {kind String, start Int, end Int, line Int, col Int}
 
-fun makeToken(kind: String, start: Int, end: Int, line: Int, col: Int) -> Token {
+fun makeToken(kind String, start Int, end Int, line Int, col Int) Token {
     return Token {kind = kind, start = start, end = end, line = line, col = col}
 }
 
-fun tokenKind(tok: Token) -> String {
+fun tokenKind(tok Token) String {
     return tok.kind
 }
 
-fun demoTokens() -> Int {
-    val t: Token = makeToken("fun", 0, 3, 1, 1)
+fun demoTokens() Int {
+    val t Token = makeToken("fun", 0, 3, 1, 1)
     println(tokenKind(t))
     return 0
 }
 
-fun main() -> Int {
+fun main() Int {
     return demoTokens()
 }

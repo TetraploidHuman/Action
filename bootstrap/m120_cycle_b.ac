@@ -1,5 +1,5 @@
 import m120_cycle_a
 
-fun cycle_b_mark() -> Int {
+fun cycle_b_mark() Int {
     return 2
 }

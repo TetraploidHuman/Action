@@ -1,4 +1,4 @@
-fun bad() -> Int {
+fun bad() Int {
     parseInt("1")
 } or { "nope" }
 

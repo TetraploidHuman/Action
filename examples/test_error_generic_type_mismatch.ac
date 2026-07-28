@@ -1,4 +1,4 @@
-fun <T> pair(a: T, b: T) -> T {
+fun <T> pair(a T, b T) T {
     a
 }
 

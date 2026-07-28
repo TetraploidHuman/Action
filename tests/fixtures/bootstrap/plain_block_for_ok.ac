@@ -1,7 +1,7 @@
 // M130: PlainBlock for-in Iterate — `0..42` exclusive → 42 increments.
-fun main() -> Int {
+fun main() Int {
     return if true {
-        var s: Int = 0
+        var s Int = 0
         for i in 0..42 {
             s = s + 1
         }
