@@ -1,0 +1,4 @@
+// Path B: expr-position `{ if … }` is PlainBlock.
+fun main() -> Int {
+    return { if true { 21; 21 * 2 } else { 0 } }
+}

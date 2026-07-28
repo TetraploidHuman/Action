@@ -230,6 +230,22 @@ fun parseLambdaBlock(s: String, pos: Int) -> Int {
 
 // M126/M127: after `{` consumed — PlainBlock (HIR Block; may include typed val/var).
 fun parsePlainBlockBody(s: String, pos: Int) -> Int {
+    return if parser.isTok(s, pos, parser.closeBrace()) {
+        parsePlainBlockEmpty(s, pos)
+    } else {
+        parsePlainBlockBodyNonEmpty(s, pos)
+    }
+}
+
+fun parsePlainBlockEmpty(s: String, pos: Int) -> Int {
+    // `{` already consumed; emit Unit Block([]) like Rust parse_immediate_block / parse_block_expr.
+    var p: Int = parser.expect(s, pos, parser.closeBrace())
+    emit.setExpr("{\"ty\": {\"Named\": \"Unit\"}, \"span\": " + parser.spanJson() + ", \"kind\": {\"Block\": []}}")
+    typeenv.lastExprTySet(0)
+    return p
+}
+
+fun parsePlainBlockBodyNonEmpty(s: String, pos: Int) -> Int {
     val snap: String = typeenv.envLocalSnapshot()
     val saved: String = emit.accGet(emit.slotBlockStmts())
     emit.accReset(emit.slotBlockStmts())
@@ -578,7 +594,7 @@ fun parseTrailingParamLine(s: String, pos: Int) -> Int {
     return p
 }
 
-// Phase 6 hybrid brace expr
+// Expr-position `{ … }` — PlainBlock (Rust Phase 4+). Closures use `lambda` or trailing.
 fun parseBraceExpr(s: String, pos: Int) -> Int {
     val p1: Int = parser.advance(s, pos)
     val first: String = parser.cur(s, p1)
@@ -591,27 +607,21 @@ fun parseBraceExpr(s: String, pos: Int) -> Int {
         first == "var" -> parsePlainBlockExpr(s, pos)
         first == "return" -> parsePlainBlockExpr(s, pos)
         first == "for" -> parsePlainBlockExpr(s, pos)
-        first == "it" -> parsePostfix(s, parseLambdaIt(s, pos))
+        first == "if" -> parsePlainBlockExpr(s, pos)
+        first == "when" -> parsePlainBlockExpr(s, pos)
         second == "," -> parseBraceExprComma(s, pos, first)
         second == ";" -> parseBraceExprSemi(s, pos, first)
-        else -> parsePostfix(s, parseLambdaBlock(s, pos))
+        else -> parsePlainBlockExpr(s, pos)
     }
 }
 
 fun parseBraceExprComma(s: String, pos: Int, first: String) -> Int {
-    return if isLambdaParamName(first) {
-        parsePostfix(s, parseTrailingParamLine(s, pos))
-    } else {
-        parsePostfix(s, parseLambdaBlock(s, pos))
-    }
+    // Trailing param-lines use parseBraceLambda; expr-position braces are PlainBlock.
+    return parsePlainBlockExpr(s, pos)
 }
 
 fun parseBraceExprSemi(s: String, pos: Int, first: String) -> Int {
-    return if isLambdaParamName(first) {
-        parsePostfix(s, parseTrailingParamLine(s, pos))
-    } else {
-        parsePostfix(s, parseLambdaBlock(s, pos))
-    }
+    return parsePlainBlockExpr(s, pos)
 }
 
 fun parseEmptyBlockExpr(s: String, pos: Int) -> Int {

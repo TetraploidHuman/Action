@@ -1,0 +1,4 @@
+// Path B: nested brace in if arm is PlainBlock (not Lambda).
+fun main() -> Int {
+    return if true { { 21; 21 * 2 } } else { 0 }
+}

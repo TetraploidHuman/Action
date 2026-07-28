@@ -6219,3 +6219,42 @@ fn test_bootstrap_rejects_bad_type_method_arity() {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+#[test]
+fn test_bootstrap_if_else_if_jit() {
+    let path = fixtures_root().join("bootstrap/if_else_if_ok.ac");
+    let code = run_bootstrap_hir_jit(&path, "if_else_if_ok");
+    assert_eq!(code, 2, "else-if chain should return 2");
+}
+
+#[test]
+fn test_bootstrap_if_empty_unit_jit() {
+    let path = fixtures_root().join("bootstrap/if_empty_unit_ok.ac");
+    let code = run_bootstrap_hir_jit(&path, "if_empty_unit_ok");
+    assert_eq!(code, 0, "empty if/else arms should be Unit then return 0");
+}
+
+#[test]
+fn test_bootstrap_plain_block_nested_brace_jit() {
+    let path = fixtures_root().join("bootstrap/plain_block_nested_brace_ok.ac");
+    let code = run_bootstrap_hir_jit(&path, "plain_block_nested_brace_ok");
+    assert_eq!(code, 42, "nested brace in if arm should be PlainBlock → 42");
+}
+
+#[test]
+fn test_bootstrap_plain_block_brace_if_jit() {
+    let path = fixtures_root().join("bootstrap/plain_block_brace_if_ok.ac");
+    let code = run_bootstrap_hir_jit(&path, "plain_block_brace_if_ok");
+    assert_eq!(code, 42, "{{ if … }} expr brace should be PlainBlock → 42");
+}
+
+#[test]
+fn test_bootstrap_rejects_bad_if_empty_ty() {
+    let path = fixtures_root().join("bootstrap_forbidden/bad_if_empty_ty.ac");
+    let output = run_bootstrap_compiler_on(&path);
+    assert!(
+        !output.status.success(),
+        "bootstrap compiler should exit 1 on bad_if_empty_ty.ac (stderr: {})",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}

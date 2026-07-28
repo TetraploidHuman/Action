@@ -1,0 +1,4 @@
+// Empty then-arm Unit vs Int else → type error.
+fun main() -> Int {
+    return if true {} else { 0 }
+}

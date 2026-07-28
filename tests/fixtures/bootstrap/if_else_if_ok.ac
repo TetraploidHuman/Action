@@ -1,0 +1,5 @@
+// Path B: else-if chain → nested OneLine (Rust parity).
+fun main() -> Int {
+    val a: Int = 2
+    return if a > 3 { 1 } else if a > 1 { 2 } else { 0 }
+}

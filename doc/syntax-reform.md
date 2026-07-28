@@ -1,6 +1,6 @@
 # 语法改革契约（Syntax Reform）
 
-> 状态：Phase 0–7 已完成；旧语法清理已落地；Path B type 体内方法 + `if a or b`/`and` 条件已对齐。  
+> 状态：Phase 0–7 已完成；旧语法清理已落地；Path B type 方法、`if or/and`、brace PlainBlock 与 Rust 对齐。  
 > 制定：2026-07-26
 
 ## 终态摘要
@@ -115,12 +115,12 @@
 - **双轨 type 声明**：`type Name { … }` 与旧式 `type Name = { … }` 并存（自举源码可逐步迁移）
 - **命名构造**：`Point { x = … }` 经 PascalCase Ident 解析；HIR `StructLiteral` 携带 `type_name`
 - **`lambda` 软关键字**：`lambda a, b { … }`；trailing 形参行 `{ a, b; body }`（**无** `->`）；`{ a, b -> … }` trailing **拒绝**
-- **块语义（Path B）**：裸 `{}` → Unit Block；语句头 `{ stmts }` → PlainBlock；其余表达式位 `{ … }` 仍保留旧闭包路径供自举
+- **块语义（Path B）**：裸 `{}` → Unit Block；语句头/`if`/`when`/`{ stmts }` → PlainBlock；trailing / `lambda` 仍为闭包；`else { … }` 经 `parseIfElseBlock` → PlainBlock
 - **自举迁移**：`bootstrap/token.ac`、`bootstrap/lexer.ac` 已迁 `type Token { … }`
 - **`no_trailing_lambda`**：`if` / `when` / `for` 禁止 trailing 闭包（host slot 35）
 - **踩坑**：Path B 在自举源码中对 `if a || b {` 与 `if a && b && c {` 会挂起——改用嵌套 `if` 或 `val` 绑定拆分条件
-- **延后**：`Point::origin()`（`::` / FunctionRef）、Rust 侧 brace-else PlainBlock 完全 parity
-- **已补**：type 体内实例方法（`p.sum()`）；`if a or b {` / `and`（cond 用 `parseOr`）
+- **延后**：`Point::origin()`（`::` / FunctionRef）
+- **已补**：type 体内实例方法；`if a or b`/`and`；brace-else / 表达式位 PlainBlock 与 Rust 对齐（空 `{}`、`{ if … }`、嵌套 `{ stmts }`）
 
 ## 验证（Phase 6）
 
